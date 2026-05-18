@@ -743,13 +743,13 @@ flowchart TB
     classDef altaz fill:#fce4ec,stroke:#c62828,stroke-width:3px,color:#b71c1c
 
     I["🔵 Input Guards (2)<br/>slewToEquatorial()<br/>startTracking()"]:::input
-    U["🟠 Upstream Guards (5)<br/>rate_factor, position update,<br/>Kalman filter, ALT-AZ,<br/>evaluateSoftLimits inputs"]:::up
+    U["🟠 Upstream Guards (5)<br/>rate_factor, position update,<br/>Kalman filter, ALT-AZ/CASUAL,<br/>evaluateSoftLimits inputs"]:::up
     D["🟢 Downstream Guards (4)<br/>HA/RA, nutation,<br/>TPoint, refraction"]:::down
-    A["🔴 ALT-AZ Guard (1)<br/>rates + positions"]:::altaz
+    A["🔴 ALT-AZ/CASUAL Guard (1)<br/>rates + positions"]:::altaz
     
     I -->|"isfinite()"| U
     U -->|"EQ path"| D
-    U -.->|"ALT_AZ"| A
+    U -.->|"ALT_AZ / CASUAL"| A
 ```
 
 - **Input guards** (2): [`slewToEquatorial()`](src/controllers/mount_controller.cpp:155), [`startTracking()`](src/controllers/mount_controller.cpp:503)
