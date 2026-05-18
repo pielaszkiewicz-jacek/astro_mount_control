@@ -899,7 +899,10 @@ void CanOpenHAL::nmtMonitoringThread() {
     }
     
     // Stany NMT slave (CiA 301 Table 49)
-    // INITIALISING(0x00) → PRE_OPERATIONAL(0x7F) → OPERATIONAL(0x05) / STOPPED(0x04)
+    enum class NMTState : uint8_t {
+        INITIALISING = 0x00, PRE_OPERATIONAL = 0x7F,
+        OPERATIONAL = 0x05, STOPPED = 0x04, UNKNOWN = 0xFF
+    };
     
     const int NUM_NODES = 3; // RA, Dec, Derotator
     std::array<NodeState, NUM_NODES> nodes; // state + heartbeat + bootup info
@@ -913,33 +916,70 @@ void CanOpenHAL::nmtMonitoringThread() {
         
         for (int i = 0; i < NUM_NODES; ++i) {
             uint8_t node_id = i + 1;
+            auto& node = nodes[i];
             
-            // Faza 1: Bootup detection przez getDriveStatus()
-            //   UNKNOWN → okresowe sprawdzanie, czy węzeł odpowiada
-            //   timeout → NMT Reset (TODO: sendNMT)
+            // Faza 1: Bootup – oczekiwanie na komunikat bootup od węzła
+            if (node.state == NMTState::UNKNOWN || node.state == NMTState::INITIALISING) {
+                if (enable_bootup) {
+                    auto status = canopen_interface_->getDriveStatus(i);
+                    if (status.operational || status.enabled) {
+                        node.bootup_received = true;
+                        node.state = NMTState::PRE_OPERATIONAL;
+                        sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        sendNMT(node_id, NMT_CMD_START_REMOTE_NODE);
+                    }
+                    // timeout bootup → sendNMT(node_id, NMT_CMD_RESET_NODE)
+                }
+            }
             
             // Faza 2: Heartbeat / Node Guarding
-            //   Cykliczny polling getDriveStatus() co heartbeat_period_ms
-            //   missed_heartbeats++ przy braku odpowiedzi
+            if (!enable_node_guarding) {
+                // Heartbeat: cykliczny getDriveStatus() co heartbeat_period_ms
+                if (/* hb_elapsed >= heartbeat_period */) {
+                    auto status = canopen_interface_->getDriveStatus(i);
+                    if (status.error) { node.missed_heartbeats++; }
+                    else { node.missed_heartbeats = 0; }
+                }
+            } else {
+                // Node Guarding: RTR request co node_guarding_period_ms
+            }
             
             // Faza 3: Utrata komunikacji
-            //   missed >= MAX_MISSED_HB → PRE_OPERATIONAL
-            //   missed >= MAX_MISSED_HB*3 → NMT Reset, INITIALISING
+            if (node.missed_heartbeats >= MAX_MISSED_HB) {
+                sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
+                node.state = NMTState::PRE_OPERATIONAL;
+            }
+            if (node.missed_heartbeats >= MAX_MISSED_HB * 3) {
+                sendNMT(node_id, NMT_CMD_RESET_NODE);
+                node.state = NMTState::INITIALISING;
+            }
             
             // Faza 4: Auto-recovery z anti-flapping
-            //   Komunikacja wróciła → sekwencja EnterPreOp → StartNode
-            //   recovery_interval_s zabezpiecza przed flappingiem
+            if (enable_auto_recovery && node.state == NMTState::PRE_OPERATIONAL
+                && node.missed_heartbeats == 0) {
+                sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                sendNMT(node_id, NMT_CMD_START_REMOTE_NODE);
+                node.state = NMTState::OPERATIONAL;
+            }
             
             // Faza 5: Inicjalny Pre-Operational → Operational
-            //   Pierwsze 50 cykli → Start Remote Node
+            if (node.state == NMTState::PRE_OPERATIONAL && nmt_cycle < 50) {
+                sendNMT(node_id, NMT_CMD_START_REMOTE_NODE);
+                node.state = NMTState::OPERATIONAL;
+            }
         }
         
-        // Faza 6: Raportowanie stanu co 1s
+        // Faza 6: Raportowanie stanu sieci NMT co 1s (nmt_cycle % 100 == 0)
         
         std::this_thread::sleep_for(std::chrono::milliseconds(NMT_CYCLE_MS)); // 100 Hz
     }
     
     // Shutdown: wszystkie węzły → Pre-Operational
+    for (int i = 0; i < NUM_NODES; ++i) {
+        sendNMT(i + 1, NMT_CMD_ENTER_PRE_OPERATIONAL);
+    }
 }
 ```
 
@@ -980,7 +1020,7 @@ void CanOpenHAL::nmtMonitoringThread() {
 
 **Uruchomienie** i **zatrzymanie** — bez zmian względem poprzedniej implementacji.
 
-**TODO**: `sendNMT()` jest zakomentowane (TODO) ponieważ `ICanOpenInterface` nie ma jeszcze tej metody. Po dodaniu wystarczy odkomentować.
+**Uwaga**: `sendNMT()` jest w pełni zaimplementowane — [ICanOpenInterface](include/controllers/icanopen_interface.h:279) deklaruje `virtual bool sendNMT(uint8_t, uint8_t) = 0`, a [CanOpenInterface](include/controllers/canopen_interface.h:265) dostarcza implementację. Wątki NMT wysyłają rzeczywiste NMT komunikaty (EnterPreOp, StartRemoteNode, ResetNode) przez tę metodę.
 
 ---
 
@@ -1422,7 +1462,7 @@ while (!stop_requested_) { ... }
 | Problem | Lokalizacja | Opis |
 |---------|-------------|------|
 | ~~**Zagubione detach wątki**~~ | ~~`mount_controller.cpp`~~ | ~~(Naprawione) Wątki są teraz przechowywane w `work_thread_` i łączone przez `joinWorkThreadLocked()` — brak wycieku wątków.~~ |
-| **NMT bez sendNMT()** | `canopen_hal.cpp` (nmtMonitoringThread) | `sendNMT()` zakomentowane (TODO) — `ICanOpenInterface` nie ma tej metody. Stan węzłów zmieniany lokalnie, ale rzeczywiste NMT komunikaty nie są wysyłane. |
+| ~~**NMT bez sendNMT()**~~ | ~~`canopen_hal.cpp` (nmtMonitoringThread)~~ | ~~(Naprawione) `sendNMT()` jest zaimplementowane w `ICanOpenInterface` i `CanOpenInterface`. Wątki NMT wysyłają rzeczywiste komunikaty NMT (EnterPreOp, StartRemoteNode, ResetNode) przez tę metodę.~~ |
 | **Niespójność w CanOpenInterface** | `canopen_interface.cpp` ~81 | `sync_thread_ = std::thread(...).detach()` — `sync_thread_` przechowywany ale wątek detached, nie można go joinować |
 | **`controlLoop()` bez mutexa** | `canopen_hal.cpp:375` | Używa atomików, ale `position_callback_` i `state_change_callback_` nie są atomiczne — potencjalny data race na callbackach |
 
