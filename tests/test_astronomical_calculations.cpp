@@ -618,7 +618,184 @@ TEST_F(AstronomicalCalculationsTest, CombinedPrecessionAndProperMotion) {
         << "Combined precession+proper motion RA change implausibly large for Sirius over 50yr";
 }
 
-int main(int argc, char** argv) {
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
+// ============================================================
+// CASUAL MOUNT QUATERNION TRANSFORM TESTS
+// ============================================================
+
+/**
+ * @brief Tests for mountOrientationToEquatorial and equatorialToMountOrientation.
+ *
+ * These functions implement the quaternion-based coordinate transform
+ * for CASUAL (randomly oriented) mounts. The mount orientation quaternion
+ * Q represents the rotation from the local horizontal frame (ENU) to the
+ * mount frame.
+ *
+ * Pipeline:
+ *   RA/Dec -> Alt/Az -> apply Q^-1 -> mount-frame alt/az  (equatorialToMountOrientation)
+ *   mount-frame alt/az -> apply Q -> Alt/Az -> RA/Dec    (mountOrientationToEquatorial)
+ */
+
+// -----------------------------------------------------------
+// Test 1: Identity quaternion round-trip
+// -----------------------------------------------------------
+
+TEST_F(AstronomicalCalculationsTest, IdentityQuaternionRoundTrip) {
+    // With identity quaternion Q = (0, 0, 0, 1), the mount frame IS the
+    // ENU frame. The transform should reduce to standard alt/az <-> equatorial.
+    double ra = 10.0;   // hours
+    double dec = 45.0;  // degrees
+    double jd = AstronomicalCalculations::getCurrentJulianDate();
+    
+    std::array<double, 4> identity_q = {{0.0, 0.0, 0.0, 1.0}};
+    
+    // RA/Dec -> mount-frame alt/az (should equal true alt/az)
+    auto [mount_alt, mount_az] = calc->equatorialToMountOrientation(ra, dec, jd, identity_q);
+    
+    // Get the true horizontal coordinates for comparison
+    auto [true_alt, true_az] = calc->equatorialToHorizontal(ra, dec, jd, false);
+    
+    // With identity quaternion, mount alt/az should equal true alt/az
+    EXPECT_NEAR(mount_alt, true_alt, 1e-10)
+        << "Identity quaternion: mount altitude should match true altitude";
+    EXPECT_NEAR(mount_az, true_az, 1e-10)
+        << "Identity quaternion: mount azimuth should match true azimuth";
+    
+    // Mount-frame alt/az -> equatorial (round-trip)
+    auto [ra_back, dec_back] = calc->mountOrientationToEquatorial(mount_alt, mount_az, jd, identity_q);
+    
+    EXPECT_NEAR(ra_back, ra, 1e-10)
+        << "Identity quaternion round-trip: RA mismatch";
+    EXPECT_NEAR(dec_back, dec, 1e-10)
+        << "Identity quaternion round-trip: Dec mismatch";
 }
+
+// -----------------------------------------------------------
+// Test 2: Known quaternion transform (30 deg about East)
+// -----------------------------------------------------------
+
+TEST_F(AstronomicalCalculationsTest, KnownQuaternionTransform) {
+    // Use a 30 deg rotation about the East axis.
+    // Q = (sin(15 deg), 0, 0, cos(15 deg)) ~ (0.258819, 0, 0, 0.965926)
+    // This is like tilting the mount frame 30 deg Eastward.
+    double half_theta = 15.0 * M_PI / 180.0;
+    std::array<double, 4> q = {{
+        std::sin(half_theta),
+        0.0,
+        0.0,
+        std::cos(half_theta)
+    }};
+    
+    double ra = 12.0;   // hours
+    double dec = 0.0;   // degrees (on celestial equator)
+    double jd = AstronomicalCalculations::getCurrentJulianDate();
+    
+    // Get true alt/az for comparison
+    auto [true_alt, true_az] = calc->equatorialToHorizontal(ra, dec, jd);
+    
+    // Transform through quaternion
+    auto [mount_alt, mount_az] = calc->equatorialToMountOrientation(ra, dec, jd, q);
+    
+    // The quaternion rotation should produce different mount coordinates
+    // than the true alt/az (unless the star is at a special position).
+    // Since we tilted East, the mount altitude should differ.
+    bool alt_changed = std::abs(mount_alt - true_alt) > 1e-6;
+    bool az_changed = std::abs(mount_az - true_az) > 1e-6;
+    EXPECT_TRUE(alt_changed || az_changed)
+        << "Non-identity quaternion should change coordinates";
+    
+    // Both mount coordinates should be finite and in valid ranges
+    EXPECT_TRUE(std::isfinite(mount_alt));
+    EXPECT_TRUE(std::isfinite(mount_az));
+    EXPECT_GE(mount_alt, -90.0);
+    EXPECT_LE(mount_alt, 90.0);
+    EXPECT_GE(mount_az, 0.0);
+    EXPECT_LT(mount_az, 360.0);
+    
+    // Round-trip: mount alt/az -> equatorial
+    auto [ra_back, dec_back] = calc->mountOrientationToEquatorial(mount_alt, mount_az, jd, q);
+    
+    // Round-trip should recover original RA/Dec
+    EXPECT_NEAR(ra_back, ra, 1e-8)
+        << "Quaternion round-trip: RA mismatch";
+    EXPECT_NEAR(dec_back, dec, 1e-8)
+        << "Quaternion round-trip: Dec mismatch";
+}
+
+// -----------------------------------------------------------
+// Test 3: Identity quaternion -> equatorialToMountOrientation
+// -----------------------------------------------------------
+
+TEST_F(AstronomicalCalculationsTest, EquatorialToMountOrientationIdentity) {
+    std::array<double, 4> identity_q = {{0.0, 0.0, 0.0, 1.0}};
+    double jd = AstronomicalCalculations::getCurrentJulianDate();
+    
+    // Test at zenith (should be well-behaved)
+    auto [alt, az] = calc->equatorialToMountOrientation(0.0, 90.0, jd, identity_q);
+    auto [true_alt, true_az] = calc->equatorialToHorizontal(0.0, 90.0, jd, false);
+    
+    EXPECT_NEAR(alt, true_alt, 1e-10);
+    EXPECT_NEAR(az, true_az, 1e-10);
+}
+
+// -----------------------------------------------------------
+// Test 4: Multiple quaternion orientations
+// -----------------------------------------------------------
+
+TEST_F(AstronomicalCalculationsTest, MultipleQuaternionOrientations) {
+    double jd = AstronomicalCalculations::getCurrentJulianDate();
+    double ra = 10.5;
+    double dec = 30.0;
+    
+    // Test several different orientation quaternions
+    std::vector<std::array<double, 4>> orientations = {
+        {{0.0, 0.0, 0.0, 1.0}},           // identity
+        {{0.382683, 0.0, 0.0, 0.92388}},  // 45 deg about East
+        {{0.0, 0.382683, 0.0, 0.92388}},  // 45 deg about North
+        {{0.0, 0.0, 0.382683, 0.92388}},  // 45 deg about Up
+        {{0.5, 0.5, 0.5, 0.5}},           // 120 deg about (1,1,1)/sqrt(3)
+    };
+    
+    for (const auto& q : orientations) {
+        // Forward transform
+        auto [mount_alt, mount_az] = calc->equatorialToMountOrientation(ra, dec, jd, q);
+        
+        // Check finite and in range
+        EXPECT_TRUE(std::isfinite(mount_alt))
+            << "mount_alt not finite for q=[" << q[0] << "," << q[1] << "," << q[2] << "," << q[3] << "]";
+        EXPECT_TRUE(std::isfinite(mount_az))
+            << "mount_az not finite for q=[" << q[0] << "," << q[1] << "," << q[2] << "," << q[3] << "]";
+        EXPECT_GE(mount_alt, -90.0);
+        EXPECT_LE(mount_alt, 90.0);
+        EXPECT_GE(mount_az, 0.0);
+        EXPECT_LT(mount_az, 360.0);
+        
+        // Round-trip
+        auto [ra_back, dec_back] = calc->mountOrientationToEquatorial(mount_alt, mount_az, jd, q);
+        
+        // Round-trip error should be tiny — use 1e-5 tolerance for non-identity quaternions
+        // due to accumulated numerical precision in equatorial↔horizontal→Cartesian↔quaternion chain
+        EXPECT_NEAR(ra_back, ra, 1e-5)
+            << "RA round-trip error for q=[" << q[0] << "," << q[1] << "," << q[2] << "," << q[3] << "]";
+        EXPECT_NEAR(dec_back, dec, 1e-5)
+            << "Dec round-trip error for q=[" << q[0] << "," << q[1] << "," << q[2] << "," << q[3] << "]";
+    }
+}
+
+// -----------------------------------------------------------
+// Test 5: mountOrientationToEquatorial with known position
+// -----------------------------------------------------------
+
+TEST_F(AstronomicalCalculationsTest, MountOrientationToEquatorialIdentity) {
+    std::array<double, 4> identity_q = {{0.0, 0.0, 0.0, 1.0}};
+    double jd = AstronomicalCalculations::getCurrentJulianDate();
+    
+    // At alt=45 deg, az=180 deg (South), with identity quaternion the mount
+    // frame equals ENU, so the mount alt/az are true horizontal.
+    // These should convert back to the same equatorial as horizontalToEquatorial.
+    auto [true_ra, true_dec] = calc->horizontalToEquatorial(45.0, 180.0, jd, false);
+    auto [mount_ra, mount_dec] = calc->mountOrientationToEquatorial(45.0, 180.0, jd, identity_q);
+    
+    EXPECT_NEAR(mount_ra, true_ra, 1e-10);
+    EXPECT_NEAR(mount_dec, true_dec, 1e-10);
+}
+

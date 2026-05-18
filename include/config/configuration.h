@@ -1,6 +1,7 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
+#include <array>
 #include <string>
 #include <memory>
 #include <map>
@@ -129,6 +130,9 @@ public:
         
         // Atmospheric refraction correction
         bool enable_refraction_correction{true};
+        
+        // Mount orientation quaternion (for CASUAL mount type)
+        std::array<double, 4> orientation_quaternion{1.0, 0.0, 0.0, 0.0};  // [qx, qy, qz, qw]
         
         // Axis physical parameters
         AxisPhysicalParameters ha_axis_params;
@@ -269,6 +273,12 @@ public:
      * @return Mount configuration
      */
     MountConfig getMountConfig() const;
+
+    /**
+     * @brief Get mount orientation quaternion
+     * @return Array of 4 doubles [qx, qy, qz, qw]
+     */
+    std::array<double, 4> getMountOrientationQuaternion() const;
 
     /**
      * @brief Get telescope configuration

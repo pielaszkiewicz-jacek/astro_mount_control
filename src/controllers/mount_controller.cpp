@@ -133,6 +133,73 @@ struct PositionKalmanFilter {
     double rate2() const { return x(3); }
 };
 
+// ============================================================
+// MountOrientation member function implementations
+// ============================================================
+
+bool MountController::MountOrientation::isValid() const {
+    double sum_sq = quaternion[0] * quaternion[0] +
+                    quaternion[1] * quaternion[1] +
+                    quaternion[2] * quaternion[2] +
+                    quaternion[3] * quaternion[3];
+    return std::abs(sum_sq - 1.0) < 1e-6;
+}
+
+void MountController::MountOrientation::setFromAxisAngles(double axis1_altitude, double axis1_azimuth) {
+    // Build orientation quaternion Q such that Q rotates from ENU {north, east, up}
+    // to mount frame. Axis1 (altitude-like) points at (altitude, azimuth) in ENU.
+    // Q * ENU_axis1 * Q_conj = (0, 0, 1) (mount zenith)
+    //
+    // ENU axis1 direction: (cos(alt)*cos(az), cos(alt)*sin(az), sin(alt))
+    // Q_conj = quaternion_from_a_to_b((0,0,1), ENU_axis1)
+    // Q = conjugate(Q_conj)
+    
+    double alt_rad = axis1_altitude * M_PI / 180.0;
+    double az_rad = axis1_azimuth * M_PI / 180.0;
+    
+    double north = std::cos(alt_rad) * std::cos(az_rad);
+    double east  = std::cos(alt_rad) * std::sin(az_rad);
+    double up    = std::sin(alt_rad);
+    
+    // Q_conj: rotate (0,0,1) to ENU_axis1
+    // v = (0,0,1) × (north, east, up) = (-east, north, 0)
+    // s = 1 + (0,0,1)·(north, east, up) = 1 + up
+    double vx = -east;
+    double vy =  north;
+    double vz = 0.0;
+    double s  = 1.0 + up;
+    
+    double norm = std::sqrt(vx*vx + vy*vy + vz*vz + s*s);
+    if (norm > 0.0) {
+        // Q = conjugate(Q_conj): negate vector part, keep scalar
+        quaternion[0] = -vx / norm;   // qx
+        quaternion[1] = -vy / norm;   // qy
+        quaternion[2] = -vz / norm;   // qz
+        quaternion[3] =  s / norm;    // qw
+    } else {
+        // Zero rotation → identity
+        quaternion = {{0.0, 0.0, 0.0, 1.0}};
+    }
+}
+
+std::array<double, 9> MountController::MountOrientation::toRotationMatrix() const {
+    // Convert unit quaternion [qx, qy, qz, qw] to 3×3 rotation matrix (row-major)
+    double qx = quaternion[0];
+    double qy = quaternion[1];
+    double qz = quaternion[2];
+    double qw = quaternion[3];
+    
+    double qx2 = qx * qx;
+    double qy2 = qy * qy;
+    double qz2 = qz * qz;
+    
+    return {{
+        1.0 - 2.0 * (qy2 + qz2),  2.0 * (qx*qy - qz*qw),  2.0 * (qx*qz + qy*qw),
+        2.0 * (qx*qy + qz*qw),    1.0 - 2.0 * (qx2 + qz2),  2.0 * (qy*qz - qx*qw),
+        2.0 * (qx*qz - qy*qw),    2.0 * (qy*qz + qx*qw),  1.0 - 2.0 * (qx2 + qy2)
+    }};
+}
+
 class MountController::Impl {
 public:
     Impl() : state_{MountStatus::State::UNINITIALIZED},
@@ -360,7 +427,8 @@ public:
                 
                 // Convert RA/Dec to mount coordinates
                 // For equatorial mounts, axis1 tracks Hour Angle (HA = LST - RA)
-                {
+                // For CASUAL mounts, RA/Dec is converted to mount-frame alt/az via orientation quaternion
+                if (config_.mount_type == MountType::EQUATORIAL) {
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                     double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
                     double ha_hours = lst - ra;
@@ -380,14 +448,27 @@ public:
                         axis1_target_ = ha_hours * 15.0;  // Convert hours to degrees
                         axis2_target_ = dec;
                     }
+                } else if (config_.mount_type == MountType::CASUAL) {
+                    // Convert RA/Dec to mount-frame alt/az using the orientation quaternion
+                    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                    auto [mount_alt, mount_az] = astro_calc_->equatorialToMountOrientation(
+                        ra, dec, jd, mount_orientation_.quaternion);
+                    axis1_target_ = mount_alt;   // Altitude in mount frame
+                    axis2_target_ = mount_az;    // Azimuth in mount frame
                 }
                 
                 // Check soft limits before initiating slew
+                // For CASUAL mounts, axis2 is azimuth-like [0, 360) — wrapping means the
+                // configured axis2 limits don't apply. Only axis1 is checked against soft limits.
                 if (config_.soft_limits_enabled) {
-                    if (axis1_target_ < config_.soft_limit_axis1_min ||
-                        axis1_target_ > config_.soft_limit_axis1_max ||
-                        axis2_target_ < config_.soft_limit_axis2_min ||
-                        axis2_target_ > config_.soft_limit_axis2_max) {
+                    bool limit_violation = (axis1_target_ < config_.soft_limit_axis1_min ||
+                                            axis1_target_ > config_.soft_limit_axis1_max);
+                    if (config_.mount_type != MountType::CASUAL) {
+                        limit_violation = limit_violation ||
+                            (axis2_target_ < config_.soft_limit_axis2_min ||
+                             axis2_target_ > config_.soft_limit_axis2_max);
+                    }
+                    if (limit_violation) {
                         MOUNT_LOG_WARN("SlewToEquatorial target exceeds soft limits: axis1={:.1f}°, axis2={:.1f}°",
                                  axis1_target_, axis2_target_);
                         state_ = MountStatus::State::IDLE;
@@ -493,11 +574,12 @@ public:
                     double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
                     
                     // Check for hard limit violation during slew
-                    // For Alt-Az mounts, axis2 is azimuth [0, 360) — it wraps rather than
-                    // hitting a hard stop, so only axis1 is checked against limits.
+                    // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — it wraps rather
+                    // than hitting a hard stop, so only axis1 is checked against limits.
                     if (config_.soft_limits_enabled) {
                         bool limit_violation = (soft_limit_distance_axis1_ < 0.0);
-                        if (config_.mount_type != MountType::ALT_AZ) {
+                        if (config_.mount_type != MountType::ALT_AZ &&
+                            config_.mount_type != MountType::CASUAL) {
                             limit_violation = limit_violation || (soft_limit_distance_axis2_ < 0.0);
                         }
                         if (limit_violation) {
@@ -629,15 +711,87 @@ public:
                 if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) return false;
                 if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::TRACKING) return false;
                 
-                axis1_target_ = azimuth;
-                axis2_target_ = altitude;
+                if (config_.mount_type == MountType::CASUAL) {
+                    // CASUAL mount: transform true horizontal (alt/az) to mount-frame coordinates
+                    // using the mount orientation quaternion Q (ENU → mount frame rotation).
+                    //
+                    // Coordinate convention (matching astronomical_calculations.cpp):
+                    //   ENU frame:     x = north, y = east, z = up
+                    //   Mount frame:   x = north, y = east, z = up (mount zenith)
+                    //
+                    // Pipeline:
+                    //   1. Horizontal (alt, az) → Cartesian ENU vector {north, east, up}
+                    //   2. Apply quaternion Q to rotate from ENU to mount frame
+                    //   3. Mount-frame Cartesian → mount (alt, az) angles
+                    
+                    // Step 1: Horizontal (alt, az) → Cartesian ENU vector {north, east, up}
+                    double alt_rad = altitude * M_PI / 180.0;
+                    double az_rad = azimuth * M_PI / 180.0;
+                    double ce = std::cos(alt_rad);
+                    double horiz_north = ce * std::cos(az_rad);   // North
+                    double horiz_east  = ce * std::sin(az_rad);   // East
+                    double horiz_up    = std::sin(alt_rad);       // Up
+                    
+                    // Step 2: Apply quaternion Q: v' = v + 2*qw*(q×v) + 2*(q×(q×v))
+                    // where q = (qx, qy, qz) is the vector part, qw the scalar part
+                    double qx = mount_orientation_.quaternion[0];
+                    double qy = mount_orientation_.quaternion[1];
+                    double qz = mount_orientation_.quaternion[2];
+                    double qw = mount_orientation_.quaternion[3];
+                    
+                    // q × v
+                    double cross_x = qy * horiz_up  - qz * horiz_east;
+                    double cross_y = qz * horiz_north - qx * horiz_up;
+                    double cross_z = qx * horiz_east - qy * horiz_north;
+                    
+                    // q × (q × v)
+                    double cross2_x = qy * cross_z - qz * cross_y;
+                    double cross2_y = qz * cross_x - qx * cross_z;
+                    double cross2_z = qx * cross_y - qy * cross_x;
+                    
+                    double mount_north = horiz_north + 2.0 * qw * cross_x + 2.0 * cross2_x;
+                    double mount_east  = horiz_east  + 2.0 * qw * cross_y + 2.0 * cross2_y;
+                    double mount_up    = horiz_up    + 2.0 * qw * cross_z + 2.0 * cross2_z;
+                    
+                    // Step 3: Mount-frame Cartesian → mount (alt, az) angles
+                    double norm = std::sqrt(mount_north * mount_north + mount_east * mount_east + mount_up * mount_up);
+                    if (norm > 0.0) {
+                        mount_north /= norm;
+                        mount_east  /= norm;
+                        mount_up    /= norm;
+                    }
+                    // Mount alt = asin(up), Mount az = atan2(east, north)
+                    double mount_alt_rad = std::asin(std::clamp(mount_up, -1.0, 1.0));
+                    double mount_az_rad = std::atan2(mount_east, mount_north);
+                    double mount_alt = mount_alt_rad * 180.0 / M_PI;
+                    double mount_az = mount_az_rad * 180.0 / M_PI;
+                    if (mount_az < 0.0) mount_az += 360.0;
+                    
+                    // Map mount-frame angles to axis convention:
+                    //   axis1 = azimuth-like (mount frame), axis2 = altitude-like (mount frame)
+                    // This matches the ALT_AZ convention: axis1=azimuth, axis2=altitude.
+                    // For identity quaternion, CASUAL behaves identically to ALT_AZ.
+                    axis1_target_ = mount_az;     // azimuth-like axis in mount frame
+                    axis2_target_ = mount_alt;   // altitude-like axis in mount frame
+                } else {
+                    axis1_target_ = azimuth;
+                    axis2_target_ = altitude;
+                }
                 
                 // Check soft limits before initiating slew
+                // For CASUAL and ALT_AZ mounts, axis1 is azimuth-like [0, 360) — wrapping means the
+                // configured axis1 limits don't apply. Only axis2 is checked against soft limits.
                 if (config_.soft_limits_enabled) {
-                    if (axis1_target_ < config_.soft_limit_axis1_min ||
-                        axis1_target_ > config_.soft_limit_axis1_max ||
-                        axis2_target_ < config_.soft_limit_axis2_min ||
-                        axis2_target_ > config_.soft_limit_axis2_max) {
+                    bool limit_violation = false;
+                    if (config_.mount_type != MountType::ALT_AZ &&
+                        config_.mount_type != MountType::CASUAL) {
+                        limit_violation = (axis1_target_ < config_.soft_limit_axis1_min ||
+                                           axis1_target_ > config_.soft_limit_axis1_max);
+                    }
+                    limit_violation = limit_violation ||
+                        (axis2_target_ < config_.soft_limit_axis2_min ||
+                         axis2_target_ > config_.soft_limit_axis2_max);
+                    if (limit_violation) {
                         MOUNT_LOG_WARN("SlewToHorizontal target exceeds soft limits: axis1={:.1f}°, axis2={:.1f}°",
                                  axis1_target_, axis2_target_);
                         state_ = MountStatus::State::IDLE;
@@ -736,11 +890,12 @@ public:
                     double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
                     
                     // Check for hard limit violation during slew
-                    // For Alt-Az mounts, axis2 is azimuth [0, 360) — it wraps rather than
-                    // hitting a hard stop, so only axis1 is checked against limits.
+                    // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — it wraps rather
+                    // than hitting a hard stop, so only axis1 is checked against limits.
                     if (config_.soft_limits_enabled) {
                         bool limit_violation = (soft_limit_distance_axis1_ < 0.0);
-                        if (config_.mount_type != MountType::ALT_AZ) {
+                        if (config_.mount_type != MountType::ALT_AZ &&
+                            config_.mount_type != MountType::CASUAL) {
                             limit_violation = limit_violation || (soft_limit_distance_axis2_ < 0.0);
                         }
                         if (limit_violation) {
@@ -894,6 +1049,7 @@ public:
             }
             
             // For equatorial mounts, axis1 tracks Hour Angle (HA = LST - RA).
+            // For CASUAL mounts, RA/Dec is converted to mount-frame alt/az via orientation quaternion.
             // For Alt-Az mounts, axis1 = altitude, axis2 = azimuth (caller passes
             // altitude as 'ra' and azimuth as 'dec').
             if (config_.mount_type == MountType::EQUATORIAL) {
@@ -916,6 +1072,13 @@ public:
                     axis1_target_ = ha_hours * 15.0;  // Convert hours to degrees
                     axis2_target_ = dec;
                 }
+            } else if (config_.mount_type == MountType::CASUAL) {
+                // Convert RA/Dec to mount-frame alt/az using the orientation quaternion
+                double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                auto [mount_alt, mount_az] = astro_calc_->equatorialToMountOrientation(
+                    ra, dec, jd, mount_orientation_.quaternion);
+                axis1_target_ = mount_alt;   // Altitude in mount frame
+                axis2_target_ = mount_az;    // Azimuth in mount frame
             } else {  // ALT_AZ
                 // axis1 = altitude, axis2 = azimuth — use caller values directly
                 axis1_target_ = ra;
@@ -923,13 +1086,13 @@ public:
             }
             
             // Check soft limits before starting tracking
-            // For Alt-Az mounts, axis2 is azimuth [0, 360) — wrapping means the
-            // configured equatorial axis2 limits (Dec-oriented) don't apply.
-            // Only axis1 (altitude) is checked against its configured soft limits.
+            // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — wrapping means the
+            // configured axis2 limits don't apply. Only axis1 is checked against soft limits.
             if (config_.soft_limits_enabled) {
                 bool limit_violation = (axis1_target_ < config_.soft_limit_axis1_min ||
                                         axis1_target_ > config_.soft_limit_axis1_max);
-                if (config_.mount_type != MountType::ALT_AZ) {
+                if (config_.mount_type != MountType::ALT_AZ &&
+                    config_.mount_type != MountType::CASUAL) {
                     limit_violation = limit_violation ||
                         (axis2_target_ < config_.soft_limit_axis2_min ||
                          axis2_target_ > config_.soft_limit_axis2_max);
@@ -943,7 +1106,7 @@ public:
             
             // Calculate tracking rates based on mode
             // For equatorial: axis1_rate = sidereal/solar/lunar, axis2_rate = 0 (Dec doesn't drift)
-            // For Alt-Az: both rates are computed dynamically in the tracking loop
+            // For CASUAL and Alt-Az: both rates are computed dynamically in the tracking loop
             if (config_.mount_type == MountType::EQUATORIAL) {
                 switch (mode) {
                     case TrackingMode::SIDEREAL:
@@ -971,7 +1134,7 @@ public:
                         axis2_tracking_rate = 0.0;
                         break;
                 }
-            } else {  // ALT_AZ
+            } else {  // CASUAL or ALT_AZ
                 // Rates are computed dynamically in the tracking loop based on
                 // current altitude/azimuth position. The mode (SIDEREAL/SOLAR/LUNAR)
                 // determines ω scaling in the rate equations.
@@ -984,6 +1147,15 @@ public:
             
             state_ = MountStatus::State::TRACKING;
             track_count_++;
+            
+            // Meridian flip sentinel for non-equatorial mounts
+            // Set time_to_meridian_ to a large positive value before the tracking
+            // thread starts, so getTimeToMeridian() never returns 0 (default) for
+            // ALT_AZ or CASUAL mounts where meridian flips are not applicable.
+            if (config_.mount_type != MountType::EQUATORIAL) {
+                time_to_meridian_ = 24.0;
+                pier_side_ = 1;
+            }
             
             // Use HAL motor velocity control or CANopen if available
             if (hal_axis1_motor_ && hal_axis2_motor_) {
@@ -1173,23 +1345,26 @@ public:
                     }
                 }
                 
-                // For Alt-Az mounts, normalize altitude to [-5, 90]° and azimuth to [0, 360)°
-                if (config_.mount_type == MountType::ALT_AZ) {
-                    // Clamp altitude to [-5, 90] degrees (allow slightly below horizon)
+                // For Alt-Az and CASUAL mounts, normalize to valid angular ranges
+                // Axis1 is altitude-like (clamped), axis2 is azimuth-like (wraps [0, 360))
+                if (config_.mount_type == MountType::ALT_AZ ||
+                    config_.mount_type == MountType::CASUAL) {
+                    // Clamp altitude-like axis to [-5, 90] degrees (allow slightly below horizon)
                     if (axis1_position_ > 90.0) axis1_position_ = 90.0;
                     if (axis1_position_ < -5.0) axis1_position_ = -5.0;
                     
-                    // Normalize azimuth to [0, 360) using fmod for O(1) safety
+                    // Normalize azimuth-like axis to [0, 360) using fmod for O(1) safety
                     axis2_position_ = std::fmod(axis2_position_, 360.0);
                     if (axis2_position_ < 0.0) axis2_position_ += 360.0;
                 }
                 
                 // Check for hard limit violation (beyond limits → ERROR)
-                // For Alt-Az mounts, axis2 is azimuth [0, 360) — it wraps rather than
-                // hitting a hard stop, so only axis1 (altitude) is checked against limits.
+                // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — it wraps rather
+                // than hitting a hard stop, so only axis1 is checked against limits.
                 if (config_.soft_limits_enabled) {
                     bool limit_violation = (soft_limit_distance_axis1_ < 0.0);
-                    if (config_.mount_type != MountType::ALT_AZ) {
+                    if (config_.mount_type != MountType::ALT_AZ &&
+                        config_.mount_type != MountType::CASUAL) {
                         limit_violation = limit_violation || (soft_limit_distance_axis2_ < 0.0);
                     }
                     if (limit_violation) {
@@ -1210,6 +1385,8 @@ public:
                 
                 // Apply astronomical corrections for equatorial tracking
                 // Nutation changes the apparent position of the target by up to ~17"
+                // For CASUAL and ALT_AZ mounts, position corrections use a different
+                // approach (rate-based, see below), so skip EQUATORIAL-specific corrections.
                 if (config_.mount_type == MountType::EQUATORIAL) {
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                     double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
@@ -1365,10 +1542,12 @@ public:
                     }
                 }
                 
-                // --- ALT-AZ position-dependent rate computation ---
-                // For Alt-Az mounts, tracking rates depend on the current altitude and azimuth.
+                // --- ALT-AZ and CASUAL position-dependent rate computation ---
+                // For Alt-Az mounts, tracking rates depend on the current altitude and azimuth:
                 //   Azimuth rate:  d(az)/dt = -ω × cos(lat) × sin(alt) / cos(alt)
                 //   Altitude rate: d(alt)/dt =  ω × cos(lat) × cos(az)
+                // For CASUAL mounts, the ALT-AZ rates in true horizontal frame are transformed
+                // through the orientation quaternion to obtain mount-frame tracking rates.
                 // where ω = Earth rotation rate (7.2921150e-5 rad/s) scaled by tracking mode.
                 else if (config_.mount_type == MountType::ALT_AZ) {
                     // Convert positions to radians
@@ -1445,8 +1624,132 @@ public:
                     }
                 }
                 
+                // --- CASUAL position-dependent rate computation ---
+                // For CASUAL mounts, compute ALT_AZ rates in the true horizontal frame and
+                // transform them through the orientation quaternion to mount-frame rates.
+                // This is mathematically equivalent to rotating the ALT_AZ rate vector.
+                else if (config_.mount_type == MountType::CASUAL) {
+                    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                    
+                    // Get current mount position in true horizontal frame
+                    // (inverse quaternion rotation of mount-frame position)
+                    auto [true_alt, true_az] = astro_calc_->mountOrientationToEquatorial(
+                        axis1_position_, axis2_position_, jd, mount_orientation_.quaternion);
+                    
+                    // Compute ALT_AZ rates at the current true horizontal position
+                    double alt_rad = true_alt * M_PI / 180.0;
+                    double az_rad  = true_az * M_PI / 180.0;
+                    double lat_rad = config_.latitude * M_PI / 180.0;
+                    
+                    // Compute cos(lat) with polar singularity guard
+                    double cos_lat = std::cos(lat_rad);
+                    const double MIN_COS_LAT = 1e-10;
+                    if (std::abs(cos_lat) < MIN_COS_LAT) {
+                        cos_lat = std::copysign(MIN_COS_LAT, cos_lat);
+                    }
+                    
+                    // Compute cos(alt) with zenith clamp
+                    const double MIN_COS_ALT = std::cos(89.5 * M_PI / 180.0);
+                    double cos_alt = std::cos(alt_rad);
+                    if (std::abs(cos_alt) < MIN_COS_ALT) {
+                        cos_alt = std::copysign(MIN_COS_ALT, cos_alt);
+                    }
+                    
+                    // Earth rotation rate (rad/s), scaled by tracking mode factor
+                    double omega = 7.2921150e-5;
+                    double mode_factor = 1.0;
+                    switch (mode) {
+                        case TrackingMode::SIDEREAL: mode_factor = 1.0;      break;
+                        case TrackingMode::SOLAR:    mode_factor = 0.9972;   break;
+                        case TrackingMode::LUNAR:    mode_factor = 0.9760;   break;
+                        case TrackingMode::CUSTOM:   mode_factor = 1.0;      break;
+                        case TrackingMode::OFF:      mode_factor = 0.0;      break;
+                    }
+                    omega *= mode_factor;
+                    
+                    // ALT_AZ rates in true horizontal frame [rad/s]
+                    double alt_rate_rad = omega * cos_lat * std::cos(az_rad);
+                    double az_rate_rad  = -omega * cos_lat * std::sin(alt_rad) / cos_alt;
+                    
+                    // Convert true horizontal (alt, az) to Cartesian (x, y, z) position
+                    double sin_alt = std::sin(alt_rad);
+                    double cos_az_h = std::cos(az_rad);
+                    double sin_az_h = std::sin(az_rad);
+                    
+                    // Cartesian velocity in true horizontal frame [unit/s]
+                    double vx = -sin_alt * cos_az_h * alt_rate_rad - cos_alt * sin_az_h * az_rate_rad;
+                    double vy = -sin_alt * sin_az_h * alt_rate_rad + cos_alt * cos_az_h * az_rate_rad;
+                    double vz = cos_alt * alt_rate_rad;
+                    
+                    // Rotate position and velocity by orientation quaternion to mount frame
+                    double qx = mount_orientation_.quaternion[0];
+                    double qy = mount_orientation_.quaternion[1];
+                    double qz = mount_orientation_.quaternion[2];
+                    double qw = mount_orientation_.quaternion[3];
+                    
+                    // Inline quaternion rotation: v' = v + 2*qw*(q×v) + 2*(q×(q×v))
+                    auto rotateVec = [qx, qy, qz, qw](double vx, double vy, double vz)
+                        -> std::array<double, 3> {
+                        double cross1_x = qy * vz - qz * vy;
+                        double cross1_y = qz * vx - qx * vz;
+                        double cross1_z = qx * vy - qy * vx;
+                        double cross2_x = qy * cross1_z - qz * cross1_y;
+                        double cross2_y = qz * cross1_x - qx * cross1_z;
+                        double cross2_z = qx * cross1_y - qy * cross1_x;
+                        return {vx + 2.0 * qw * cross1_x + 2.0 * cross2_x,
+                                vy + 2.0 * qw * cross1_y + 2.0 * cross2_y,
+                                vz + 2.0 * qw * cross1_z + 2.0 * cross2_z};
+                    };
+                    
+                    auto mount_pos = rotateVec(cos_alt * cos_az_h, cos_alt * sin_az_h, sin_alt);
+                    auto mount_vel = rotateVec(vx, vy, vz);
+                    
+                    // Convert mount-frame Cartesian position to angular coordinates
+                    double m1_deg = std::asin(mount_pos[2]) * 180.0 / M_PI;
+                    double m2_deg = std::atan2(mount_pos[1], mount_pos[0]) * 180.0 / M_PI;
+                    
+                    // Convert mount-frame Cartesian velocity to angular rates [deg/s]
+                    double m1_rad = m1_deg * M_PI / 180.0;
+                    double m2_rad = m2_deg * M_PI / 180.0;
+                    double cos_m1 = std::cos(m1_rad);
+                    const double MIN_COS_M1 = 1e-10;
+                    if (std::abs(cos_m1) < MIN_COS_M1) {
+                        cos_m1 = std::copysign(MIN_COS_M1, cos_m1);
+                    }
+                    
+                    double m1_rate_deg = mount_vel[2] / cos_m1 * 180.0 / M_PI;
+                    double m2_rate_deg = (-mount_vel[0] * std::sin(m2_rad)
+                                          + mount_vel[1] * std::cos(m2_rad))
+                                         / cos_m1 * 180.0 / M_PI;
+                    
+                    // Write rates under rate_mutex_ for thread safety
+                    {
+                        std::lock_guard<std::mutex> rate_lock(*rate_mutex_);
+                        axis1_rate_ = m1_rate_deg;
+                        axis2_rate_ = m2_rate_deg;
+                        current_rate_1 = m1_rate_deg;
+                        current_rate_2 = m2_rate_deg;
+                    }
+                    
+                    // Guard against non-finite rates (zenith singularity, NaN propagation)
+                    if (!std::isfinite(current_rate_1) || !std::isfinite(current_rate_2) ||
+                        !std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
+                        MOUNT_LOG_ERROR("Non-finite CASUAL tracking state: m1_rate={}, m2_rate={}, "
+                                 "axis1={}°, axis2={}°",
+                                 current_rate_1, current_rate_2,
+                                 axis1_position_, axis2_position_);
+                        state_ = MountStatus::State::ERROR;
+                        error_message_ = "Numerical error: NaN/Inf in CASUAL tracking state";
+                        break;
+                    }
+                }
+                
                 // Meridian flip detection and execution (equatorial mounts only)
-                if (config_.meridian_flip_enabled && config_.mount_type == MountType::EQUATORIAL) {
+                if (config_.mount_type != MountType::EQUATORIAL) {
+                    // Non-equatorial mounts (ALT_AZ, CASUAL): meridian flip not applicable.
+                    time_to_meridian_ = 24.0;
+                    pier_side_ = 1;
+                } else if (config_.meridian_flip_enabled) {
                     double ha = axis1_position_; // HA in degrees
                     
                     // Calculate time to meridian (positive = before, negative = past)
@@ -2071,64 +2374,233 @@ public:
             return false;  // Need at least 2 stars for initial alignment
         }
         
-        // Calculate initial rotation matrix from measurements
-        // Uses a simple linear least-squares approach to find
-        // the rotation between observed and expected coordinates
-        try {
-            // Compute mean offsets in RA and Dec
-            double ra_offset_sum = 0.0;
-            double dec_offset_sum = 0.0;
+        if (config_.mount_type == MountType::CASUAL) {
+            // --- CASUAL bootstrap calibration ---
+            // Estimate the mount orientation quaternion from at least 3 measurements
+            // using Wahba's problem (SVD-based rotation estimation).
+            //
+            // Each measurement provides:
+            //   - (observed_ra, observed_dec): star's true sky position
+            //   - (mount_ha, mount_dec): mount axis positions (axis1 = mount_ha, axis2 = mount_dec)
+            //
+            // Algorithm:
+            //   1. Convert (observed_ra, observed_dec) at measurement time to true horizontal (alt, az)
+            //   2. Convert (mount_ha, mount_dec) to unit vector in mount frame
+            //   3. Build cross-covariance matrix B = sum(mount_vec * horiz_vec^T)
+            //   4. SVD(B) = U * S * V^T  →  optimal rotation R = V * U^T
+            //   5. Convert R to quaternion Q
+            //   6. Q represents rotation: mount frame → true horizontal frame
             
-            for (const auto& m : bootstrap_measurements_) {
-                double d_ra = m.expected_ra - m.observed_ra;
-                double d_dec = m.expected_dec - m.observed_dec;
-                
-                // Normalize RA offset to reasonable range
-                if (d_ra > 12.0) d_ra -= 24.0;
-                if (d_ra < -12.0) d_ra += 24.0;
-                
-                ra_offset_sum += d_ra;
-                dec_offset_sum += d_dec;
+            if (bootstrap_measurements_.size() < 3) {
+                MOUNT_LOG_WARN("CASUAL bootstrap calibration requires at least 3 measurements (got {})",
+                         bootstrap_measurements_.size());
+                return false;
             }
             
-            // Average offsets give initial pointing correction
-            double ra_correction = ra_offset_sum / bootstrap_measurements_.size();
-            double dec_correction = dec_offset_sum / bootstrap_measurements_.size();
-            
-            MOUNT_LOG_INFO("Bootstrap calibration: RA offset={:.4f}h, Dec offset={:.4f}°",
-                     ra_correction, dec_correction);
-            
-            // Calculate RMS error as quality metric
-            double rms_ra = 0.0, rms_dec = 0.0;
-            for (const auto& m : bootstrap_measurements_) {
-                double d_ra = m.expected_ra - m.observed_ra - ra_correction;
-                double d_dec = m.expected_dec - m.observed_dec - dec_correction;
-                if (d_ra > 12.0) d_ra -= 24.0;
-                if (d_ra < -12.0) d_ra += 24.0;
-                rms_ra += d_ra * d_ra;
-                rms_dec += d_dec * d_dec;
+            try {
+                // Set environmental parameters for atmospheric refraction
+                astro_calc_->setEnvironmentalParams(
+                    bootstrap_measurements_.front().temperature,
+                    bootstrap_measurements_.front().pressure,
+                    bootstrap_measurements_.front().humidity);
+                
+                // Build cross-covariance matrix B (3x3)
+                Eigen::Matrix3d B = Eigen::Matrix3d::Zero();
+                double total_weight = 0.0;
+                
+                for (const auto& m : bootstrap_measurements_) {
+                    // Convert the measurement timestamp to Julian Date
+                    auto ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        m.timestamp.time_since_epoch()).count();
+                    double jd = 2440587.5 + ms_since_epoch / 86400000.0;
+                    
+                    // Step 1: Convert (observed_ra, observed_dec) → true horizontal (alt, az)
+                    double ra_hours = m.observed_ra;
+                    double dec_deg = m.observed_dec;
+                    
+                    auto [true_alt, true_az] = astro_calc_->equatorialToHorizontal(
+                        ra_hours, dec_deg, jd, true);
+                    
+                    // Convert alt/az to ENU unit vector in true horizontal frame
+                    // ENU: x=East, y=North, z=Up
+                    double alt_rad = true_alt * M_PI / 180.0;
+                    double az_rad = true_az * M_PI / 180.0;
+                    Eigen::Vector3d horiz_vec(
+                        std::sin(az_rad) * std::cos(alt_rad),   // East
+                        std::cos(az_rad) * std::cos(alt_rad),   // North
+                        std::sin(alt_rad)                        // Up
+                    );
+                    
+                    // Step 2: Convert mount position (mount_ha = axis1, mount_dec = axis2)
+                    // to a unit vector in mount frame.
+                    // In mount frame: axis1 = altitude-like, axis2 = azimuth-like
+                    double axis1_deg = m.mount_ha;
+                    double axis2_deg = m.mount_dec;
+                    double a1_rad = axis1_deg * M_PI / 180.0;
+                    double a2_rad = axis2_deg * M_PI / 180.0;
+                    Eigen::Vector3d mount_vec(
+                        std::sin(a2_rad) * std::cos(a1_rad),   // axis2 (longitude-like)
+                        std::cos(a2_rad) * std::cos(a1_rad),   // axis2 orthogonal
+                        std::sin(a1_rad)                        // axis1 (altitude-like)
+                    );
+                    
+                    // Step 3: Accumulate B += mount_vec * horiz_vec^T
+                    // Use equal weights for all measurements
+                    B += mount_vec * horiz_vec.transpose();
+                    total_weight += 1.0;
+                }
+                
+                // Step 4: SVD to find optimal rotation R = V * U^T
+                Eigen::JacobiSVD<Eigen::Matrix3d> svd(B, Eigen::ComputeFullU | Eigen::ComputeFullV);
+                Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();
+                
+                // Ensure proper rotation (det = +1)
+                if (R.determinant() < 0) {
+                    Eigen::Matrix3d V = svd.matrixV();
+                    V.col(2) = -V.col(2);
+                    R = V * svd.matrixU().transpose();
+                }
+                
+                // Step 5: Convert rotation matrix R to quaternion Q = [qx, qy, qz, qw]
+                double trace = R(0,0) + R(1,1) + R(2,2);
+                double qx, qy, qz, qw;
+                
+                if (trace > 0.0) {
+                    double S = std::sqrt(trace + 1.0) * 2.0;
+                    qw = 0.25 * S;
+                    qx = (R(2,1) - R(1,2)) / S;
+                    qy = (R(0,2) - R(2,0)) / S;
+                    qz = (R(1,0) - R(0,1)) / S;
+                } else if (R(0,0) > R(1,1) && R(0,0) > R(2,2)) {
+                    double S = std::sqrt(1.0 + R(0,0) - R(1,1) - R(2,2)) * 2.0;
+                    qw = (R(2,1) - R(1,2)) / S;
+                    qx = 0.25 * S;
+                    qy = (R(0,1) + R(1,0)) / S;
+                    qz = (R(0,2) + R(2,0)) / S;
+                } else if (R(1,1) > R(2,2)) {
+                    double S = std::sqrt(1.0 + R(1,1) - R(0,0) - R(2,2)) * 2.0;
+                    qw = (R(0,2) - R(2,0)) / S;
+                    qx = (R(0,1) + R(1,0)) / S;
+                    qy = 0.25 * S;
+                    qz = (R(1,2) + R(2,1)) / S;
+                } else {
+                    double S = std::sqrt(1.0 + R(2,2) - R(0,0) - R(1,1)) * 2.0;
+                    qw = (R(1,0) - R(0,1)) / S;
+                    qx = (R(0,2) + R(2,0)) / S;
+                    qy = (R(1,2) + R(2,1)) / S;
+                    qz = 0.25 * S;
+                }
+                
+                // Normalize quaternion
+                double q_norm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+                if (q_norm > 0.0) {
+                    qx /= q_norm; qy /= q_norm; qz /= q_norm; qw /= q_norm;
+                }
+                
+                // Step 6: Store as estimated orientation
+                MountOrientation estimated_q;
+                estimated_q.quaternion = {{qx, qy, qz, qw}};
+                bootstrap_estimated_orientation_ = estimated_q;
+                
+                // Compute residual error: for each measurement, project the mount
+                // position through the estimated quaternion and compare with observed
+                double residual_sum_sq = 0.0;
+                for (const auto& m : bootstrap_measurements_) {
+                    auto ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        m.timestamp.time_since_epoch()).count();
+                    double jd = 2440587.5 + ms_since_epoch / 86400000.0;
+                    
+                    // Expected mount position from observed sky position using estimated Q
+                    auto [expected_axis1, expected_axis2] = astro_calc_->equatorialToMountOrientation(
+                        m.observed_ra, m.observed_dec, jd,
+                        estimated_q.quaternion);
+                    
+                    double d1 = expected_axis1 - m.mount_ha;
+                    double d2 = expected_axis2 - m.mount_dec;
+                    residual_sum_sq += d1*d1 + d2*d2;
+                }
+                double rms_error_deg = std::sqrt(residual_sum_sq / bootstrap_measurements_.size());
+                bootstrap_estimated_quaternion_error_arcsec_ = rms_error_deg * 3600.0;
+                
+                // Store RMS in the shared bootstrap fields for API compatibility
+                bootstrap_rms_ra_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
+                bootstrap_rms_dec_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
+                
+                // Apply estimated orientation to the mount
+                mount_orientation_ = estimated_q;
+                
+                MOUNT_LOG_INFO("CASUAL bootstrap calibration: Q=[{:.4f}, {:.4f}, {:.4f}, {:.4f}], "
+                         "RMS error={:.2f}\"",
+                         qx, qy, qz, qw, bootstrap_estimated_quaternion_error_arcsec_);
+                
+                bootstrap_calibrated_ = true;
+                return true;
+                
+            } catch (const std::exception& e) {
+                MOUNT_LOG_ERROR("CASUAL bootstrap calibration failed: {}", e.what());
+                return false;
             }
-            rms_ra = std::sqrt(rms_ra / bootstrap_measurements_.size());
-            rms_dec = std::sqrt(rms_dec / bootstrap_measurements_.size());
-            
-            MOUNT_LOG_INFO("Bootstrap RMS: RA={:.4f}h, Dec={:.4f}°", rms_ra, rms_dec);
-            
-            // Store computed results for access via API
-            bootstrap_ra_correction_arcsec_ = ra_correction * 54000.0;  // hours -> arcsec
-            bootstrap_dec_correction_arcsec_ = dec_correction * 3600.0;  // degrees -> arcsec
-            bootstrap_rms_ra_arcsec_ = rms_ra * 54000.0;                 // hours -> arcsec
-            bootstrap_rms_dec_arcsec_ = rms_dec * 3600.0;                // degrees -> arcsec
-            
-            // Apply correction to current position as rough alignment
-            axis1_target_ += ra_correction * 15.0;  // Convert hours to degrees
-            axis2_target_ += dec_correction;
-            
-            bootstrap_calibrated_ = true;
-            return true;
-            
-        } catch (const std::exception& e) {
-            MOUNT_LOG_ERROR("Bootstrap calibration failed: {}", e.what());
-            return false;
+        } else {
+            // --- EQUATORIAL / ALT_AZ bootstrap calibration ---
+            // Calculate initial rotation matrix from measurements
+            // Uses a simple linear least-squares approach to find
+            // the rotation between observed and expected coordinates
+            try {
+                // Compute mean offsets in RA and Dec
+                double ra_offset_sum = 0.0;
+                double dec_offset_sum = 0.0;
+                
+                for (const auto& m : bootstrap_measurements_) {
+                    double d_ra = m.expected_ra - m.observed_ra;
+                    double d_dec = m.expected_dec - m.observed_dec;
+                    
+                    // Normalize RA offset to reasonable range
+                    if (d_ra > 12.0) d_ra -= 24.0;
+                    if (d_ra < -12.0) d_ra += 24.0;
+                    
+                    ra_offset_sum += d_ra;
+                    dec_offset_sum += d_dec;
+                }
+                
+                // Average offsets give initial pointing correction
+                double ra_correction = ra_offset_sum / bootstrap_measurements_.size();
+                double dec_correction = dec_offset_sum / bootstrap_measurements_.size();
+                
+                MOUNT_LOG_INFO("Bootstrap calibration: RA offset={:.4f}h, Dec offset={:.4f}°",
+                         ra_correction, dec_correction);
+                
+                // Calculate RMS error as quality metric
+                double rms_ra = 0.0, rms_dec = 0.0;
+                for (const auto& m : bootstrap_measurements_) {
+                    double d_ra = m.expected_ra - m.observed_ra - ra_correction;
+                    double d_dec = m.expected_dec - m.observed_dec - dec_correction;
+                    if (d_ra > 12.0) d_ra -= 24.0;
+                    if (d_ra < -12.0) d_ra += 24.0;
+                    rms_ra += d_ra * d_ra;
+                    rms_dec += d_dec * d_dec;
+                }
+                rms_ra = std::sqrt(rms_ra / bootstrap_measurements_.size());
+                rms_dec = std::sqrt(rms_dec / bootstrap_measurements_.size());
+                
+                MOUNT_LOG_INFO("Bootstrap RMS: RA={:.4f}h, Dec={:.4f}°", rms_ra, rms_dec);
+                
+                // Store computed results for access via API
+                bootstrap_ra_correction_arcsec_ = ra_correction * 54000.0;  // hours -> arcsec
+                bootstrap_dec_correction_arcsec_ = dec_correction * 3600.0;  // degrees -> arcsec
+                bootstrap_rms_ra_arcsec_ = rms_ra * 54000.0;                 // hours -> arcsec
+                bootstrap_rms_dec_arcsec_ = rms_dec * 3600.0;                // degrees -> arcsec
+                
+                // Apply correction to current position as rough alignment
+                axis1_target_ += ra_correction * 15.0;  // Convert hours to degrees
+                axis2_target_ += dec_correction;
+                
+                bootstrap_calibrated_ = true;
+                return true;
+                
+            } catch (const std::exception& e) {
+                MOUNT_LOG_ERROR("Bootstrap calibration failed: {}", e.what());
+                return false;
+            }
         }
     }
     
@@ -2143,6 +2615,8 @@ public:
         bootstrap_rms_dec_arcsec_ = 0.0;
         bootstrap_ra_correction_arcsec_ = 0.0;
         bootstrap_dec_correction_arcsec_ = 0.0;
+        bootstrap_estimated_orientation_ = MountOrientation{};
+        bootstrap_estimated_quaternion_error_arcsec_ = 0.0;
     }
     
     size_t getBootstrapMeasurementCount() const {
@@ -2638,26 +3112,33 @@ public:
     
     std::vector<double> getRotationMatrix() const {
         std::lock_guard<std::mutex> lock(*state_mutex_);
-        // Calculate field rotation for alt-az mounts
+        // Calculate field rotation for alt-az and casual mounts
         // For equatorial mounts, field rotation is zero (except for atmospheric refraction)
-        // For alt-az mounts, field rotation = -ω * cos(φ) / sin(alt)
-        // where ω is sidereal rate, φ is latitude, alt is altitude
+        // For alt-az and casual mounts, field rotation = -ω * cos(φ) / sin(alt)
+        // where ω is sidereal rate, φ is latitude, alt is mount-frame altitude-like axis
         
         if (config_.mount_type == MountType::EQUATORIAL) {
             // Equatorial mount: minimal field rotation (only atmospheric effects)
             // Return identity quaternion
             return {1.0, 0.0, 0.0, 0.0};
         } else {
-            // Alt-Az mount: calculate field rotation
+            // Alt-Az and CASUAL mounts: calculate field rotation using mount-frame position
             // Field rotation rate = -15.041 * cos(latitude) / sin(altitude) arcsec/sec
-            // where 15.041 arcsec/sec is sidereal rate
+            // where 15.041 arcsec/sec is sidereal rate.
+            // For CASUAL mounts, axis1 = altitude-like, axis2 = azimuth-like in mount frame.
             
             double current_time = std::chrono::duration<double>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             
             // Get current mount position
-            double alt = axis2_position_;  // altitude in degrees
-            double az = axis1_position_;   // azimuth in degrees
+            // For ALT_AZ: axis2 = altitude, axis1 = azimuth
+            // For CASUAL: axis1 = altitude-like, axis2 = azimuth-like in mount frame
+            double alt;
+            if (config_.mount_type == MountType::CASUAL) {
+                alt = axis1_position_;  // altitude-like axis in mount frame
+            } else {
+                alt = axis2_position_;  // altitude in degrees (ALT_AZ convention)
+            }
             
             // Avoid division by zero for alt near 0
             if (alt < 1.0) alt = 1.0;
@@ -3124,6 +3605,20 @@ public:
         return config_;
     }
     
+    bool setMountOrientation(const MountOrientation& orientation) {
+        std::lock_guard<std::mutex> lock(*state_mutex_);
+        if (!orientation.isValid()) {
+            return false;
+        }
+        mount_orientation_ = orientation;
+        return true;
+    }
+    
+    MountOrientation getMountOrientation() const {
+        std::lock_guard<std::mutex> lock(*state_mutex_);
+        return mount_orientation_;
+    }
+    
     bool updateConfiguration(const ControllerConfig& config) {
         std::lock_guard<std::mutex> lock(*state_mutex_);
         config_ = config;
@@ -3335,10 +3830,13 @@ public:
         field_rotation_params_ = params;
         field_rotation_enabled_ = params.enabled();
         // Update field rotation rate based on mount type and position
-        if (config_.mount_type == MountType::ALT_AZ && field_rotation_enabled_) {
-            // Compute field rotation rate for Alt-Az mount.
+        if ((config_.mount_type == MountType::ALT_AZ || config_.mount_type == MountType::CASUAL) && field_rotation_enabled_) {
+            // Compute field rotation rate for Alt-Az and CASUAL mounts.
             // Formula: rate = -ω * cos(lat) / sin(alt)
             // where ω = sidereal rate, lat = latitude, alt = altitude.
+            //
+            // For ALT_AZ mounts, alt is the true altitude (axis2).
+            // For CASUAL mounts, alt is the mount-frame altitude-like axis (axis1).
             //
             // Singularities:
             //   sin(alt) → 0 when alt → 0° (horizon) or alt → 180° (nadir).
@@ -3346,7 +3844,19 @@ public:
             //   approach zero there — which is physically correct, but the
             //   intermediate value may overflow due to the sin(alt) division.
             double lat_rad = config_.latitude * M_PI / 180.0;
-            double alt_rad = params.altitude() * M_PI / 180.0;
+            
+            // For CASUAL mounts, use the mount-frame altitude (axis1 position)
+            // instead of params.altitude(), since the mount orientation quaternion
+            // transforms true horizontal altitude to the mount-frame altitude-like axis.
+            double altitude_deg;
+            if (config_.mount_type == MountType::CASUAL) {
+                std::lock_guard<std::mutex> lock(*state_mutex_);
+                altitude_deg = axis1_position_;  // axis1 is altitude-like in mount frame
+            } else {
+                altitude_deg = params.altitude();
+            }
+            
+            double alt_rad = altitude_deg * M_PI / 180.0;
             double sin_alt = std::sin(alt_rad);
             
             // Clamp sin(alt) away from zero to prevent division by zero / infinity.
@@ -3357,7 +3867,7 @@ public:
             if (std::abs(sin_alt) < MIN_SIN_ALT) {
                 sin_alt = std::copysign(MIN_SIN_ALT, sin_alt);
                 MOUNT_LOG_DEBUG("Field rotation alt clamp: altitude={:.2f}° clamped to sin(alt)={:.6f}",
-                         params.altitude(), sin_alt);
+                         altitude_deg, sin_alt);
             }
             
             // Guard against extreme cos(lat) * sin(alt) product causing
@@ -3375,7 +3885,7 @@ public:
                 -MAX_RATE_DEG_S, MAX_RATE_DEG_S);
             
             MOUNT_LOG_DEBUG("Field rotation rate computed: {:.4f} deg/s (lat={:.1f}°, alt={:.1f}°)",
-                     field_rotation_rate_, config_.latitude, params.altitude());
+                     field_rotation_rate_, config_.latitude, altitude_deg);
         } else {
             field_rotation_rate_ = 0.0;
         }
@@ -4488,7 +4998,8 @@ public:
                 return false;
             }
             if (config_.mount_type != MountType::EQUATORIAL) {
-                MOUNT_LOG_WARN("executeMeridianFlip rejected: mount type is not EQUATORIAL");
+                MOUNT_LOG_WARN("executeMeridianFlip rejected: mount type is not EQUATORIAL"
+                              " (CASUAL and ALT_AZ mounts do not support meridian flips)");
                 return false;
             }
             if (meridian_flip_in_progress_) {
@@ -4687,6 +5198,10 @@ private:
     double bootstrap_ra_correction_arcsec_{0.0};
     double bootstrap_dec_correction_arcsec_{0.0};
     
+    // CASUAL bootstrap: estimated orientation quaternion
+    MountOrientation bootstrap_estimated_orientation_;
+    double bootstrap_estimated_quaternion_error_arcsec_{0.0};
+    
     // TPOINT calibration computed results
     double tpoint_residual_rms_arcsec_{0.0};
     double tpoint_residual_max_arcsec_{0.0};
@@ -4752,6 +5267,7 @@ private:
     }
     
     ControllerConfig config_;
+    MountOrientation mount_orientation_;
     std::vector<Measurement> bootstrap_measurements_;
     std::vector<Measurement> tpoint_measurements_;
     std::unique_ptr<models::TPointModel> tpoint_model_;
@@ -5055,6 +5571,14 @@ MountController::ControllerConfig MountController::getConfiguration() const {
 
 bool MountController::updateConfiguration(const ControllerConfig& config) {
     return pimpl->updateConfiguration(config);
+}
+
+bool MountController::setMountOrientation(const MountOrientation& orientation) {
+    return pimpl->setMountOrientation(orientation);
+}
+
+MountController::MountOrientation MountController::getMountOrientation() const {
+    return pimpl->getMountOrientation();
 }
 
 bool MountController::uploadEphemeris(const std::string& object_id,

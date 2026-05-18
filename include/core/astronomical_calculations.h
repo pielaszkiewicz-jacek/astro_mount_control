@@ -1,6 +1,7 @@
 #ifndef ASTRONOMICAL_CALCULATIONS_H
 #define ASTRONOMICAL_CALCULATIONS_H
 
+#include <array>
 #include <chrono>
 #include <vector>
 #include <memory>
@@ -120,8 +121,40 @@ public:
      * @param mountOrientation Mount orientation quaternion
      * @return Field rotation angle in degrees
      */
-    double calculateFieldRotation(double ra, double dec, double jd, 
+    double calculateFieldRotation(double ra, double dec, double jd,
                                   const std::vector<double>& mountOrientation);
+
+    /**
+     * @brief Convert mount-oriented alt/az to celestial equatorial coordinates
+     *
+     * For a CASUAL (randomly oriented) mount, the mount reports angles in its own
+     * reference frame. This function reverses the quaternion rotation and then
+     * applies horizontalToEquatorial to obtain true celestial coordinates.
+     *
+     * @param mount_altitude Altitude in mount frame [degrees]
+     * @param mount_azimuth Azimuth in mount frame [degrees]
+     * @param jd Julian Date
+     * @param mountOrientation Mount orientation quaternion [qx, qy, qz, qw]
+     * @return Equatorial coordinates (ra in hours, dec in degrees)
+     */
+    std::pair<double, double> mountOrientationToEquatorial(double mount_altitude, double mount_azimuth,
+                                                           double jd, const std::array<double, 4>& mountOrientation);
+
+    /**
+     * @brief Convert celestial equatorial to mount-oriented alt/az coordinates
+     *
+     * For a CASUAL (randomly oriented) mount, this converts true RA/Dec to
+     * mount-frame alt/az by first applying equatorialToHorizontal, then
+     * rotating by the mount orientation quaternion.
+     *
+     * @param ra Right ascension in hours
+     * @param dec Declination in degrees
+     * @param jd Julian Date
+     * @param mountOrientation Mount orientation quaternion [qx, qy, qz, qw]
+     * @return Mount-oriented coordinates (altitude, azimuth) in degrees
+     */
+    std::pair<double, double> equatorialToMountOrientation(double ra, double dec,
+                                                           double jd, const std::array<double, 4>& mountOrientation);
 
     /**
      * @brief Calculate Earth rotation angle

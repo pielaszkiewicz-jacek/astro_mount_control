@@ -1,6 +1,7 @@
 #ifndef MOUNT_CONTROLLER_H
 #define MOUNT_CONTROLLER_H
 
+#include <array>
 #include <memory>
 #include <string>
 #include <chrono>
@@ -33,7 +34,30 @@ public:
     enum class MountType {
         EQUATORIAL,
         ALT_AZ,
-        UNKNOWN
+        UNKNOWN,
+        CASUAL   ///< Randomly oriented mount with quaternion orientation
+    };
+
+    /**
+     * @brief Mount orientation represented as a unit quaternion
+     *
+     * Describes the rotation from the local horizontal frame (ENU: East, North, Up)
+     * to the mount's axis frame. The identity quaternion [1,0,0,0] corresponds to
+     * an Alt-Az mount at the equator (or an equatorial mount at the pole).
+     *
+     * The quaternion is stored as [qx, qy, qz, qw] where qw is the scalar part.
+     */
+    struct MountOrientation {
+        std::array<double, 4> quaternion{0.0, 0.0, 0.0, 1.0};  // [qx, qy, qz, qw] — identity
+
+        /// Check if this orientation is valid (unit quaternion within tolerance)
+        bool isValid() const;
+
+        /// Build orientation from axis angles (axis1 altitude, axis1 azimuth)
+        void setFromAxisAngles(double axis1_altitude, double axis1_azimuth);
+
+        /// Convert to 3x3 rotation matrix (row-major)
+        std::array<double, 9> toRotationMatrix() const;
     };
 
     enum class TrackingMode {
@@ -167,6 +191,9 @@ public:
         // Atmospheric refraction correction
         bool enable_refraction_correction{true};  ///< Apply real-time refraction correction in tracking loop
         
+        // Mount orientation (for CASUAL mount type)
+        MountOrientation mount_orientation;
+
         // Axis physical parameters
         AxisPhysicalParameters ha_axis_params;
         AxisPhysicalParameters dec_axis_params;
@@ -656,6 +683,27 @@ public:
      * @return True if update successful
      */
     bool updateConfiguration(const ControllerConfig& config);
+
+    // ============================================
+    // Mount Orientation API (for CASUAL mount type)
+    // ============================================
+    
+    /**
+     * @brief Set mount orientation quaternion
+     *
+     * For CASUAL mount type, sets the orientation of the mount's axes
+     * relative to the local horizontal frame.
+     *
+     * @param orientation Mount orientation quaternion
+     * @return True if orientation was accepted
+     */
+    bool setMountOrientation(const MountOrientation& orientation);
+    
+    /**
+     * @brief Get current mount orientation
+     * @return Current mount orientation
+     */
+    MountOrientation getMountOrientation() const;
 
     /**
      * @brief Get CanOpen interface reference

@@ -253,6 +253,18 @@ public:
                                   google::protobuf::Empty* response) override;
     
     // ============================================
+    // Mount orientation (CASUAL mount type)
+    // ============================================
+    
+    grpc::Status SetMountOrientation(grpc::ServerContext* context,
+                                     const astro_mount::MountOrientation* request,
+                                     google::protobuf::Empty* response) override;
+    
+    grpc::Status GetMountOrientation(grpc::ServerContext* context,
+                                     const google::protobuf::Empty* request,
+                                     astro_mount::MountOrientation* response) override;
+    
+    // ============================================
     // Trajectory generation and execution
     // ============================================
     

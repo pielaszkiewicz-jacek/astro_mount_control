@@ -1557,6 +1557,341 @@ TEST_F(MountControllerTest, SoftLimitRejectsOutOfRangeTarget) {
         << "Slew to Dec=5° should be accepted (within limits)";
 }
 
+// ============================================
+// CASUAL MOUNT TESTS
+// ============================================
+
+/**
+ * @brief Test fixture for CASUAL mount type.
+ *
+ * CASUAL mounts have arbitrary 3D orientation described by a quaternion
+ * [qx, qy, qz, qw] representing rotation from the local horizontal frame
+ * (ENU: East, North, Up) to the mount frame.
+ *
+ * We use a known orientation quaternion that represents a 30° rotation
+ * around the East axis, which tilts the mount frame relative to horizontal.
+ * This gives a predictable, analytically computable transform for testing.
+ */
+class CasualMountTest : public MountControllerTest {
+protected:
+    void SetUp() override {
+        MountControllerTest::SetUp();
+        
+        // Use CASUAL mount type
+        config_.mount_type = MountController::MountType::CASUAL;
+        
+        // Set a known orientation quaternion: 30° rotation about East axis.
+        // This tilts the mount frame so that the mount's "altitude-like" axis
+        // (axis1) points 30° away from zenith toward East.
+        //
+        // Quaternion for rotation of angle θ about axis (ax, ay, az):
+        //   q = (ax*sin(θ/2), ay*sin(θ/2), az*sin(θ/2), cos(θ/2))
+        //
+        // For θ = 30° about East (1, 0, 0):
+        //   q = (sin(15°), 0, 0, cos(15°))
+        //      ≈ (0.258819, 0, 0, 0.965926)
+        double theta = 30.0 * M_PI / 180.0;
+        double half_theta = theta / 2.0;
+        config_.mount_orientation.quaternion = {{
+            std::sin(half_theta),  // qx: rotation about East
+            0.0,                   // qy: no rotation about North
+            0.0,                   // qz: no rotation about Up
+            std::cos(half_theta)   // qw: scalar part
+        }};
+        
+        // Disable refraction to keep coordinate transforms predictable
+        config_.enable_refraction_correction = false;
+        
+        controller_->initialize(config_);
+    }
+};
+
+// ----------------------------------------------------------------
+// Test 1: MountOrientation struct operations
+// ----------------------------------------------------------------
+
+TEST_F(CasualMountTest, MountOrientationIsValid) {
+    // Identity quaternion should be valid
+    MountController::MountOrientation identity;
+    EXPECT_TRUE(identity.isValid());
+    
+    // Custom quaternion should be valid
+    MountController::MountOrientation custom;
+    custom.quaternion = {{0.0, 0.0, 0.0, 1.0}};
+    EXPECT_TRUE(custom.isValid());
+}
+
+TEST_F(CasualMountTest, MountOrientationInvalidQuaternion) {
+    // Zero quaternion should be invalid
+    MountController::MountOrientation zero;
+    zero.quaternion = {{0.0, 0.0, 0.0, 0.0}};
+    EXPECT_FALSE(zero.isValid());
+    
+    // Non-unit quaternion should be invalid (norm = sqrt(0.25+0.25) ≈ 0.707)
+    MountController::MountOrientation non_unit;
+    non_unit.quaternion = {{0.5, 0.0, 0.0, 0.5}};
+    EXPECT_FALSE(non_unit.isValid());
+}
+
+TEST_F(CasualMountTest, MountOrientationSetFromAxisAngles) {
+    MountController::MountOrientation ori;
+    // axis1 = 30° altitude, axis2 = 180° azimuth (pointing South)
+    ori.setFromAxisAngles(30.0, 180.0);
+    
+    // The resulting quaternion should be valid
+    EXPECT_TRUE(ori.isValid());
+    
+    // The quaternion should have non-trivial values (not identity)
+    // For axis1=30°, axis2=180°, the mount frame is rotated
+    bool is_identity = (std::abs(ori.quaternion[0]) < 1e-6 &&
+                        std::abs(ori.quaternion[1]) < 1e-6 &&
+                        std::abs(ori.quaternion[2] - 1.0) < 1e-6 &&
+                        std::abs(ori.quaternion[3]) < 1e-6);
+    EXPECT_FALSE(is_identity) << "setFromAxisAngles should produce non-identity quaternion";
+}
+
+TEST_F(CasualMountTest, MountOrientationToRotationMatrix) {
+    // Identity quaternion → identity rotation matrix
+    MountController::MountOrientation identity;
+    auto mat = identity.toRotationMatrix();
+    EXPECT_EQ(mat.size(), 9);
+    
+    // Diagonal should be [1, 1, 1]
+    EXPECT_NEAR(mat[0], 1.0, 1e-10);  // m00
+    EXPECT_NEAR(mat[4], 1.0, 1e-10);  // m11
+    EXPECT_NEAR(mat[8], 1.0, 1e-10);  // m22
+}
+
+// ----------------------------------------------------------------
+// Test 2: SetMountOrientation / GetMountOrientation
+// ----------------------------------------------------------------
+
+TEST_F(CasualMountTest, SetAndGetMountOrientation) {
+    MountController::MountOrientation test_ori;
+    test_ori.quaternion = {{0.5, 0.5, 0.5, 0.5}};
+    
+    EXPECT_TRUE(controller_->setMountOrientation(test_ori));
+    
+    auto retrieved = controller_->getMountOrientation();
+    EXPECT_NEAR(retrieved.quaternion[0], 0.5, 1e-10);
+    EXPECT_NEAR(retrieved.quaternion[1], 0.5, 1e-10);
+    EXPECT_NEAR(retrieved.quaternion[2], 0.5, 1e-10);
+    EXPECT_NEAR(retrieved.quaternion[3], 0.5, 1e-10);
+}
+
+// ----------------------------------------------------------------
+// Test 3: SlewToEquatorial with CASUAL mount
+// ----------------------------------------------------------------
+
+TEST_F(CasualMountTest, SlewToEquatorialStartsSlewing) {
+    EXPECT_TRUE(controller_->slewToEquatorial(12.0, 45.0));
+    
+    auto status = controller_->getStatus();
+    // Should transition to SLEWING (or IDLE if mock completes immediately)
+    EXPECT_TRUE(status.state == MountController::MountStatus::State::SLEWING ||
+                status.state == MountController::MountStatus::State::IDLE);
+}
+
+TEST_F(CasualMountTest, SlewToEquatorialSetsValidTargets) {
+    controller_->slewToEquatorial(12.0, 45.0);
+    
+    auto status = controller_->getStatus();
+    // Axis targets should be finite and within reasonable range
+    EXPECT_TRUE(std::isfinite(status.axis1_target));
+    EXPECT_TRUE(std::isfinite(status.axis2_target));
+    
+    // Axis1 (altitude-like) should be in [-90, 90]
+    EXPECT_GE(status.axis1_target, -90.0);
+    EXPECT_LE(status.axis1_target, 90.0);
+    
+    // Axis2 (azimuth-like) should be in [0, 360)
+    EXPECT_GE(status.axis2_target, 0.0);
+    EXPECT_LT(status.axis2_target, 360.0);
+}
+
+// ----------------------------------------------------------------
+// Test 4: SlewToHorizontal with CASUAL mount (quaternion transform)
+// ----------------------------------------------------------------
+
+TEST_F(CasualMountTest, SlewToHorizontalSuccess) {
+    // Slew to a known horizontal position
+    EXPECT_TRUE(controller_->slewToHorizontal(45.0, 180.0));
+}
+
+TEST_F(CasualMountTest, SlewToHorizontalAppliesQuaternionTransform) {
+    // When slewToHorizontal is called with true horizontal coordinates
+    // (altitude, azimuth), the CASUAL mount should transform them through
+    // the mount orientation quaternion to get mount-frame axis angles.
+    //
+    // With our 30° East-tilt quaternion, the transform should result in
+    // axis targets that differ from the raw horizontal coordinates.
+    controller_->slewToHorizontal(45.0, 180.0);
+    
+    auto status = controller_->getStatus();
+    
+    // Axis targets should be finite
+    EXPECT_TRUE(std::isfinite(status.axis1_target));
+    EXPECT_TRUE(std::isfinite(status.axis2_target));
+    
+    // The quaternion transform should produce different axis targets
+    // than the raw (alt, az) = (45, 180) input.
+    // axis1 should NOT equal altitude (45°) due to the 30° East tilt.
+    // axis2 should NOT equal azimuth (180°) due to the same tilt.
+    //
+    // With 30° East tilt:
+    //   - altitude 45°, azimuth 180° (South) in ENU:
+    //     ENU vector = (0, cos45, sin45) = (0, 0.707, 0.707)
+    //   - Rotating by Q = (sin15°, 0, 0, cos15°) about East:
+    //     The South-Up vector tilts toward the East.
+    //   - After rotation, mount_x > 0, mount_y < 0.707, mount_z > 0.707
+    //   So axis1 ≠ 45 and axis2 ≠ 180.
+    EXPECT_NE(status.axis1_target, 45.0)
+        << "CASUAL mount should transform altitude through quaternion";
+    EXPECT_NE(status.axis2_target, 180.0)
+        << "CASUAL mount should transform azimuth through quaternion";
+}
+
+TEST_F(CasualMountTest, SlewToHorizontalReachesTarget) {
+    controller_->slewToHorizontal(45.0, 180.0);
+    
+    bool reached = false;
+    for (int i = 0; i < 50; i++) {
+        std::this_thread::sleep_for(200ms);
+        auto status = controller_->getStatus();
+        if (status.state == MountController::MountStatus::State::IDLE) {
+            reached = true;
+            // Both axes should reach their transformed targets
+            EXPECT_NEAR(status.axis1_position, status.axis1_target, config_.position_tolerance);
+            EXPECT_NEAR(status.axis2_position, status.axis2_target, config_.position_tolerance);
+            break;
+        }
+    }
+    EXPECT_TRUE(reached) << "CASUAL mount horizontal slew did not complete within timeout";
+}
+
+// ----------------------------------------------------------------
+// Test 5: StartTracking with CASUAL mount
+// ----------------------------------------------------------------
+
+TEST_F(CasualMountTest, StartTrackingSuccess) {
+    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL));
+    
+    auto status = controller_->getStatus();
+    EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
+}
+
+TEST_F(CasualMountTest, StartTrackingSetsValidTargets) {
+    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    
+    auto status = controller_->getStatus();
+    // Axis1 (altitude-like) should be in [-90, 90]
+    EXPECT_GE(status.axis1_target, -90.0);
+    EXPECT_LE(status.axis1_target, 90.0);
+    
+    // Axis2 (azimuth-like) should be in [0, 360)
+    EXPECT_GE(status.axis2_target, 0.0);
+    EXPECT_LT(status.axis2_target, 360.0);
+}
+
+TEST_F(CasualMountTest, TrackingUpdatesPosition) {
+    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    
+    // Let tracking run
+    std::this_thread::sleep_for(600ms);
+    auto status1 = controller_->getStatus();
+    std::this_thread::sleep_for(600ms);
+    auto status2 = controller_->getStatus();
+    
+    // Tracking should move the mount (rates should be non-zero)
+    EXPECT_NE(status2.axis1_rate, 0.0)
+        << "CASUAL tracking should have non-zero axis1 rate";
+    EXPECT_NE(status2.axis2_rate, 0.0)
+        << "CASUAL tracking should have non-zero axis2 rate";
+    
+    // Rates should be finite and reasonable (< 1 deg/s for sidereal tracking)
+    EXPECT_LT(std::abs(status2.axis1_rate), 1.0)
+        << "CASUAL axis1 rate too large for sidereal tracking";
+    EXPECT_LT(std::abs(status2.axis2_rate), 1.0)
+        << "CASUAL axis2 rate too large for sidereal tracking";
+}
+
+// ----------------------------------------------------------------
+// Test 6: Identity quaternion (CASUAL behaves like ALT_AZ)
+// ----------------------------------------------------------------
+
+class CasualMountIdentityTest : public MountControllerTest {
+protected:
+    void SetUp() override {
+        MountControllerTest::SetUp();
+        config_.mount_type = MountController::MountType::CASUAL;
+        
+        // Identity quaternion: no rotation between ENU and mount frame.
+        // With Q = (0, 0, 0, 1), the mount frame IS the ENU frame,
+        // so CASUAL should behave identically to ALT_AZ.
+        config_.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
+        config_.enable_refraction_correction = false;
+        
+        controller_->initialize(config_);
+    }
+};
+
+TEST_F(CasualMountIdentityTest, SlewToHorizontalMatchesAltAz) {
+    // With identity quaternion, slewToHorizontal should map:
+    //   axis1 = azimuth, axis2 = altitude  (same as ALT_AZ convention)
+    controller_->slewToHorizontal(30.0, 180.0);
+    
+    auto status = controller_->getStatus();
+    EXPECT_DOUBLE_EQ(status.axis1_target, 180.0);  // azimuth
+    EXPECT_DOUBLE_EQ(status.axis2_target, 30.0);   // altitude
+}
+
+TEST_F(CasualMountIdentityTest, TrackingComputesRates) {
+    controller_->startTracking(60.0, 180.0, MountController::TrackingMode::SIDEREAL);
+    
+    std::this_thread::sleep_for(600ms);
+    auto status1 = controller_->getStatus();
+    std::this_thread::sleep_for(600ms);
+    auto status2 = controller_->getStatus();
+    
+    // Both axes should change over time (like ALT_AZ)
+    EXPECT_NE(status2.axis1_position, status1.axis1_position)
+        << "Identity CASUAL should show position change like ALT_AZ";
+    EXPECT_NE(status2.axis2_position, status1.axis2_position)
+        << "Identity CASUAL should show position change like ALT_AZ";
+}
+
+// ----------------------------------------------------------------
+// Test 7: Soft limits for CASUAL (axis2 = azimuth-like wraps)
+// ----------------------------------------------------------------
+
+TEST_F(CasualMountTest, SoftLimitAxis2AllowedExceeds) {
+    // For CASUAL mounts, axis2 is azimuth-like [0, 360) and wraps.
+    // Setting axis2_min=-10, axis2_max=370 should not reject any target.
+    config_.soft_limit_axis2_min = -10.0;
+    config_.soft_limit_axis2_max = 370.0;
+    controller_->initialize(config_);
+    
+    // Azimuth-like axis2 = 350° is within [0, 360) even though it's > 270°.
+    // Soft limits check absolute values, so this should be fine.
+    EXPECT_TRUE(controller_->slewToHorizontal(45.0, 350.0));
+}
+
+// ----------------------------------------------------------------
+// Test 8: Meridian flip not applicable to CASUAL
+// ----------------------------------------------------------------
+
+TEST_F(CasualMountTest, NoMeridianFlip) {
+    // CASUAL mounts (like ALT_AZ) don't have a meridian flip.
+    // The controller should never report a pending meridian flip.
+    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    
+    // getTimeToMeridian should return a large positive value
+    // (indicating no imminent meridian flip needed)
+    double time_to_meridian = controller_->getTimeToMeridian();
+    EXPECT_GT(time_to_meridian, 0.0)
+        << "CASUAL mount should report no imminent meridian flip";
+}
+
 } // namespace test
 } // namespace controllers
 } // namespace astro_mount

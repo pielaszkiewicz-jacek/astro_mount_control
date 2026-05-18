@@ -227,8 +227,14 @@ grpc::Status MountControllerServiceImpl::AddMeasurement(grpc::ServerContext* con
                 mount_ha = ha_hours * 15.0; // hours to degrees
                 mount_dec = dec;
                 
-                API_LOG_DEBUG("Alt-Az conversion: alt={:.3f}°, az={:.3f}° -> HA={:.3f}°, Dec={:.3f}°", 
+                API_LOG_DEBUG("Alt-Az conversion: alt={:.3f}°, az={:.3f}° -> HA={:.3f}°, Dec={:.3f}°",
                              altitude, azimuth, mount_ha, mount_dec);
+            } else if (config.mount_type == controllers::MountController::MountType::CASUAL) {
+                // CASUAL mount: axis1 and axis2 directly are the mount position
+                mount_ha = axis1; // axis1 in degrees (altitude-like)
+                mount_dec = axis2; // axis2 in degrees (azimuth-like)
+                
+                API_LOG_DEBUG("CASUAL mount: axis1={:.3f}°, axis2={:.3f}°", mount_ha, mount_dec);
             } else {
                 // Equatorial mount: axis1 is HA in degrees, axis2 is Dec in degrees
                 mount_ha = axis1; // already in degrees
@@ -288,8 +294,16 @@ grpc::Status MountControllerServiceImpl::AddBootstrapMeasurement(grpc::ServerCon
         double mount_ha = 0.0;
         double mount_dec = 0.0;
         if (request->has_mount_position()) {
-            mount_ha = request->mount_position().axis1() / 15.0; // degrees to hours
-            mount_dec = request->mount_position().axis2();       // degrees
+            auto config = controller_.getConfiguration();
+            if (config.mount_type == controllers::MountController::MountType::CASUAL) {
+                // CASUAL mount: axis1 and axis2 are directly the mount position in degrees
+                mount_ha = request->mount_position().axis1();  // axis1 in degrees
+                mount_dec = request->mount_position().axis2(); // axis2 in degrees
+            } else {
+                // EQUATORIAL or ALT_AZ: axis1 is HA/azimuth in degrees, convert to hours
+                mount_ha = request->mount_position().axis1() / 15.0; // degrees to hours
+                mount_dec = request->mount_position().axis2();       // degrees
+            }
         }
         
         // For bootstrap, we use simpler parameters - default environmental values
@@ -336,6 +350,17 @@ grpc::Status MountControllerServiceImpl::RunBootstrapCalibration(grpc::ServerCon
             response->set_max_residual_arcsec(max_residual);
             response->set_ready_for_tpoint(count >= 3);
             *response->mutable_calibrated_at() = TimeUtil::GetCurrentTime();
+            
+            // For CASUAL mount: populate estimated orientation quaternion
+            auto mount_orientation = controller_.getMountOrientation();
+            auto* ori = response->mutable_estimated_orientation();
+            ori->set_qx(mount_orientation.quaternion[0]);
+            ori->set_qy(mount_orientation.quaternion[1]);
+            ori->set_qz(mount_orientation.quaternion[2]);
+            ori->set_qw(mount_orientation.quaternion[3]);
+            // Estimated quaternion error (combined RMS from both axes)
+            response->set_estimated_quaternion_error(residual_rms);
+            
             return grpc::Status::OK;
         } else {
             response->set_success(false);
@@ -631,6 +656,15 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         // Mount type configuration
         response->set_mount_type(static_cast<astro_mount::MountType>(config.mount_type));
         
+        // Mount orientation quaternion (for CASUAL mount type)
+        {
+            auto* orientation = response->mutable_mount_orientation();
+            orientation->set_qx(config.mount_orientation.quaternion[0]);
+            orientation->set_qy(config.mount_orientation.quaternion[1]);
+            orientation->set_qz(config.mount_orientation.quaternion[2]);
+            orientation->set_qw(config.mount_orientation.quaternion[3]);
+        }
+        
         // Position/rate tolerances for slew operations
         response->set_position_tolerance(config.position_tolerance);
         response->set_rate_tolerance(config.rate_tolerance);
@@ -785,6 +819,14 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
         // Mount type
         config.mount_type = static_cast<controllers::MountController::MountType>(
             request->mount_type());
+        
+        // Mount orientation quaternion (for CASUAL mount type)
+        if (request->has_mount_orientation()) {
+            config.mount_orientation.quaternion[0] = request->mount_orientation().qx();
+            config.mount_orientation.quaternion[1] = request->mount_orientation().qy();
+            config.mount_orientation.quaternion[2] = request->mount_orientation().qz();
+            config.mount_orientation.quaternion[3] = request->mount_orientation().qw();
+        }
         
         // Meridian flip configuration
         config.meridian_flip_enabled = request->meridian_flip_enabled();
@@ -2104,6 +2146,56 @@ grpc::Status MountControllerServiceImpl::ReinitializeHAL(
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("ReinitializeHAL failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                           std::string("Error: ") + e.what());
+    }
+}
+
+// ============================================
+// Mount orientation (CASUAL mount type)
+// ============================================
+
+grpc::Status MountControllerServiceImpl::SetMountOrientation(
+    grpc::ServerContext* context,
+    const astro_mount::MountOrientation* request,
+    google::protobuf::Empty* response) {
+    try {
+        controllers::MountController::MountOrientation orientation;
+        orientation.quaternion[0] = request->qx();
+        orientation.quaternion[1] = request->qy();
+        orientation.quaternion[2] = request->qz();
+        orientation.quaternion[3] = request->qw();
+        
+        if (controller_.setMountOrientation(orientation)) {
+            API_LOG_INFO("Mount orientation set: Q=[{:.4f}, {:.4f}, {:.4f}, {:.4f}]",
+                     orientation.quaternion[0], orientation.quaternion[1],
+                     orientation.quaternion[2], orientation.quaternion[3]);
+            return grpc::Status::OK;
+        } else {
+            return grpc::Status(grpc::StatusCode::INTERNAL,
+                              "Failed to set mount orientation");
+        }
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("SetMountOrientation failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                           std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::GetMountOrientation(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    astro_mount::MountOrientation* response) {
+    try {
+        auto orientation = controller_.getMountOrientation();
+        response->set_qx(orientation.quaternion[0]);
+        response->set_qy(orientation.quaternion[1]);
+        response->set_qz(orientation.quaternion[2]);
+        response->set_qw(orientation.quaternion[3]);
+        
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("GetMountOrientation failed: {}", e.what());
         return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }

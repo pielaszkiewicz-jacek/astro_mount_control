@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <cmath>
 #include <iomanip>
 
 namespace astro_mount {
@@ -168,6 +169,24 @@ public:
                 errors.push_back("Invalid mount.axis_physical_parameters." +
                     std::string(axis_name) + ".gear_ratio (must be > 0)");
             }
+        }
+        
+        // Mount orientation quaternion validation (optional — only validate if present)
+        if (mount.contains("orientation_quaternion")) {
+            auto quat = mount["orientation_quaternion"];
+            if (quat.size() < 4) {
+                errors.push_back("Invalid mount.orientation_quaternion (must have at least 4 elements)");
+            } else {
+            double qx = quat[0].get<double>();
+            double qy = quat[1].get<double>();
+            double qz = quat[2].get<double>();
+            double qw = quat[3].get<double>();
+            double norm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+            if (norm < 0.9 || norm > 1.1) {
+                errors.push_back("Invalid mount.orientation_quaternion (norm must be ~1.0, got " +
+                                 std::to_string(norm) + ")");
+            }
+        }
         }
         
         // ==========================================
@@ -344,6 +363,14 @@ public:
         // Atmospheric refraction correction
         config.enable_refraction_correction = mount.value("enable_refraction_correction", true);
         
+        // Mount orientation quaternion (for CASUAL mount type)
+        {
+            auto quat = mount.value("orientation_quaternion", json::array({0.0, 0.0, 0.0, 1.0}));
+            for (size_t i = 0; i < 4 && i < quat.size(); ++i) {
+                config.orientation_quaternion[i] = quat[i].get<double>();
+            }
+        }
+        
         // Load axis physical parameters
         auto axis_params = mount.value("axis_physical_parameters", json::object());
         auto ha_axis = axis_params.value("ha_axis", json::object());
@@ -406,6 +433,11 @@ public:
         config.dec_axis_params.calibration_temp = dec_axis.value("calibration_temp", 20.0);
         
         return config;
+    }
+    
+    std::array<double, 4> getMountOrientationQuaternion() const {
+        MountConfig config = getMountConfig();
+        return config.orientation_quaternion;
     }
     
     TelescopeConfig getTelescopeConfig() const {
@@ -548,6 +580,12 @@ public:
         
         // Atmospheric refraction correction
         mount["enable_refraction_correction"] = config.enable_refraction_correction;
+        
+        // Mount orientation quaternion
+        mount["orientation_quaternion"] = {config.orientation_quaternion[0],
+                                           config.orientation_quaternion[1],
+                                           config.orientation_quaternion[2],
+                                           config.orientation_quaternion[3]};
         
         // Axis physical parameters (HA)
         json ha_axis;
@@ -927,6 +965,9 @@ private:
         // Refraction correction
         mount_default.enable_refraction_correction = true;
         
+        // Mount orientation quaternion (default unit quaternion for standard mounts)
+        mount_default.orientation_quaternion = {0.0, 0.0, 0.0, 1.0};
+        
         // HA axis physical parameters
         mount_default.ha_axis_params.motor_steps_per_rev = 200.0;
         mount_default.ha_axis_params.motor_microstepping = 64.0;
@@ -1081,6 +1122,10 @@ Configuration::CanOpenConfig Configuration::getCanOpenConfig() const {
 
 Configuration::MountConfig Configuration::getMountConfig() const {
     return pimpl->getMountConfig();
+}
+
+std::array<double, 4> Configuration::getMountOrientationQuaternion() const {
+    return pimpl->getMountOrientationQuaternion();
 }
 
 Configuration::TelescopeConfig Configuration::getTelescopeConfig() const {

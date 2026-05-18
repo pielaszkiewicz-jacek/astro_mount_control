@@ -389,6 +389,110 @@ double AstronomicalCalculations::calculateFieldRotation(double ra, double dec, d
     return q;
 }
 
+// ---------------------------------------------------------------------------
+// CASUAL mount coordinate transforms
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/**
+ * @brief Apply quaternion rotation to a 3D vector
+ *
+ * v' = q * v * q^-1, where q = [qx, qy, qz, qw] with qw the scalar part.
+ *
+ * @param v Input 3D vector [x, y, z]
+ * @param q Quaternion [qx, qy, qz, qw]
+ * @return Rotated 3D vector
+ */
+std::array<double, 3> rotateVectorByQuaternion(const std::array<double, 3>& v,
+                                                const std::array<double, 4>& q) {
+    double qx = q[0], qy = q[1], qz = q[2], qw = q[3];
+    double vx = v[0], vy = v[1], vz = v[2];
+    
+    // v' = v + 2*qw*(q × v) + 2*(q × (q × v))
+    // q × v
+    double cross1_x = qy * vz - qz * vy;
+    double cross1_y = qz * vx - qx * vz;
+    double cross1_z = qx * vy - qy * vx;
+    
+    // q × (q × v)
+    double cross2_x = qy * cross1_z - qz * cross1_y;
+    double cross2_y = qz * cross1_x - qx * cross1_z;
+    double cross2_z = qx * cross1_y - qy * cross1_x;
+    
+    return {{
+        vx + 2.0 * qw * cross1_x + 2.0 * cross2_x,
+        vy + 2.0 * qw * cross1_y + 2.0 * cross2_y,
+        vz + 2.0 * qw * cross1_z + 2.0 * cross2_z
+    }};
+}
+
+} // anonymous namespace
+
+std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial(
+    double mount_altitude, double mount_azimuth,
+    double jd, const std::array<double, 4>& mountOrientation) {
+    
+    // Step 1: Convert mount-frame alt/az to a Cartesian unit vector.
+    // In the mount frame: x = north, y = east, z = zenith
+    double alt_rad = mount_altitude * D2R;
+    double az_rad = mount_azimuth * D2R;
+    
+    std::array<double, 3> mount_vec = {{
+        std::cos(alt_rad) * std::cos(az_rad),     // north
+        std::cos(alt_rad) * std::sin(az_rad),     // east
+        std::sin(alt_rad)                          // zenith
+    }};
+    
+    // Step 2: Apply inverse quaternion rotation to get true horizontal vector.
+    // Q^-1 = [qx, qy, qz, qw]^-1 = [-qx, -qy, -qz, qw] (for unit quaternion)
+    std::array<double, 4> inv_q = {{
+        -mountOrientation[0],
+        -mountOrientation[1],
+        -mountOrientation[2],
+         mountOrientation[3]
+    }};
+    std::array<double, 3> horiz_vec = rotateVectorByQuaternion(mount_vec, inv_q);
+    
+    // Step 3: Convert Cartesian vector back to alt/az
+    double horiz_alt = std::asin(horiz_vec[2]) * R2D;
+    double horiz_az = std::atan2(horiz_vec[1], horiz_vec[0]) * R2D;
+    if (horiz_az < 0.0) horiz_az += 360.0;
+    if (horiz_az >= 360.0) horiz_az -= 360.0;
+    
+    // Step 4: Convert true horizontal to equatorial (remove refraction)
+    return horizontalToEquatorial(horiz_alt, horiz_az, jd, false);
+}
+
+std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation(
+    double ra, double dec,
+    double jd, const std::array<double, 4>& mountOrientation) {
+    
+    // Step 1: Convert celestial RA/Dec to true horizontal coordinates
+    auto [true_alt, true_az] = equatorialToHorizontal(ra, dec, jd, false);
+    
+    // Step 2: Convert true horizontal alt/az to Cartesian unit vector
+    double alt_rad = true_alt * D2R;
+    double az_rad = true_az * D2R;
+    
+    std::array<double, 3> horiz_vec = {{
+        std::cos(alt_rad) * std::cos(az_rad),     // north
+        std::cos(alt_rad) * std::sin(az_rad),     // east
+        std::sin(alt_rad)                          // zenith
+    }};
+    
+    // Step 3: Apply quaternion rotation to get mount-frame vector
+    std::array<double, 3> mount_vec = rotateVectorByQuaternion(horiz_vec, mountOrientation);
+    
+    // Step 4: Convert back to alt/az in mount frame
+    double mount_alt = std::asin(mount_vec[2]) * R2D;
+    double mount_az = std::atan2(mount_vec[1], mount_vec[0]) * R2D;
+    if (mount_az < 0.0) mount_az += 360.0;
+    if (mount_az >= 360.0) mount_az -= 360.0;
+    
+    return {mount_alt, mount_az};
+}
+
 double AstronomicalCalculations::calculateEarthRotationAngle(double jd) {
     return iauEra00(jd, 0.0);
 }

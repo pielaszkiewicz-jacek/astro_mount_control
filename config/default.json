@@ -62,6 +62,7 @@
     "park_position_axis2": 90.0,
     
     "enable_refraction_correction": true,
+    "orientation_quaternion": [1.0, 0.0, 0.0, 0.0],
     
     "axis_physical_parameters": {
       "ha_axis": {

@@ -429,6 +429,16 @@ service MountControllerService {
     
     // Reinitialize HAL with current or new configuration
     rpc ReinitializeHAL(HALReinitRequest) returns (google.protobuf.Empty);
+    
+    // ============================================
+    // CASUAL mount orientation
+    // ============================================
+    
+    // Set mount orientation quaternion (for CASUAL mount type)
+    rpc SetMountOrientation(MountOrientation) returns (google.protobuf.Empty);
+    
+    // Get current mount orientation
+    rpc GetMountOrientation(google.protobuf.Empty) returns (MountOrientation);
 }
 
 // State save/load requests
@@ -518,11 +528,20 @@ message AxisPhysicalParameters {
     double calibration_temp = 21;        // Temperature during calibration [°C]
 }
 
+// Mount orientation (for CASUAL mount type)
+message MountOrientation {
+    double qx = 1;  // Quaternion x component
+    double qy = 2;  // Quaternion y component
+    double qz = 3;  // Quaternion z component
+    double qw = 4;  // Quaternion w component (scalar, should be 1.0 for identity)
+}
+
 // Mount type enumeration
 enum MountType {
     EQUATORIAL = 0;
     ALT_AZ = 1;
     UNKNOWN = 2;
+    CASUAL = 3;  // Randomly oriented mount with quaternion orientation
 }
 
 
@@ -614,6 +633,8 @@ message Configuration {
     double soft_limit_deceleration_degrees = 49;     // Deceleration zone width [degrees]
     double soft_limit_tracking_rate_factor = 50;     // Minimum rate factor at hard limit [0..1]
 
+    // Mount orientation quaternion (used when mount_type = CASUAL)
+    MountOrientation mount_orientation = 51;  // Mount orientation in local horizontal frame
 }
 
 // Health check messages
@@ -791,6 +812,10 @@ message BootstrapCalibrationResult {
     double residual_rms_arcsec = 7;         // RMS of residuals
     double max_residual_arcsec = 8;         // Maximum residual
     bool ready_for_tpoint = 9;              // Ready for TPOINT calibration
+    
+    // For CASUAL mount: estimated orientation quaternion
+    MountOrientation estimated_orientation = 10;  // Estimated mount orientation
+    double estimated_quaternion_error = 11;       // Quaternion estimation error [arcsec]
 }
 
 // Bootstrap calibration status
@@ -851,6 +876,7 @@ message FieldRotationControlRequest {
         CUSTOM = 3;            // Custom rotation rate
         FIXED_ANGLE = 4;       // Fixed rotation angle
         TRACKING = 5;          // Track rotation for moving object
+        CASUAL = 6;            // Field rotation for randomly oriented mount
     }
     
     RotationMode mode = 1;

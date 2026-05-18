@@ -271,6 +271,72 @@ TEST_F(ConfigurationTest, MergeConfigurations) {
     EXPECT_EQ(logging.level, "TRACE");
 }
 
+// ============================================
+// CASUAL MOUNT ORIENTATION CONFIG TESTS
+// ============================================
+
+TEST_F(ConfigurationTest, DefaultOrientationQuaternionIsIdentity) {
+    auto mount = config->getMountConfig();
+    
+    // Default orientation quaternion should be identity: [0, 0, 0, 1]
+    // (scalar-last convention with qw=1, qx=qy=qz=0)
+    ASSERT_EQ(mount.orientation_quaternion.size(), 4);
+    EXPECT_NEAR(mount.orientation_quaternion[0], 0.0, 1e-10);
+    EXPECT_NEAR(mount.orientation_quaternion[1], 0.0, 1e-10);
+    EXPECT_NEAR(mount.orientation_quaternion[2], 0.0, 1e-10);
+    EXPECT_NEAR(mount.orientation_quaternion[3], 1.0, 1e-10);
+}
+
+TEST_F(ConfigurationTest, GetMountOrientationQuaternion) {
+    auto q = config->getMountOrientationQuaternion();
+    
+    // Default should be identity: [0, 0, 0, 1]
+    // (scalar-last convention with qw=1, qx=qy=qz=0)
+    ASSERT_EQ(q.size(), 4);
+    EXPECT_NEAR(q[0], 0.0, 1e-10);
+    EXPECT_NEAR(q[1], 0.0, 1e-10);
+    EXPECT_NEAR(q[2], 0.0, 1e-10);
+    EXPECT_NEAR(q[3], 1.0, 1e-10);
+}
+
+TEST_F(ConfigurationTest, SetMountOrientationQuaternion) {
+    auto mount = config->getMountConfig();
+    mount.orientation_quaternion = {{0.0, 0.0, 0.0, 1.0}};
+    config->setMountConfig(mount);
+    
+    auto retrieved = config->getMountConfig();
+    ASSERT_EQ(retrieved.orientation_quaternion.size(), 4);
+    EXPECT_NEAR(retrieved.orientation_quaternion[0], 0.0, 1e-10);
+    EXPECT_NEAR(retrieved.orientation_quaternion[1], 0.0, 1e-10);
+    EXPECT_NEAR(retrieved.orientation_quaternion[2], 0.0, 1e-10);
+    EXPECT_NEAR(retrieved.orientation_quaternion[3], 1.0, 1e-10);
+}
+
+TEST_F(ConfigurationTest, OrientationQuaternionRoundTrip) {
+    // Set a non-trivial quaternion and verify it persists through save/load
+    auto mount = config->getMountConfig();
+    mount.orientation_quaternion = {{0.5, 0.5, 0.5, 0.5}};
+    config->setMountConfig(mount);
+    
+    // Verify via getMountOrientationQuaternion
+    auto q = config->getMountOrientationQuaternion();
+    EXPECT_NEAR(q[0], 0.5, 1e-10);
+    EXPECT_NEAR(q[1], 0.5, 1e-10);
+    EXPECT_NEAR(q[2], 0.5, 1e-10);
+    EXPECT_NEAR(q[3], 0.5, 1e-10);
+}
+
+TEST_F(ConfigurationTest, OrientationQuaternionSerialization) {
+    // Set a quaternion and verify it appears in the JSON string
+    auto mount = config->getMountConfig();
+    mount.orientation_quaternion = {{0.707, 0.0, 0.0, 0.707}};
+    config->setMountConfig(mount);
+    
+    std::string json_str = config->toString();
+    EXPECT_NE(json_str.find("orientation_quaternion"), std::string::npos);
+    EXPECT_NE(json_str.find("0.707"), std::string::npos);
+}
+
 } // namespace test
 } // namespace config
 } // namespace astro_mount
