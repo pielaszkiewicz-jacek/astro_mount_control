@@ -71,71 +71,187 @@ flowchart TB
 ### 3.1 `slewToEquatorial()` — pętla monitorowania ruchu
 
 **Plik**: `src/controllers/mount_controller.cpp`
+**Zakres**: linie 336–611
 
-**Główny wątek** (linie ~74-84):
+Metoda `slewToEquatorial()` wykonuje **slew do współrzędnych równikowych (RA/Dec)**. Dzieli się na dwie fazy:
+
+1. **Faza inicjacji** (wątek wywołujący): walidacja, przeliczenie współrzędnych, uruchomienie napędów
+2. **Faza monitorowania** (wątek roboczy `work_thread_`): cykliczne sprawdzanie, czy cel został osiągnięty
+
+**Ważne zmiany względem poprzedniej implementacji**:
+- Zamiast `detach()` używane jest `joinWorkThreadLocked()` z `thread_mutex_` — poprzedni wątek jest łączony przed utworzeniem nowego
+- Głównym kanałem sterowania jest **HAL** (`MotorControl`, `SafetyMonitor`, `EncoderReader`)
+- CANopen i symulacja są wyłącznie ścieżkami awaryjnymi (fallback)
+- Dodano korekcję **TPOINT** pozycji montażu przed slewingiem
+- Dodano sprawdzanie **soft limits** przed rozpoczęciem i w trakcie slewu
+
+---
+
+#### Faza 1: Inicjacja (wątek główny, linie 342–445)
+
 ```cpp
-std::lock_guard<std::mutex> lock(*state_mutex_);
-// sprawdza state_, ustawia targety, state_ = SLEWING
-// opcjonalnie wywołuje canopen_interface_->setPositionTarget()
+// Sekwencja w głównym wątku (pod thread_mutex_):
+{
+    std::lock_guard<std::mutex> tlock(*thread_mutex_);
+    
+    // 1. Join poprzedniego work_thread_ (jeśli istnieje)
+    joinWorkThreadLocked();
+    
+    // 2. Walidacja stanu i przeliczenie współrzędnych
+    {
+        std::lock_guard<std::mutex> lock(*state_mutex_);
+        if (state_ == UNINITIALIZED || state_ == ERROR) return false;
+        if (state_ == SLEWING || state_ == TRACKING) return false;
+        
+        // 3. Obliczenie Hour Angle i korekcja TPOINT
+        double ha_hours = lst - ra;
+        if (tpoint_calibrated_) {
+            auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
+            axis1_target_ = mount_ha * 15.0;  // godziny → stopnie
+            axis2_target_ = mount_dec;
+        } else {
+            axis1_target_ = ha_hours * 15.0;
+            axis2_target_ = dec;
+        }
+        
+        // 4. Sprawdzenie soft limits przed ruchem
+        if (config_.soft_limits_enabled) {
+            if (axis1_target_ < soft_limit_axis1_min || ...) {
+                return false;  // odrzuć slew
+            }
+        }
+        
+        state_ = SLEWING;
+    }
+    notifyStatusChanged();  // IDLE → SLEWING
+    
+    // 5. Uruchomienie napędów (priorytet: HAL → CANopen → brak)
+    if (hal_axis1_motor_ && hal_axis2_motor_) {
+        // HAL path
+        hal_axis1_motor_->setPosition(axis1_target_, SLEW_VELOCITY, SLEW_ACCELERATION);
+        hal_axis2_motor_->setPosition(axis2_target_, SLEW_VELOCITY, SLEW_ACCELERATION);
+    } else if (canopen_interface_) {
+        // CANopen fallback
+        canopen_interface_->setPositionTarget(0, axis1_target_, ...);
+        canopen_interface_->setPositionTarget(1, axis2_target_, ...);
+    }
+    
+    // 6. Uruchomienie wątku monitorującego (przechowywany w work_thread_)
+    work_thread_ = std::thread([this]() { /* faza monitorowania */ });
+}
 ```
 
-**Detached thread** (linie ~112-169):
+---
+
+#### Faza 2: Monitorowanie (wątek roboczy, linie 448–607)
+
 ```cpp
-std::thread([this]() {
-    const int POLL_MS = 100;
-    const double POSITION_TOLERANCE_DEG = config_.position_tolerance;
-    
-    while (true) {
-        // Sprawdzenie anulowania
-        {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
-            if (state_ != MountStatus::State::SLEWING) break;
-        }
-        
-        bool reached = true;
-        
-        if (canopen_interface_) {
-            // Rzeczywisty ruch przez CANopen
-            auto status0 = canopen_interface_->getDriveStatus(0);
-            auto status1 = canopen_interface_->getDriveStatus(1);
-            if (!status0.target_reached) reached = false;
-            if (!status1.target_reached) reached = false;
-        } else {
-            // Symulacja: inkrementalna zmiana pozycji
-            std::lock_guard<std::mutex> lock(*state_mutex_);
-            // axis1_position_ += delta, axis2_position_ += delta
-        }
-        
-        if (reached) {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
-            if (state_ == MountStatus::State::SLEWING) {
-                state_ = MountStatus::State::IDLE;
-            }
-            break;
-        }
-        
-        std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
+// Wątek roboczy (przechowywany w work_thread_, NIE detach)
+const int POLL_MS = 100;
+const double POSITION_TOLERANCE_DEG = config_.position_tolerance;
+const int SIM_TIMEOUT_MS = 60000;
+int sim_elapsed_ms = 0;
+
+while (true) {
+    // 1. Sprawdzenie anulowania
+    {
+        std::lock_guard<std::mutex> lock(*state_mutex_);
+        if (state_ != SLEWING) break;
     }
-}).detach();
+    
+    bool reached = true;
+    
+    // 2. HAL path (priorytet) — MotorControl::targetReached()
+    if (hal_axis1_motor_ && hal_axis2_motor_) {
+        reached = hal_axis1_motor_->targetReached() && hal_axis2_motor_->targetReached();
+    }
+    // 3. CANopen fallback — getDriveStatus()
+    else if (canopen_interface_) {
+        auto status0 = canopen_interface_->getDriveStatus(0);
+        auto status1 = canopen_interface_->getDriveStatus(1);
+        if (!status0.target_reached) reached = false;
+        if (!status1.target_reached) reached = false;
+    }
+    // 4. Symulacja (fallback) — inkrementalna zmiana pozycji
+    else {
+        sim_elapsed_ms += POLL_MS;
+        // Sprawdzenie soft limits
+        double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
+        // Sprawdzenie HAL SafetyMonitor
+        if (hal_safety_monitor_) {
+            auto safety_status = hal_safety_monitor_->getStatus();
+            if (safety_status.overall_state == EMERGENCY_STOP || ...) {
+                state_ = ERROR; break;
+            }
+            hal_safety_monitor_->checkLimits(0);
+            hal_safety_monitor_->checkLimits(1);
+        }
+        // Inkrementalny krok w stronę targetu
+        axis1_position_ += std::copysign(min(step, |d1|), d1);
+        axis2_position_ += std::copysign(min(step, |d2|), d2);
+    }
+    
+    // 5. Osiągnięcie celu — odczyt pozycji z enkoderów
+    if (reached) {
+        std::lock_guard<std::mutex> lock(*state_mutex_);
+        if (state_ == SLEWING) {
+            // Priorytet: HAL EncoderReader → CANopen getPositionData
+            if (hal_axis1_encoder_ && hal_axis2_encoder_) {
+                auto enc1 = hal_axis1_encoder_->read();
+                auto enc2 = hal_axis2_encoder_->read();
+                if (enc1.data_valid && enc2.data_valid) {
+                    axis1_position_ = enc1.position_deg;
+                    axis2_position_ = enc2.position_deg;
+                }
+            } else if (canopen_interface_) {
+                auto pos0 = canopen_interface_->getPositionData(0);
+                axis1_position_ = pos0.actual_position;
+            }
+            axis1_rate_ = 0.0;
+            axis2_rate_ = 0.0;
+            state_ = IDLE;
+        }
+        break;
+    }
+    
+    std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
+}
+
+// 6. Powiadomienia po zakończeniu pętli
+if (exit_state == ERROR) {
+    notifyError(exit_error);
+    notifyStatusChanged();
+} else if (exit_state == IDLE) {
+    notifyStatusChanged();
+}
 ```
 
 | Właściwość | Wartość |
 |-----------|---------|
-| **Typ** | `std::thread` z `detach()` |
-| **Czas życia** | Od rozpoczęcia slewu do osiągnięcia celu lub anulowania |
+| **Typ** | `std::thread` przechowywany w `work_thread_` (join przez `joinWorkThreadLocked()`) |
+| **Czas życia** | Od rozpoczęcia slewu do osiągnięcia celu, anulowania, timeoutu lub błędu |
+| **Synchronizacja** | `thread_mutex_` (tworzenie/join wątku) + `state_mutex_` (stan, pozycje) |
 | **Częstotliwość pollingu** | 100 ms (10 Hz) |
-| **Synchronizacja stanu** | `std::lock_guard<std::mutex> lock(*state_mutex_)` |
-| **CANopen** | Jeśli dostępny, deleguje ruch i sprawdza `getDriveStatus()` |
-| **Symulacja** | Jeśli brak CANopen, sam inkrementuje pozycję o 1°/krok |
+| **HAL (priorytet)** | `MotorControl::setPosition()` → `MotorControl::targetReached()` → `EncoderReader::read()` |
+| **CANopen (fallback 1)** | `setPositionTarget()` → `getDriveStatus()` → `getPositionData()` |
+| **Symulacja (fallback 2)** | Inkrementalna zmiana pozycji z timeoutem 60s |
+| **HAL SafetyMonitor** | `getStatus()` + `checkLimits()` sprawdzane w symulacji |
+| **TPOINT** | Opcjonalna korekcja `predictMountPosition()` przed slewingiem |
+| **Soft limits** | Sprawdzane przed slewingiem i w trakcie symulacji |
 
 **Przepływ**:
-1. Wątek główny ustawia `state_ = SLEWING`, targety, opcjonalnie wysyła CANopen targety
-2. Detached thread w pętli co 100ms:
-   - Sprawdza `state_` pod mutexem (czy nie anulowano)
-   - Jeśli CANopen: pyta `getDriveStatus()` obu osi
-   - Jeśli symulacja: przesuwa pozycję o `step = 1.0°` w stronę targetu
-   - Jeśli obie osie osiągnęły target: ustawia `state_ = IDLE`, kończy pętlę
-3. `stop()` zmienia `state_` na `IDLE`, co powoduje wyjście z pętli
+1. Wątek główny blokuje `thread_mutex_`, łączy poprzedni `work_thread_` przez `joinWorkThreadLocked()`
+2. Wątek główny blokuje `state_mutex_`, oblicza HA z korekcją TPOINT, sprawdza soft limits, ustawia `state_ = SLEWING`
+3. Wątek główny uruchamia napędy przez HAL (`MotorControl::setPosition()`) lub CANopen
+4. Wątek główny tworzy `work_thread_` (`std::thread`) i zwalnia `thread_mutex_`
+5. Wątek roboczy w pętli co 100ms:
+   - Sprawdza `state_` pod `state_mutex_` (czy nie anulowano przez `stop()`)
+   - **HAL**: pyta `MotorControl::targetReached()` — jeśli obie osie OK, cel osiągnięty
+   - **CANopen**: pyta `getDriveStatus()` obu osi
+   - **Symulacja**: sprawdza soft limits (`evaluateSoftLimits()`), HAL SafetyMonitor, inkrementuje pozycje
+   - Po osiągnięciu celu: odczytuje rzeczywiste pozycje z HAL `EncoderReader::read()` lub CANopen `getPositionData()`
+6. Po wyjściu z pętli: wywołuje `notifyStatusChanged()` / `notifyError()`
+7. `stop()` zmienia `state_` na `IDLE`, co powoduje wyjście z pętli; następnie `join()` na `work_thread_`
 
 ---
 
@@ -1159,27 +1275,61 @@ MountController::initialize()
 ```
 MountController::slewToEquatorial(ra, dec)
   │
-  ├── [wątek główny] lock(state_mutex_) → ustawia state_ = SLEWING, targety
-  ├── [wątek główny] jeśli CANopen: setPositionTarget(0...1)
-  └── [wątek główny] startuje detached thread:
-        └── co 100ms:
-              ├── [lock] sprawdza czy state_ == SLEWING
-              ├── jeśli CANopen: getDriveStatus(0...1)
-              ├── jeśli symulacja: [lock] axis1_position_ += step
-              └── jeśli reached: [lock] state_ = IDLE, break
+  ├── [wątek główny] lock(thread_mutex_)
+  │     ├── joinWorkThreadLocked() ← czeka na poprzedni wątek
+  │     ├── lock(state_mutex_)
+  │     │     ├── sprawdza state_ (UNINITIALIZED/ERROR → return false)
+  │     │     ├── oblicza HA = LST - RA, normalize [-12, +12]h
+  │     │     ├── jeśli TPOINT calibrated: predictMountPosition(ra, dec)
+  │     │     ├── sprawdza soft limits (axis1/2 min/max)
+  │     │     ├── state_ = SLEWING, slew_count_++
+  │     │     └── unlock(state_mutex_)
+  │     ├── notifyStatusChanged() ← IDLE → SLEWING
+  │     │
+  │     ├── [HAL path - priorytet]
+  │     │     hal_axis1_motor_->setPosition(target1, velocity, accel)
+  │     │     hal_axis2_motor_->setPosition(target2, velocity, accel)
+  │     │
+  │     ├── [CANopen path - fallback]
+  │     │     canopen_interface_->setPositionTarget(0, target1, ...)
+  │     │     canopen_interface_->setPositionTarget(1, target2, ...)
+  │     │
+  │     └── work_thread_ = std::thread([this]() { ... })
+  │           └── [wątek roboczy ~10 Hz] co 100ms:
+  │                 ├── lock(state_mutex_) → check state_ != SLEWING? break
+  │                 │
+  │                 ├── [HAL] hal_axis1_motor_->targetReached() && ...
+  │                 ├── [CANopen] getDriveStatus(0...1).target_reached
+  │                 ├── [symulacja] evaluateSoftLimits(), SafetyMonitor, step += 1.0°
+  │                 │
+  │                 ├── jeśli reached:
+  │                 │     ├── lock(state_mutex_)
+  │                 │     ├── [HAL] enc1 = hal_axis1_encoder_->read()
+  │                 │     ├── [CANopen] getPositionData(0...1)
+  │                 │     ├── axis1_rate_ = 0, axis2_rate_ = 0
+  │                 │     ├── state_ = IDLE
+  │                 │     └── unlock(state_mutex_)
+  │                 │         notifyStatusChanged()
+  │                 └── sleep(100ms)
+  │
+  └── unlock(thread_mutex_) ← wątek główny kontynuuje, work_thread_ żyje
 
-  ─── symultanicznie ──►
+  ─── symultanicznie ──► (jeśli użyto CANopen HAL)
 
-  ┌─ CanOpenInterface SYNC thread (10Hz) ─────────────────────┐
-  │  sendSync() do wszystkich węzłów                          │
-  └───────────────────────────────────────────────────────────┘
+  ┌─ CanOpenMotor::controlLoop (100Hz) ────────────────────────┐
+  │  co 10ms: read position → PID → setpoint → sleep(10ms)     │
+  └─────────────────────────────────────────────────────────────┘
 
-  ┌─ CanOpenSafetyMonitor::monitoringLoop (~100Hz/10Hz) ──────┐
-  │  cyklicznie sprawdza:                                      │
-  │  - checkLimits(0) → pozycja, prędkość, temperatura, prąd  │
-  │  - checkLimits(1)                                          │
-  │  - checkLimits(2)                                          │
-  │  jeśli limit przekroczony: limit_callback_()               │
+  ┌─ CanOpenSafetyMonitor::monitoringLoop (~100Hz) ────────────┐
+  │  co 10ms: checkLimits(0..2) → sleep(10ms)                  │
+  └─────────────────────────────────────────────────────────────┘
+
+  ┌─ CanOpenEncoder::pdoReceiveThread (100-1000Hz) ────────────┐
+  │  co update_interval: getEncoderData() → cache               │
+  └─────────────────────────────────────────────────────────────┘
+
+  ┌─ CanOpenHAL::nmtMonitoringThread (10Hz) ───────────────────┐
+  │  co 100ms: heartbeat → recovery if NMT state != OPERATIONAL │
   └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -1222,11 +1372,11 @@ MountController::startEphemerisTracking(object_id, ...)
 
 | Zasób | Wątki | Mutex | Typ |
 |-------|-------|-------|-----|
-| `MountController::Impl::state_` | Main, slew/park/tracking detached threads | ✅ `state_mutex_` | `MountStatus::State` |
-| `MountController::Impl::axis1_position_` | Main, slew/park/tracking detached threads | ✅ `state_mutex_` | `double` |
-| `MountController::Impl::axis2_position_` | Main, slew/park/tracking detached threads | ✅ `state_mutex_` | `double` |
-| `MountController::Impl::axis1_rate_` | Main, tracking detached thread | ✅ `state_mutex_` | `double` |
-| `MountController::Impl::axis2_rate_` | Main, tracking detached thread | ✅ `state_mutex_` | `double` |
+| `MountController::Impl::state_` | Main, slew/park/tracking work threads | ✅ `state_mutex_` | `MountStatus::State` |
+| `MountController::Impl::axis1_position_` | Main, slew/park/tracking work threads | ✅ `state_mutex_` | `double` |
+| `MountController::Impl::axis2_position_` | Main, slew/park/tracking work threads | ✅ `state_mutex_` | `double` |
+| `MountController::Impl::axis1_rate_` | Main, tracking work thread | ✅ `state_mutex_` | `double` |
+| `MountController::Impl::axis2_rate_` | Main, tracking work thread | ✅ `state_mutex_` | `double` |
 | `MountController::Impl::encoders_active_` | Main | ✅ `state_mutex_` | `bool` |
 | `MountController::Impl::guider_active_` | Main | ✅ `state_mutex_` | `bool` |
 | `CanOpenInterface::connected_` | Main, SYNC thread | ✅ `mutex_` | `bool` |
@@ -1271,7 +1421,7 @@ while (!stop_requested_) { ... }
 
 | Problem | Lokalizacja | Opis |
 |---------|-------------|------|
-| **Zagubione detach wątki** | `mount_controller.cpp` | Wątki z `detach()` mogą być jeszcze aktywne przy destrukcji obiektu — wyciek/UB |
+| ~~**Zagubione detach wątki**~~ | ~~`mount_controller.cpp`~~ | ~~(Naprawione) Wątki są teraz przechowywane w `work_thread_` i łączone przez `joinWorkThreadLocked()` — brak wycieku wątków.~~ |
 | **NMT bez sendNMT()** | `canopen_hal.cpp` (nmtMonitoringThread) | `sendNMT()` zakomentowane (TODO) — `ICanOpenInterface` nie ma tej metody. Stan węzłów zmieniany lokalnie, ale rzeczywiste NMT komunikaty nie są wysyłane. |
 | **Niespójność w CanOpenInterface** | `canopen_interface.cpp` ~81 | `sync_thread_ = std::thread(...).detach()` — `sync_thread_` przechowywany ale wątek detached, nie można go joinować |
 | **`controlLoop()` bez mutexa** | `canopen_hal.cpp:375` | Używa atomików, ale `position_callback_` i `state_change_callback_` nie są atomiczne — potencjalny data race na callbackach |
@@ -1335,18 +1485,18 @@ valgrind --tool=helgrind ./build/bin/astro_mount 2> helgrind_report.txt
 
 ## Dodatek A: Szybki przegląd wątków
 
-| # | Wątek | Plik | Częstotliwość | Mutex | Detach/Join |
+| # | Wątek | Plik | Częstotliwość | Mutex | Zarządzanie |
 |---|-------|------|--------------|-------|-------------|
-| 1 | `slewToEquatorial` polling | `mount_controller.cpp:112` | 10 Hz | ✅ `state_mutex_` | `detach()` |
-| 2 | `slewToHorizontal` polling | `mount_controller.cpp:200` | 10 Hz | ✅ `state_mutex_` | `detach()` |
-| 3 | `park` polling | `mount_controller.cpp:361` | 10 Hz | ✅ `state_mutex_` | `detach()` |
-| 4 | `startTracking` update | `mount_controller.cpp:312` | 10 Hz | ✅ `state_mutex_` | `detach()` |
+| 1 | `slewToEquatorial` monitoring | `mount_controller.cpp:448` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (join przez `joinWorkThreadLocked()`) |
+| 2 | `slewToHorizontal` monitoring | `mount_controller.cpp` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (jw.) |
+| 3 | `park` monitoring | `mount_controller.cpp` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (jw.) |
+| 4 | `startTracking` update | `mount_controller.cpp` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (jw.) |
 | 5 | `CanOpenInterface SYNC` | `canopen_interface.cpp:522` | 10 Hz | ✅ `mutex_` | przechowywany `thread` |
 | 6 | `simulateMovement` | `canopen_interface.cpp:536` | 100 Hz | ✅ `mutex_` | `detach()` |
-| 7 | `CanOpenMotor controlLoop` | `canopen_hal.cpp:375` | 100 Hz | ⚠️ atomic | `join()` |
-| 8 | `CanOpenEncoder PDO` | `canopen_hal.cpp:604` | 1000 Hz | ❌ | `join()` |
-| 9 | `CanOpenSafetyMonitor` | `canopen_hal.cpp:789` | 100 Hz | ❌ | `join()` |
-| 10 | `CanOpenHAL NMT` | `canopen_hal.cpp:1174` | 10 Hz | ❌ | `join()` |
-| 11 | `SimulatedMotor sim` | `simulated_hal.cpp:247` | 100 Hz | ✅ `mutex_` | `join()` |
-| 12 | `SimulatedEncoder read` | `simulated_hal.cpp:416` | 100 Hz | ✅ `mutex_` | `join()` |
+| 7 | `CanOpenMotor controlLoop` | `canopen_hal.cpp` | 100 Hz | ⚠️ atomic | `join()` |
+| 8 | `CanOpenEncoder PDO` | `canopen_hal.cpp` | 1000 Hz | ❌ | `join()` |
+| 9 | `CanOpenSafetyMonitor` | `canopen_hal.cpp` | 100 Hz | ❌ | `join()` |
+| 10 | `CanOpenHAL NMT` | `canopen_hal.cpp` | 10 Hz | ❌ | `join()` |
+| 11 | `SimulatedMotor sim` | `simulated_hal.cpp` | 100 Hz | ✅ `mutex_` | `join()` |
+| 12 | `SimulatedEncoder read` | `simulated_hal.cpp` | 100 Hz | ✅ `mutex_` | `join()` |
 | 13 | `EphemerisTracker` | `ephemeris_tracker.cpp:944` | 1-10 Hz | ✅ `state_mutex_` | `join()` |
