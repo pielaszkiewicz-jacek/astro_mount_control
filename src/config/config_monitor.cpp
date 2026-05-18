@@ -177,11 +177,16 @@ ConfigMonitor::ConfigMonitor(const std::string& config_file, int check_interval_
 ConfigMonitor::~ConfigMonitor() = default;
 
 bool ConfigMonitor::start() {
-    return impl_->startMonitoring();
+    bool result = impl_->startMonitoring();
+    if (result) {
+        monitoring_ = true;
+    }
+    return result;
 }
 
 void ConfigMonitor::stop() {
     impl_->stopMonitoring();
+    monitoring_ = false;
 }
 
 const Configuration& ConfigMonitor::getConfiguration() const {

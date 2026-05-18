@@ -40,15 +40,64 @@ protected:
         std::ofstream file(path);
         file << R"({
             "logging": {
-                "level": "info",
-                "console_enabled": true
+                "level": "INFO",
+                "directory": "/tmp/logs",
+                "rotation_days": 7,
+                "max_file_size_mb": 100,
+                "console_output": true
             },
             "network": {
-                "grpc_port": 50051
+                "grpc_port": 50051,
+                "max_connections": 10
+            },
+            "canopen": {
+                "node_id": 1,
+                "baud_rate": 1000000,
+                "sync_interval_ms": 100
             },
             "mount": {
                 "latitude": 52.0,
-                "longitude": 21.0
+                "longitude": 21.0,
+                "altitude": 100.0,
+                "max_slew_rate": 5.0,
+                "max_tracking_rate": 0.004178,
+                "slew_acceleration": 1.0,
+                "tracking_acceleration": 0.001,
+                "mount_height": 1.5,
+                "axis_physical_parameters": {
+                    "ha_axis": {
+                        "motor_steps_per_rev": 200,
+                        "motor_microstepping": 64,
+                        "encoder_resolution": 16384,
+                        "gear_ratio": 360.0
+                    },
+                    "dec_axis": {
+                        "motor_steps_per_rev": 200,
+                        "motor_microstepping": 64,
+                        "encoder_resolution": 16384,
+                        "gear_ratio": 360.0
+                    }
+                }
+            },
+            "telescope": {
+                "focal_length": 2000.0,
+                "aperture": 200.0,
+                "pixel_size": 3.8
+            },
+            "guider": {
+                "max_correction": 10.0,
+                "aggression": 0.5
+            },
+            "kalman": {
+                "process_noise": 0.01,
+                "measurement_noise": 1.0,
+                "innovation_threshold": 3.0,
+                "max_iterations": 10
+            },
+            "tpoint": {
+                "enabled_terms": 65535,
+                "max_residual": 30.0,
+                "min_measurements": 10
             }
         })";
         file.close();
@@ -60,15 +109,64 @@ protected:
         std::ofstream file(path);
         file << R"({
             "logging": {
-                "level": "debug",
-                "console_enabled": true
+                "level": "DEBUG",
+                "directory": "/tmp/logs",
+                "rotation_days": 7,
+                "max_file_size_mb": 100,
+                "console_output": true
             },
             "network": {
-                "grpc_port": 50052
+                "grpc_port": 50052,
+                "max_connections": 10
+            },
+            "canopen": {
+                "node_id": 1,
+                "baud_rate": 1000000,
+                "sync_interval_ms": 100
             },
             "mount": {
                 "latitude": 52.0,
-                "longitude": 21.0
+                "longitude": 21.0,
+                "altitude": 100.0,
+                "max_slew_rate": 5.0,
+                "max_tracking_rate": 0.004178,
+                "slew_acceleration": 1.0,
+                "tracking_acceleration": 0.001,
+                "mount_height": 1.5,
+                "axis_physical_parameters": {
+                    "ha_axis": {
+                        "motor_steps_per_rev": 200,
+                        "motor_microstepping": 64,
+                        "encoder_resolution": 16384,
+                        "gear_ratio": 360.0
+                    },
+                    "dec_axis": {
+                        "motor_steps_per_rev": 200,
+                        "motor_microstepping": 64,
+                        "encoder_resolution": 16384,
+                        "gear_ratio": 360.0
+                    }
+                }
+            },
+            "telescope": {
+                "focal_length": 2000.0,
+                "aperture": 200.0,
+                "pixel_size": 3.8
+            },
+            "guider": {
+                "max_correction": 10.0,
+                "aggression": 0.5
+            },
+            "kalman": {
+                "process_noise": 0.01,
+                "measurement_noise": 1.0,
+                "innovation_threshold": 3.0,
+                "max_iterations": 10
+            },
+            "tpoint": {
+                "enabled_terms": 65535,
+                "max_residual": 30.0,
+                "min_measurements": 10
             }
         })";
         file.close();
@@ -339,8 +437,66 @@ protected:
         config_path_ = (tmp_dir_ / "manager_test.json").string();
         std::ofstream file(config_path_);
         file << R"({
-            "logging": {"level": "info"},
-            "mount": {"latitude": 52.0, "longitude": 21.0}
+            "logging": {
+                "level": "INFO",
+                "directory": "/tmp/logs",
+                "rotation_days": 7,
+                "max_file_size_mb": 100,
+                "console_output": true
+            },
+            "network": {
+                "grpc_port": 50051,
+                "max_connections": 10
+            },
+            "canopen": {
+                "node_id": 1,
+                "baud_rate": 1000000,
+                "sync_interval_ms": 100
+            },
+            "mount": {
+                "latitude": 52.0,
+                "longitude": 21.0,
+                "altitude": 100.0,
+                "max_slew_rate": 5.0,
+                "max_tracking_rate": 0.004178,
+                "slew_acceleration": 1.0,
+                "tracking_acceleration": 0.001,
+                "mount_height": 1.5,
+                "axis_physical_parameters": {
+                    "ha_axis": {
+                        "motor_steps_per_rev": 200,
+                        "motor_microstepping": 64,
+                        "encoder_resolution": 16384,
+                        "gear_ratio": 360.0
+                    },
+                    "dec_axis": {
+                        "motor_steps_per_rev": 200,
+                        "motor_microstepping": 64,
+                        "encoder_resolution": 16384,
+                        "gear_ratio": 360.0
+                    }
+                }
+            },
+            "telescope": {
+                "focal_length": 2000.0,
+                "aperture": 200.0,
+                "pixel_size": 3.8
+            },
+            "guider": {
+                "max_correction": 10.0,
+                "aggression": 0.5
+            },
+            "kalman": {
+                "process_noise": 0.01,
+                "measurement_noise": 1.0,
+                "innovation_threshold": 3.0,
+                "max_iterations": 10
+            },
+            "tpoint": {
+                "enabled_terms": 65535,
+                "max_residual": 30.0,
+                "min_measurements": 10
+            }
         })";
         file.close();
     }
