@@ -1,0 +1,208 @@
+syntax = "proto3";
+
+package astro_mount.canopen;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Service for remote CANopen interface
+service CanOpenService {
+    // Connection management
+    rpc Connect(ConnectionRequest) returns (ConnectionResponse);
+    rpc Disconnect(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc IsConnected(google.protobuf.Empty) returns (ConnectionStatus);
+    
+    // Axis control
+    rpc ConfigureAxis(AxisConfigRequest) returns (OperationResult);
+    rpc EnableAxis(AxisControlRequest) returns (OperationResult);
+    rpc DisableAxis(AxisControlRequest) returns (OperationResult);
+    rpc SetPositionTarget(PositionTargetRequest) returns (OperationResult);
+    rpc SetVelocityTarget(VelocityTargetRequest) returns (OperationResult);
+    rpc StopAxis(AxisControlRequest) returns (OperationResult);
+    rpc EmergencyStop(AxisControlRequest) returns (OperationResult);
+    
+    // Status queries
+    rpc GetAxisStatus(AxisControlRequest) returns (AxisStatus);
+    rpc GetPositionData(AxisControlRequest) returns (PositionData);
+    rpc GetEncoderData(AxisControlRequest) returns (EncoderData);
+    
+    // CANopen protocol operations
+    rpc SendSDO(SDORequest) returns (OperationResult);
+    rpc ReceiveSDO(SDORequest) returns (SDOResponse);
+    rpc ConfigurePDO(PDOConfigRequest) returns (OperationResult);
+    rpc EnablePDO(PDOControlRequest) returns (OperationResult);
+    rpc SendSync(google.protobuf.Empty) returns (OperationResult);
+    
+    // Statistics and configuration
+    rpc GetStatistics(google.protobuf.Empty) returns (Statistics);
+    rpc SaveConfiguration(ConfigurationRequest) returns (OperationResult);
+    rpc LoadConfiguration(ConfigurationRequest) returns (OperationResult);
+    
+    // Trajectory operations
+    rpc GenerateTrajectory(TrajectoryParams) returns (Trajectory);
+    rpc ExecuteTrajectory(TrajectoryExecutionRequest) returns (OperationResult);
+}
+
+// Connection management messages
+message ConnectionRequest {
+    string library = 1;
+    string interface_name = 2;
+    uint32 bitrate = 3;
+    uint32 node_id = 4;
+    bool use_sync = 5;
+    uint32 sync_period_ms = 6;
+    repeated string pdo_mapping = 7;
+    uint32 sdo_timeout_ms = 8;
+}
+
+message ConnectionResponse {
+    bool success = 1;
+    string message = 2;
+}
+
+message ConnectionStatus {
+    bool connected = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+// Axis control messages
+message AxisConfigRequest {
+    int32 axis_id = 1;
+    string config_string = 2;
+}
+
+message AxisControlRequest {
+    int32 axis_id = 1;
+}
+
+message PositionTargetRequest {
+    int32 axis_id = 1;
+    double position = 2;      // Position in degrees
+    double velocity = 3;      // Velocity in deg/s
+    double acceleration = 4;  // Acceleration in deg/s²
+}
+
+message VelocityTargetRequest {
+    int32 axis_id = 1;
+    double velocity = 2;      // Velocity in deg/s
+    double acceleration = 3;  // Acceleration in deg/s²
+}
+
+// Status messages
+message AxisStatus {
+    int32 axis_id = 1;
+    bool operational = 2;
+    bool enabled = 3;
+    bool moving = 4;
+    bool target_reached = 5;
+    bool warning = 6;
+    bool error = 7;
+    bool homed = 8;
+    uint32 status_word = 9;
+    uint32 error_code = 10;
+    google.protobuf.Timestamp timestamp = 11;
+}
+
+message PositionData {
+    int32 axis_id = 1;
+    double actual_position = 2;    // Actual position in degrees
+    double actual_velocity = 3;    // Actual velocity in deg/s
+    double actual_torque = 4;      // Actual torque in %
+    double target_position = 5;    // Target position in degrees
+    double following_error = 6;    // Following error in degrees
+    google.protobuf.Timestamp timestamp = 7;
+}
+
+message EncoderData {
+    int32 axis_id = 1;
+    uint32 raw_position = 2;       // Raw encoder position in counts
+    int32 raw_velocity = 3;        // Raw encoder velocity in counts/s
+    bool index_pulse = 4;          // Index pulse detected
+    int32 direction = 5;           // Direction (1 forward, -1 reverse, 0 stopped)
+    uint32 error_count = 6;        // Encoder error count
+    google.protobuf.Timestamp timestamp = 7;
+}
+
+// CANopen protocol messages
+message SDORequest {
+    int32 axis_id = 1;
+    uint32 index = 2;
+    uint32 subindex = 3;
+    bytes data = 4;
+}
+
+message SDOResponse {
+    bool success = 1;
+    int32 data_size = 2;
+    bytes data = 3;
+}
+
+message PDOConfigRequest {
+    int32 axis_id = 1;
+    int32 pdo_number = 2;
+    repeated uint32 mapping = 3;
+}
+
+message PDOControlRequest {
+    int32 axis_id = 1;
+    int32 pdo_number = 2;
+    bool enable = 3;
+}
+
+// Statistics and configuration
+message Statistics {
+    string implementation_type = 1;
+    bool supports_simulation = 2;
+    uint32 axis_count = 3;
+    map<int32, string> axis_status = 4;  // axis_id -> status string
+    string additional_info = 5;
+    google.protobuf.Timestamp timestamp = 6;
+}
+
+message ConfigurationRequest {
+    string filename = 1;
+}
+
+// Trajectory messages
+message TrajectoryParams {
+    enum TrajectoryType {
+        TRAPEZOIDAL = 0;
+        S_SHAPE = 1;
+        SINE = 2;
+        POLYNOMIAL = 3;
+    }
+    
+    TrajectoryType type = 1;
+    double max_velocity = 2;      // Maximum velocity in deg/s
+    double max_acceleration = 3;  // Maximum acceleration in deg/s²
+    double max_jerk = 4;          // Maximum jerk in deg/s³
+    double start_position = 5;    // Start position in degrees
+    double target_position = 6;   // Target position in degrees
+    double update_rate = 7;       // Update rate in Hz
+}
+
+message TrajectoryPoint {
+    double position = 1;          // Position in degrees
+    double velocity = 2;          // Velocity in deg/s
+    double acceleration = 3;      // Acceleration in deg/s²
+    double jerk = 4;              // Jerk in deg/s³
+    double time = 5;              // Time from start in seconds
+}
+
+message Trajectory {
+    int32 axis_id = 1;
+    repeated TrajectoryPoint points = 2;
+    TrajectoryParams params = 3;
+}
+
+message TrajectoryExecutionRequest {
+    int32 axis_id = 1;
+    repeated TrajectoryPoint trajectory = 2;
+}
+
+// Common result message
+message OperationResult {
+    bool success = 1;
+    string message = 2;
+    google.protobuf.Timestamp timestamp = 3;
+}

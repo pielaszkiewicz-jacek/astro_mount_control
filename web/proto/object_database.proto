@@ -1,0 +1,432 @@
+syntax = "proto3";
+
+package astro_objects;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Astronomical object database service definition
+service ObjectDatabaseService {
+    // Object management
+    rpc CreateObject (AstronomicalObject) returns (ObjectId);
+    rpc GetObject (ObjectId) returns (AstronomicalObject);
+    rpc UpdateObject (AstronomicalObject) returns (google.protobuf.Empty);
+    rpc DeleteObject (ObjectId) returns (google.protobuf.Empty);
+    rpc ListObjects (ObjectListRequest) returns (ObjectList);
+    rpc SearchObjects (ObjectSearchRequest) returns (ObjectList);
+    
+    // Catalog operations
+    rpc ImportCatalog (ImportCatalogRequest) returns (ImportResult);
+    rpc ExportCatalog (ExportCatalogRequest) returns (ExportResult);
+    
+    // Favorites and user collections
+    rpc AddToFavorites (FavoriteRequest) returns (google.protobuf.Empty);
+    rpc RemoveFromFavorites (FavoriteRequest) returns (google.protobuf.Empty);
+    rpc GetFavorites (google.protobuf.Empty) returns (ObjectList);
+    
+    // Categories and tags
+    rpc CreateCategory (Category) returns (CategoryId);
+    rpc ListCategories (google.protobuf.Empty) returns (CategoryList);
+    rpc AssignCategory (ObjectCategory) returns (google.protobuf.Empty);
+    rpc RemoveCategory (ObjectCategory) returns (google.protobuf.Empty);
+    
+    // Observation planning
+    rpc FindVisibleObjects (VisibilityRequest) returns (ObjectList);
+    rpc GetTonightBestObjects (TonightRequest) returns (ObjectList);
+    rpc GetObjectVisibility (ObjectVisibilityRequest) returns (VisibilityInfo);
+    
+    // Statistics and metadata
+    rpc GetDatabaseStats (google.protobuf.Empty) returns (DatabaseStats);
+    rpc BackupDatabase (BackupRequest) returns (BackupResult);
+    rpc RestoreDatabase (RestoreRequest) returns (google.protobuf.Empty);
+}
+
+// Basic object identifiers
+message ObjectId {
+    string id = 1;  // UUID or catalog identifier
+}
+
+// Astronomical object with all parameters
+message AstronomicalObject {
+    // Basic identification
+    string id = 1;
+    string name = 2;
+    string catalog_name = 3;
+    string alternate_names = 4;  // Comma-separated
+    
+    // Coordinates (J2000)
+    double ra_hours = 5;
+    double dec_degrees = 6;
+    
+    // Proper motion (mas/year)
+    double pm_ra = 7;
+    double pm_dec = 8;
+    
+    // Parallax and distance
+    double parallax_mas = 9;  // milliarcseconds
+    double distance_pc = 10;  // parsecs
+    double distance_ly = 11;  // light-years
+    
+    // Magnitudes
+    double v_magnitude = 12;
+    double b_magnitude = 13;
+    double j_magnitude = 14;
+    double h_magnitude = 15;
+    double k_magnitude = 16;
+    
+    // Spectral classification
+    string spectral_type = 17;
+    string luminosity_class = 18;
+    
+    // Object type classification
+    ObjectType object_type = 19;
+    
+    // Physical parameters (for stars)
+    double mass_solar = 20;
+    double radius_solar = 21;
+    double temperature_k = 22;
+    double luminosity_solar = 23;
+    double age_gyr = 24;  // giga-years
+    
+    // Physical parameters (for solar system objects)
+    double semi_major_axis_au = 25;
+    double eccentricity = 26;
+    double inclination_deg = 27;
+    double longitude_asc_node_deg = 28;
+    double argument_perihelion_deg = 29;
+    double mean_anomaly_deg = 30;
+    double epoch_of_elements_jd = 31;
+    double diameter_km = 32;
+    double albedo = 33;
+    double rotation_period_hours = 34;
+    
+    // Physical parameters (for galaxies/nebulae)
+    double angular_size_arcmin = 35;
+    double redshift = 36;
+    double radial_velocity_kms = 37;
+    double apparent_dimensions_arcmin_x = 38;
+    double apparent_dimensions_arcmin_y = 39;
+    
+    // Positional uncertainty
+    double ra_error_mas = 40;
+    double dec_error_mas = 41;
+    double pm_ra_error = 42;
+    double pm_dec_error = 43;
+    double parallax_error = 44;
+    
+    // Catalog information
+    string catalog_id = 45;  // e.g., HIP, NGC, M
+    string catalog_version = 46;
+    string data_source = 47;
+    
+    // Metadata
+    google.protobuf.Timestamp created_at = 48;
+    google.protobuf.Timestamp updated_at = 49;
+    string created_by = 50;
+    string notes = 51;
+    int32 observation_count = 52;
+    double last_observed_jd = 53;
+    
+    // Flags and status
+    bool is_favorite = 54;
+    bool is_visible = 55;
+    bool has_ephemeris = 56;
+    bool has_light_curve = 57;
+    bool has_spectrum = 58;
+    
+    // User metadata
+    double user_rating = 59;
+    string user_notes = 60;
+    repeated string tags = 61;
+    repeated string categories = 62;
+    
+    // Extended ephemeris data (for solar system objects)
+    EphemerisData ephemeris = 63;
+    
+    // Additional fields for future expansion
+    map<string, string> custom_fields = 64;
+}
+
+// Ephemeris data for solar system objects
+message EphemerisData {
+    double heliocentric_distance_au = 1;
+    double geocentric_distance_au = 2;
+    double phase_angle_deg = 3;
+    double solar_elongation_deg = 4;
+    double phase = 5;  // 0-1
+    double magnitude_predicted = 6;
+    double altitude_at_sunset_deg = 7;
+    double altitude_at_sunrise_deg = 8;
+    double transit_altitude_deg = 9;
+    double transit_time_utc = 10;
+    double rise_time_utc = 11;
+    double set_time_utc = 12;
+    
+    // Orbital elements at current epoch
+    OrbitalElements current_elements = 13;
+    
+    // Visibility windows for next 30 days
+    repeated VisibilityWindow visibility_windows = 14;
+}
+
+// Orbital elements
+message OrbitalElements {
+    double semi_major_axis_au = 1;
+    double eccentricity = 2;
+    double inclination_deg = 3;
+    double longitude_asc_node_deg = 4;
+    double argument_perihelion_deg = 5;
+    double mean_anomaly_deg = 6;
+    double epoch_jd = 7;
+    double period_days = 8;
+    double perihelion_distance_au = 9;
+    double aphelion_distance_au = 10;
+}
+
+// Visibility window
+message VisibilityWindow {
+    google.protobuf.Timestamp start_time = 1;
+    google.protobuf.Timestamp end_time = 2;
+    double max_altitude_deg = 3;
+    double min_altitude_deg = 4;
+    double avg_seeing_arcsec = 5;
+    double moon_distance_deg = 6;
+    double moon_illumination = 7;
+    bool is_moonless = 8;
+}
+
+// Object types
+enum ObjectType {
+    UNKNOWN_TYPE = 0;
+    STAR = 1;
+    DOUBLE_STAR = 2;
+    VARIABLE_STAR = 3;
+    STAR_CLUSTER_OPEN = 4;
+    STAR_CLUSTER_GLOBULAR = 5;
+    PLANETARY_NEBULA = 6;
+    DIFFUSE_NEBULA = 7;
+    DARK_NEBULA = 8;
+    EMISSION_NEBULA = 9;
+    REFLECTION_NEBULA = 10;
+    GALAXY_SPIRAL = 11;
+    GALAXY_ELLIPTICAL = 12;
+    GALAXY_IRREGULAR = 13;
+    GALAXY_LENTICULAR = 14;
+    QUASAR = 15;
+    SUPERNOVA_REMNANT = 16;
+    PLANET = 17;
+    DWARF_PLANET = 18;
+    MOON = 19;
+    ASTEROID = 20;
+    COMET = 21;
+    SATELLITE = 22;
+    EXOPLANET = 23;
+    ARTIFICIAL_SATELLITE = 24;
+    SPACE_DEBRIS = 25;
+}
+
+// Category for object classification
+message Category {
+    string id = 1;
+    string name = 2;
+    string description = 3;
+    string color = 4;  // Hex color for UI
+    string icon = 5;   // Icon name
+    int32 object_count = 6;
+    google.protobuf.Timestamp created_at = 7;
+}
+
+message CategoryId {
+    string id = 1;
+}
+
+message CategoryList {
+    repeated Category categories = 1;
+}
+
+// Object-category relationship
+message ObjectCategory {
+    string object_id = 1;
+    string category_id = 2;
+}
+
+// List and search requests
+message ObjectListRequest {
+    int32 page = 1;
+    int32 page_size = 2;
+    string sort_by = 3;  // "name", "ra", "dec", "magnitude"
+    bool sort_descending = 4;
+    ObjectType filter_type = 5;
+    double min_magnitude = 6;
+    double max_magnitude = 7;
+}
+
+message ObjectSearchRequest {
+    string query = 1;
+    ObjectType object_type = 2;
+    double ra_min = 3;
+    double ra_max = 4;
+    double dec_min = 5;
+    double dec_max = 6;
+    double min_magnitude = 7;
+    double max_magnitude = 8;
+    repeated string catalogs = 9;
+    bool include_favorites_only = 10;
+    bool include_visible_only = 11;
+}
+
+message ObjectList {
+    repeated AstronomicalObject objects = 1;
+    int32 total_count = 2;
+    int32 page = 3;
+    int32 page_size = 4;
+    int32 total_pages = 5;
+}
+
+// Import/export
+message ImportCatalogRequest {
+    enum Format {
+        CSV = 0;
+        JSON = 1;
+        FITS = 2;
+        VOTABLE = 3;
+        SIMBAD = 4;
+        NED = 5;
+        MPC = 6;
+    }
+    Format format = 1;
+    bytes data = 2;
+    string catalog_name = 3;
+    bool overwrite = 4;
+    map<string, string> field_mapping = 5;
+}
+
+message ImportResult {
+    int32 objects_imported = 1;
+    int32 objects_skipped = 2;
+    int32 objects_updated = 3;
+    repeated string errors = 4;
+    google.protobuf.Timestamp import_time = 5;
+}
+
+message ExportCatalogRequest {
+    enum Format {
+        CSV = 0;
+        JSON = 1;
+        FITS = 2;
+        VOTABLE = 3;
+        SQL = 4;
+    }
+    Format format = 1;
+    ObjectSearchRequest filter = 2;
+    repeated string fields = 3;
+    bool include_metadata = 4;
+}
+
+message ExportResult {
+    bytes data = 1;
+    string filename = 2;
+    string mime_type = 3;
+    int32 object_count = 4;
+}
+
+// Favorites
+message FavoriteRequest {
+    string object_id = 1;
+    string user_id = 2;  // Optional, defaults to current user
+}
+
+// Visibility requests
+message VisibilityRequest {
+    double latitude = 1;
+    double longitude = 2;
+    double altitude = 3;
+    google.protobuf.Timestamp start_time = 4;
+    google.protobuf.Timestamp end_time = 5;
+    double min_altitude_deg = 6;
+    double min_moon_distance_deg = 7;
+    double max_moon_illumination = 8;
+    double min_darkness_hours = 9;
+    repeated ObjectType object_types = 10;
+    double min_magnitude = 11;
+    double max_magnitude = 12;
+    int32 max_results = 13;
+}
+
+message TonightRequest {
+    double latitude = 1;
+    double longitude = 2;
+    double altitude = 3;
+    google.protobuf.Timestamp date = 4;
+    double min_altitude_deg = 5;
+    double min_moon_distance_deg = 6;
+    double max_moon_illumination = 7;
+    repeated ObjectType object_types = 8;
+    double min_magnitude = 9;
+    double max_magnitude = 10;
+    int32 max_results = 11;
+}
+
+message ObjectVisibilityRequest {
+    string object_id = 1;
+    double latitude = 2;
+    double longitude = 3;
+    double altitude = 4;
+    google.protobuf.Timestamp start_time = 5;
+    google.protobuf.Timestamp end_time = 6;
+}
+
+message VisibilityInfo {
+    bool is_visible = 1;
+    double rise_time_utc = 2;
+    double set_time_utc = 3;
+    double transit_time_utc = 4;
+    double transit_altitude_deg = 5;
+    double max_altitude_deg = 6;
+    double min_altitude_deg = 7;
+    double moon_distance_at_transit_deg = 8;
+    double moon_illumination_at_transit = 9;
+    double airmass_at_transit = 10;
+    repeated VisibilityWindow visibility_windows = 11;
+}
+
+// Database statistics
+message DatabaseStats {
+    int32 total_objects = 1;
+    map<string, int32> objects_by_type = 2;
+    map<string, int32> objects_by_catalog = 3;
+    double min_magnitude = 4;
+    double max_magnitude = 5;
+    double avg_magnitude = 6;
+    google.protobuf.Timestamp last_update = 7;
+    int32 favorite_count = 8;
+    int32 user_added_count = 9;
+    DatabaseSize size = 10;
+}
+
+message DatabaseSize {
+    int64 total_bytes = 1;
+    int64 object_table_bytes = 2;
+    int64 index_bytes = 3;
+    int64 free_bytes = 4;
+}
+
+// Backup/restore
+message BackupRequest {
+    string backup_path = 1;
+    bool compress = 2;
+    bool include_metadata = 3;
+}
+
+message BackupResult {
+    string backup_path = 1;
+    int64 backup_size = 2;
+    google.protobuf.Timestamp backup_time = 3;
+    string checksum = 4;
+}
+
+message RestoreRequest {
+    string backup_path = 1;
+    bool verify_checksum = 2;
+    bool clear_existing = 3;
+}

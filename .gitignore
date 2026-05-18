@@ -1,0 +1,44 @@
+# Build directories
+build_*/
+CMakeFiles/
+
+# Generated protobuf files
+*.pb.cc
+*.pb.h
+
+# Databases
+*.db
+
+# Internal plans and tracking
+plans/
+task_progress.md
+
+# Loose test/scratch files at root
+test_mock_canopen*
+run_canopen_test.cpp
+test_add_object.html
+
+# Node.js dependencies
+web/proxy/node_modules/
+web/proxy/.env
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Compiled objects
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+
+# Test output
+Testing/

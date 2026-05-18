@@ -1,0 +1,1114 @@
+syntax = "proto3";
+
+package astro_mount;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+
+// Coordinate systems
+message Coordinates {
+    // Basic position
+    double ra = 1;          // Right ascension in hours (J2000)
+    double dec = 2;         // Declination in degrees (J2000)
+    
+    // Proper motion
+    double pm_ra = 3;       // Proper motion in RA (mas/yr)
+    double pm_dec = 4;      // Proper motion in Dec (mas/yr)
+    
+    // Parallax
+    double parallax = 5;    // Parallax in mas
+    
+    // Radial velocity
+    double radial_velocity = 6;  // Radial velocity in km/s
+    
+    // Epoch
+    double epoch = 7;       // Epoch of coordinates (e.g., 2000.0)
+    
+    // Catalog identifiers
+    string catalog_id = 8;  // Catalog identifier (e.g., "HIP", "TYC")
+    string object_id = 9;   // Object identifier in catalog
+    
+    // Magnitude and spectral type
+    double magnitude = 10;  // Visual magnitude
+    string spectral_type = 11;  // Spectral type
+    
+    // Additional astrometric parameters
+    double epoch_ra = 12;   // Epoch of RA proper motion
+    double epoch_dec = 13;  // Epoch of Dec proper motion
+    double position_angle = 14;  // Position angle in degrees
+    double separation = 15; // Separation in arcseconds (for binaries)
+    
+    // Atmospheric refraction correction
+    bool apply_refraction = 16;
+    double temperature = 17;  // Temperature in °C for refraction
+    double pressure = 18;     // Pressure in hPa for refraction
+    double humidity = 19;     // Humidity in % for refraction
+    
+    // Precession/nutation correction
+    bool apply_precession = 20;
+    bool apply_nutation = 21;
+    
+    // Aberration correction
+    bool apply_aberration = 22;
+    
+    // Light-time correction
+    bool apply_light_time = 23;
+    
+    // Gravitational deflection
+    bool apply_grav_deflection = 24;
+    
+    // Altitude/azimuth (computed)
+    double altitude = 25;    // Altitude in degrees
+    double azimuth = 26;     // Azimuth in degrees
+    
+    // Apparent coordinates (after all corrections)
+    double apparent_ra = 27;  // Apparent RA in hours
+    double apparent_dec = 28; // Apparent Dec in degrees
+    
+    // Topocentric coordinates
+    double topo_ra = 29;     // Topocentric RA in hours
+    double topo_dec = 30;    // Topocentric Dec in degrees
+}
+
+// Mount position
+message MountPosition {
+    double axis1 = 1;       // Primary axis position (degrees)
+    double axis2 = 2;       // Secondary axis position (degrees)
+    google.protobuf.Timestamp timestamp = 3;
+}
+
+// Measurement data
+message Measurement {
+    Coordinates observed = 1;
+    Coordinates expected = 2;
+    MountPosition mount_position = 3;
+    double temperature = 4;
+    double pressure = 5;
+    double humidity = 6;
+    google.protobuf.Timestamp timestamp = 7;
+}
+
+// TPOINT parameters
+message TPointParameters {
+    repeated double coefficients = 1;  // TPOINT model coefficients
+    double chi_squared = 2;
+    google.protobuf.Timestamp last_update = 3;
+}
+
+// Rotation matrix (quaternion representation for stability)
+message RotationMatrix {
+    double q0 = 1;
+    double q1 = 2;
+    double q2 = 3;
+    double q3 = 4;
+    google.protobuf.Timestamp valid_from = 5;
+}
+
+// Trajectory types
+enum TrajectoryType {
+    TRAPEZOIDAL = 0;
+    S_SHAPE = 1;
+    SINE = 2;
+    POLYNOMIAL = 3;
+}
+
+// Trajectory parameters
+message TrajectoryParams {
+    TrajectoryType type = 1;
+    double max_velocity = 2;          // deg/s
+    double max_acceleration = 3;      // deg/s²
+    double max_jerk = 4;              // deg/s³
+    double start_position = 5;        // deg
+    double target_position = 6;       // deg
+    double update_rate = 7;           // Hz
+}
+
+// Trajectory point
+message TrajectoryPoint {
+    double position = 1;              // deg
+    double velocity = 2;              // deg/s
+    double acceleration = 3;          // deg/s²
+    double jerk = 4;                  // deg/s³
+    double time = 5;                  // s
+}
+
+// Trajectory
+message Trajectory {
+    TrajectoryParams params = 1;
+    repeated TrajectoryPoint points = 2;
+    google.protobuf.Timestamp generated_at = 3;
+}
+
+// Tracked object extended parameters
+message TrackedObject {
+    Coordinates coordinates = 1;
+    
+    // Ephemeris parameters
+    double semi_major_axis = 2;      // a [AU]
+    double eccentricity = 3;         // e
+    double inclination = 4;          // i [deg]
+    double longitude_asc_node = 5;   // Ω [deg]
+    double argument_perihelion = 6;  // ω [deg]
+    double mean_anomaly = 7;         // M [deg]
+    double epoch_of_elements = 8;    // T [JD]
+    
+    // Physical parameters
+    double diameter = 9;             // Diameter [km]
+    double albedo = 10;              // Geometric albedo
+    double rotation_period = 11;     // Rotation period [hours]
+    double pole_ra = 12;             // Pole RA [deg]
+    double pole_dec = 13;            // Pole Dec [deg]
+    
+    // Phase parameters
+    double phase_angle = 14;         // Phase angle [deg]
+    double solar_distance = 15;      // Distance from Sun [AU]
+    double earth_distance = 16;      // Distance from Earth [AU]
+    double elongation = 17;          // Elongation from Sun [deg]
+    
+    // Magnitude variations
+    double absolute_magnitude = 18;  // H (absolute magnitude)
+    double slope_parameter = 19;     // G (slope parameter)
+    double phase_coefficient = 20;   // Phase coefficient
+    
+    // Observational parameters
+    double airmass = 21;             // Airmass
+    double extinction = 22;          // Atmospheric extinction [mag/airmass]
+    double seeing = 23;              // Seeing [arcsec]
+    double sky_brightness = 24;      // Sky brightness [mag/arcsec²]
+    
+    // Time derivatives
+    double ra_rate = 25;             // dRA/dt [arcsec/s]
+    double dec_rate = 26;            // dDec/dt [arcsec/s]
+    double altitude_rate = 27;       // dAlt/dt [deg/s]
+    double azimuth_rate = 28;        // dAz/dt [deg/s]
+    
+    // Tracking errors
+    double tracking_error_ra = 29;   // RA tracking error [arcsec]
+    double tracking_error_dec = 30;  // Dec tracking error [arcsec]
+    double guiding_error_ra = 31;    // RA guiding error [arcsec]
+    double guiding_error_dec = 32;   // Dec guiding error [arcsec]
+    
+    // Time information
+    google.protobuf.Timestamp computed_at = 33;
+    double julian_date = 34;         // JD of computation
+    double sidereal_time = 35;       // Local sidereal time [hours]
+}
+
+// Controller state
+message ControllerState {
+    enum MountStatus {
+        UNKNOWN = 0;
+        IDLE = 1;
+        SLEWING = 2;
+        TRACKING = 3;
+        PARKED = 4;
+        ERROR = 5;
+    }
+
+    MountStatus status = 1;
+    TrackedObject tracked_object = 2;
+    MountPosition current_position = 3;
+    RotationMatrix rotation_matrix = 4;
+    TPointParameters tpoint_params = 5;
+    bool encoders_enabled = 6;
+    bool guider_active = 7;
+    google.protobuf.Timestamp state_time = 8;
+    
+    // Additional tracking parameters
+    double tracking_rate_ra = 9;     // RA tracking rate [arcsec/s]
+    double tracking_rate_dec = 10;   // Dec tracking rate [arcsec/s]
+    double pier_side = 11;           // Pier side (1=East, -1=West)
+    bool meridian_flipped = 12;      // Meridian flipped
+    double time_to_meridian = 13;    // Time to meridian [hours]
+    double time_to_set = 14;         // Time to set [hours]
+    double time_to_rise = 15;        // Time to rise [hours]
+    
+    // Environmental conditions
+    double temperature = 16;         // Temperature [°C]
+    double pressure = 17;            // Pressure [hPa]
+    double humidity = 18;            // Humidity [%]
+    double wind_speed = 19;          // Wind speed [m/s]
+    double wind_direction = 20;      // Wind direction [deg]
+    
+    // Mount performance
+    double pointing_error = 21;      // Pointing error [arcsec]
+    double tracking_performance = 22; // Tracking performance [%]
+    double guiding_performance = 23;  // Guiding performance [%]
+    double mount_vibration = 24;     // Mount vibration [arcsec RMS]
+}
+
+// Pole position
+message PolePosition {
+    double latitude = 1;
+    double longitude = 2;
+    double altitude = 3;
+    double accuracy = 4;  // Accuracy in arcseconds
+    google.protobuf.Timestamp determined_at = 5;
+}
+
+// Horizontal coordinates (altitude/azimuth)
+message HorizontalCoordinates {
+    double altitude = 1;  // Altitude in degrees (0-90)
+    double azimuth = 2;   // Azimuth in degrees (0-360, North=0, East=90)
+    google.protobuf.Timestamp timestamp = 3;
+}
+
+// ============================================
+// Low-level axis control API for uncalibrated mounts
+// ============================================
+
+// Axis control mode
+enum AxisControlMode {
+    POSITION_CONTROL = 0;  // Move to absolute position
+    VELOCITY_CONTROL = 1;  // Move with constant velocity
+}
+
+// Axis control request for uncalibrated mount
+message AxisControlRequest {
+    int32 axis_id = 1;          // Axis identifier: 0=HA/RA/Azimuth, 1=Dec/Altitude
+    AxisControlMode mode = 2;   // Control mode
+    
+    // Position control parameters (used when mode = POSITION_CONTROL)
+    double target_position = 3; // Target position in degrees
+    double max_velocity = 4;    // Maximum velocity in deg/s (default: from config)
+    double acceleration = 5;    // Acceleration in deg/s² (default: from config)
+    
+    // Velocity control parameters (used when mode = VELOCITY_CONTROL)
+    double target_velocity = 6; // Target velocity in deg/s (positive/negative for direction)
+    
+    // Common parameters
+    bool relative = 7;          // If true, position/velocity is relative to current
+}
+
+// Axis stop request
+message AxisStopRequest {
+    int32 axis_id = 1;          // Axis identifier: 0=HA/RA/Azimuth, 1=Dec/Altitude
+    bool decelerate = 2;        // If true, decelerate smoothly; if false, stop immediately
+    double deceleration = 3;    // Deceleration rate in deg/s² (if decelerate=true)
+}
+
+// Emergency stop request
+message EmergencyStopRequest {
+    int32 axis_id = 1;          // Axis identifier: -1 for all axes, 0/1 for specific axis
+    bool reset_after = 2;       // If true, reset controller after emergency stop
+}
+
+// Axis status response
+message AxisStatus {
+    int32 axis_id = 1;
+    double current_position = 2;      // Current position in degrees
+    double current_velocity = 3;      // Current velocity in deg/s
+    double target_position = 4;       // Target position in degrees
+    double target_velocity = 5;       // Target velocity in deg/s
+    bool moving = 6;                  // Is axis moving?
+    bool target_reached = 7;          // Has target been reached?
+    bool error = 8;                   // Is there an error?
+    string error_message = 9;         // Error description if any
+    google.protobuf.Timestamp timestamp = 10;
+}
+
+// Service definition
+service MountControllerService {
+    // Basic mount control
+    rpc SlewToCoordinates(Coordinates) returns (google.protobuf.Empty);
+    rpc SlewToHorizontal(HorizontalCoordinates) returns (google.protobuf.Empty);
+    rpc TrackObject(Coordinates) returns (google.protobuf.Empty);
+    rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc Park(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc Unpark(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // State management
+    rpc GetState(google.protobuf.Empty) returns (ControllerState);
+    rpc WatchState(google.protobuf.Empty) returns (stream ControllerState);
+    rpc SaveState(StateSaveRequest) returns (StateSaveResponse);
+    rpc LoadState(StateLoadRequest) returns (google.protobuf.Empty);
+    rpc ClearErrors(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // Measurement and calibration
+    // Legacy measurement API (for backward compatibility)
+    rpc AddMeasurement(Measurement) returns (google.protobuf.Empty);
+    
+    // Bootstrap calibration API (for initial alignment)
+    rpc AddBootstrapMeasurement(BootstrapMeasurement) returns (google.protobuf.Empty);
+    rpc RunBootstrapCalibration(google.protobuf.Empty) returns (BootstrapCalibrationResult);
+    rpc GetBootstrapStatus(google.protobuf.Empty) returns (BootstrapStatus);
+    rpc ClearBootstrapMeasurements(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // TPOINT calibration API (for precise calibration after bootstrap)
+    rpc AddTPointMeasurement(Measurement) returns (google.protobuf.Empty);
+    rpc ClearTPointMeasurements(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc GetTPointParameters(google.protobuf.Empty) returns (TPointParameters);
+    rpc RunTPointCalibration(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // Rotation matrix
+    rpc GetRotationMatrix(google.protobuf.Empty) returns (RotationMatrix);
+    
+    // Pole position determination
+    rpc DeterminePolePosition(PoleDeterminationRequest) returns (PolePosition);
+    
+    // Encoder control
+    rpc EnableEncoders(EncoderConfig) returns (google.protobuf.Empty);
+    rpc DisableEncoders(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // Guider control
+    rpc ConnectGuider(GuiderConfig) returns (google.protobuf.Empty);
+    rpc DisconnectGuider(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc SendGuiderCorrection(GuiderCorrection) returns (google.protobuf.Empty);
+    
+    // Configuration
+    rpc GetConfiguration(google.protobuf.Empty) returns (Configuration);
+    rpc UpdateConfiguration(Configuration) returns (google.protobuf.Empty);
+    
+    // Trajectory generation and execution
+    rpc GenerateTrajectory(TrajectoryParams) returns (Trajectory);
+    rpc ExecuteTrajectory(Trajectory) returns (google.protobuf.Empty);
+    rpc StopTrajectory(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // Health check
+    rpc CheckHealth(HealthCheckRequest) returns (HealthCheckResponse);
+    
+    // Ephemeris-based tracking for moving objects
+    rpc UploadEphemeris(EphemerisData) returns (google.protobuf.Empty);
+    rpc StartEphemerisTracking(StartEphemerisTrackingRequest) returns (EphemerisTrackStatus);
+    rpc StartEphemerisTrackingWithData(EphemerisTrackRequest) returns (EphemerisTrackStatus);
+    rpc GetEphemerisTrackStatus(google.protobuf.Empty) returns (EphemerisTrackStatus);
+    rpc StopEphemerisTracking(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc GetEphemerisMetrics(google.protobuf.Empty) returns (EphemerisMetrics);
+    rpc ClearEphemerisCache(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // ============================================
+    // Low-level axis control API for uncalibrated mounts
+    // ============================================
+    
+    // Axis control for uncalibrated mount
+    rpc ControlAxis(AxisControlRequest) returns (google.protobuf.Empty);
+    
+    // Stop axis movement (normal stop)
+    rpc StopAxis(AxisStopRequest) returns (google.protobuf.Empty);
+    
+    // Emergency stop (immediate halt)
+    rpc EmergencyStop(EmergencyStopRequest) returns (google.protobuf.Empty);
+    
+    // Get axis status
+    rpc GetAxisStatus(google.protobuf.Empty) returns (AxisStatus);
+    
+    // ============================================
+    // FIELD ROTATION / DEROTATOR CONTROL
+    // ============================================
+    
+    // Configure derotator hardware
+    rpc ConfigureDerotator(DerotatorConfig) returns (google.protobuf.Empty);
+    
+    // Enable/disable field rotation compensation
+    rpc EnableFieldRotation(FieldRotationParams) returns (google.protobuf.Empty);
+    
+    // Control field rotation (position/rate control)
+    rpc ControlFieldRotation(FieldRotationControlRequest) returns (google.protobuf.Empty);
+    
+    // Get derotator status
+    rpc GetDerotatorStatus(google.protobuf.Empty) returns (DerotatorStatus);
+    
+    // Home derotator (find zero position)
+    rpc HomeDerotator(DerotatorHomingRequest) returns (google.protobuf.Empty);
+    
+    // Get field rotation parameters (computed rates)
+    rpc GetFieldRotationParams(google.protobuf.Empty) returns (FieldRotationParams);
+    
+    // ============================================
+    // HARDWARE ABSTRACTION LAYER (HAL) CONFIGURATION
+    // ============================================
+    
+    // Get current HAL configuration
+    rpc GetHALConfig(google.protobuf.Empty) returns (HALConfig);
+    
+    // Update HAL configuration
+    rpc SetHALConfig(HALConfigRequest) returns (google.protobuf.Empty);
+    
+    // Get HAL status and information
+    rpc GetHALStatus(google.protobuf.Empty) returns (HALStatus);
+    
+    // Reinitialize HAL with current or new configuration
+    rpc ReinitializeHAL(HALReinitRequest) returns (google.protobuf.Empty);
+}
+
+// State save/load requests
+message StateSaveRequest {
+    string file_path = 1;  // Empty for default location
+    bool include_measurements = 2;
+}
+
+message StateSaveResponse {
+    string file_path = 1;
+    int64 file_size = 2;
+}
+
+message StateLoadRequest {
+    string file_path = 1;  // Empty for default location
+}
+
+// Pole determination request
+message PoleDeterminationRequest {
+    int32 measurement_count = 1;  // Number of measurements to use
+    double duration_hours = 2;    // Duration of drift measurement
+}
+
+// Encoder configuration
+message EncoderConfig {
+    enum EncoderType {
+        ABSOLUTE = 0;
+        INCREMENTAL = 1;
+    }
+    
+    EncoderType type = 1;
+    double resolution = 2;  // Steps per revolution
+    bool use_feedback = 3;
+}
+
+// Guider configuration
+message GuiderConfig {
+    string connection_string = 1;  // e.g., "tcp://localhost:7624"
+    double max_correction = 2;     // Maximum correction in arcseconds
+    double aggression = 3;         // Correction aggression (0-1)
+}
+
+// Guider correction
+message GuiderCorrection {
+    double ra_correction = 1;   // RA correction in arcseconds
+    double dec_correction = 2;  // Dec correction in arcseconds
+    google.protobuf.Timestamp timestamp = 3;
+}
+
+// Axis physical parameters
+message AxisPhysicalParameters {
+    // Motor parameters
+    double motor_steps_per_rev = 1;      // Steps per revolution
+    double motor_microstepping = 2;      // Microstepping factor (e.g., 16, 32, 64)
+    double motor_step_angle = 3;         // Step angle [arcseconds]
+    
+    // Encoder parameters
+    double encoder_resolution = 4;       // Encoder resolution [counts/rev]
+    double encoder_counts_per_arcsec = 5; // Counts per arcsecond
+    double encoder_quantization_error = 6; // Quantization error [arcseconds]
+    
+    // Gear parameters
+    double gear_ratio = 7;               // Total gear ratio (motor:output)
+    double worm_ratio = 8;               // Worm gear ratio (if applicable)
+    int32 worm_teeth = 9;                // Number of worm teeth
+    int32 worm_wheel_teeth = 10;         // Number of worm wheel teeth
+    
+    // Cyclic errors (periodic errors)
+    double cyclic_error_amplitude = 11;  // Amplitude of cyclic error [arcseconds]
+    double cyclic_error_period = 12;     // Period of cyclic error [degrees]
+    repeated double cyclic_harmonics = 13; // Harmonic coefficients for cyclic error
+    
+    // Backlash parameters
+    double backlash = 14;                // Backlash [arcseconds]
+    double backlash_temp_coeff = 15;     // Backlash temperature coefficient [arcseconds/°C]
+    
+    // Stiffness and compliance
+    double axis_stiffness = 16;          // Axis stiffness [arcseconds/Nm]
+    double torsional_compliance = 17;    // Torsional compliance [rad/Nm]
+    
+    // Temperature coefficients
+    double expansion_coeff = 18;         // Thermal expansion coefficient [1/°C]
+    double temp_gear_error_coeff = 19;   // Gear error temperature coefficient [arcseconds/°C]
+    
+    // Calibration data
+    repeated double calibration_table = 20; // Calibration table [counts → arcseconds]
+    double calibration_temp = 21;        // Temperature during calibration [°C]
+}
+
+// Mount type enumeration
+enum MountType {
+    EQUATORIAL = 0;
+    ALT_AZ = 1;
+    UNKNOWN = 2;
+}
+
+
+// Configuration
+message Configuration {
+    // Location
+    double latitude = 1;
+    double longitude = 2;
+    double altitude = 3;
+    
+    // Mount parameters
+    double mount_height = 4;
+    double pier_west = 5;
+    double pier_east = 6;
+    
+    // Telescope parameters
+    double focal_length = 7;
+    double aperture = 8;
+    
+    // Environmental defaults
+    double default_temperature = 9;
+    double default_pressure = 10;
+    double default_humidity = 11;
+    
+    // Kalman filter parameters
+    double process_noise = 12;
+    double measurement_noise = 13;
+    
+    // Logging
+    string log_level = 14;
+    string log_directory = 15;
+    int32 log_rotation_days = 16;
+    
+    // Network
+    string grpc_address = 17;
+    int32 grpc_port = 18;
+    
+    // CanOpen
+    string canopen_interface = 19;
+    int32 canopen_node_id = 20;
+    
+    // Mount control parameters
+    double park_position_axis1 = 21;    // Park target for axis 1 [degrees]
+    double park_position_axis2 = 22;    // Park target for axis 2 [degrees]
+    double max_slew_rate = 23;
+    double max_tracking_rate = 24;
+    double slew_acceleration = 25;
+    double tracking_acceleration = 26;
+    
+    // Axis physical parameters
+    AxisPhysicalParameters ha_axis_params = 27;
+    AxisPhysicalParameters dec_axis_params = 28;
+    
+    // Encoder configuration
+    bool use_encoders = 29;
+    bool encoders_absolute = 30;
+    double encoder_resolution_config = 31;
+    
+    // TPOINT configuration
+    uint32 tpoint_enabled_terms = 32;
+    
+    // Guider configuration
+    bool enable_guider = 33;
+    double guider_max_correction = 34;
+    double guider_aggression = 35;
+    
+    // Atmospheric refraction correction
+    bool enable_refraction_correction = 36;  // Apply real-time refraction correction in tracking loop
+
+    // Mount type configuration
+    MountType mount_type = 37;  // Mount geometry type (equatorial/alt-az)
+    
+    // Position/rate tolerances for slew operations
+    double position_tolerance = 38;      // Slew position tolerance [degrees]
+    double rate_tolerance = 39;          // Slew rate tolerance [degrees/sec]
+    
+    // Meridian flip configuration
+    bool meridian_flip_enabled = 40;                 // Enable automatic meridian flip
+    double meridian_flip_delay_minutes = 41;         // Delay after meridian crossing [minutes]
+    double meridian_flip_hysteresis_degrees = 42;    // Hysteresis for flip trigger [degrees]
+    
+    // Soft limits configuration
+    bool soft_limits_enabled = 43;                   // Enable soft limit checking
+    double soft_limit_axis1_min = 44;                // Axis1 minimum [degrees]
+    double soft_limit_axis1_max = 45;                // Axis1 maximum [degrees]
+    double soft_limit_axis2_min = 46;                // Axis2 minimum [degrees]
+    double soft_limit_axis2_max = 47;                // Axis2 maximum [degrees]
+    double soft_limit_warning_degrees = 48;          // Warning zone width [degrees]
+    double soft_limit_deceleration_degrees = 49;     // Deceleration zone width [degrees]
+    double soft_limit_tracking_rate_factor = 50;     // Minimum rate factor at hard limit [0..1]
+
+}
+
+// Health check messages
+message HealthCheckRequest {
+    string service = 1;
+}
+
+message HealthCheckResponse {
+    enum ServingStatus {
+        UNKNOWN = 0;
+        SERVING = 1;
+        NOT_SERVING = 2;
+        SERVICE_UNKNOWN = 3;
+    }
+    
+    ServingStatus status = 1;
+    string service = 2;
+    SystemMetrics metrics = 3;
+}
+
+message SystemMetrics {
+    double cpu_usage_percent = 1;
+    double memory_usage_mb = 2;
+    uint64 active_connections = 3;
+    uint64 total_requests = 4;
+    uint64 error_count = 5;
+    double avg_response_time_ms = 6;
+    MountControllerMetrics mount_metrics = 7;
+    KalmanFilterMetrics kalman_metrics = 8;
+    TPointMetrics tpoint_metrics = 9;
+}
+
+message MountControllerMetrics {
+    double tracking_error_ra_avg = 1;
+    double tracking_error_dec_avg = 2;
+    double tracking_error_max = 3;
+    uint64 slew_count = 4;
+    uint64 track_count = 5;
+    uint64 calibration_count = 6;
+    bool encoders_active = 7;
+    bool guider_active = 8;
+}
+
+message KalmanFilterMetrics {
+    double process_noise = 1;
+    double measurement_noise = 2;
+    double innovation_norm = 3;
+    uint64 update_count = 4;
+    double avg_update_time_ms = 5;
+}
+
+message TPointMetrics {
+    uint32 measurement_count = 1;
+    double residual_max = 2;
+    double residual_rms = 3;
+    double chi_squared = 4;
+    bool calibrated = 5;
+}
+
+// Ephemeris-based tracking for moving objects (comets, satellites)
+message EphemerisPoint {
+    google.protobuf.Timestamp timestamp = 1;
+    double ra = 2;          // Right ascension in hours
+    double dec = 3;         // Declination in degrees
+    double ra_rate = 4;     // RA rate (hours/hour)
+    double dec_rate = 5;    // Dec rate (degrees/hour)
+    double ra_accel = 6;    // RA acceleration (hours/hour²)
+    double dec_accel = 7;   // Dec acceleration (degrees/hour²)
+    double distance = 8;    // Distance (AU for comets, km for satellites)
+    double magnitude = 9;   // Apparent magnitude
+}
+
+message EphemerisData {
+    string object_id = 1;           // Unique object identifier
+    string object_name = 2;         // Human-readable name
+    string object_type = 3;         // "comet", "satellite", "asteroid", etc.
+    repeated EphemerisPoint points = 4;  // Time-sorted ephemeris points
+    double interpolation_order = 5; // Interpolation order (1=linear, 2=quadratic, 3=cubic)
+    string reference_frame = 6;     // Reference frame (e.g., "J2000", "ICRF", "ITRF")
+    string source = 7;              // Source of ephemeris data
+    google.protobuf.Timestamp valid_from = 8;
+    google.protobuf.Timestamp valid_to = 9;
+}
+
+message EphemerisTrackRequest {
+    EphemerisData ephemeris = 1;    // Ephemeris data for tracking
+    double lead_time_seconds = 2;   // Time to start before first point (for pre-slewing)
+    bool enable_prediction = 3;     // Enable prediction beyond ephemeris range
+    double prediction_interval_hours = 4;  // Prediction interval if enabled
+    bool auto_start = 5;            // Automatically start tracking after slewing
+    string tracking_mode = 6;       // "continuous", "sidereal_rate", "custom_rate"
+    double custom_rate_ra = 7;      // Custom RA tracking rate (hours/hour)
+    double custom_rate_dec = 8;     // Custom Dec tracking rate (degrees/hour)
+}
+
+message StartEphemerisTrackingRequest {
+    string object_id = 1;           // Object identifier (for cached ephemeris)
+    google.protobuf.Timestamp start_time = 2;  // When to start tracking
+    Coordinates start_position = 3; // Optional: explicit start position
+    bool wait_at_start = 4;         // Wait at start position until start_time
+    double slew_margin_seconds = 5; // Margin for slewing before start time
+}
+
+message EphemerisTrackStatus {
+    enum TrackingState {
+        IDLE = 0;
+        SLEWING_TO_START = 1;
+        WAITING_AT_START = 2;
+        TRACKING = 3;
+        PREDICTING = 4;
+        ENDED = 5;
+        ERROR = 6;
+    }
+    
+    TrackingState state = 1;
+    string object_id = 2;
+    string object_name = 3;
+    google.protobuf.Timestamp current_time = 4;
+    google.protobuf.Timestamp track_start_time = 5;
+    google.protobuf.Timestamp track_end_time = 6;
+    Coordinates current_position = 7;
+    Coordinates target_position = 8;
+    double position_error_arcsec = 9;
+    double ra_rate = 10;
+    double dec_rate = 11;
+    double time_remaining_seconds = 12;
+    bool earth_rotation_corrected = 13;
+    string error_message = 14;
+    repeated string warnings = 15;
+    map<string, string> tracking_parameters = 16;
+}
+
+message EphemerisMetrics {
+    string object_id = 1;
+    string object_type = 2;
+    uint64 total_track_time_seconds = 3;
+    double avg_position_error_arcsec = 4;
+    double max_position_error_arcsec = 5;
+    double avg_tracking_rate_error = 6;
+    uint32 prediction_count = 7;
+    double prediction_accuracy = 8;
+    bool earth_rotation_applied = 9;
+}
+
+// ============================================
+// Bootstrap calibration messages
+// ============================================
+
+// Bootstrap measurement (simplified for initial alignment)
+message BootstrapMeasurement {
+    Coordinates observed = 1;           // Observed coordinates (approximate)
+    Coordinates expected = 2;           // Expected catalog coordinates
+    MountPosition mount_position = 3;   // Optional mount position (approximate)
+    google.protobuf.Timestamp timestamp = 4;
+    
+    // Quality metrics for bootstrap
+    double estimated_error_arcsec = 5;  // Estimated measurement error
+    bool use_for_initial_alignment = 6; // Should be used for initial alignment
+    string star_catalog_id = 7;         // Catalog ID for identification
+    double star_magnitude = 8;          // Star magnitude (for weighting)
+}
+
+// Bootstrap calibration result
+message BootstrapCalibrationResult {
+    bool success = 1;
+    string error_message = 2;
+    
+    // Results
+    double initial_rotation_angle_deg = 3;  // Initial rotation estimate
+    double alignment_error_arcsec = 4;      // Estimated alignment error
+    int32 measurement_count = 5;            // Number of measurements used
+    google.protobuf.Timestamp calibrated_at = 6;
+    
+    // Quality metrics
+    double residual_rms_arcsec = 7;         // RMS of residuals
+    double max_residual_arcsec = 8;         // Maximum residual
+    bool ready_for_tpoint = 9;              // Ready for TPOINT calibration
+}
+
+// Bootstrap calibration status
+message BootstrapStatus {
+    bool calibrated = 1;
+    google.protobuf.Timestamp last_calibration = 2;
+    int32 measurement_count = 3;
+    double current_alignment_error_arcsec = 4;
+    bool ready_for_tpoint = 5;
+    
+    // Detailed status
+    enum CalibrationState {
+        NOT_CALIBRATED = 0;
+        MEASUREMENTS_COLLECTING = 1;   // Collecting measurements
+        CALIBRATING = 2;               // Calibration in progress
+        CALIBRATED = 3;                // Successfully calibrated
+        NEEDS_MORE_MEASUREMENTS = 4;   // Need more stars
+        ERROR = 5;                     // Calibration error
+    }
+    
+    CalibrationState state = 6;
+    string state_message = 7;
+    double min_measurements_required = 8;   // Minimum measurements needed
+    double min_measurements_for_tpoint = 9; // Minimum for TPOINT
+}
+
+// ============================================
+// FIELD ROTATION / DEROTATOR CONTROL
+// ============================================
+
+// Derotator configuration
+message DerotatorConfig {
+    enum DerotatorType {
+        CANOPEN = 0;          // CanOpen-based derotator
+        STEPPER = 1;          // Stepper motor derotator  
+        SERVO = 2;            // Servo motor derotator
+        CUSTOM = 3;           // Custom interface
+    }
+    
+    DerotatorType type = 1;
+    string connection_string = 2;   // e.g., "can0:1" for CanOpen
+    double gear_ratio = 3;          // Gear ratio (motor:output)
+    double max_speed = 4;           // Max rotation speed [deg/s]
+    double max_acceleration = 5;    // Max acceleration [deg/s²]
+    double backlash = 6;            // Backlash [arcsec]
+    bool absolute_encoder = 7;      // Has absolute encoder
+    double encoder_resolution = 8;  // Encoder counts per revolution
+    double homing_offset = 9;       // Homing offset [deg]
+    repeated double calibration_table = 10; // Calibration table [deg]
+}
+
+// Field rotation control request
+message FieldRotationControlRequest {
+    enum RotationMode {
+        DISABLED = 0;          // No field rotation
+        ALT_AZ = 1;            // Alt-Az field rotation compensation
+        EQUATORIAL = 2;        // Equatorial mount (no rotation)
+        CUSTOM = 3;            // Custom rotation rate
+        FIXED_ANGLE = 4;       // Fixed rotation angle
+        TRACKING = 5;          // Track rotation for moving object
+    }
+    
+    RotationMode mode = 1;
+    double target_angle = 2;   // Target angle [deg] (for FIXED_ANGLE)
+    double rotation_rate = 3;  // Rotation rate [deg/s] (for CUSTOM)
+    bool relative = 4;         // Relative to current position
+    bool wait_for_completion = 5; // Wait until rotation complete
+}
+
+// Derotator status
+message DerotatorStatus {
+    bool enabled = 1;
+    bool moving = 2;
+    bool homed = 3;
+    double current_angle = 4;      // Current angle [deg]
+    double target_angle = 5;       // Target angle [deg]
+    double rotation_rate = 6;      // Current rotation rate [deg/s]
+    double field_rotation_rate = 7; // Calculated field rotation rate [deg/s]
+    DerotatorConfig derotator_config = 8;
+    string error_message = 9;
+    google.protobuf.Timestamp timestamp = 10;
+}
+
+// Field rotation compensation parameters
+message FieldRotationParams {
+    bool enabled = 1;
+    double latitude = 2;           // Observer latitude [deg]
+    double altitude = 3;           // Current altitude [deg]
+    double azimuth = 4;            // Current azimuth [deg]
+    double computed_rate = 5;      // Computed field rotation rate [deg/s]
+    double applied_correction = 6; // Applied correction [deg]
+    double temperature = 7;        // Temperature for thermal correction
+    double flexure_correction = 8; // Flexure correction term
+}
+
+// Derotator homing request
+message DerotatorHomingRequest {
+    enum HomingMethod {
+        AUTO = 0;           // Automatic homing
+        LIMIT_SWITCH = 1;   // Use limit switch
+        ENCODER_ZERO = 2;   // Use encoder zero position
+        MANUAL = 3;         // Manual homing
+    }
+    
+    HomingMethod method = 1;
+    double search_speed = 2;    // Speed for homing [deg/s]
+    double offset = 3;          // Homing offset [deg]
+    bool calibrate_after = 4;   // Run calibration after homing
+}
+
+// ============================================
+// HARDWARE ABSTRACTION LAYER (HAL) CONFIGURATION
+// ============================================
+
+// HAL type enumeration
+enum HALType {
+    HAL_SIMULATED = 0;   // Simulated hardware
+    HAL_CANOPEN = 1;     // CANopen/CiA 402
+    HAL_SERIAL = 2;      // Serial port (RS-232/485)
+    HAL_ETHERNET = 3;    // Ethernet (EtherCAT, Modbus TCP)
+    HAL_CUSTOM = 4;      // Custom implementation
+}
+
+// Motor type enumeration
+enum MotorType {
+    MOTOR_STEPPER = 0;   // Stepper motor
+    MOTOR_DC_BRUSH = 1;  // DC brushed motor
+    MOTOR_DC_BRUSHLESS = 2; // DC brushless motor
+    MOTOR_AC = 3;        // AC motor
+    MOTOR_SERVO = 4;     // Servo motor
+}
+
+// Control mode enumeration
+enum ControlMode {
+    CONTROL_POSITION = 0;    // Position control mode
+    CONTROL_VELOCITY = 1;    // Velocity control mode
+    CONTROL_TORQUE = 2;      // Torque control mode
+    CONTROL_HOMING = 3;      // Homing mode
+}
+
+// Encoder type enumeration
+enum EncoderType {
+    ENCODER_ABSOLUTE = 0;    // Absolute encoder
+    ENCODER_INCREMENTAL = 1; // Incremental encoder
+    ENCODER_MAGNETIC = 2;    // Magnetic encoder
+    ENCODER_OPTICAL = 3;     // Optical encoder
+    ENCODER_RESOLVER = 4;    // Resolver
+}
+
+// Encoder interface enumeration
+enum EncoderInterface {
+    ENCODER_CANOPEN = 0;     // CANopen interface
+    ENCODER_SSI = 1;         // SSI interface
+    ENCODER_SPI = 2;         // SPI interface
+    ENCODER_I2C = 3;         // I2C interface
+    ENCODER_ANALOG = 4;      // Analog interface
+}
+
+// Motor configuration
+message MotorConfig {
+    MotorType type = 1;
+    ControlMode default_mode = 2;
+    double max_velocity = 3;          // deg/s
+    double max_acceleration = 4;      // deg/s²
+    double max_torque = 5;            // %
+    double encoder_counts_per_degree = 6;
+    double gear_ratio = 7;
+    bool enable_current_limit = 8;
+    double current_limit = 9;         // A
+    bool enable_temperature_protection = 10;
+    double max_temperature = 11;      // °C
+}
+
+// Axis encoder configuration
+message AxisEncoderConfig {
+    EncoderType type = 1;
+    EncoderInterface interface = 2;
+    uint32 resolution_counts = 3;
+    double counts_per_degree = 4;
+    double update_rate_hz = 5;
+}
+
+// Axis configuration
+message AxisConfig {
+    int32 id = 1;
+    string name = 2;
+    MotorConfig motor_config = 3;
+    AxisEncoderConfig encoder_config = 4;
+    
+    // Safety limits
+    message SafetyLimits {
+        double min_position = 1;      // deg
+        double max_position = 2;      // deg
+        double max_velocity = 3;      // deg/s
+        double max_acceleration = 4;  // deg/s²
+        double max_current = 5;       // A
+        double max_temperature = 6;   // °C
+    }
+    
+    SafetyLimits safety_limits = 5;
+}
+
+// PID controller parameters
+message PIDParams {
+    double kp = 1;
+    double ki = 2;
+    double kd = 3;
+    double integral_limit = 4;
+    double output_limit = 5;
+    double anti_windup_gain = 6;
+    bool enable_anti_windup = 7;
+}
+
+// Safety monitoring configuration
+message SafetyConfig {
+    bool enable_limits = 1;
+    bool enable_emergency_stop = 2;
+    uint32 emergency_stop_timeout_ms = 3;
+    bool enable_temperature_monitoring = 4;
+    bool enable_current_monitoring = 5;
+    bool enable_voltage_monitoring = 6;
+    double min_voltage = 7;      // V
+    double max_voltage = 8;      // V
+    uint32 monitoring_rate = 9;  // Hz
+}
+
+// Simulated hardware configuration
+message SimulatedConfig {
+    bool enable_simulation = 1;
+    double simulation_update_rate = 2;  // Hz
+    double position_noise_stddev = 3;   // deg
+    double velocity_noise_stddev = 4;   // deg/s
+    bool simulate_errors = 5;
+    double error_probability = 6;       // 1% chance of error
+}
+
+// CANopen configuration
+message CanOpenConfig {
+    string library = 1;             // "mock", "canopensocket", "libedssharp", "canfestival"
+    string interface_name = 2;      // e.g., "can0"
+    uint32 bitrate = 3;             // bits per second
+    uint32 node_id = 4;             // CANopen node ID
+    bool use_sync = 5;
+    uint32 sync_period_ms = 6;
+    uint32 sdo_timeout_ms = 7;
+    uint32 pdo_update_rate = 8;     // Hz
+}
+
+// Serial configuration
+message SerialConfig {
+    string port = 1;                // e.g., "/dev/ttyUSB0"
+    uint32 baud_rate = 2;
+    string protocol = 3;            // "modbus", "custom", "ascii"
+    uint32 data_bits = 4;
+    uint32 stop_bits = 5;
+    string parity = 6;              // "none", "even", "odd"
+    uint32 timeout_ms = 7;
+}
+
+// Ethernet configuration
+message EthernetConfig {
+    string ip_address = 1;          // e.g., "192.168.1.100"
+    uint32 port = 2;
+    string protocol = 3;            // "modbus_tcp", "ethercat", "profinet"
+    uint32 timeout_ms = 4;
+    uint32 retry_count = 5;
+}
+
+// HAL configuration
+message HALConfig {
+    HALType type = 1;
+    string name = 2;
+    
+    // Transport-specific configurations (mutually exclusive based on type)
+    SimulatedConfig simulated = 3;
+    CanOpenConfig canopen = 4;
+    SerialConfig serial = 5;
+    EthernetConfig ethernet = 6;
+    
+    // Axis configurations
+    repeated AxisConfig axes = 7;
+    
+    // Controller parameters
+    PIDParams pid_params = 8;
+    SafetyConfig safety = 9;
+}
+
+// HAL status
+message HALStatus {
+    bool initialized = 1;
+    bool running = 2;
+    HALType type = 3;
+    string platform_name = 4;
+    string hardware_version = 5;
+    string status_message = 6;
+    repeated string supported_features = 7;
+    string error_message = 8;
+    google.protobuf.Timestamp timestamp = 9;
+}
+
+// HAL configuration request
+message HALConfigRequest {
+    HALConfig config = 1;
+}
+
+// HAL reinitialization request
+message HALReinitRequest {
+    bool force_restart = 1;
+}
+
+// HAL feature enumeration
+enum HALFeature {
+    HAL_FEATURE_MOTOR_CONTROL = 0;
+    HAL_FEATURE_ENCODER_READING = 1;
+    HAL_FEATURE_SAFETY_MONITORING = 2;
+    HAL_FEATURE_SENSOR_INTERFACE = 3;
+    HAL_FEATURE_SIMULATION = 4;
+    HAL_FEATURE_CANOPEN = 5;
+    HAL_FEATURE_MODBUS = 6;
+    HAL_FEATURE_ETHERCAT = 7;
+}

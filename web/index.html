@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Astronomical Mount Controller - Web Interface</title>
+    <link rel="stylesheet" href="static/css/style.css">
+    <link rel="stylesheet" href="static/css/object_database.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-satellite"></i>
+                <h1>Astronomical Mount Controller</h1>
+            </div>
+            <div class="connection-status">
+                <span id="connection-status" class="status-disconnected">
+                    <i class="fas fa-plug"></i> Disconnected
+                </span>
+                <button id="connect-btn" class="btn btn-primary">
+                    <i class="fas fa-link"></i> Connect
+                </button>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- Left Panel: Mount Control -->
+            <div class="left-panel">
+                <!-- Mount Status -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-satellite-dish"></i> Mount Status</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="status-grid">
+                            <div class="status-item">
+                                <span class="status-label">State:</span>
+                                <span id="mount-state" class="status-value">IDLE</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">RA Position:</span>
+                                <span id="ra-position" class="status-value">0.000°</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Dec Position:</span>
+                                <span id="dec-position" class="status-value">0.000°</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Tracking Error:</span>
+                                <span id="tracking-error" class="status-value">0.00"</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Temperature:</span>
+                                <span id="temperature" class="status-value">20.0°C</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Pier Side:</span>
+                                <span id="pier-side" class="status-value">EAST</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-bolt"></i> Quick Actions</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="action-buttons">
+                            <button id="stop-btn" class="btn btn-danger">
+                                <i class="fas fa-stop"></i> Stop
+                            </button>
+                            <button id="park-btn" class="btn btn-warning">
+                                <i class="fas fa-parking"></i> Park
+                            </button>
+                            <button id="unpark-btn" class="btn btn-secondary">
+                                <i class="fas fa-play"></i> Unpark
+                            </button>
+                            <button id="home-btn" class="btn btn-info">
+                                <i class="fas fa-home"></i> Home
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Object Database Browser -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-database"></i> Object Database</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label for="object-search">Search Objects:</label>
+                            <div class="input-with-button">
+                                <input type="text" id="object-search" placeholder="Search by name, catalog, type..." class="form-control">
+                                <button id="search-objects-btn" class="btn btn-small btn-primary">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <div class="object-filters">
+                            <div class="form-group">
+                                <label for="object-type-filter">Object Type:</label>
+                                <select id="object-type-filter" class="form-control">
+                                    <option value="0">All Types</option>
+                                    <option value="1">Star</option>
+                                    <option value="2">Planet</option>
+                                    <option value="3">Galaxy</option>
+                                    <option value="4">Nebula</option>
+                                    <option value="5">Star Cluster</option>
+                                    <option value="6">Double Star</option>
+                                    <option value="7">Variable Star</option>
+                                    <option value="8">Asteroid</option>
+                                    <option value="9">Comet</option>
+                                    <option value="10">Satellite</option>
+                                    <option value="11">Exoplanet</option>
+                                    <option value="12">Quasar</option>
+                                    <option value="13">Pulsar</option>
+                                    <option value="14">Black Hole</option>
+                                    <option value="15">Other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="magnitude-filter">Max Magnitude:</label>
+                                <input type="number" id="magnitude-filter" min="0" max="20" step="0.1" value="10.0" class="form-control">
+                            </div>
+                        </div>
+                        
+                        <div id="object-list-container" class="object-list-container">
+                            <div class="object-list-header">
+                                <span class="object-list-col">Name</span>
+                                <span class="object-list-col">Type</span>
+                                <span class="object-list-col">Mag</span>
+                                <span class="object-list-col">RA/Dec</span>
+                            </div>
+                            <div id="object-list" class="object-list">
+                                <div class="object-list-empty">
+                                    <i class="fas fa-search"></i>
+                                    <p>Search for astronomical objects</p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="pagination-controls">
+                            <button id="prev-page-btn" class="btn btn-small btn-secondary" disabled>
+                                <i class="fas fa-chevron-left"></i> Previous
+                            </button>
+                            <span id="page-info" class="page-info">Page 1 of 1</span>
+                            <button id="next-page-btn" class="btn btn-small btn-secondary" disabled>
+                                Next <i class="fas fa-chevron-right"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="selected-object-info">
+                            <h4><i class="fas fa-crosshairs"></i> Selected Object</h4>
+                            <div id="selected-object-details" class="selected-object-details">
+                                <p class="no-object-selected">No object selected</p>
+                            </div>
+                            <div class="selected-object-actions">
+                                <button id="use-object-coords-btn" class="btn btn-success" disabled>
+                                    <i class="fas fa-rocket"></i> Slew to Object
+                                </button>
+                                <button id="track-object-btn" class="btn btn-primary" disabled>
+                                    <i class="fas fa-satellite"></i> Track Object
+                                </button>
+                                <button id="add-to-favorites-btn" class="btn btn-info" disabled>
+                                    <i class="fas fa-star"></i> Favorite
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coordinate Slewing -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-crosshairs"></i> Slewing Control</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-group">
+                            <label for="target-ra">Right Ascension (hours):</label>
+                            <div class="input-with-button">
+                                <input type="number" id="target-ra" min="0" max="24" step="0.001" value="0.000" class="form-control">
+                                <button id="current-ra-btn" class="btn btn-small btn-secondary" title="Use current RA">
+                                    <i class="fas fa-sync"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="target-dec">Declination (degrees):</label>
+                            <div class="input-with-button">
+                                <input type="number" id="target-dec" min="-90" max="90" step="0.001" value="0.000" class="form-control">
+                                <button id="current-dec-btn" class="btn btn-small btn-secondary" title="Use current Dec">
+                                    <i class="fas fa-sync"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="object-name">Object Name (optional):</label>
+                            <input type="text" id="object-name" placeholder="e.g., Vega, M31" class="form-control">
+                        </div>
+                        <button id="slew-btn" class="btn btn-primary btn-block">
+                            <i class="fas fa-rocket"></i> Slew to Coordinates
+                        </button>
+                        <button id="track-btn" class="btn btn-success btn-block">
+                            <i class="fas fa-satellite"></i> Start Tracking
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Center Panel: Sky Map and Advanced Controls -->
+            <div class="center-panel">
+                <!-- Sky Map -->
+                <div class="card sky-map-container">
+                    <div class="card-header">
+                        <h2><i class="fas fa-star"></i> Sky Map</h2>
+                        <div class="map-controls">
+                            <button id="refresh-map" class="btn btn-small btn-secondary">
+                                <i class="fas fa-redo"></i> Refresh
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="sky-map" class="sky-map">
+                            <canvas id="sky-canvas" width="600" height="400"></canvas>
+                            <div class="map-overlay">
+                                <div class="map-info">
+                                    <div>FOV: 60° × 40°</div>
+                                    <div>Center: RA 12h, Dec 0°</div>
+                                    <div>Mount Position: <span id="map-mount-position">(0°, 0°)</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TPOINT Calibration -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-ruler-combined"></i> TPOINT Calibration</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="calibration-status">
+                            <div class="status-item">
+                                <span class="status-label">Model Status:</span>
+                                <span id="tpoint-status" class="status-value">Not Calibrated</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Chi-squared:</span>
+                                <span id="chi-squared" class="status-value">0.000</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Measurements:</span>
+                                <span id="measurement-count" class="status-value">0</span>
+                            </div>
+                        </div>
+                        <div class="calibration-controls">
+                            <button id="add-measurement-btn" class="btn btn-info">
+                                <i class="fas fa-plus-circle"></i> Add Measurement
+                            </button>
+                            <button id="run-calibration-btn" class="btn btn-warning">
+                                <i class="fas fa-calculator"></i> Run Calibration
+                            </button>
+                            <button id="get-tpoint-btn" class="btn btn-secondary">
+                                <i class="fas fa-download"></i> Get Parameters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Guider Control -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-bullseye"></i> Autoguider</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="guider-status">
+                            <div class="status-item">
+                                <span class="status-label">Guider Status:</span>
+                                <span id="guider-status" class="status-value">Disconnected</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Correction RA:</span>
+                                <span id="guider-correction-ra" class="status-value">0.00"</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Correction Dec:</span>
+                                <span id="guider-correction-dec" class="status-value">0.00"</span>
+                            </div>
+                        </div>
+                        <div class="guider-controls">
+                            <button id="connect-guider-btn" class="btn btn-success">
+                                <i class="fas fa-link"></i> Connect Guider
+                            </button>
+                            <button id="disconnect-guider-btn" class="btn btn-danger">
+                                <i class="fas fa-unlink"></i> Disconnect
+                            </button>
+                            <button id="send-guider-correction-btn" class="btn btn-info">
+                                <i class="fas fa-adjust"></i> Send Correction
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Configuration and Logs -->
+            <div class="right-panel">
+                <!-- Configuration -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-cog"></i> Configuration</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="config-section">
+                            <h3><i class="fas fa-location-dot"></i> Location</h3>
+                            <div class="form-group">
+                                <label for="config-latitude">Latitude:</label>
+                                <input type="number" id="config-latitude" step="0.000001" class="form-control" value="52.2297">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-longitude">Longitude:</label>
+                                <input type="number" id="config-longitude" step="0.000001" class="form-control" value="21.0122">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-altitude">Altitude (m):</label>
+                                <input type="number" id="config-altitude" step="0.1" class="form-control" value="100.0">
+                            </div>
+                        </div>
+                        <div class="config-section">
+                            <h3><i class="fas fa-sliders-h"></i> Mount Parameters</h3>
+                            <div class="form-group">
+                                <label for="config-max-slew-rate">Max Slew Rate (°/s):</label>
+                                <input type="number" id="config-max-slew-rate" step="0.1" class="form-control" value="5.0">
+                            </div>
+                            <div class="form-group">
+                                <label for="config-max-tracking-rate">Max Tracking Rate (°/s):</label>
+                                <input type="number" id="config-max-tracking-rate" step="0.000001" class="form-control" value="0.004178">
+                            </div>
+                        </div>
+                        <button id="load-config-btn" class="btn btn-secondary">
+                            <i class="fas fa-download"></i> Load Configuration
+                        </button>
+                        <button id="save-config-btn" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Configuration
+                        </button>
+                    </div>
+                </div>
+
+                <!-- System Logs -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-clipboard-list"></i> System Logs</h2>
+                        <div class="log-controls">
+                            <button id="clear-logs-btn" class="btn btn-small btn-danger">
+                                <i class="fas fa-trash"></i> Clear
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="log-container" class="log-container">
+                            <div class="log-entry log-info">
+                                <span class="log-time">00:00:00</span>
+                                <span class="log-message">Web interface initialized</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Health -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2><i class="fas fa-heart-pulse"></i> System Health</h2>
+                    </div>
+                    <div class="card-body">
+                        <div class="health-status">
+                            <div class="health-item">
+                                <span class="health-label">CPU Usage:</span>
+                                <div class="health-bar">
+                                    <div id="cpu-usage-bar" class="health-bar-fill" style="width: 15%;"></div>
+                                </div>
+                                <span id="cpu-usage-text" class="health-value">15%</span>
+                            </div>
+                            <div class="health-item">
+                                <span class="health-label">Memory Usage:</span>
+                                <div class="health-bar">
+                                    <div id="memory-usage-bar" class="health-bar-fill" style="width: 45%;"></div>
+                                </div>
+                                <span id="memory-usage-text" class="health-value">45%</span>
+                            </div>
+                            <div class="health-item">
+                                <span class="health-label">Uptime:</span>
+                                <span id="uptime" class="health-value">00:00:00</span>
+                            </div>
+                        </div>
+                        <button id="health-check-btn" class="btn btn-info btn-block">
+                            <i class="fas fa-stethoscope"></i> Check Health
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-info">
+                <span>Astronomical Mount Controller v1.0.0</span>
+                <span>|</span>
+                <span>gRPC Server: <span id="server-address">localhost:50051</span></span>
+                <span>|</span>
+                <span>Last Update: <span id="last-update">Never</span></span>
+            </div>
+            <div class="footer-controls">
+                <button id="auto-refresh-toggle" class="btn btn-small btn-success">
+                    <i class="fas fa-sync"></i> Auto-refresh: ON
+                </button>
+                <button id="fullscreen-btn" class="btn btn-small btn-secondary">
+                    <i class="fas fa-expand"></i> Fullscreen
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modals -->
+    <div id="connection-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Connect to Mount Controller</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="server-host">Server Host:</label>
+                    <input type="text" id="server-host" class="form-control" value="localhost">
+                </div>
+                <div class="form-group">
+                    <label for="server-port">Server Port:</label>
+                    <input type="number" id="server-port" class="form-control" value="50051">
+                </div>
+                <div class="form-group">
+                    <label for="use-ssl">
+                        <input type="checkbox" id="use-ssl"> Use SSL/TLS
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-connect-btn" class="btn btn-primary">Connect</button>
+                <button class="btn btn-secondary modal-close">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.2.0/dist/protobuf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/grpc-web@1.4.0/dist/grpc-web-client.umd.js"></script>
+    <script src="static/js/api-client.js"></script>
+    <script src="static/js/sky-map.js"></script>
+    <script src="static/js/object_database.js"></script>
+    <script src="static/js/app.js"></script>
+</body>
+</html>

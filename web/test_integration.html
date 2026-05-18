@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Object Database Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 1200px; margin: 0 auto; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; border-radius: 5px; }
+        .test-success { background: #d4edda; border-color: #c3e6cb; color: #155724; }
+        .test-failure { background: #f8d7da; border-color: #f5c6cb; color: #721c24; }
+        .test-warning { background: #fff3cd; border-color: #ffeaa7; color: #856404; }
+        button { padding: 8px 16px; margin: 5px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        pre { background: #f8f9fa; padding: 10px; border-radius: 4px; overflow: auto; }
+        .test-result { margin-top: 10px; }
+        h1, h2 { color: #333; }
+        .health-status { display: flex; gap: 20px; margin: 10px 0; }
+        .status-indicator { width: 20px; height: 20px; border-radius: 50%; }
+        .status-online { background: #28a745; }
+        .status-offline { background: #dc3545; }
+        .status-unknown { background: #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>Object Database Integration Test</h1>
+    
+    <div class="test-section">
+        <h2>1. Database Service Health Check</h2>
+        <div class="health-status">
+            <div>
+                <span class="status-indicator status-unknown" id="db-status"></span>
+                <span>Database Service</span>
+            </div>
+            <div>
+                <span class="status-indicator status-unknown" id="proxy-status"></span>
+                <span>Proxy Server</span>
+            </div>
+            <div>
+                <span class="status-indicator status-unknown" id="mount-status"></span>
+                <span>Mount Controller</span>
+            </div>
+        </div>
+        <button onclick="testHealth()">Test All Services</button>
+        <div class="test-result" id="health-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>2. Object Database API Test</h2>
+        <button onclick="testDatabaseStats()">Test Database Statistics</button>
+        <button onclick="testObjectSearch()">Test Object Search</button>
+        <button onclick="testCreateObject()">Test Create Object</button>
+        <div class="test-result" id="database-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>3. Web Interface Integration</h2>
+        <button onclick="testWebUI()">Test Web Interface Components</button>
+        <div class="test-result" id="webui-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>4. Object Selection & Slewing</h2>
+        <button onclick="testObjectSelection()">Test Object Selection Flow</button>
+        <div class="test-result" id="selection-result"></div>
+    </div>
+    
+    <div class="test-section">
+        <h2>5. Complete Integration Test</h2>
+        <button onclick="runAllTests()">Run Complete Integration Test</button>
+        <div class="test-result" id="complete-result"></div>
+    </div>
+    
+    <script>
+        async function testHealth() {
+            const resultDiv = document.getElementById('health-result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                
+                // Update status indicators
+                const dbStatus = document.getElementById('db-status');
+                const proxyStatus = document.getElementById('proxy-status');
+                const mountStatus = document.getElementById('mount-status');
+                
+                if (data.services?.object_database?.status === 'connected') {
+                    dbStatus.className = 'status-indicator status-online';
+                } else {
+                    dbStatus.className = 'status-indicator status-offline';
+                }
+                
+                if (data.status === 'healthy') {
+                    proxyStatus.className = 'status-indicator status-online';
+                } else {
+                    proxyStatus.className = 'status-indicator status-offline';
+                }
+                
+                if (data.services?.mount_controller?.status === 'connected') {
+                    mountStatus.className = 'status-indicator status-online';
+                } else {
+                    mountStatus.className = 'status-indicator status-offline';
+                }
+                
+                resultDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                resultDiv.className = 'test-result test-success';
+                
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+                resultDiv.className = 'test-result test-failure';
+            }
+        }
+        
+        async function testDatabaseStats() {
+            const resultDiv = document.getElementById('database-result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/db/stats');
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h4>Database Statistics:</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                resultDiv.className = 'test-result test-success';
+                
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+                resultDiv.className = 'test-result test-failure';
+            }
+        }
+        
+        async function testObjectSearch() {
+            const resultDiv = document.getElementById('database-result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const response = await fetch('/api/db/objects?page=1&pageSize=5');
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h4>Object Search Results (${data.objects?.length || 0} objects):</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                resultDiv.className = 'test-result test-success';
+                
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+                resultDiv.className = 'test-result test-failure';
+            }
+        }
+        
+        async function testCreateObject() {
+            const resultDiv = document.getElementById('database-result');
+            resultDiv.innerHTML = 'Testing...';
+            
+            try {
+                const testObject = {
+                    name: "Test Object - Integration Test",
+                    catalog_name: "TEST001",
+                    object_type: 15, // Other
+                    ra_hours: 12.345,
+                    dec_degrees: 45.678,
+                    v_magnitude: 8.5,
+                    constellation: "Test",
+                    notes: "Created during integration testing"
+                };
+                
+                const response = await fetch('/api/db/objects', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(testObject)
+                });
+                
+                const data = await response.json();
+                
+                resultDiv.innerHTML = `
+                    <h4>Object Created:</h4>
+                    <pre>${JSON.stringify(data, null, 2)}</pre>
+                `;
+                resultDiv.className = 'test-result test-success';
+                
+            } catch (error) {
+                resultDiv.innerHTML = `Error: ${error.message}`;
+                resultDiv.className = 'test-result test-failure';
+            }
+        }
+        
+        function testWebUI() {
+            const resultDiv = document.getElementById('webui-result');
+            resultDiv.innerHTML = 'Testing Web UI components...';
+            
+            const tests = [];
+            
+            // Test if required DOM elements exist
+            const requiredElements = [
+                'object-search',
+                'object-type-filter',
+                'magnitude-filter',
+                'search-objects-btn',
+                'object-list',
+                'selected-object-details',
+                'use-object-coords-btn',
+                'track-object-btn',
+                'add-to-favorites-btn'
+            ];
+            
+            requiredElements.forEach(id => {
+                const element = document.getElementById(id);
+                if (element) {
+                    tests.push(`✓ Element #${id} found`);
+                } else {
+                    tests.push(`✗ Element #${id} NOT found`);
+                }
+            });
+            
+            // Test if CSS files are loaded
+            const styleSheets = Array.from(document.styleSheets);
+            const hasObjectDBCSS = styleSheets.some(sheet => 
+                sheet.href && sheet.href.includes('object_database.css'));
+            
+            if (hasObjectDBCSS) {
+                tests.push('✓ Object database CSS loaded');
+            } else {
+                tests.push('✗ Object database CSS NOT loaded');
+            }
+            
+            // Test if JavaScript modules are loaded
+            if (window.ObjectDatabaseManager) {
+                tests.push('✓ ObjectDatabaseManager class available');
+            } else {
+                tests.push('✗ ObjectDatabaseManager class NOT available');
+            }
+            
+            if (window.mountControllerAPI) {
+                tests.push('✓ mountControllerAPI available');
+            } else {
+                tests.push('✗ mountControllerAPI NOT available');
+            }
+            
+            resultDiv.innerHTML = `
+                <h4>Web UI Test Results:</h4>
+                <pre>${tests.join('\n')}</pre>
+            `;
+            
+            const hasFailures = tests.some(test => test.includes('✗'));
+            resultDiv.className = hasFailures ? 'test-result test-warning' : 'test-result test-success';
+        }
+        
+        function testObjectSelection() {
+            const resultDiv = document.getElementById('selection-result');
+            resultDiv.innerHTML = 'Testing object selection flow...';
+            
+            const tests = [];
+            
+            // Test the ObjectDatabaseManager integration
+            if (window.ObjectDatabaseManager) {
+                tests.push('✓ ObjectDatabaseManager class available');
+                
+                // Check if the main app will initialize it
+                if (window.MountControllerApp) {
+                    tests.push('✓ MountControllerApp class available');
+                    
+                    // Test constructor integration
+                    const mockApp = { log: () => {} };
+                    try {
+                        const dbManager = new ObjectDatabaseManager(mockApp);
+                        tests.push('✓ ObjectDatabaseManager can be instantiated');
+                        
+                        // Test methods
+                        if (typeof dbManager.searchObjects === 'function') {
+                            tests.push('✓ searchObjects method available');
+                        } else {
+                            tests.push('✗ searchObjects method NOT available');
+                        }
+                        
+                        if (typeof dbManager.selectObject === 'function') {
+                            tests.push('✓ selectObject method available');
+                        } else {
+                            tests.push('✗ selectObject method NOT available');
+                        }
+                        
+                        if (typeof dbManager.useObjectCoordinates === 'function') {
+                            tests.push('✓ useObjectCoordinates method available');
+                        } else {
+                            tests.push('✗ useObjectCoordinates method NOT available');
+                        }
+                        
+                    } catch (error) {
+                        tests.push(`✗ ObjectDatabaseManager instantiation failed: ${error.message}`);
+                    }
+                } else {
+                    tests.push('✗ MountControllerApp class NOT available');
+                }
+            } else {
+                tests.push('✗ ObjectDatabaseManager class NOT available');
+            }
+            
+            resultDiv.innerHTML = `
+                <h4>Object Selection Test Results:</h4>
+                <pre>${tests.join('\n')}</pre>
+            `;
+            
+            const hasFailures = tests.some(test => test.includes('✗'));
+            resultDiv.className = hasFailures ? 'test-result test-warning' : 'test-result test-success';
+        }
+        
+        async function runAllTests() {
+            const resultDiv = document.getElementById('complete-result');
+            resultDiv.innerHTML = 'Running complete integration test...<br>';
+            
+            const results = [];
+            
+            // Test 1: Health check
+            results.push('=== Test 1: Service Health ===');
+            try {
+                const healthResponse = await fetch('/api/health');
+                const healthData = await healthResponse.json();
+                results.push(`Health check: ${healthData.status}`);
+                results.push(`Database service: ${healthData.services?.object_database?.status || 'unknown'}`);
+            } catch (error) {
+                results.push(`Health check failed: ${error.message}`);
+            }
+            
+            // Test 2: Database API
+            results.push('\n=== Test 2: Database API ===');
+            try {
+                const statsResponse = await fetch('/api/db/stats');
+                const statsData = await statsResponse.json();
+                results.push(`Database stats available: ${Object.keys(statsData).length} properties`);
+            } catch (error) {
+                results.push(`Database stats failed: ${error.message}`);
+            }
+            
+            // Test 3: Object listing
+            results.push('\n=== Test 3: Object Listing ===');
+            try {
+                const objectsResponse = await fetch('/api/db/objects?page=1&pageSize=3');
+                const objectsData = await objectsResponse.json();
+                results.push(`Object listing: ${objectsData.objects?.length || 0} objects returned`);
+            } catch (error) {
+                results.push(`Object listing failed: ${error.message}`);
+            }
+            
+            // Test 4: Web UI components
+            results.push('\n=== Test 4: Web UI Components ===');
+            const uiElements = ['object-search', 'object-list', 'selected-object-details'];
+            uiElements.forEach(id => {
+                const element = document.getElementById(id);
+                results.push(`${id}: ${element ? 'FOUND' : 'MISSING'}`);
+            });
+            
+            // Test 5: JavaScript integration
+            results.push('\n=== Test 5: JavaScript Integration ===');
+            results.push(`ObjectDatabaseManager: ${window.ObjectDatabaseManager ? 'AVAILABLE' : 'MISSING'}`);
+            results.push(`MountControllerApp: ${window.MountControllerApp ? 'AVAILABLE' : 'MISSING'}`);
+            
+            // Summary
+            results.push('\n=== Test Summary ===');
+            const totalTests = results.filter(r => r.includes(':')).length;
+            const passedTests = results.filter(r => r.includes('AVAILABLE') || r.includes('FOUND') || 
+                (r.includes(':') && !r.includes('failed') && !r.includes('MISSING'))).length;
+            results.push(`Passed: ${passedTests}/${totalTests} tests`);
+            
+            resultDiv.innerHTML = `<pre>${results.join('\n')}</pre>`;
+            
+            if (passedTests === totalTests) {
+                resultDiv.className = 'test-result test-success';
+            } else if (passedTests > totalTests * 0.7) {
+                resultDiv.className = 'test-result test-warning';
+            } else {
+                resultDiv.className = 'test-result test-failure';
+            }
+        }
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('Integration test page loaded');
+        });
+    </script>
+</body>
+</html>

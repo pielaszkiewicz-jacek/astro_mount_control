@@ -1,0 +1,44 @@
+[Unit]
+Description=Astronomical Mount Controller
+After=network.target
+Wants=network.target
+Requires=canopen.service
+
+[Service]
+Type=simple
+User=astro
+Group=astro
+WorkingDirectory=/opt/astro-mount
+ExecStart=/usr/local/bin/astro-mount-controller /etc/astro-mount-controller/default.json
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+StartLimitInterval=5min
+StartLimitBurst=3
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/astro-mount /opt/astro-mount/data
+ReadOnlyPaths=/etc/astro-mount-controller
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_CAN
+RestrictNamespaces=true
+RestrictRealtime=true
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+MemoryDenyWriteExecute=true
+LockPersonality=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=astro-mount-controller
+
+[Install]
+WantedBy=multi-user.target

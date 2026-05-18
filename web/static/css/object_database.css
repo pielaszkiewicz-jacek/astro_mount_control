@@ -1,0 +1,268 @@
+/* Object Database Browser Styles */
+
+/* Object List Container */
+.object-list-container {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    border: 1px solid var(--card-border);
+    max-height: 300px;
+    overflow-y: auto;
+    margin: 10px 0;
+}
+
+.object-list-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 0.5fr 1.5fr;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.3);
+    border-bottom: 1px solid var(--card-border);
+    font-weight: bold;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.object-list-col {
+    padding: 0 5px;
+}
+
+.object-list {
+    min-height: 100px;
+}
+
+.object-list-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+    text-align: center;
+}
+
+.object-list-empty i {
+    font-size: 2rem;
+    margin-bottom: 10px;
+    opacity: 0.5;
+}
+
+.object-item {
+    display: grid;
+    grid-template-columns: 2fr 1fr 0.5fr 1.5fr;
+    padding: 10px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.object-item:hover {
+    background-color: rgba(52, 152, 219, 0.1);
+}
+
+.object-item.selected {
+    background-color: rgba(52, 152, 219, 0.2);
+    border-left: 3px solid var(--primary-color);
+}
+
+.object-name {
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.object-type {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.object-magnitude {
+    text-align: center;
+    font-family: var(--font-heading);
+}
+
+.object-coordinates {
+    font-family: var(--font-heading);
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* Object Filters */
+.object-filters {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin: 10px 0;
+}
+
+/* Pagination Controls */
+.pagination-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin: 15px 0;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 5px;
+}
+
+.page-info {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    min-width: 100px;
+    text-align: center;
+}
+
+/* Selected Object Info */
+.selected-object-info {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    padding: 15px;
+    margin-top: 15px;
+    border: 1px solid var(--card-border);
+}
+
+.selected-object-info h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 15px;
+    color: var(--primary-color);
+}
+
+.selected-object-details {
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 3px;
+    margin-bottom: 15px;
+}
+
+.no-object-selected {
+    color: var(--text-muted);
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+}
+
+.object-detail {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.object-detail:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.detail-label {
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.detail-value {
+    text-align: right;
+    font-family: var(--font-heading);
+}
+
+.selected-object-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+}
+
+/* Object Type Colors */
+.object-type-star { color: #ffdd59; }
+.object-type-planet { color: #78e08f; }
+.object-type-galaxy { color: #9b59b6; }
+.object-type-nebula { color: #3498db; }
+.object-type-cluster { color: #f39c12; }
+.object-type-double { color: #e74c3c; }
+.object-type-variable { color: #e55039; }
+.object-type-asteroid { color: #cd6133; }
+.object-type-comet { color: #38ada9; }
+.object-type-satellite { color: #82ccdd; }
+.object-type-exoplanet { color: #b8e994; }
+.object-type-quasar { color: #ff6b6b; }
+.object-type-pulsar { color: #e66767; }
+.object-type-black-hole { color: #2d3436; }
+.object-type-other { color: #95a5a6; }
+
+/* Magnitude Colors */
+.magnitude-bright { color: #ffdd59; font-weight: bold; }
+.magnitude-medium { color: #fad390; }
+.magnitude-faint { color: #ccae62; }
+
+/* Loading States */
+.object-list-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 40px;
+}
+
+.loading-spinner {
+    width: 30px;
+    height: 30px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--primary-color);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .object-filters {
+        grid-template-columns: 1fr;
+    }
+    
+    .object-list-header {
+        grid-template-columns: 2fr 1fr 0.5fr 1fr;
+        font-size: 0.8rem;
+    }
+    
+    .object-item {
+        grid-template-columns: 2fr 1fr 0.5fr 1fr;
+        padding: 8px 10px;
+        font-size: 0.9rem;
+    }
+    
+    .selected-object-actions {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 480px) {
+    .object-list-header {
+        grid-template-columns: 2fr 1fr 0.5fr;
+    }
+    
+    .object-item {
+        grid-template-columns: 2fr 1fr 0.5fr;
+    }
+    
+    .object-coordinates {
+        display: none;
+    }
+    
+    .selected-object-info h4 {
+        font-size: 1rem;
+    }
+    
+    .object-detail {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .detail-value {
+        text-align: center;
+        margin-top: 2px;
+    }
+}
