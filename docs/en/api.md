@@ -831,7 +831,7 @@ message AxisStatus {
 
 ### Derotator / Field Rotation Control
 
-Control the field derotator hardware and field rotation compensation for alt-az mounts.
+Control the field derotator hardware and field rotation compensation for alt-az and CASUAL mounts.
 
 #### ConfigureDerotator
 

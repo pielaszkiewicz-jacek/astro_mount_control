@@ -438,7 +438,7 @@ flowchart TB
         G9["G9: Refraction<br/>correction"]
     end
 
-    subgraph ALTAZ["🔴 ALT-AZ Guard"]
+    subgraph ALTAZ["🔴 ALT-AZ / CASUAL Guard"]
         G10["G10: rates + positions<br/>mount_controller.cpp:4563<br/><code>isfinite(rate1, rate2, axis1, axis2)</code>"]
     end
 
@@ -447,7 +447,7 @@ flowchart TB
     G3 --> G4
     G4 --> G5
     G5 -->|"EQUATORIAL mode"| G6
-    G5 -->|"ALT_AZ mode"| G10
+    G5 -->|"ALT_AZ / CASUAL mode"| G10
     G6 --> G7 --> G8 --> G9
 
     class G1,G2 input

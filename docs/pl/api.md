@@ -854,7 +854,7 @@ message AxisStatus {
 
 ### Derotator / Field Rotation — Pole Rotacyjne
 
-Sterowanie derotatorem i kompensacją pola rotacyjnego dla montaży alt-az.
+Sterowanie derotatorem i kompensacją pola rotacyjnego dla montaży alt-az i CASUAL.
 
 ```protobuf
 rpc ConfigureDerotator(DerotatorConfig) returns (google.protobuf.Empty);

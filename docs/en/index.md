@@ -753,8 +753,8 @@ flowchart TB
 ```
 
 - **Input guards** (2): [`slewToEquatorial()`](src/controllers/mount_controller.cpp:155), [`startTracking()`](src/controllers/mount_controller.cpp:503)
-- **Upstream guards** (5): rate_factor from soft limits, position update after rate×dt, Kalman filter output, ALT-AZ rates+positions, evaluateSoftLimits inputs
-- **Downstream guards** (4): HA/RA normalisation, nutation, TPoint, refraction corrections (EQUATORIAL path)
+- **Upstream guards** (5): rate_factor from soft limits, position update after rate×dt, Kalman filter output, ALT-AZ/CASUAL rates+positions, evaluateSoftLimits inputs
+- **Downstream guards** (4): HA/RA normalisation, nutation, TPoint, refraction corrections (EQUATORIAL path; CASUAL/ALT_AZ skip these and use rate-based path)
 
 All guards transition to `ERROR` with a descriptive message; recovery via [`clearErrors()`](src/controllers/mount_controller.cpp:1914). Tests:
 - [`AltAzNanGuard`](tests/test_mount_controller.cpp:327) — zenith tracking with cos(alt) → 0 (altitude rate singularity)
