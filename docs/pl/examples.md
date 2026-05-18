@@ -142,6 +142,111 @@ print(f"Kroki silnika HA: {config.ha_axis_params.motor_steps_per_rev}")
 print(f"Mikrokrokowanie HA: {config.ha_axis_params.motor_microstepping}")
 ```
 
+### Konfiguracja montażu CASUAL
+
+Typ montażu CASUAL (`MountType::CASUAL = 3`) jest używany dla dowolnie zorientowanych montaży (np. montaże przenośne na nierównym terenie, montaże stałe na nieoptymalnej szerokości geograficznej, lub dowolny montaż, którego osie nie są wyrównane do lokalnego układu horyzontalnego). Orientacja montażu jest opisana przez kwaternion jednostkowy `[qx, qy, qz, qw]` reprezentujący rotację z układu horyzontalnego ENU do układu montażu.
+
+**Kluczowe różnice w stosunku do EQUATORIAL i ALT_AZ:**
+- Brak meridian flip — montaże CASUAL nie mają mechanicznego południka
+- Brak korekcji TPOINT w pętli śledzenia — używa śledzenia opartego na prędkościach (jak ALT_AZ)
+- Prędkości śledzenia obliczane dynamicznie z kwaternionu orientacji
+- Limity miękkie (soft limits) konfigurowane we współrzędnych montażu (axis1/axis2 w stopniach)
+- Kalibracja bootstrap estymuje kwaternion orientacji z ≥3 pomiarów gwiazd
+
+#### C++
+
+```cpp
+// Przykład konfiguracji montażu CASUAL
+// -- np. montaż na statywie nachylony 30°, zorientowany 15° na wschód od północy
+MountController::ControllerConfig config;
+
+// Lokalizacja obserwatorium
+config.latitude = 52.0;
+config.longitude = 21.0;
+config.altitude = 100.0;
+
+// Parametry montażu
+config.mount_type = MountController::MountType::CASUAL;
+config.max_slew_rate = 5.0;
+config.max_tracking_rate = 0.004178;  // Szybkość gwiazdowa (domyślna)
+
+// Kwaternion orientacji montażu [qx, qy, qz, qw]
+// Ten przykład: kwaternion jednostkowy = oś montażu wyrównana do horyzontu
+// Dla rzeczywistego montażu CASUAL, zmierz orientację i oblicz Q
+auto ori = MountController::MountOrientation();
+ori.setFromAxisAngles(0.0, 0.0, 0.0);  // Orientacja jednostkowa
+// lub jawnie:
+// ori.quaternion = {0.0, 0.0, 0.0, 1.0};  // qx, qy, qz, qw
+controller->setMountOrientation(ori);
+
+// Parametry fizyczne osi (CASUAL używa axis1/axis2, nie HA/Dec)
+config.ha_axis_params.motor_steps_per_rev = 200.0;   // silnik osi 1
+config.ha_axis_params.motor_microstepping = 64.0;
+config.ha_axis_params.encoder_resolution = 16384.0;
+config.ha_axis_params.gear_ratio = 360.0;
+config.ha_axis_params.backlash = 8.5;
+
+config.dec_axis_params.motor_steps_per_rev = 200.0;   // silnik osi 2
+config.dec_axis_params.motor_microstepping = 64.0;
+config.dec_axis_params.encoder_resolution = 16384.0;
+config.dec_axis_params.gear_ratio = 360.0;
+config.dec_axis_params.backlash = 6.3;
+
+// Filtr Kalmana
+config.process_noise = 0.001;
+config.measurement_noise = 0.001;
+
+// TPOINT — używany dla CASUAL tylko w początkowym modelu wskazywania
+config.tpoint_enabled_terms = 65535;
+
+// Brak meridian flip dla montażu CASUAL
+config.meridian_flip_enabled = false;
+
+// Limity miękkie we współrzędnych montażu
+// (axis1 = oś wysokościowa, axis2 = oś azymutalna)
+config.soft_limits_enabled = true;
+config.soft_limit_axis1_min = -10.0;    // Poniżej horyzontu
+config.soft_limit_axis1_max = 100.0;    // Za zenitem
+config.soft_limit_axis2_min = -180.0;
+config.soft_limit_axis2_max = 180.0;
+
+// Inicjalizacja
+if (!controller->initialize(config)) {
+    std::cerr << "Błąd inicjalizacji kontrolera CASUAL" << std::endl;
+    return 1;
+}
+
+std::cout << "Kontroler CASUAL zainicjalizowany pomyślnie" << std::endl;
+```
+
+#### Python
+
+```python
+# Konfiguracja montażu CASUAL przez gRPC
+from google.protobuf import empty_pb2
+
+# Pobranie bieżącej konfiguracji
+config = stub.GetConfiguration(empty_pb2.Empty())
+
+# Ustawienie typu montażu na CASUAL
+config.mount_type = mount_controller_pb2.MOUNT_TYPE_CASUAL  # = 3
+
+# Ustawienie kwaternionu orientacji [qx, qy, qz, qw]
+# Kwaternion jednostkowy = brak rotacji względem układu horyzontalnego
+config.mount_orientation_quaternion.extend([0.0, 0.0, 0.0, 1.0])
+
+# Wyłączenie meridian flip (nie dotyczy CASUAL)
+config.meridian_flip_enabled = False
+
+# Aktualizacja konfiguracji
+stub.UpdateConfiguration(config)
+
+# Weryfikacja orientacji
+updated = stub.GetConfiguration(empty_pb2.Empty())
+print(f"Typ montażu: CASUAL")
+print(f"Kwaternion Q: {list(updated.mount_orientation_quaternion)}")
+```
+
 ## Sterowanie montażem
 
 ### Szybkie przesunięcie do współrzędnych

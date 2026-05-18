@@ -138,6 +138,110 @@ print(f"HA motor steps: {config.ha_axis_params.motor_steps_per_rev}")
 print(f"HA microstepping: {config.ha_axis_params.motor_microstepping}")
 ```
 
+### CASUAL Mount Configuration
+
+CASUAL mount type (`MountType::CASUAL = 3`) is used for arbitrarily oriented mounts (e.g., portable mounts on uneven ground, fixed mounts at non-optimal latitude, or any mount whose axes are not aligned to the local horizontal frame). The mount orientation is described by a unit quaternion `[qx, qy, qz, qw]` representing the rotation from the ENU horizontal frame to the mount frame.
+
+**Key differences from EQUATORIAL and ALT_AZ:**
+- No meridian flip — CASUAL mounts have no mechanical meridian
+- No TPOINT correction in the tracking loop — uses rate-based tracking like ALT_AZ
+- Tracking rates computed dynamically from orientation quaternion
+- Soft limits configured in mount-frame coordinates (axis1/axis2 degrees)
+- Bootstrap calibration estimates the orientation quaternion from ≥3 star measurements
+
+#### C++
+
+```cpp
+// CASUAL mount configuration example
+// -- e.g., a mount on a tripod at 30° tilt, oriented 15° East of North
+MountController::ControllerConfig config;
+
+// Observatory location
+config.latitude = 52.0;
+config.longitude = 21.0;
+config.altitude = 100.0;
+
+// Mount parameters
+config.mount_type = MountController::MountType::CASUAL;
+config.max_slew_rate = 5.0;
+config.max_tracking_rate = 0.004178;  // Sidereal rate (default)
+
+// Mount orientation quaternion [qx, qy, qz, qw]
+// This example: identity quaternion = mount frame aligned with horizontal
+// For a real CASUAL mount, measure the orientation and compute Q
+auto ori = MountController::MountOrientation();
+ori.setFromAxisAngles(0.0, 0.0, 0.0);  // Identity orientation
+// or explicitly:
+// ori.quaternion = {0.0, 0.0, 0.0, 1.0};  // qx, qy, qz, qw
+controller->setMountOrientation(ori);
+
+// Axis physical parameters (CASUAL uses axis1/axis2, not HA/Dec)
+config.ha_axis_params.motor_steps_per_rev = 200.0;   // axis1 motor
+config.ha_axis_params.motor_microstepping = 64.0;
+config.ha_axis_params.encoder_resolution = 16384.0;
+config.ha_axis_params.gear_ratio = 360.0;
+config.ha_axis_params.backlash = 8.5;
+
+config.dec_axis_params.motor_steps_per_rev = 200.0;   // axis2 motor
+config.dec_axis_params.motor_microstepping = 64.0;
+config.dec_axis_params.encoder_resolution = 16384.0;
+config.dec_axis_params.gear_ratio = 360.0;
+config.dec_axis_params.backlash = 6.3;
+
+// Kalman filter
+config.process_noise = 0.001;
+config.measurement_noise = 0.001;
+
+// TPOINT — used for CASUAL only in initial pointing model
+config.tpoint_enabled_terms = 65535;
+
+// No meridian flip for CASUAL mounts
+config.meridian_flip_enabled = false;
+
+// Soft limits in mount-frame coordinates (axis1 = altitude-like, axis2 = azimuth-like)
+config.soft_limits_enabled = true;
+config.soft_limit_axis1_min = -10.0;    // Allow below horizon
+config.soft_limit_axis1_max = 100.0;    // Past zenith
+config.soft_limit_axis2_min = -180.0;
+config.soft_limit_axis2_max = 180.0;
+
+// Initialization
+if (!controller->initialize(config)) {
+    std::cerr << "Controller initialization error" << std::endl;
+    return 1;
+}
+
+std::cout << "CASUAL controller initialized successfully" << std::endl;
+```
+
+#### Python
+
+```python
+# CASUAL mount configuration via gRPC
+from google.protobuf import empty_pb2
+
+# Get current configuration
+config = stub.GetConfiguration(empty_pb2.Empty())
+
+# Set mount type to CASUAL
+config.mount_type = mount_controller_pb2.MOUNT_TYPE_CASUAL  # = 3
+
+# Set orientation quaternion [qx, qy, qz, qw]
+# Identity quaternion = no rotation from horizontal frame
+config.mount_orientation_quaternion.extend([0.0, 0.0, 0.0, 1.0])
+
+# Disable meridian flip (not applicable to CASUAL)
+config.meridian_flip_enabled = False
+
+# Update configuration
+stub.UpdateConfiguration(config)
+
+# Verify orientation
+updated = stub.GetConfiguration(empty_pb2.Empty())
+print(f"Mount type: CASUAL")
+print(f"Orientation Q: {list(updated.mount_orientation_quaternion)}")
+```
+
 ## Mount Control
 
 ### Slew to Coordinates
