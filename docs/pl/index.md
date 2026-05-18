@@ -507,4 +507,291 @@ stub->TrackObject(&context, coords, &response);
         "backlash": 8.5,
         "backlash_temp_coeff": 0.02,
         "axis_stiffness": 0.5,
-        "torsional_com
+        "torsional_compliance": 1e-6,
+        "expansion_coeff": 11.0e-6,
+        "temp_gear_error_coeff": 0.05,
+        "calibration_temp": 20.0
+      },
+      "dec_axis": {
+        "motor_steps_per_rev": 200.0,
+        "motor_microstepping": 64.0,
+        "motor_step_angle": 101.25,
+        "encoder_resolution": 16384.0,
+        "encoder_counts_per_arcsec": 0.0126,
+        "encoder_quantization_error": 39.6,
+        "gear_ratio": 360.0,
+        "worm_ratio": 180.0,
+        "worm_teeth": 1,
+        "worm_wheel_teeth": 180,
+        "cyclic_error_amplitude": 12.8,
+        "cyclic_error_period": 360.0,
+        "cyclic_harmonics": [8.2, 0.0, 2.5, 1.5708, 0.8, 3.1416, 0.3, 4.7124],
+        "backlash": 6.3,
+        "backlash_temp_coeff": 0.015,
+        "axis_stiffness": 0.6,
+        "torsional_compliance": 1.2e-6,
+        "expansion_coeff": 11.0e-6,
+        "temp_gear_error_coeff": 0.04,
+        "calibration_temp": 20.0
+      }
+    }
+  },
+  "telescope": {
+    "focal_length": 1000.0,
+    "aperture": 200.0,
+    "pixel_size": 3.8,
+    "camera_model": "ASI1600"
+  },
+  "guider": {
+    "enabled": false,
+    "connection_string": "",
+    "max_correction": 10.0,
+    "aggression": 0.5,
+    "exposure_time_ms": 2000,
+    "binning": 2
+  },
+  "kalman": {
+    "process_noise": 0.01,
+    "measurement_noise": 1.0,
+    "adaptive_r": false,
+    "innovation_threshold": 3.0,
+    "max_iterations": 100
+  },
+  "tpoint": {
+    "enabled_terms": 65535,
+    "max_residual": 30.0,
+    "min_measurements": 10
+  },
+  "derotator": {
+    "type": "stepper",
+    "enabled": false,
+    "gear_ratio": 180.0,
+    "max_speed": 5.0,
+    "max_acceleration": 2.0,
+    "backlash": 2.0,
+    "absolute_encoder": false,
+    "encoder_resolution": 36000.0
+  },
+  "field_rotation": {
+    "enabled": false,
+    "latitude": 52.0,
+    "longitude": 21.0
+  },
+  "hal": {
+    "type": "simulated",
+    "name": "Default_HAL",
+    "simulated": {
+      "enable_simulation": true,
+      "simulation_update_rate": 100.0,
+      "position_noise_stddev": 0.001,
+      "velocity_noise_stddev": 0.0001
+    }
+  }
+}
+```
+
+Konfiguracja jest walidowana przy starcie przez 25+ kontroli numerycznych w [`configuration.cpp:60`](src/config/configuration.cpp:60). Wszystkie wartości mają domyślne odpowiedniki C++ w [`initializeDefaults()`](src/config/configuration.cpp:853).
+
+## Przykłady użycia
+
+### Podstawowe sterowanie montażem
+
+1. **Inicjalizacja**: Konfiguracja lokalizacji, parametrów montażu i parametrów fizycznych osi
+2. **Slewing**: Przejście do konkretnych współrzędnych równikowych z płynnymi profilami przyspieszenia
+3. **Śledzenie**: Podążanie za obiektami niebieskimi z dokładnością sub-arcsecond
+4. **Kalibracja**: Wykonanie kalibracji TPOINT przy użyciu gwiazd referencyjnych
+5. **Guiding**: Integracja z systemami autoguiding do długich ekspozycji
+
+### Zaawansowane funkcje
+
+1. **Śledzenie efemeryd**: Śledzenie obiektów Układu Słonecznego przy użyciu efemeryd JPL
+2. **Niestandardowe trajektorie**: Generowanie i wykonywanie złożonych trajektorii ruchu
+3. **Obsługa wielu klientów**: Umożliwienie wielu aplikacjom jednoczesnego sterowania montażem
+4. **Monitorowanie w czasie rzeczywistym**: Monitorowanie wydajności śledzenia, warunków środowiskowych i stanu systemu
+
+## Instalacja i budowanie
+
+### Wymagania systemowe
+- **Systemy operacyjne**: Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+, OpenSUSE Leap 15.4+, OpenSUSE Tumbleweed, Raspberry Pi OS)
+- **Architektury procesorów**: x86_64 lub ARM64, 2+ rdzenie (Raspberry Pi 3/4/5 wspierane)
+- **Pamięć**: 4 GB RAM minimum, 8 GB zalecane (1 GB minimum dla Raspberry Pi 3)
+- **Interfejs CAN**: Adapter CAN bus (np. PCAN-USB, SocketCAN, MCP2515 SPI CAN)
+- **Dysk**: 2 GB miejsca minimum, 10 GB zalecane
+- **Sieć**: Ethernet lub WiFi do zdalnego sterowania (gRPC API)
+
+**Uwaga dla ARM/Raspberry Pi**: Zobacz szczegółowy przewodnik instalacji Raspberry Pi w [dokumentacji instalacji](installation.md#building-for-arm-devices-raspberry-pi).
+
+### Budowanie ze źródeł
+
+```bash
+# Sklonuj repozytorium
+git clone https://github.com/your-org/astro-mount-controller.git
+cd astro-mount-controller
+
+# Zainstaluj zależności
+sudo apt update
+sudo apt install -y build-essential cmake git pkg-config libssl-dev \
+    libboost-all-dev libeigen3-dev libnlohmann-json3-dev libgrpc++-dev \
+    libprotobuf-dev protobuf-compiler protobuf-compiler-grpc libcanopen-dev \
+    libsofa-dev libgtest-dev can-utils linux-can socketcan
+
+# Buduj
+mkdir build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+
+# Instaluj
+sudo make install
+```
+
+### Uruchamianie jako usługa systemowa
+
+```bash
+# Skopiuj plik usługi systemd
+sudo cp scripts/astro-mount-controller.service /etc/systemd/system/
+
+# Włącz i uruchom usługę
+sudo systemctl daemon-reload
+sudo systemctl enable astro-mount-controller
+sudo systemctl start astro-mount-controller
+
+# Sprawdź status
+sudo systemctl status astro-mount-controller
+```
+
+## Testowanie
+
+### Testy jednostkowe
+```bash
+# Uruchom testy jednostkowe
+./build/tests/test_astronomical_calculations
+./build/tests/test_tpoint_model
+./build/tests/test_configuration
+./build/tests/test_subarcsecond_accuracy
+./build/tests/test_mount_controller       # 121+ testów: maszyna stanów, śledzenie, NaN guards
+```
+
+### Ochrona przed NaN/Inf
+Pętla śledzenia ma **11 strażników NaN/Inf** zorganizowanych w warstwową obronę:
+
+```mermaid
+flowchart TB
+    classDef input fill:#e3f2fd,stroke:#1565c0,stroke-width:3px,color:#0d47a1
+    classDef up fill:#fff3e0,stroke:#e65100,stroke-width:3px,color:#bf360c
+    classDef down fill:#e8f5e9,stroke:#2e7d32,stroke-width:3px,color:#1b5e20
+    classDef altaz fill:#fce4ec,stroke:#c62828,stroke-width:3px,color:#b71c1c
+
+    I["🔵 Strażnicy wejścia (2)<br/>slewToEquatorial()<br/>startTracking()"]:::input
+    U["🟠 Strażnicy górni (5)<br/>rate_factor, aktualizacja pozycji,<br/>filtr Kalmana, ALT-AZ,<br/>evaluateSoftLimits wejścia"]:::up
+    D["🟢 Strażnicy dolni (4)<br/>HA/RA, nutacja,<br/>TPoint, refrakcja"]:::down
+    A["🔴 Strażnik ALT-AZ (1)<br/>prędkości + pozycje"]:::altaz
+    
+    I -->|"isfinite()"| U
+    U -->|"EQ path"| D
+    U -.->|"ALT_AZ"| A
+```
+
+- **Strażnicy wejścia** (2): [`slewToEquatorial()`](src/controllers/mount_controller.cpp:403), [`startTracking()`](src/controllers/mount_controller.cpp:1011)
+- **Strażnicy górni** (5): rate_factor z soft limits, aktualizacja pozycji po rate×dt, wyjście filtru Kalmana, prędkości+pozycje ALT-AZ, wejścia evaluateSoftLimits
+- **Strażnicy dolni** (4): normalizacja HA/RA, nutacja, TPoint, korekcje refrakcji (ścieżka EQUATORIAL)
+
+Wszyscy strażnicy przechodzą do stanu `ERROR` z opisowym komunikatem; odzyskiwanie przez [`clearErrors()`](src/controllers/mount_controller.cpp:2052). Testy:
+- [`AltAzNanGuard`](tests/test_mount_controller.cpp:327) — śledzenie w zenicie z cos(alt) → 0 (osobliwość prędkości altitude)
+- [`EquatorialNanGuard`](tests/test_mount_controller.cpp:351) — wstrzyknięcie NaN przez guider, weryfikacja ERROR + clearErrors recovery
+
+### Testy integracyjne
+```bash
+# Uruchom kontroler
+./build/src/astro-mount-controller config/default.json
+
+# Test komunikacji gRPC
+grpc_cli call localhost:50051 GetState ""
+
+# Test klienta Python
+python examples/python/example_usage.py
+```
+
+### Testy wydajnościowe
+- **Dokładność śledzenia**: < 0.5 sekundy kątowej RMS
+- **Czas odpowiedzi**: < 10 ms dla wywołań API
+- **Częstotliwość aktualizacji**: 100 Hz aktualizacji pozycji
+- **Opóźnienie CAN bus**: < 1 ms
+
+## Parametry fizyczne osi
+
+### Znaczenie parametrów fizycznych
+Dokładność sterownika montażu astronomicznego w dużym stopniu zależy od precyzyjnej znajomości parametrów fizycznych osi. Parametry te obejmują:
+
+1. **Charakterystyka silnika**: Liczba kroków na obrót, mikrokrokowanie, kąt kroku
+2. **Specyfikacja enkodera**: Rozdzielczość, błąd kwantyzacji, liczba zliczeń na sekundę kątową
+3. **Właściwości przekładni**: Przełożenia, specyfikacja przekładni ślimakowej
+4. **Niedoskonałości mechaniczne**: Błędy cykliczne, backlash, sztywność osi
+5. **Charakterystyka termiczna**: Współczynniki rozszerzalności, zależności temperaturowe
+
+### Procedura kalibracji
+1. **Wprowadzenie początkowych parametrów**: Wprowadź specyfikacje producenta
+2. **Pomiary mechaniczne**: Zmierz rzeczywisty backlash, błędy cykliczne
+3. **Kalibracja termiczna**: Scharakteryzuj zależności temperaturowe
+4. **Ciągłe ulepszanie**: Użyj filtru Kalmana do udoskonalania parametrów podczas pracy
+
+### Wpływ na wydajność
+- Prawidłowe parametryzowanie zmniejsza błędy wskazywania nawet o 90%
+- Dokładna kompensacja termiczna utrzymuje dokładność sub-arcsecond w różnych zakresach temperatur
+- Szczegółowe modelowanie mechaniczne umożliwia predykcyjną korekcję błędów
+- Regularne aktualizacje parametrów dostosowują się do zużycia mechanicznego i zmian środowiskowych
+
+---
+
+## Interfejs Web
+
+Astronomical Mount Controller zawiera nowoczesny interfejs webowy zapewniający pełną kontrolę teleskopu przez przeglądarkę.
+
+### Funkcje
+- **Pełna kontrola teleskopu**: Slewing, śledzenie, parkowanie i zatrzymanie awaryjne
+- **Monitorowanie w czasie rzeczywistym**: Status montażu, pozycja, temperatura i metryki wydajności
+- **Interfejs kalibracji TPOINT**: Dodawanie pomiarów, uruchamianie kalibracji, podgląd parametrów
+- **Integracja autoguidera**: Podłączanie/rozłączanie guidera, wysyłanie korekcji
+- **Interaktywna mapa nieba**: Wizualna reprezentacja pozycji montażu i celu
+- **Zarządzanie konfiguracją**: Zapisywanie i wczytywanie konfiguracji montażu
+- **Panel stanu systemu**: Użycie CPU, pamięci, status połączenia
+- **Logowanie**: Logi systemowe w czasie rzeczywistym z filtrowaniem
+
+### Architektura
+Interfejs webowy składa się z trzech głównych komponentów:
+
+1. **Aplikacja frontendowa** (HTML/CSS/JavaScript)
+   - Aplikacja jednostronicowa z responsywnym designem
+   - Aktualizacje w czasie rzeczywistym przez WebSocket/AJAX
+   - Interaktywna wizualizacja mapy nieba
+
+2. **Serwer proxy HTTP/JSON** (Node.js)
+   - Most między interfejsem webowym a serwerem gRPC
+   - Udostępnia punkty końcowe REST API
+   - Obsługuje uwierzytelnianie i bezpieczeństwo
+   - Działa domyślnie na porcie 8080
+
+3. **Integracja serwera gRPC**
+   - Komunikuje się z głównym kontrolerem montażu
+   - Używa protobuf do wydajnej wymiany danych
+   - Działa domyślnie na porcie 50051
+
+### Szybki start
+1. Zainstaluj zależności Node.js: `cd web/proxy && npm install`
+2. Uruchom serwer proxy: `cd web/proxy && npm start`
+3. Upewnij się, że kontroler montażu działa na porcie 50051
+4. Otwórz przeglądarkę na: `http://localhost:8080`
+
+### Funkcje bezpieczeństwa
+- Konfiguracja CORS dla kontrolowanego dostępu
+- Opcjonalne wsparcie HTTPS/SSL
+- Middleware uwierzytelniania gotowy do wdrożenia produkcyjnego
+- Konfiguracja oparta na zmiennych środowiskowych
+
+### Wsparcie przeglądarek
+- Chrome 60+, Firefox 55+, Safari 12+, Edge 79+
+- Mobile Safari 12+, Chrome for Android 60+
+- Responsywny design dla desktopu i urządzeń mobilnych
+
+Szczegółowe informacje o interfejsie webowym znajdują się w pliku [web/README.md](../web/README.md).
+
+*Szczegółowe informacje o poszczególnych komponentach znajdują się w dedykowanych plikach dokumentacji.*

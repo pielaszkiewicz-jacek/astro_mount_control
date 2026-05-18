@@ -112,6 +112,31 @@ Axis1 = Az
 Axis2 = Alt
 ```
 
+For a **CASUAL mount** (arbitrarily oriented, `MountType::CASUAL`):
+
+The CASUAL mount has two perpendicular axes, but their orientation relative to the local horizon is arbitrary and described by a unit quaternion `Q = [qx, qy, qz, qw]`. This quaternion represents the rotation from the local horizontal frame (ENU: East, North, Up) to the mount frame (axis1, axis2).
+
+**Sky → mount transformation** for CASUAL:
+
+```
+1. RA/Dec → Alt/Az via existing equatorialToHorizontal()
+2. Alt/Az → vector in horizontal frame (ENU)
+3. Apply Q⁻¹ (quaternion inverse) → vector in mount frame
+4. Extract angles (axis1, axis2) from mount-frame vector
+```
+
+**Mount → sky transformation** for CASUAL:
+
+```
+1. (axis1, axis2) → vector in mount frame
+2. Apply Q → vector in horizontal frame (Alt/Az)
+3. Alt/Az → RA/Dec via existing horizontalToEquatorial()
+```
+
+For an identity quaternion `Q = [0, 0, 0, 1]`, CASUAL behaves identically to ALT_AZ.
+
+> **Implementation**: CASUAL transform functions are in [`src/core/astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp): [`equatorialToMountOrientation()`](src/core/astronomical_calculations.cpp:434) and [`mountOrientationToEquatorial()`](src/core/astronomical_calculations.cpp:469). [`MountOrientation`](include/controllers/mount_controller.h:50) is defined in [`include/controllers/mount_controller.h`](include/controllers/mount_controller.h).
+
 ## 2. Precession and Nutation
 
 ### 2.1 Precession
@@ -480,7 +505,7 @@ rate_RA += ΔRA_rate / 3600 / 15   [convert arcsec to deg/s]
 rate_Dec += ΔDec_rate / 3600      [convert arcsec to deg/s]
 ```
 
-### 7.3 Field Rotation for Alt-Az Mounts
+### 7.3 Field Rotation for Alt-Az and CASUAL Mounts
 
 For alt-azimuth mounts, field rotation is computed as:
 
@@ -494,6 +519,8 @@ where:
   alt = telescope altitude
 ```
 
+For **CASUAL mounts**, the altitude (`alt`) used in the formula above is the altitude-like axis in the mount frame (axis1), which is the projection of the true altitude through the orientation quaternion.
+
 The total field rotation is integrated over time:
 
 ```
@@ -501,6 +528,20 @@ The total field rotation is integrated over time:
 ```
 
 For equatorial mounts, field rotation is zero (except for atmospheric effects).
+
+### 7.4 Tracking for CASUAL Mounts
+
+For CASUAL mounts, tracking rates are computed dynamically in the tracking loop:
+
+```
+1. Compute tracking rates in the true horizontal frame (Alt/Az)
+   - Alt rate:  d(alt)/dt = ω_⊕ · cos(φ) · cos(az)
+   - Az rate:   d(az)/dt  = -ω_⊕ · (cos(φ) · sin(az) · sin(alt) + sin(φ) · cos(alt)) / cos(alt)
+2. Transform the rate vector through the orientation quaternion Q⁻¹ to mount frame
+3. Obtain (axis1_rate, axis2_rate) in mount frame
+```
+
+For an identity quaternion, CASUAL tracking rates are identical to ALT_AZ.
 
 ## 8. Bootstrap Calibration
 
@@ -523,8 +564,25 @@ The correction is applied to the current mount position:
 Axis1_target += ΔRA × 15°  (convert hours to degrees)
 Axis2_target += ΔDec
 ```
+### 8.2 Bootstrap Calibration for CASUAL Mounts
 
-### 8.2 Quality Metrics
+For CASUAL mounts, the bootstrap calibration estimates the mount orientation quaternion from at least 3 measurements. For each measurement (observed RA/Dec, expected RA/Dec):
+
+```
+1. For each measurement:
+   a. Compute direction vector in horizontal frame from (observed RA, Dec)
+   b. Compute direction vector in horizontal frame from (expected RA, Dec)
+   c. The difference between these vectors gives the error direction in horizontal frame
+2. Fit quaternion Q that minimizes pointing errors for all measurements
+3. Apply least-squares method with orthogonal Procrustes regression
+```
+
+The result is an estimated orientation quaternion `Q`, which is set as `mount_orientation` in the mount configuration.
+
+> **Implementation**: CASUAL bootstrap in [`src/controllers/mount_controller.cpp`](src/controllers/mount_controller.cpp) lines 2377–2541 — the `runBootstrapCalibration()` method detects `MountType::CASUAL` and estimates the quaternion using at least 3 [`BootstrapMeasurement`](proto/mount_controller.proto:765) entries.
+
+### 8.3 Quality Metrics
+
 
 ```
 RMS_RA = sqrt(mean((ΔRA_i - ΔRA)²))

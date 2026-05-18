@@ -1197,6 +1197,15 @@ obj = object_database_pb2.AstronomicalObject(
 )
 result = stub.CreateObject(obj)
 print(f"Utworzono obiekt o ID: {result.id}")
+
+# Wyszukiwanie obiektów
+search = object_database_pb2.ObjectSearchRequest(
+    query="Andromeda",
+    max_magnitude=5.0
+)
+results = stub.SearchObjects(search)
+for obj in results.objects:
+    print(f"Znaleziono: {obj.name} ({obj.catalog_name})")
 ```
 
 

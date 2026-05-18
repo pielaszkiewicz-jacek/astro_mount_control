@@ -46,6 +46,11 @@ flowchart TB
         HAL_IF --> SAFE
         HAL_IF --> SENS
         HAL_IF --> DEROT_IF
+        MOTOR --> CAN_IMPL & SIM_IMPL & GAM_IMPL & SER_IMPL & ETH_IMPL
+        ENC --> CAN_IMPL & SIM_IMPL & GAM_IMPL
+        SAFE --> CAN_IMPL & SIM_IMPL & GAM_IMPL
+        SENS --> CAN_IMPL & SIM_IMPL & GAM_IMPL
+        DEROT_IF --> CAN_IMPL & SIM_IMPL
     end
 
     subgraph HW["Physical Hardware"]
@@ -56,25 +61,7 @@ flowchart TB
     end
 
     MC --> HAL_IF
-    MOTOR --> CAN_IMPL
-    MOTOR --> SIM_IMPL
-    MOTOR --> GAM_IMPL
-    MOTOR --> SER_IMPL
-    MOTOR --> ETH_IMPL
-    ENC --> CAN_IMPL
-    ENC --> SIM_IMPL
-    ENC --> GAM_IMPL
-    SAFE --> CAN_IMPL
-    SAFE --> SIM_IMPL
-    SAFE --> GAM_IMPL
-    SENS --> CAN_IMPL
-    SENS --> SIM_IMPL
-    SENS --> GAM_IMPL
-    DEROT_IF --> CAN_IMPL
-    DEROT_IF --> SIM_IMPL
-    CAN_IMPL --> MOT_HW
-    CAN_IMPL --> ENC_HW
-    CAN_IMPL --> SENS_HW
+    CAN_IMPL --> MOT_HW & ENC_HW & SENS_HW
     SIM_IMPL -.->|simulates| MOT_HW
     GAM_IMPL -.->|reads| GAM_HW
 ```
@@ -258,6 +245,21 @@ enum class EncoderInterface {
 | `saveCalibration() / loadCalibration()` | Persistent calibration storage |
 | `synchronize()` | Synchronize with motor position |
 
+### EncoderReading Structure
+
+```cpp
+struct EncoderReading {
+    double position_deg;       // Position in degrees
+    double velocity_deg_s;     // Velocity in degrees/s
+    int32_t raw_counts;        // Raw counter value
+    bool index_pulse;          // Index pulse
+    bool direction;            // Direction (true = forward)
+    bool data_valid;           // Whether data is valid
+    uint32_t error_count;      // Error counter
+    std::chrono::steady_clock::time_point timestamp;
+};
+```
+
 ---
 
 ## SafetyMonitor Interface
@@ -288,7 +290,28 @@ enum class State {
 | Voltage | Min/max voltage range |
 | Communication | Communication status |
 
----
+### SafetyStatus Structure
+
+```cpp
+struct SafetyStatus {
+    State overall_state;
+    
+    struct AxisStatus {
+        bool limits_ok;            // Limits OK
+        bool temperature_ok;       // Temperature OK
+        bool current_ok;           // Current OK
+        bool voltage_ok;           // Voltage OK
+        bool communication_ok;     // Communication OK
+        std::string error_message; // Error message
+    };
+    
+    std::array<AxisStatus, 3> axes_status;  // Status for 3 axes
+    double system_temperature;               // System temperature
+    double system_current;                   // System current
+    double system_voltage;                   // System voltage
+    bool emergency_stop_active;              // Active E-stop
+};
+```
 
 ## SensorInterface
 
@@ -307,6 +330,21 @@ enum class SensorType {
     PROXIMITY,      // Proximity sensor
     LIMIT_SWITCH,   // Limit switch
     CUSTOM          // Custom sensor
+};
+```
+
+### Sensor Interface Types
+
+```cpp
+enum class SensorInterfaceType {
+    ANALOG,         // Analog signal (0-10V, 4-20mA)
+    DIGITAL,        // Digital signal (GPIO, TTL)
+    I2C,            // I2C interface
+    SPI,            // SPI interface
+    CANOPEN,        // CANopen interface
+    MODBUS,         // Modbus interface
+    ETHERNET,       // Ethernet interface
+    SERIAL          // Serial interface
 };
 ```
 
@@ -664,6 +702,27 @@ The CANopen HAL uses Process Data Objects (PDO) for real-time communication:
 | `CanOpenSensorInterface` | Sensor reading via CANopen |
 | `PIDController` | Closed-loop PID controller |
 
+### CANopen SDO - Motor Parameter Read
+
+| Object | Description | Size |
+|--------|-------------|------|
+| 0x6040 | Control Word | 16-bit |
+| 0x6041 | Status Word | 16-bit |
+| 0x6060 | Modes of Operation | 8-bit |
+| 0x6061 | Modes of Operation Display | 8-bit |
+| 0x6064 | Position Actual Value | 32-bit |
+| 0x606C | Velocity Actual Value | 32-bit |
+| 0x6071 | Target Torque | 16-bit |
+| 0x6077 | Torque Actual Value | 16-bit |
+| 0x6078 | Current Actual Value | 16-bit |
+| 0x607A | Target Position | 32-bit |
+| 0x6081 | Profile Velocity | 32-bit |
+| 0x6083 | Profile Acceleration | 32-bit |
+| 0x6084 | Profile Deceleration | 32-bit |
+| 0x2030 | Actual Temperature (vendor) | 16-bit |
+| 0x2031 | Actual Current (vendor) | 16-bit |
+| 0x2032 | Actual Voltage (vendor) | 16-bit |
+
 ---
 
 ## Gamepad HAL Implementation
@@ -919,6 +978,43 @@ if (hal->supportsFeature(HALFeature::DEROTATOR_SUPPORT)) {
 
 ---
 
+### Usage with JSON Configuration
+
+```cpp
+#include "hal/hal_factory.h"
+#include <fstream>
+
+// Load configuration from JSON file
+auto config = HALFactory::loadConfigFromFile("mount_config.json");
+
+// Or build programmatically
+HALConfig config;
+config.type = HALType::CANOPEN;
+config.canopen.interface_name = "can0";
+config.canopen.bitrate = 250000;
+config.canopen.node_id = 1;
+
+// Add axes
+HALConfig::AxisConfig ra_axis;
+ra_axis.id = 0;
+ra_axis.name = "RA_Axis";
+ra_axis.motor_config.type = MotorType::CANOPEN_SERVO;
+ra_axis.motor_config.max_velocity = 5.0;
+config.axes.push_back(ra_axis);
+
+HALConfig::AxisConfig dec_axis;
+dec_axis.id = 1;
+dec_axis.name = "Dec_Axis";
+config.axes.push_back(dec_axis);
+
+// Create HAL
+auto hal = HALFactory::create(config);
+hal->initialize(config);
+hal->start();
+```
+
+---
+
 ## Extending the HAL
 
 To add a new hardware implementation:
@@ -929,7 +1025,63 @@ To add a new hardware implementation:
 4. Add configuration support to `HALConfig`
 5. Add feature flag to `HALFeature` enum
 
+### New Implementation Template
+
+```cpp
+// src/hal/my_hal/my_hal.h
+#pragma once
+#include "hal/hal_interface.h"
+#include "hal/hal_config.h"
+
+namespace astro_mount {
+namespace hal {
+
+class MyCustomHAL : public HALInterface {
+public:
+    MyCustomHAL() = default;
+    ~MyCustomHAL() override;
+    
+    bool initialize(const HALConfig& config) override;
+    void shutdown() override;
+    bool isInitialized() const override;
+    
+    std::unique_ptr<MotorControl> createMotorControl(int axis_id) override;
+    std::unique_ptr<EncoderReader> createEncoderReader(int axis_id) override;
+    std::unique_ptr<SafetyMonitor> createSafetyMonitor() override;
+    std::unique_ptr<SensorInterface> createSensorInterface() override;
+    
+    std::string getPlatformName() const override;
+    std::string getHardwareVersion() const override;
+    std::vector<HALFeature> getSupportedFeatures() const override;
+    bool supportsFeature(HALFeature feature) const override;
+    
+    bool start() override;
+    bool stop() override;
+    bool isRunning() const override;
+    
+    std::string getStatus() const override;
+    std::string getErrorMessages() const override;
+    void clearErrors() override;
+};
+
+} // namespace hal
+} // namespace astro_mount
+```
+
+Then register in `HALFactory`:
+
+```cpp
+// in src/hal/hal_factory.cpp
+#include "my_hal/my_hal.h"
+
+// Add to create() method:
+case HALType::CUSTOM:
+    return std::make_unique<MyCustomHAL>();
+```
+
 ---
+
+## Architecture Diagram
 
 ## Architecture Diagram
 
@@ -1002,7 +1154,7 @@ src/hal/
 │   └── canopen_hal.cpp  # Implementation (1845 lines)
 ├── simulated_hal/
 │   ├── simulated_hal.h  # SimulatedHAL for testing
-│   └── simulated_hal.cpp # Implementation
+│   └── simulated_hal.cpp # Implementation (652 lines)
 ├── gamepad_hal/
 │   ├── gamepad_hal.h    # GamepadHAL header
 │   ├── gamepad_hal.cpp  # GamepadHAL implementation
@@ -1010,6 +1162,16 @@ src/hal/
 │   └── gamepad_input_evdev.cpp # EvdevGamepadInput implementation
 └── serial_hal/          # (not yet implemented)
 ```
+
+---
+
+## References
+
+- [README (PL)](README.md)
+- [README (EN)](../en/README.md)
+- [API Documentation](api.md)
+- [Controller Threads](watki_kontrolera.md)
+- [Installation Guide](installation.md)
 
 ---
 
