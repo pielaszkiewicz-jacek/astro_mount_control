@@ -682,18 +682,18 @@ flowchart TB
     classDef altaz fill:#fce4ec,stroke:#c62828,stroke-width:3px,color:#b71c1c
 
     I["🔵 Strażnicy wejścia (2)<br/>slewToEquatorial()<br/>startTracking()"]:::input
-    U["🟠 Strażnicy górni (5)<br/>rate_factor, aktualizacja pozycji,<br/>filtr Kalmana, ALT-AZ,<br/>evaluateSoftLimits wejścia"]:::up
+    U["🟠 Strażnicy górni (5)<br/>rate_factor, aktualizacja pozycji,<br/>filtr Kalmana, ALT-AZ/CASUAL,<br/>evaluateSoftLimits wejścia"]:::up
     D["🟢 Strażnicy dolni (4)<br/>HA/RA, nutacja,<br/>TPoint, refrakcja"]:::down
-    A["🔴 Strażnik ALT-AZ (1)<br/>prędkości + pozycje"]:::altaz
+    A["🔴 Strażnik ALT-AZ/CASUAL (1)<br/>prędkości + pozycje"]:::altaz
     
     I -->|"isfinite()"| U
     U -->|"EQ path"| D
-    U -.->|"ALT_AZ"| A
+    U -.->|"ALT_AZ / CASUAL"| A
 ```
 
 - **Strażnicy wejścia** (2): [`slewToEquatorial()`](src/controllers/mount_controller.cpp:403), [`startTracking()`](src/controllers/mount_controller.cpp:1011)
-- **Strażnicy górni** (5): rate_factor z soft limits, aktualizacja pozycji po rate×dt, wyjście filtru Kalmana, prędkości+pozycje ALT-AZ, wejścia evaluateSoftLimits
-- **Strażnicy dolni** (4): normalizacja HA/RA, nutacja, TPoint, korekcje refrakcji (ścieżka EQUATORIAL)
+- **Strażnicy górni** (5): rate_factor z soft limits, aktualizacja pozycji po rate×dt, wyjście filtru Kalmana, prędkości+pozycje ALT-AZ/CASUAL, wejścia evaluateSoftLimits
+- **Strażnicy dolni** (4): normalizacja HA/RA, nutacja, TPoint, korekcje refrakcji (ścieżka EQUATORIAL/CASUAL)
 
 Wszyscy strażnicy przechodzą do stanu `ERROR` z opisowym komunikatem; odzyskiwanie przez [`clearErrors()`](src/controllers/mount_controller.cpp:2052). Testy:
 - [`AltAzNanGuard`](tests/test_mount_controller.cpp:327) — śledzenie w zenicie z cos(alt) → 0 (osobliwość prędkości altitude)
