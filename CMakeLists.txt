@@ -45,6 +45,58 @@ target_include_directories(sofa_static PUBLIC ${CMAKE_SOURCE_DIR}/sofa)
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
 
+# ============================================
+# Protobuf / gRPC code generation
+# ============================================
+
+# Output directory for generated protobuf sources
+set(PROTO_GEN_DIR ${CMAKE_BINARY_DIR}/gen)
+
+# Ensure the output directory exists
+file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
+
+# Collect all proto files
+file(GLOB_RECURSE PROTO_FILES
+    ${CMAKE_SOURCE_DIR}/proto/*.proto
+    ${CMAKE_SOURCE_DIR}/db/proto/*.proto
+)
+
+# Generate protobuf message sources (.pb.cc / .pb.h)
+protobuf_generate(
+    PROTO_PATH ${CMAKE_SOURCE_DIR}
+    PROTOS ${PROTO_FILES}
+    LANGUAGE cpp
+    PROTOC_OUT_DIR ${PROTO_GEN_DIR}
+    OUT_VAR PROTO_SRCS
+)
+
+# Generate gRPC service sources (.grpc.pb.cc / .grpc.pb.h)
+protobuf_generate(
+    PROTO_PATH ${CMAKE_SOURCE_DIR}
+    PROTOS ${PROTO_FILES}
+    LANGUAGE grpc
+    PLUGIN protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
+    GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc
+    PROTOC_OUT_DIR ${PROTO_GEN_DIR}
+    OUT_VAR PROTO_GRPC_SRCS
+)
+
+# Combine all generated sources
+list(APPEND PROTO_SRCS ${PROTO_GRPC_SRCS})
+
+# Collect generated headers for dependency tracking
+file(GLOB PROTO_HDRS
+    ${PROTO_GEN_DIR}/proto/*.pb.h
+    ${PROTO_GEN_DIR}/proto/*.grpc.pb.h
+    ${PROTO_GEN_DIR}/db/proto/*.pb.h
+    ${PROTO_GEN_DIR}/db/proto/*.grpc.pb.h
+)
+
+# Create a custom target to ensure proto files are generated before any target that needs them
+add_custom_target(generate_proto DEPENDS ${PROTO_SRCS})
+
+# ============================================
+
 # Find CanOpen (assuming libcanopen is available)
 find_library(CANOPEN_LIB canopen)
 if(NOT CANOPEN_LIB)
@@ -162,21 +214,6 @@ set(DB_SOURCES
     db/src/main.cpp
 )
 
-# Protobuf files (use existing generated files)
-set(PROTO_SRCS
-    proto/mount_controller.pb.cc
-    proto/mount_controller.grpc.pb.cc
-    db/proto/object_database.pb.cc
-    db/proto/object_database.grpc.pb.cc
-)
-
-set(PROTO_HDRS
-    proto/mount_controller.pb.h
-    proto/mount_controller.grpc.pb.h
-    db/proto/object_database.pb.h
-    db/proto/object_database.grpc.pb.h
-)
-
 # Create library
 add_library(astro_mount_core STATIC
     ${CORE_SOURCES}
@@ -185,6 +222,9 @@ add_library(astro_mount_core STATIC
     ${CONFIG_SOURCES}
     ${LOGGING_SOURCES}
 )
+
+# Ensure proto files are generated before compiling astro_mount_core
+add_dependencies(astro_mount_core generate_proto)
 
 target_link_libraries(astro_mount_core
     sofa_static
@@ -198,9 +238,10 @@ target_link_libraries(astro_mount_core
 )
 
 # Add include directories
-target_include_directories(astro_mount_core PUBLIC 
-    ${CMAKE_SOURCE_DIR}/proto
-    ${CMAKE_SOURCE_DIR}/db/proto
+target_include_directories(astro_mount_core PUBLIC
+    ${PROTO_GEN_DIR}
+    ${PROTO_GEN_DIR}/db/proto
+    ${CMAKE_SOURCE_DIR}
     ${EIGEN3_INCLUDE_DIR}
 )
 
