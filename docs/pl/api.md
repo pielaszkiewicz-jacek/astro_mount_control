@@ -133,9 +133,22 @@ message AxisPhysicalParameters {
 }
 ```
 
+### MountOrientation
+
+Kwaternion orientacji montażu używany dla typu montażu CASUAL (`MountType::CASUAL = 3`). Reprezentuje rotację z lokalnego układu horyzontalnego (ENU: East, North, Up) do układu montażu (oś1, oś2).
+
+```protobuf
+message MountOrientation {
+    double qx = 1;  // Składowa x kwaternionu
+    double qy = 2;  // Składowa y kwaternionu
+    double qz = 3;  // Składowa z kwaternionu
+    double qw = 4;  // Składowa w kwaternionu (skalarna, powinna być 1.0 dla identyczności)
+}
+```
+
 ### Configuration
 
-Pełna konfiguracja systemu (50 pól).
+Pełna konfiguracja systemu (51 pól).
 
 ```protobuf
 message Configuration {
@@ -220,6 +233,9 @@ message Configuration {
     double soft_limit_warning_degrees = 48;
     double soft_limit_deceleration_degrees = 49;
     double soft_limit_tracking_rate_factor = 50;
+
+    // Kwaternion orientacji montażu (używany gdy mount_type = CASUAL)
+    MountOrientation mount_orientation = 51;  // Orientacja montażu w lokalnym układzie horyzontalnym
 }
 ```
 
@@ -777,32 +793,59 @@ rpc ClearBootstrapMeasurements(google.protobuf.Empty) returns (google.protobuf.E
 
 ```protobuf
 message BootstrapMeasurement {
-    double observed_ra = 1;     // Observed RA in hours
-    double observed_dec = 2;    // Observed Dec in degrees
-    double expected_ra = 3;     // Catalog RA in hours
-    double expected_dec = 4;    // Catalog Dec in degrees
-    google.protobuf.Timestamp timestamp = 5;
+    Coordinates observed = 1;           // Obserwowane współrzędne (przybliżone)
+    Coordinates expected = 2;           // Oczekiwane współrzędne katalogowe
+    MountPosition mount_position = 3;   // Opcjonalna pozycja montażu (przybliżona)
+    google.protobuf.Timestamp timestamp = 4;
+
+    // Metryki jakości dla bootstrap
+    double estimated_error_arcsec = 5;  // Szacowany błąd pomiaru
+    bool use_for_initial_alignment = 6; // Czy użyć do wstępnego ustawienia
+    string star_catalog_id = 7;         // Identyfikator katalogowy gwiazdy
+    double star_magnitude = 8;          // Jasność gwiazdy (do ważenia)
 }
 
 message BootstrapCalibrationResult {
     bool success = 1;
-    double alignment_error_arcsec = 2;
-    int32 measurements_used = 3;
-    string error_message = 4;
+    string error_message = 2;
+
+    // Wyniki
+    double initial_rotation_angle_deg = 3;  // Początkowy kąt rotacji
+    double alignment_error_arcsec = 4;      // Szacowany błąd ustawienia
+    int32 measurement_count = 5;            // Liczba użytych pomiarów
+    google.protobuf.Timestamp calibrated_at = 6;
+
+    // Metryki jakości
+    double residual_rms_arcsec = 7;         // RMS residuów
+    double max_residual_arcsec = 8;         // Maksymalne residuum
+    bool ready_for_tpoint = 9;              // Gotowy do kalibracji TPOINT
+
+    // Dla montażu CASUAL: estymowany kwaternion orientacji
+    MountOrientation estimated_orientation = 10;  // Estymowana orientacja montażu
+    double estimated_quaternion_error = 11;       // Błąd estymacji kwaternionu [arcsec]
 }
 
 message BootstrapStatus {
+    bool calibrated = 1;
+    google.protobuf.Timestamp last_calibration = 2;
+    int32 measurement_count = 3;
+    double current_alignment_error_arcsec = 4;
+    bool ready_for_tpoint = 5;
+
+    // Szczegółowy stan
     enum CalibrationState {
-        IDLE = 0;
-        COLLECTING = 1;
-        RUNNING = 2;
-        COMPLETED = 3;
-        FAILED = 4;
+        NOT_CALIBRATED = 0;
+        MEASUREMENTS_COLLECTING = 1;   // Zbieranie pomiarów
+        CALIBRATING = 2;               // Kalibracja w toku
+        CALIBRATED = 3;                // Kalibracja zakończona sukcesem
+        NEEDS_MORE_MEASUREMENTS = 4;   // Potrzebne więcej gwiazd
+        ERROR = 5;                     // Błąd kalibracji
     }
-    CalibrationState state = 1;
-    int32 measurement_count = 2;
-    double current_error_arcsec = 3;
-    int32 min_measurements_required = 4;
+
+    CalibrationState state = 6;
+    string state_message = 7;
+    double min_measurements_required = 8;       // Minimalna liczba pomiarów
+    double min_measurements_for_tpoint = 9;     // Minimum dla TPOINT
 }
 ```
 
@@ -897,13 +940,19 @@ message FieldRotationParams {
 
 message FieldRotationControlRequest {
     enum RotationMode {
-        OFF = 0;
-        TRACKING = 1;
-        MANUAL = 2;
-        CALIBRATION = 3;
+        DISABLED = 0;          // Brak rotacji pola
+        ALT_AZ = 1;            // Kompensacja dla montażu alt-az
+        EQUATORIAL = 2;        // Montaż równikowy (brak rotacji)
+        CUSTOM = 3;            // Niestandardowa prędkość rotacji
+        FIXED_ANGLE = 4;       // Stały kąt rotacji
+        TRACKING = 5;          // Śledzenie rotacji dla obiektu ruchomego
+        CASUAL = 6;            // Rotacja pola dla przypadkowo zorientowanego montażu
     }
     RotationMode mode = 1;
-    double manual_rate = 2;     // deg/s for manual mode
+    double target_angle = 2;   // Docelowy kąt [deg] (dla FIXED_ANGLE)
+    double rotation_rate = 3;  // Prędkość rotacji [deg/s] (dla CUSTOM)
+    bool relative = 4;         // Względem aktualnej pozycji
+    bool wait_for_completion = 5; // Czekaj do zakończenia rotacji
 }
 
 message DerotatorStatus {
@@ -1058,6 +1107,19 @@ enum CompensationMode {
     OFF = 2;
 }
 ```
+
+### CASUAL Mount Orientation — Orientacja Montażu CASUAL
+
+Ustawienie lub pobranie kwaternionu orientacji montażu dla typu CASUAL (`MountType::CASUAL = 3`). Pozwala na konfigurację dowolnej orientacji przypadkowo zorientowanego montażu.
+
+```protobuf
+rpc SetMountOrientation(MountOrientation) returns (google.protobuf.Empty);
+rpc GetMountOrientation(google.protobuf.Empty) returns (MountOrientation);
+```
+
+**SetMountOrientation** aktualizuje kwaternion orientacji opisujący rotację z lokalnego układu horyzontalnego (ENU) do układu montażu (oś1, oś2). Używany dla montaży CASUAL, gdzie dwie prostopadłe osie nie są wyrównane do standardowego układu równikowego ani alt-az.
+
+**GetMountOrientation** pobiera aktualny kwaternion orientacji montażu.
 
 ---
 

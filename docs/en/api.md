@@ -133,9 +133,22 @@ message AxisPhysicalParameters {
 }
 ```
 
+### MountOrientation
+
+Mount orientation quaternion used for CASUAL mount type (`MountType::CASUAL = 3`). Represents the rotation from the local horizontal frame (ENU: East, North, Up) to the mount frame (axis1, axis2).
+
+```protobuf
+message MountOrientation {
+    double qx = 1;  // Quaternion x component
+    double qy = 2;  // Quaternion y component
+    double qz = 3;  // Quaternion z component
+    double qw = 4;  // Quaternion w component (scalar, should be 1.0 for identity)
+}
+```
+
 ### Configuration
 
-Complete system configuration with 50 fields covering location, mount, telescope, Kalman, TPOINT, guider, meridian flip, soft limits, and encoder settings.
+Complete system configuration with 51 fields covering location, mount, telescope, Kalman, TPOINT, guider, meridian flip, soft limits, encoder settings, and CASUAL mount orientation.
 
 ```protobuf
 message Configuration {
@@ -224,6 +237,9 @@ message Configuration {
     double soft_limit_warning_degrees = 48;
     double soft_limit_deceleration_degrees = 49;
     double soft_limit_tracking_rate_factor = 50;
+
+    // Mount orientation quaternion (used when mount_type = CASUAL)
+    MountOrientation mount_orientation = 51;  // Mount orientation in local horizontal frame
 }
 ```
 
@@ -716,6 +732,10 @@ message BootstrapCalibrationResult {
     double residual_rms_arcsec = 7;
     double max_residual_arcsec = 8;
     bool ready_for_tpoint = 9;
+
+    // For CASUAL mount: estimated orientation quaternion
+    MountOrientation estimated_orientation = 10;  // Estimated mount orientation
+    double estimated_quaternion_error = 11;       // Quaternion estimation error [arcsec]
 }
 ```
 
@@ -729,11 +749,14 @@ rpc ClearBootstrapMeasurements(google.protobuf.Empty) returns (google.protobuf.E
 ```protobuf
 message BootstrapStatus {
     bool calibrated = 1;
+    google.protobuf.Timestamp last_calibration = 2;
     int32 measurement_count = 3;
     double current_alignment_error_arcsec = 4;
     bool ready_for_tpoint = 5;
     CalibrationState state = 6;
     string state_message = 7;
+    double min_measurements_required = 8;       // Minimum measurements needed
+    double min_measurements_for_tpoint = 9;     // Minimum for TPOINT
     
     enum CalibrationState {
         NOT_CALIBRATED = 0;
@@ -900,6 +923,7 @@ message FieldRotationControlRequest {
         CUSTOM = 3;
         FIXED_ANGLE = 4;
         TRACKING = 5;
+        CASUAL = 6;            // Field rotation for randomly oriented mount
     }
     RotationMode mode = 1;
     double target_angle = 2;
@@ -1046,6 +1070,19 @@ message HALReinitRequest {
     bool force_restart = 1;
 }
 ```
+
+### CASUAL Mount Orientation
+
+Set or get the mount orientation quaternion for CASUAL mount type (`MountType::CASUAL = 3`). This allows configuring the arbitrary orientation of a randomly oriented mount.
+
+```protobuf
+rpc SetMountOrientation(MountOrientation) returns (google.protobuf.Empty);
+rpc GetMountOrientation(google.protobuf.Empty) returns (MountOrientation);
+```
+
+**SetMountOrientation** updates the orientation quaternion describing the rotation from the local horizontal frame (ENU) to the mount frame (axis1, axis2). Used for CASUAL mounts where the two perpendicular axes are not aligned to the standard equatorial or alt-az frame.
+
+**GetMountOrientation** retrieves the current mount orientation quaternion.
 
 ---
 

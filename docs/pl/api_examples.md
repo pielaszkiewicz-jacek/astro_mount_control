@@ -706,7 +706,51 @@ def get_bootstrap_status():
     return status
 ```
 
-### 14. Niskopoziomowe sterowanie osiami
+### 14. Orientacja montażu CASUAL
+
+#### SetMountOrientation - Ustawienie kwaternionu orientacji montażu
+
+```python
+def set_mount_orientation(qx, qy, qz, qw):
+    """Ustawienie kwaternionu orientacji montażu dla typu CASUAL.
+    
+    Kwaternion reprezentuje rotację z lokalnego układu horyzontalnego
+    (ENU: East, North, Up) do układu montażu (oś1, oś2).
+    Dla kwaternionu jednostkowego [0, 0, 0, 1], CASUAL zachowuje się
+    identycznie jak ALT_AZ.
+    """
+    orientation = proto.MountOrientation()
+    orientation.qx = qx
+    orientation.qy = qy
+    orientation.qz = qz
+    orientation.qw = qw
+    
+    stub.SetMountOrientation(orientation)
+    print(f"Orientacja montażu ustawiona na Q=[{qx}, {qy}, {qz}, {qw}]")
+```
+
+#### GetMountOrientation - Pobranie aktualnej orientacji montażu
+
+```python
+def get_mount_orientation():
+    """Pobranie aktualnego kwaternionu orientacji montażu."""
+    empty = proto.google_dot_protobuf_dot_empty__pb2.Empty()
+    orientation = stub.GetMountOrientation(empty)
+    
+    print(f"Aktualna orientacja montażu:")
+    print(f"  Q = [{orientation.qx:.6f}, {orientation.qy:.6f}, "
+          f"{orientation.qz:.6f}, {orientation.qw:.6f}]")
+    
+    # Sprawdzenie czy to w przybliżeniu kwaternion jednostkowy
+    import math
+    norm = math.sqrt(orientation.qx**2 + orientation.qy**2 +
+                     orientation.qz**2 + orientation.qw**2)
+    print(f"  Norma: {norm:.6f} (powinna być ~1.0)")
+    
+    return orientation
+```
+
+### 15. Niskopoziomowe sterowanie osiami
 
 #### ControlAxis - Bezpośrednie sterowanie osią
 
@@ -916,8 +960,7 @@ def initial_mount_calibration():
         
         success = add_bootstrap_measurement(
             observed_ra, observed_dec,
-            star["ra"], star["dec"],
-            temperature=15.0, pressure=1013.0, humidity=0.5
+            star["ra"], star["dec"]
         )
         print(f"  {'✓' if success else '✗'} {star['name']}: "
               f"observed=({observed_ra:.4f}h, {observed_dec:.2f}°)")
@@ -933,13 +976,12 @@ def initial_mount_calibration():
     # 3. Pobranie statusu i metryk jakości kalibracji
     print("\n=== Krok 3: Metryki jakości kalibracji ===")
     status = get_bootstrap_status()
-    print(f"  Jakość wyrównania: {status.alignment_quality:.2f}%")
-    print(f"  Błąd RMS: {status.rms_error_arcsec:.2f}\"")
-    print(f"  Liczba pomiarów: {status.measurement_count}")
     print(f"  Skalibrowany: {status.calibrated}")
+    print(f"  Pomiary: {status.measurement_count}")
+    print(f"  Błąd ustawienia: {status.current_alignment_error_arcsec:.2f}\"")
     
-    if status.rms_error_arcsec > 30.0:
-        print("⚠️  Błąd RMS > 30\" — rozważ dodanie większej liczby pomiarów")
+    if status.current_alignment_error_arcsec > 30.0:
+        print("⚠️  Błąd ustawienia > 30\" — rozważ dodanie większej liczby pomiarów")
     
     # 4. Wyznaczenie pozycji bieguna (metoda dryfu)
     print("\n=== Krok 4: Wyznaczanie pozycji bieguna ===")

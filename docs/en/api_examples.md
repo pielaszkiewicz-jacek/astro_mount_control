@@ -815,7 +815,50 @@ def get_bootstrap_status():
     return status
 ```
 
-### 14. Low-Level Axis Control
+### 14. CASUAL Mount Orientation
+
+#### SetMountOrientation - Set Mount Orientation Quaternion
+
+```python
+def set_mount_orientation(qx, qy, qz, qw):
+    """Set the mount orientation quaternion for CASUAL mount type.
+    
+    The quaternion represents the rotation from the local horizontal frame
+    (ENU: East, North, Up) to the mount frame (axis1, axis2).
+    For an identity quaternion [0, 0, 0, 1], CASUAL behaves identically to ALT_AZ.
+    """
+    orientation = proto.MountOrientation()
+    orientation.qx = qx
+    orientation.qy = qy
+    orientation.qz = qz
+    orientation.qw = qw
+    
+    stub.SetMountOrientation(orientation)
+    print(f"Mount orientation set to Q=[{qx}, {qy}, {qz}, {qw}]")
+```
+
+#### GetMountOrientation - Get Current Mount Orientation
+
+```python
+def get_mount_orientation():
+    """Get the current mount orientation quaternion."""
+    empty = proto.google_dot_protobuf_dot_empty__pb2.Empty()
+    orientation = stub.GetMountOrientation(empty)
+    
+    print(f"Current mount orientation:")
+    print(f"  Q = [{orientation.qx:.6f}, {orientation.qy:.6f}, "
+          f"{orientation.qz:.6f}, {orientation.qw:.6f}]")
+    
+    # Check if it's approximately an identity quaternion
+    import math
+    norm = math.sqrt(orientation.qx**2 + orientation.qy**2 +
+                     orientation.qz**2 + orientation.qw**2)
+    print(f"  Norm: {norm:.6f} (should be ~1.0)")
+    
+    return orientation
+```
+
+### 15. Low-Level Axis Control
 
 #### ControlAxis - Direct Axis Control
 
@@ -1026,8 +1069,7 @@ def initial_mount_calibration():
         
         success = add_bootstrap_measurement(
             observed_ra, observed_dec,
-            star["ra"], star["dec"],
-            temperature=15.0, pressure=1013.0, humidity=0.5
+            star["ra"], star["dec"]
         )
         print(f"  {'✓' if success else '✗'} {star['name']}: "
               f"observed=({observed_ra:.4f}h, {observed_dec:.2f}°)")
@@ -1043,13 +1085,12 @@ def initial_mount_calibration():
     # 3. Get calibration status and quality metrics
     print("\n=== Step 3: Calibration quality metrics ===")
     status = get_bootstrap_status()
-    print(f"  Alignment quality: {status.alignment_quality:.2f}%")
-    print(f"  RMS error: {status.rms_error_arcsec:.2f}\"")
-    print(f"  Number of measurements: {status.measurement_count}")
     print(f"  Calibrated: {status.calibrated}")
+    print(f"  Measurements: {status.measurement_count}")
+    print(f"  Alignment error: {status.current_alignment_error_arcsec:.2f}\"")
     
-    if status.rms_error_arcsec > 30.0:
-        print("⚠️  RMS error > 30\" — consider adding more measurements")
+    if status.current_alignment_error_arcsec > 30.0:
+        print("⚠️  Alignment error > 30\" — consider adding more measurements")
     
     # 4. Determine pole position (drift method)
     print("\n=== Step 4: Pole position determination ===")
