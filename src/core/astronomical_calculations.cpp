@@ -88,12 +88,14 @@ std::pair<double, double> AstronomicalCalculations::applyPrecession(double ra, d
     double toDate2 = toEpoch - J2000;
     
     // Compute precession matrix from J2000 to fromEpoch
+    // Using IAU 2006 precession model (iauPmat06) for sub-arcsecond accuracy.
+    // IAU 1976 (iauPmat76) drifts by ~0.3 arcsec after 50 years.
     double rFrom[3][3];
-    iauPmat76(fromDate1, fromDate2, rFrom);
+    iauPmat06(fromDate1, fromDate2, rFrom);
     
     // Compute precession matrix from J2000 to toEpoch
     double rTo[3][3];
-    iauPmat76(toDate1, toDate2, rTo);
+    iauPmat06(toDate1, toDate2, rTo);
     
     // Transpose rFrom to get matrix from fromEpoch to J2000
     double rFromT[3][3];
@@ -127,12 +129,15 @@ std::pair<double, double> AstronomicalCalculations::applyNutation(double ra, dou
     double ra_rad = ra * 15.0 * D2R;
     double dec_rad = dec * D2R;
     
-    // Get nutation parameters
+    // Get nutation parameters using IAU 2006 model (iauNut06a).
+    // IAU 2000A nutation with adjustments for IAU 2006 precession.
+    // Replaces iauNut80() which uses IAU 1980 nutation theory.
     double dpsi, deps;
-    iauNut80(jd, 0.0, &dpsi, &deps);
+    iauNut06a(jd, 0.0, &dpsi, &deps);
     
-    // Get mean obliquity
-    double epsa = iauObl80(jd, 0.0);
+    // Get mean obliquity using IAU 2006 precession model.
+    // Replaces iauObl80() which uses IAU 1980 obliquity.
+    double epsa = iauObl06(jd, 0.0);
     
     // Create nutation matrix
     double r[3][3];
@@ -282,16 +287,21 @@ std::pair<double, double> AstronomicalCalculations::calculateApparentPlace(doubl
     iauS2c(ra_rad, dec_rad, pos);
     
     // Step 1: Precess from J2000 (JD DJ00 = 2451545.0) to target date
+    // Using IAU 2006 precession model (iauPmat06) for consistency with applyPrecession().
+    // Previously used iauPmat76 (IAU 1976) — difference of ~0.3 arcsec after 50 years.
     double rprec[3][3];
-    iauPmat76(DJ00, jd - DJ00, rprec);
+    iauPmat06(DJ00, jd - DJ00, rprec);
     
     double pos_prec[3];
     iauRxp(rprec, pos, pos_prec);
     
-    // Step 2: Apply nutation
+    // Step 2: Apply nutation using IAU 2006 model
+    // iauNut06a provides IAU 2000A nutation adjusted for IAU 2006 precession,
+    // replacing iauNut80 (IAU 1980) which differs by up to ~0.3 arcsec.
     double dpsi, deps;
-    iauNut80(jd, 0.0, &dpsi, &deps);
-    double epsa = iauObl80(jd, 0.0);
+    iauNut06a(jd, 0.0, &dpsi, &deps);
+    // Mean obliquity from IAU 2006 model, replacing iauObl80 (IAU 1980).
+    double epsa = iauObl06(jd, 0.0);
     
     double rnut[3][3];
     iauNumat(epsa, dpsi, deps, rnut);
@@ -331,12 +341,25 @@ std::pair<double, double> AstronomicalCalculations::calculateApparentPlace(doubl
 
 double AstronomicalCalculations::calculateFieldRotation(double ra, double dec, double jd,
                                                        const std::vector<double>& mountOrientation) {
+    // NaN guard on inputs
+    if (!std::isfinite(ra) || !std::isfinite(dec) || !std::isfinite(jd)) {
+        return 0.0;
+    }
+    
     // Convert target to horizontal coordinates to check visibility
     auto [alt, az] = equatorialToHorizontal(ra, dec, jd, true);
     
     // If target is at or below the horizon, field rotation is not meaningful
-    if (alt <= 0.0) {
+    // Also guard against NaN/Inf altitude (propagation from upstream calculation)
+    if (!std::isfinite(alt) || alt <= 0.0) {
         return 0.0;
+    }
+    
+    // Clamp altitude away from horizon to prevent sin(alt) → 0 singularity
+    // in the parallactic angle calculation. At alt < 1°, field rotation
+    // diverges and atmospheric dispersion dominates anyway.
+    if (alt < 1.0) {
+        alt = 1.0;
     }
     
     // Step 1: Compute the parallactic angle at the target position
@@ -351,7 +374,17 @@ double AstronomicalCalculations::calculateFieldRotation(double ra, double dec, d
         lat = pimpl->latitude;
     }
     
+    // Guard against non-finite latitude (e.g., uninitialized pimpl)
+    if (!std::isfinite(lat)) {
+        return 0.0;
+    }
+    
     double q = calculateParallacticAngle(ra, dec, jd, lat);
+    
+    // Guard against NaN from parallactic angle calculation
+    if (!std::isfinite(q)) {
+        return 0.0;
+    }
     
     // Step 2: If mount orientation quaternion is provided, adjust field rotation
     // The quaternion represents the mount's orientation relative to the local
@@ -364,10 +397,18 @@ double AstronomicalCalculations::calculateFieldRotation(double ra, double dec, d
         double qz = mountOrientation[2];
         double qw = mountOrientation[3];
         
+        // NaN guard on quaternion components
+        if (!std::isfinite(qx) || !std::isfinite(qy) ||
+            !std::isfinite(qz) || !std::isfinite(qw)) {
+            return q;  // return unadjusted parallactic angle
+        }
+        
         // Normalize the quaternion
         double norm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
         if (norm > 1.0e-12) {
             qx /= norm; qy /= norm; qz /= norm; qw /= norm;
+        } else {
+            return q;  // zero quaternion, return unadjusted angle
         }
         
         // Extract the yaw angle (rotation around vertical/zenith axis) from quaternion.
@@ -433,6 +474,24 @@ std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial
     double mount_altitude, double mount_azimuth,
     double jd, const std::array<double, 4>& mountOrientation) {
     
+    // Step 0: Normalize quaternion before use.
+    // The optimized rotation formula v' = v + 2·qw·(q×v) + 2·(q×(q×v)) requires
+    // a unit quaternion for correct results.  A non-unit quaternion causes
+    // both direction error and non-uniform scaling of the rotated vector.
+    double norm = std::sqrt(mountOrientation[0] * mountOrientation[0] +
+                            mountOrientation[1] * mountOrientation[1] +
+                            mountOrientation[2] * mountOrientation[2] +
+                            mountOrientation[3] * mountOrientation[3]);
+    if (norm < 1e-12) {
+        // Degenerate quaternion — return invalid coordinates
+        return {0.0, 0.0};
+    }
+    double inv_norm = 1.0 / norm;
+    double qx = mountOrientation[0] * inv_norm;
+    double qy = mountOrientation[1] * inv_norm;
+    double qz = mountOrientation[2] * inv_norm;
+    double qw = mountOrientation[3] * inv_norm;
+    
     // Step 1: Convert mount-frame alt/az to a Cartesian unit vector.
     // In the mount frame: x = north, y = east, z = zenith
     double alt_rad = mount_altitude * D2R;
@@ -447,10 +506,10 @@ std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial
     // Step 2: Apply inverse quaternion rotation to get true horizontal vector.
     // Q^-1 = [qx, qy, qz, qw]^-1 = [-qx, -qy, -qz, qw] (for unit quaternion)
     std::array<double, 4> inv_q = {{
-        -mountOrientation[0],
-        -mountOrientation[1],
-        -mountOrientation[2],
-         mountOrientation[3]
+        -qx,
+        -qy,
+        -qz,
+         qw
     }};
     std::array<double, 3> horiz_vec = rotateVectorByQuaternion(mount_vec, inv_q);
     
@@ -468,6 +527,24 @@ std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation
     double ra, double dec,
     double jd, const std::array<double, 4>& mountOrientation) {
     
+    // Step 0: Normalize quaternion before use.
+    // A non-unit quaternion causes direction error and non-uniform scaling.
+    double norm = std::sqrt(mountOrientation[0] * mountOrientation[0] +
+                            mountOrientation[1] * mountOrientation[1] +
+                            mountOrientation[2] * mountOrientation[2] +
+                            mountOrientation[3] * mountOrientation[3]);
+    if (norm < 1e-12) {
+        // Degenerate quaternion — return invalid coordinates
+        return {0.0, 0.0};
+    }
+    double inv_norm = 1.0 / norm;
+    std::array<double, 4> norm_q = {{
+        mountOrientation[0] * inv_norm,
+        mountOrientation[1] * inv_norm,
+        mountOrientation[2] * inv_norm,
+        mountOrientation[3] * inv_norm
+    }};
+    
     // Step 1: Convert celestial RA/Dec to true horizontal coordinates
     auto [true_alt, true_az] = equatorialToHorizontal(ra, dec, jd, false);
     
@@ -482,7 +559,7 @@ std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation
     }};
     
     // Step 3: Apply quaternion rotation to get mount-frame vector
-    std::array<double, 3> mount_vec = rotateVectorByQuaternion(horiz_vec, mountOrientation);
+    std::array<double, 3> mount_vec = rotateVectorByQuaternion(horiz_vec, norm_q);
     
     // Step 4: Convert back to alt/az in mount frame
     double mount_alt = std::asin(mount_vec[2]) * R2D;
@@ -498,8 +575,27 @@ double AstronomicalCalculations::calculateEarthRotationAngle(double jd) {
 }
 
 double AstronomicalCalculations::calculateGMST(double jd) {
-    double ut1 = 0.0;  // Assuming UT1 = UTC for simplicity
-    return iauGst94(jd, ut1) * R2D / 15.0;  // Convert to hours
+    // Convert UTC Julian Date to UT1 by adding leap seconds (ΔAT = TAI - UTC).
+    // UT1 differs from UTC by ΔAT (currently 37s) plus a sub-second Earth
+    // rotation irregularity (UT1-TAI < 0.9s) that requires IERS Bulletin A data.
+    // We account for ΔAT here; the residual UT1-TAI is negligible at our
+    // target accuracy of ~1 arcsecond.
+    int iy, im, id;
+    double fd;
+    iauJd2cal(jd, 0.0, &iy, &im, &id, &fd);
+    
+    double delta_at = 0.0;  // ΔAT = TAI - UTC (seconds)
+    int status = iauDat(iy, im, id, fd, &delta_at);
+    if (status != 0) {
+        // Fallback: SOFA leap second table may be out of date.
+        // As of 2025+, TAI-UTC = 37 seconds.
+        delta_at = 37.0;
+    }
+    
+    // Approximate UT1 ≈ TAI = UTC + ΔAT
+    double jd_ut1 = jd + delta_at / 86400.0;
+    
+    return iauGst94(jd_ut1, 0.0) * R2D / 15.0;  // Convert to hours
 }
 
 double AstronomicalCalculations::calculateLST(double jd, double longitude) {
@@ -515,6 +611,12 @@ double AstronomicalCalculations::calculateLST(double jd, double longitude) {
 }
 
 double AstronomicalCalculations::calculateParallacticAngle(double ra, double dec, double jd, double latitude) {
+    // NaN/Inf guard on all inputs
+    if (!std::isfinite(ra) || !std::isfinite(dec) ||
+        !std::isfinite(jd) || !std::isfinite(latitude)) {
+        return 0.0;
+    }
+    
     // Convert to radians
     double ra_rad = ra * 15.0 * D2R;
     double dec_rad = dec * D2R;
@@ -524,8 +626,26 @@ double AstronomicalCalculations::calculateParallacticAngle(double ra, double dec
     double lst = calculateLST(jd, pimpl->longitude) * 15.0 * D2R;
     double ha = lst - ra_rad;
     
-    // Calculate parallactic angle
-    double q = atan2(sin(ha), tan(lat_rad) * cos(dec_rad) - sin(dec_rad) * cos(ha));
+    // Calculate parallactic angle.
+    // Formula: q = atan2(sin(HA), tan(lat) * cos(dec) - sin(dec) * cos(HA))
+    //
+    // Singularity protection:
+    //   tan(lat_rad) → ±∞ when latitude → ±90° (poles). While atan2()
+    //   handles Inf gracefully (returns ±π/2), the intermediate tan()
+    //   value is undefined at exactly ±90°. Clamp latitude to ±89.999°
+    //   to avoid the polar singularity entirely.
+    const double MAX_LAT_RAD = (89.999 * M_PI / 180.0);
+    if (std::abs(lat_rad) > MAX_LAT_RAD) {
+        lat_rad = std::copysign(MAX_LAT_RAD, lat_rad);
+    }
+    
+    double q = std::atan2(std::sin(ha), std::tan(lat_rad) * std::cos(dec_rad) - std::sin(dec_rad) * std::cos(ha));
+    
+    // Guard against NaN from atan2 (should not happen with finite inputs,
+    // but protect against edge cases like denormalized intermediates)
+    if (!std::isfinite(q)) {
+        return 0.0;
+    }
     
     return q * R2D;
 }

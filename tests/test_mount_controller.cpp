@@ -729,6 +729,10 @@ TEST_F(MountControllerTest, SetStatusCallback) {
     controller_->slewToEquatorial(12.0, 45.0);
     // Wait briefly for callback to fire from background thread
     std::this_thread::sleep_for(300ms);
+    // Verify the callback was invoked during the slew
+    EXPECT_TRUE(callback_called)
+        << "Status callback should have been called at least once "
+        << "during slew operation";
     // Clear callback BEFORE test exits to prevent dangling reference:
     // the background thread may still fire status callbacks via the after-loop
     // handler long after this test ends (slew timeout is 60s).
@@ -736,6 +740,7 @@ TEST_F(MountControllerTest, SetStatusCallback) {
 }
 
 TEST_F(MountControllerTest, SetErrorCallback) {
+    config_.meridian_flip_enabled = false;
     controller_->initialize(config_);
     bool callback_called = false;
     std::string error_msg;
@@ -743,10 +748,32 @@ TEST_F(MountControllerTest, SetErrorCallback) {
         callback_called = true;
         error_msg = msg;
     });
+    // Start tracking so that applyGuiderCorrection() can inject NaN
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double ra = lst;
+    while (ra < 0.0) ra += 24.0;
+    while (ra >= 24.0) ra -= 24.0;
+    bool started = controller_->startTracking(ra, 45.0,
+        MountController::TrackingMode::SIDEREAL);
+    ASSERT_TRUE(started);
+    // Let tracking establish a few iterations
+    std::this_thread::sleep_for(200ms);
+    // Trigger an error via NaN guider correction — follows the same
+    // pattern as EquatorialNanGuard test (NaN propagation → ERROR state)
+    controller_->applyGuiderCorrection(
+        std::numeric_limits<double>::quiet_NaN(),
+        std::numeric_limits<double>::quiet_NaN());
+    // Wait for tracking loop to process NaN and fire error callback
+    std::this_thread::sleep_for(500ms);
+    // Verify the error callback was invoked
+    EXPECT_TRUE(callback_called)
+        << "Error callback should have been called after NaN injection";
+    EXPECT_FALSE(error_msg.empty())
+        << "Error message should not be empty after NaN detection";
     // Clear callback BEFORE test exits for the same dangling-reference reason.
-    // Even though no error is triggered here, TearDown→shutdown() may call
-    // notifyStatusChanged() which accesses the status callback, not error.
     controller_->setErrorCallback(nullptr);
+    controller_->stop();
 }
 
 // ============================================

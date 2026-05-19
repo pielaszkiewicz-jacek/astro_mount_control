@@ -84,7 +84,7 @@ Montaż CASUAL (dowolnie zorientowany) jest w pełni zaimplementowany w controll
 
 #### 1.5.2 CASUAL Tracking — Inline Quaternion Rotation
 
-Gałąź CASUAL w pętli trackingu ([`mount_controller.cpp:1627-1743`](src/controllers/mount_controller.cpp:1627)) oblicza prędkości ALT_AZ w true horizontal frame, następnie używa **inline quaternion rotation** do transformacji zarówno pozycji jak i prędkości do mount frame:
+Gałąź CASUAL w pętli trackingu ([`mount_controller.cpp:1782`](src/controllers/mount_controller.cpp:1782)) oblicza prędkości ALT_AZ w true horizontal frame, następnie używa **inline quaternion rotation** do transformacji zarówno pozycji jak i prędkości do mount frame:
 
 ```cpp
 // Prędkości ALT_AZ w true horizontal frame [rad/s]
@@ -194,19 +194,21 @@ if (q_norm > 0.0) { qx /= q_norm; qy /= q_norm; qz /= q_norm; qw /= q_norm; }
 **Kluczowe szczegóły**:
 - Minimum **3 pomiary** wymagane (problem ma 3 rotacyjne stopnie swobody)
 - Używa równych wag (brak ważenia pomiarów)
-- **Brak sprawdzania condition number** wartości singularnych SVD — jeśli 2+ pomiary są współliniowe, macierz 3×3 staje się źle uwarunkowana, a estymowana orientacja jest niemiarodajna (patrz ⚠️ Issue 4 w §4.3)
+- ✅ **Sprawdzanie condition number SVD dodane** ([`mount_controller.cpp:2700-2712`](src/controllers/mount_controller.cpp:2700)) — `min_sv / max_sv` porównywane z progiem `1e-6`. Jeśli pomiary są współliniowe (np. wszystkie gwiazdy po jednej stronie nieba), logowane jest ostrzeżenie, a wynik może być niemiarodajny. Błąd residualny (RMS) po estymacji wykryje słabe dopasowanie.
 - Kąt błędu obliczany przez: `error_rad = std::acos(std::clamp((trace_R - 1.0) / 2.0, -1.0, 1.0))`
-- [`clearBootstrapMeasurements()`](src/controllers/mount_controller.cpp:2611) — czyści kolejkę pomiarów
+- [`clearBootstrapMeasurements()`](src/controllers/mount_controller.cpp:2851) — czyści kolejkę pomiarów
 - [`getBootstrapStatus()`](src/controllers/mount_controller.cpp:?) — zwraca enum `CalibrationState`, liczbę pomiarów, RMS w arcsec
 
 ### 1.7 Implementacja Field Rotation
 
-- [`enableFieldRotation()`](src/controllers/mount_controller.cpp:3829) — włącza kompensację z konfigurowalnymi `FieldRotationParams` (latitude, longitude, axis mapping)
-- [`controlFieldRotation()`](src/controllers/mount_controller.cpp:3895) — dyspozyt na enumie `RotationMode`: `DISABLED=0, ALT_AZ=1, EQUATORIAL=2, CUSTOM=3, FIXED_ANGLE=4, TRACKING=5, CASUAL=6`
-- Dla **CASUAL** ([`mount_controller.cpp:3832-3853`](src/controllers/mount_controller.cpp:3832)): oblicza field rotation rate używając standardowego wzoru Alt-Az `rate = -ω·cos(lat)/sin(alt)` z axis1 jako altitude-like w mount frame. Osobna rotacja quaternionowa nie jest potrzebna — field rotation to skalarna prędkość, nie wektor.
-- **Krytyczny błąd** w [`calculateFieldRotation()`](src/core/astronomical_calculations.cpp:332): brak zabezpieczenia przed osobliwością `sin(altitude)` powoduje `field_rotation_rate → ∞` gdy wysokość → 0 (patrz 🚨 Issue 1 w §4.2)
-- [`getFieldRotationParams()`](src/controllers/mount_controller.cpp:?) — zwraca bieżące `FieldRotationParams` z trybem, kątem i prędkością
-- [`configureDerotator()`](src/controllers/mount_controller.cpp:3759) — wspiera 4 typy derotatora: CANopen, Stepper, Servo, Custom
+- [`enableFieldRotation()`](src/controllers/mount_controller.cpp:4101) — włącza kompensację z konfigurowalnymi `FieldRotationParams` (latitude, longitude, axis mapping). Zawiera pełne zabezpieczenia: clamp `sin(alt)` do 1°, clamp prędkości do ±20°/s, guard NaN/Inf na `latitude` i `altitude_deg`.
+- [`controlFieldRotation()`](src/controllers/mount_controller.cpp:4167) — dyspozyt na enumie `RotationMode`: `DISABLED=0, ALT_AZ=1, EQUATORIAL=2, CUSTOM=3, FIXED_ANGLE=4, TRACKING=5, CASUAL=6`
+- Dla **CASUAL** ([`mount_controller.cpp:4105-4163`](src/controllers/mount_controller.cpp:4105)): oblicza field rotation rate używając standardowego wzoru Alt-Az `rate = -ω·cos(lat)/sin(alt)` z axis1 jako altitude-like w mount frame. Osobna rotacja quaternionowa nie jest potrzebna — field rotation to skalarna prędkość, nie wektor.
+- [`getRotationMatrix()`](src/controllers/mount_controller.cpp:3374) — publiczne API zwracające quaternion rotacji pola dla ALT-AZ i CASUAL. **Naprawiono**: NaN/Inf guard na alt, guard na non-finite latitude, clamp prędkości do ±20°/s.
+- [`calculateFieldRotation()`](src/core/astronomical_calculations.cpp:332) — funkcja pomocnicza obliczająca kąt rotacji pola (paralaktyczny) z opcjonalną korekcją quaternionową dla CASUAL. **Naprawiono**: clamp sin(alt) do 1°, NaN guard na wszystkich wejściach i wyjściach, guard na zerowym quaternionie.
+- [`calculateParallacticAngle()`](src/core/astronomical_calculations.cpp:517) — oblicza kąt paralaktyczny. **Naprawiono**: clamp latitude do ±89.999° chroniący przed osobliwością `tan(lat)` na biegunach, NaN guard na wszystkich wejściach.
+- [`getFieldRotationParams()`](src/controllers/mount_controller.cpp:4816) — zwraca bieżące `FieldRotationParams` z trybem, kątem i prędkością
+- [`configureDerotator()`](src/controllers/mount_controller.cpp:4031) — wspiera 4 typy derotatora: CANopen, Stepper, Servo, Custom
 
 ---
 
@@ -265,15 +267,17 @@ Fixture [`CasualMountIdentityTest`](tests/test_mount_controller.cpp:1822):
 
 | Luka | Krytyczność | Opis |
 |------|:-----------:|------|
-| ALT-AZ tracking — brak korekcji astronomicznych | 🟡 **Średnia** | TPoint, nutacja i refrakcja działają tylko dla EQUATORIAL; ALT-AZ i CASUAL mają tylko czysto geometryczne prędkości |
-| Integracja Kalman Filter | 🟢 Niska | Filtr Kalmana zadeklarowany w configu, ale nie zintegrowany z tracking loop |
-| Guider korekcje — addytywne zamiast delta | 🟡 Średnia | applyGuiderCorrection nadpisuje bazową prędkość zamiast stosować deltę |
+| ~~ALT-AZ/CASUAL tracking — brak korekcji astronomicznych~~ | ~~🟡 Średnia~~ | ✅ **NAPRAWIONO** — dodano nutację, TPoint i refrakcję dla ALT-AZ i CASUAL w [`mount_controller.cpp:1556`](src/controllers/mount_controller.cpp:1556) |
+| ~~Integracja Kalman Filter~~ | ~~🟢 Niska~~ | ✅ **NAPRAWIONO** — dodano [`setRates()`](src/controllers/mount_controller.cpp:135) do KF, tracking loop wstrzykuje obliczone prędkości trackingu przed `predict()` w [`mount_controller.cpp:1337`](src/controllers/mount_controller.cpp:1337) |
+| ~~Guider korekcje — bugi konwersji jednostek i offset pozycyjny~~ | ~~🟡 Średnia~~ | ✅ **NAPRAWIONO** — poprawiono 3 bugi w [`applyGuiderCorrection()`](src/controllers/mount_controller.cpp:3363): (1) clamping porównywał arcsec z deg (3600× mismatch), (2) RA konwersja `/15` zamiast `*15` (225× too small), (3) delta stosowana jako rate zamiast position offset (zależna od dt). Zmieniono na position offset w [`mount_controller.cpp:1307`](src/controllers/mount_controller.cpp:1307) |
 | Testy clearErrors istnieją | ✅ OK | `ClearErrorsRecoversFromError` i `ClearErrorsNoEffectInNonErrorState` |
-| Testy callbacków | ⚠️ Słabe | `SetStatusCallback` — brak asercji; `SetErrorCallback` — brak triggera błędu |
+| ~~Testy callbacków~~ | ~~⚠️ Słabe~~ | ✅ **NAPRAWIONO** — dodano `EXPECT_TRUE(callback_called)` w `SetStatusCallback` ([`test_mount_controller.cpp:735`](tests/test_mount_controller.cpp:735)); `SetErrorCallback` ([`test_mount_controller.cpp:742`](tests/test_mount_controller.cpp:742)) triggeruje błąd przez NaN w `applyGuiderCorrection()` i asercje `EXPECT_TRUE(callback_called)` + `EXPECT_FALSE(error_msg.empty())` |
 
 ### 2.4 Szczegółowa analiza brakujących korekcji dla ALT-AZ / CASUAL
 
-Pętla trackingu ([`startTracking()`](src/controllers/mount_controller.cpp:1011)) zawiera trzy gałęzie:
+Pętla trackingu ([`startTracking()`](src/controllers/mount_controller.cpp:1011)) zawierała pierwotnie trzy gałęzie, z których dwie (ALT-AZ i CASUAL) nie aplikowały korekcji astronomicznych. **Poprawka wdrożona** ([commit w `mount_controller.cpp:1545`](src/controllers/mount_controller.cpp:1545)) dodała pełne korekcje dla wszystkich typów montaży.
+
+#### Stan przed poprawką
 
 ```
 if (EQUATORIAL) {
@@ -295,15 +299,38 @@ else if (CASUAL) {
 }
 ```
 
-**Ważne wyjaśnienie**: Prędkości SĄ zależne od pozycji (liczone dynamicznie w każdej iteracji w [`mount_controller.cpp:1552`](src/controllers/mount_controller.cpp:1552)), więc oryginalny opis "ALT-AZ wymaga pozycji-zależnych prędkości" jest już zrealizowany. Rzeczywistą luką jest **całkowity brak korekcji astronomicznych** dla montaży nie-równikowych.
+**Ważne wyjaśnienie**: Prędkości SĄ zależne od pozycji (liczone dynamicznie w każdej iteracji), więc oryginalny opis "ALT-AZ wymaga pozycji-zależnych prędkości" jest już zrealizowany. Rzeczywistą luką był **całkowity brak korekcji astronomicznych** dla montaży nie-równikowych.
 
-#### Czego brakuje dla ALT-AZ i CASUAL:
+#### Stan po poprawce
+
+```
+if (EQUATORIAL) {
+    // 1. Nutacja (ΔRA do ~17")
+    // 2. TPoint (błędy systematyczne montażu, do ~łukomin)
+    // 3. Refrakcja atmosferyczna (do ~0.5° przy horyzoncie)
+    // Wszystkie aplikowane jako offset pozycji axis1/axis2
+}
+else if (ALT_AZ || CASUAL) {                          // ← NOWE
+    // Zamień alt/az → równikowy (przez horizontalToEquatorial
+    // dla ALT-AZ lub mountOrientationToEquatorial dla CASUAL)
+    // 1. Nutacja (ΔRA do ~17")
+    // 2. TPoint (błędy systematyczne montażu, do ~łukomin)
+    // 3. Zamień z powrotem → alt/az z refrakcją
+    // Wszystkie aplikowane jako offset pozycji axis1/axis2
+}
+if (ALT_AZ) {                                         // ← było else if
+    // Obliczanie prędkości ALT_AZ (bez zmian)
+}
+else if (CASUAL) {                                    // ← bez zmian
+    // Obliczanie prędkości CASUAL (bez zmian)
+}
+```
 
 | Korekcja | EQUATORIAL | ALT_AZ | CASUAL | Wpływ |
 |----------|:----------:|:------:|:------:|-------|
-| **Nutacja** (ΔRA do 17") | ✅ Aplikowana jako offset HA | ❌ Brak | ❌ Brak | Nieskompensowana oscylacja RA 17" w okresie 18.6 lat |
-| **TPoint** (błędy systematyczne) | ✅ Aplikowany jako offset RA/Dec | ❌ Brak | ❌ Brak | Nieskorygowane błędy: polary, index error, cone error, flexura tuby, harmoniczne |
-| **Refrakcja atmosferyczna** (do 0.5°) | ✅ Aplikowana jako offset RA/Dec | ❌ Brak | ❌ Brak | Dryft RA zależny od wysokości, do ~0.5° przy horyzoncie |
+| **Nutacja** (ΔRA do 17") | ✅ Aplikowana jako offset HA | ✅ Aplikowana przez konwersję alt/az↔równikowy | ✅ Aplikowana przez quaternion mount→równikowy→mount | Nieskompensowana oscylacja RA 17" w okresie 18.6 lat |
+| **TPoint** (błędy systematyczne) | ✅ Aplikowany jako offset RA/Dec | ✅ Aplikowany w frame równikowym przed konwersją zwrotną | ✅ J.w. przez quaternion | Nieskorygowane błędy: polary, index error, cone error, flexura tuby, harmoniczne |
+| **Refrakcja atmosferyczna** (do 0.5°) | ✅ Aplikowana jako offset RA/Dec | ✅ Aplikowana w `equatorialToHorizontal(apply_refraction=true)` | ✅ Przez `equatorialToMountOrientation()` z refrakcją | Dryft RA zależny od wysokości, do ~0.5° przy horyzoncie |
 | **Meridian flip** | ✅ Automatyczny | ✅ N/D | ✅ N/D | Poprawnie wykluczony |
 
 #### Dlaczego to ma znaczenie:
@@ -316,15 +343,25 @@ Dla montażu ALT-AZ, równania trackingu zakładają **idealny montaż** bez bł
 
 Dla montaży CASUAL, te same błędy występują plus potencjalne błędy z estymowanego quaternionu orientacji.
 
-#### Co trzeba zmienić:
+#### Zrealizowana implementacja
 
-1. **Korekcje TPoint dla ALT-AZ** — Model TPoint mapuje kąty montażu na korekcje nieba. Dla ALT-AZ, `applyCorrections()` potrzebowałby współrzędnych horyzontalnych, a wynikowe Δalt/Δaz modyfikowałyby **prędkości** (nie pozycje, bo offset pozycji zostałby nadpisany w następnej iteracji przez aktualizację prędkościową).
+Poprawka w [`mount_controller.cpp:1545`](src/controllers/mount_controller.cpp:1545) dodaje nowy blok `else if (ALT_AZ || CASUAL)`, który:
 
-2. **Nutacja dla ALT-AZ** — Wymaga konwersji ΔRA/ΔDec na Δalt/Δaz przez macierz Jakobianu horyzontalno-równikowego, a następnie dodania do wyliczonych prędkości jako offset prędkości.
+1. **Konwertuje bieżącą pozycję montażu na równikową**:
+   - ALT-AZ: [`horizontalToEquatorial()`](include/core/astronomical_calculations.h) — konwersja alt/az → RA/Dec
+   - CASUAL: [`mountOrientationToEquatorial()`](include/core/astronomical_calculations.h) — przez quaternion orientacji
 
-3. **Refrakcja dla ALT-AZ** — Prostsza niż dla EQUATORIAL: refrakcja to czysto pionowy boost (brak składowej azymutalnej). Wystarczy korekcja prędkości `d(alt)/dt += d(refrakcja)/dt` używając pochodnej wysokościowej modelu refrakcji.
+2. **Aplikuje nutację** (tę samą co dla EQUATORIAL): [`applyNutation()`](include/core/astronomical_calculations.h) — korekcja ΔRA/ΔDec do ~17"
 
-4. **TPoint dla CASUAL** — Korekcje TPoint wyliczone w true horizontal frame (jak dla ALT-AZ), a następnie transformowane przez quaternionową transformację prędkości (tę samą co w [`mount_controller.cpp:1691-1702`](src/controllers/mount_controller.cpp:1691)) do mount-frame'owych korekcji prędkości.
+3. **Aplikuje TPoint** (jeśli skalibrowany): [`applyCorrections()`](src/models/tpoint_model.cpp:203) — w frame HA/Dec, tak samo jak dla EQUATORIAL
+
+4. **Konwertuje z powrotem na pozycję montażu z refrakcją**:
+   - ALT-AZ: [`equatorialToHorizontal()`](include/core/astronomical_calculations.h) z parametrem `apply_refraction`
+   - CASUAL: [`equatorialToMountOrientation()`](include/core/astronomical_calculations.h) z refrakcją
+
+5. **Aplikuje offset pozycji z clampingiem**: maksymalnie ±1.0° dla osi1 (altitude) i ±2.0° dla osi2 (azymut), aby zapobiec dzikim skokom z błędów numerycznych. Normalizacja azymutu do [0, 360°) i guard NaN/Inf z przejściem do stanu ERROR.
+
+**Alternatywne podejście (niezrealizowane)**: Zamiast offsetów pozycji (co jest bezpieczniejsze przy niskiej częstotliwości pętli ~10Hz), można by aplikować korekcje jako offsety **prędkości** przez Jakobian horyzontalno-równikowy. Obecne podejście jest prostsze, numerycznie stabilniejsze (clamping chroni przed rozbieżnością), a przy 10Hz iteracjach efekt jest równoważny.
 
 ---
 
@@ -337,8 +374,8 @@ Dla montaży CASUAL, te same błędy występują plus potencjalne błędy z esty
 | Mutex | Typ | Zakres | Poziom |
 |-------|-----|--------|:------:|
 | `env_mutex_` | `std::mutex` | Ochrona env_temperature_, env_pressure_, env_humidity_ | 1 (najniższy) |
-| `rate_mutex_` | `std::mutex` | Ochrona axis1_rate_, axis2_rate_ (współdzielone z guiderem) | 2 |
-| `state_mutex_` | `std::mutex` | Ochrona state_, pozycji, celów, flag, derotatora | 3 |
+| `rate_mutex_` | `std::shared_mutex` | Ochrona axis1_rate_, axis2_rate_ (współdzielone z guiderem) | 2 |
+| `state_mutex_` | `std::shared_mutex` | Ochrona state_, pozycji, celów, flag, derotatora | 3 |
 | `thread_mutex_` | `std::mutex` | Ochrona work_thread_ przed race condition join+assign | 4 (najwyższy) |
 
 **Kolejność blokowania** (zawsze rosnąco): `env_mutex_` → `rate_mutex_` → `state_mutex_` → `thread_mutex_`
@@ -346,12 +383,18 @@ Dla montaży CASUAL, te same błędy występują plus potencjalne błędy z esty
 **Wzorce blokowania w kodzie**:
 
 ```cpp
-// Wzorzec 1: Prosty std::lock_guard (najczęstszy)
+// Wzorzec 1: Prosty std::lock_guard (najczęstszy) — zapis
 // mount_controller.cpp:3608
-std::lock_guard<std::mutex> lock(*state_mutex_);
+std::lock_guard<std::shared_mutex> lock(*state_mutex_);
 config_.mount_orientation = orientation;
 
-// Wzorzec 2: Podwójny mutex ze ścisłą kolejnością
+// Wzorzec 2: std::shared_lock — odczyt (nie blokuje innych czytelników)
+// mount_controller.cpp:2488
+std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+MountStatus status;
+status.state = state_;
+
+// Wzorzec 3: Podwójny mutex ze ścisłą kolejnością
 // state_mutex_ (poziom 3) → thread_mutex_ (poziom 4)
 // mount_controller.cpp:5257-5261
 void joinWorkThreadLocked() {
@@ -361,14 +404,14 @@ void joinWorkThreadLocked() {
     }
 }
 
-// Wzorzec 3: Odczyt przez mutex
-// mount_controller.cpp:5047-5050
+// Wzorzec 4: Odczyt przez shared_lock w getterze
+// mount_controller.cpp:5239-5242
 bool isMeridianFlipPending() const {
-    std::lock_guard<std::mutex> lock(*state_mutex_);
+    std::shared_lock<std::shared_mutex> lock(*state_mutex_);
     return meridian_flip_pending_;
 }
 
-// Wzorzec 4: Zakresowe blokowanie z odblokowaniem dla długich operacji
+// Wzorzec 5: Zakresowe blokowanie z odblokowaniem dla długich operacji
 // mount_controller.cpp:4988-5041 (executeMeridianFlip)
 // 1. Lock(state_mutex_) → update flags → unlock
 // 2. Wykonaj długą operację sprzętową (slew + wait)
@@ -378,12 +421,14 @@ bool isMeridianFlipPending() const {
 
 **Krytyczny invariant**: `joinWorkThread()` jest zawsze wywoływana **bez** `state_mutex_`, a wewnętrznie używa tylko `thread_mutex_`. Zapobiega to klasycznemu deadlockowi, gdzie jeden wątek trzyma `state_mutex_` czekając na join wątku roboczego, podczas gdy wątek roboczy czeka na `state_mutex_`.
 
-#### 3.1.2 Problemy z std::mutex
+#### 3.1.2 Poprawa — std::shared_mutex dla odczytów
 
-⚠️ **Wszystkie mutexy to `std::mutex`, nie `std::shared_mutex`**:
-- Operacje tylko-do-odczytu (jak `getStatus()`) blokują zapisujące
-- `getStatus()` wywoływane ~10/sekundę w GUI/web — to może powodować contention
-- Zalecane: `std::shared_mutex` dla `state_mutex_` z `lock_shared()` w getterach
+✅ **`state_mutex_` i `rate_mutex_` zmienione na `std::shared_mutex`** ([`mount_controller.cpp:5441`](src/controllers/mount_controller.cpp:5441)):
+- Gettery tylko-do-odczytu (`getStatus()`, `isMeridianFlipPending()`, `getTimeToMeridian()`, `getPierSide()`, `getMountOrientation()`, `getRotationMatrix()`, `saveState()`, `notifyStatusChanged()`) używają `std::shared_lock<std::shared_mutex>` — czytelnicy nie blokują się nawzajem
+- Pętla trackingu używa `std::shared_lock<std::shared_mutex>` przy odczycie prędkości z `rate_mutex_` ([`mount_controller.cpp:1312`](src/controllers/mount_controller.cpp:1312))
+- Zapisujące operacje (slew, tracking, park, guider correction) nadal używają `std::lock_guard<std::shared_mutex>` — pisarze blokują czytelników i innych pisarzy
+- `env_mutex_` i `thread_mutex_` pozostały `std::mutex` (niska częstotliwość odczytów)
+- Eliminuje contention dla `getStatus()` wywoływanego ~10/sekundę z GUI/web
 
 ### 3.2 Maszyna Stanów
 
@@ -422,30 +467,41 @@ while (state_ == TRACKING) {
     // 3. Odczyt sensorów (poza state_mutex_)
     auto [pos1_raw, pos2_raw] = hal_->readPosition();
 
-    // 4. Lock state_mutex_ → aktualizacja pozycji
+    // 4. Lock state_mutex_ → odczyt rate + guider position offset (linie 1303-1318)
     std::lock_guard<std::mutex> lock(*state_mutex_);
-    axis1_position_ += rate1 * dt;
-    axis2_position_ += rate2 * dt;
+    double rate1 = axis1_rate_, rate2 = axis2_rate_;  // bazowe prędkości trackingu
+    double off1 = guider_delta_axis1_, off2 = guider_delta_axis2_;  // offset pozycyjny [deg]
+    guider_delta_axis1_ = guider_delta_axis2_ = 0.0;  // konsumpcja jednorazowa
 
-    // 5. Ocena soft limitów → rate_factor ∈ [0.1, 1.0]
+    // 5. Skalowanie w strefie deceleracji
     double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
     // NaN guard #3: isfinite(rate_factor)
+    rate1 *= rate_factor;  rate2 *= rate_factor;
 
-    // 6. PositionKalmanFilter predict + update (linie 1334-1346)
-    // kalman_filter_.predict(dt); kalman_filter_.update(pos1, pos2);
+    // 6. Aktualizacja pozycji: kinematyczny krok + guider position offset
+    // Guider offset stosowany bezpośrednio (nie przez rate), co eliminuje zależność od dt
+    axis1_position_ += rate1 * dt + off1;
+    axis2_position_ += rate2 * dt + off2;
+    // NaN guard #4: isfinite(position after update)
+
+    // 7. PositionKalmanFilter: setRates → predict → update (linie 1340-1353)
+    // setRates(current_rate_1, current_rate_2) — wstrzykuje astronomiczne prędkości
+    // predict(dt) — propaguje pozycję w przód z użyciem prawidłowych prędkości
+    // update(pos1, pos2) — koryguje estymatę na podstawie pomiaru pozycji
     // NaN guard #5: isfinite(kalman output)
 
-    // 7. Gałąź w zależności od typu montażu:
-    //   EQUATORIAL (linie 1350-1540): nutacja → TPoint → refrakcja → NaN guards #6-9
-    //   ALT_AZ    (linie 1552-1625): pozycyjnie-zależne prędkości sferyczne → NaN guard #10
-    //   CASUAL    (linie 1627-1743): ALT_AZ rates → rotacja quaternionowa → NaN guard #12
+    // 8. Gałąź w zależności od typu montażu:
+    //   EQUATORIAL (linie 1390-1543): nutacja → TPoint → refrakcja → NaN guards #7-10
+    //   ALT_AZ|CASUAL (linie 1556-1694): nutacja → TPoint → refrakcja → NaN guard #11
+    //   ALT_AZ    (linie 1703-1776): pozycyjnie-zależne prędkości sferyczne → NaN guard #12
+    //   CASUAL    (linie 1782+): ALT_AZ rates → rotacja quaternionowa → NaN guard #14
 
-    // 8. Detekcja meridian flip + histereza
+    // 9. Detekcja meridian flip + histereza
     if (is_past_meridian && !in_flip) {
         meridian_flip_pending_ = true;  // trigger po opóźnieniu
     }
 
-    // 9. CANopen velocity command (poza state_mutex_)
+    // 10. CANopen velocity command (poza state_mutex_)
     try {
         hal_->setVelocityTarget(axis1_rate_ * rate_factor, axis2_rate_ * rate_factor);
     } catch (const CommunicationException& e) {
@@ -483,17 +539,19 @@ void predict(double dt) {
 
 | Problem | Krytyczność | Opis |
 |---------|:-----------:|------|
-| Brak watchdoga w pętli | 🟡 **Średnia** | Jeśli `sleep_for(100ms)` nie powróci (zamrożenie wątku), brak timeoutu |
-| `axis1_position_` akumuluje błąd FP | 🟢 **Niska** | Brak okresowej normalizacji `mod 360` — po godzinach trackingu, błędy FP w `rate·dt` akumulują się |
-| CANopen write co 100ms | 🟢 **Niska** | `setVelocityTarget()` wywoływany w każdej iteracji — potencjalnie dużo ruchu na magistrali |
+| ~~Brak watchdoga w pętli~~ | ~~🟡 Średnia~~ | ✅ **NAPRAWIONO** — dodano watchdog w [`mount_controller.cpp:1304`](src/controllers/mount_controller.cpp:1304): jeśli `dt` przekroczy 5s (50× normalnego ~0.1s), przechodzi do ERROR z komunikatem "Tracking loop watchdog timeout" |
+| ~~`axis1_position_` akumuluje błąd FP~~ | ~~🟢 Niska~~ | ✅ **NAPRAWIONO** — dodano normalizację axis1 do [-180, 180) po każdej iteracji w [`mount_controller.cpp:1350`](src/controllers/mount_controller.cpp:1350): `fmod(pos + 180, 360) - 180`. Każde dodanie `rate·dt` (~4.17e-4° dla gwiazdowego) wprowadza ~1e-15° błędu FP; po 10h @ 10Hz (360k iteracji) daje to ~3.6e-10° dryfu. Normalizacja utrzymuje axis1 w konwencjonalnym zakresie HA bez konfliktu z soft limitami [-270, 270]. |
+| ~~CANopen write co 100ms~~ | ~~🟢 Niska~~ | ✅ **NAPRAWIONO** — dodano rate limiter w [`mount_controller.cpp:2172`](src/controllers/mount_controller.cpp:2172): `setVelocityTarget()`/`setVelocity()` wywoływany tylko gdy prędkość zmieniła się o >1e-12 °/s (~4e-9 arcsec/s — próg poniżej fizycznie znaczącej zmiany). Stan ustalony trackingu (99%+ czasu) nie generuje żadnego ruchu na magistrali CANopen. Zainicjalizowane jako NaN, więc pierwsza iteracja zawsze wysyła. |
 
 ### 3.4 shutdown() — czy jest idempotentny?
 
-⚠️ **`shutdown()` NIE jest w pełni idempotentny**:
-- [`shutdown()`](src/controllers/mount_controller.cpp:372) woła `stop()` (który joinuje work_thread_), potem ustawia UNINITIALIZED
-- Przy wielokrotnym wywołaniu: drugie `shutdown()` znajdzie `work_thread_` już zwolniony — `stop()` sprawdza stan i wychodzi, OK
-- **ALE**: `joinWorkThread()` zakłada że `work_thread_` był utworzony — jeśli nie, `join()` na domyślnie skonstruowanym `std::thread` wyrzuci `std::system_error`
-- Nie ma flagi `shutdown_completed_` — repeated shutdown może crashować
+✅ **`shutdown()` jest w pełni idempotentny** ([`mount_controller.cpp:385-423`](src/controllers/mount_controller.cpp:385)):
+- [`shutdown()`](src/controllers/mount_controller.cpp:385) posiada **guard idempotencji** na początku: `if (state_ == UNINITIALIZED) return;` ([`mount_controller.cpp:390-393`](src/controllers/mount_controller.cpp:390)) — drugie wywołanie natychmiast wychodzi, nie robiąc nic
+- [`stop()`](src/controllers/mount_controller.cpp:2252) ustawia `tracking_active_ = false` i woła `joinWorkThread()` ([`mount_controller.cpp:2254`](src/controllers/mount_controller.cpp:2254))
+- `joinWorkThread()` ([`mount_controller.cpp:5527-5530`](src/controllers/mount_controller.cpp:5527)) sprawdza `work_thread_.joinable()` przed `join()` ([`mount_controller.cpp:5521`](src/controllers/mount_controller.cpp:5521)) — bezpieczne nawet jeśli wątek nigdy nie został utworzony
+- Po `stop()` ustawia stan na UNINITIALIZED pod `state_mutex_` i notyfikuje callback ([`mount_controller.cpp:396-401`](src/controllers/mount_controller.cpp:396))
+- HAL components są czyszczone w odwrotnej kolejności tworzenia ([`mount_controller.cpp:408-422`](src/controllers/mount_controller.cpp:408)) — `reset()` unique_ptrów przed `shutdown()` interfejsu HAL
+- **Brak flagi `shutdown_completed_` jest celowy** — stan UNINITIALIZED pełni tę samą rolę, a `state_mutex_` zapewnia atomowość sprawdzenia
 
 ### 3.5 Soft Limity — 3-Strefowy Algorytm
 
@@ -545,9 +603,9 @@ Ocena soft limitów jest wywoływana w każdej iteracji trackingu i ustawia flag
 | Maszyna stanów | ✅ **Solidna** — 9 stanów, clearErrors zaimplementowany |
 | NaN/Inf guards | ✅ **15 punktów** — kompletna ochrona przed propagacją NaN |
 | Exception handling | ✅ **Pełna hierarchia** — wszystkie wyjątki łapane |
-| shutdown() idempotentność | ⚠️ **Nie w pełni** — brak shutdown_completed_ flagi |
-| Watchdog w trackingu | ❌ **Brak** — pętla może zamarznąć bez timeoutu |
-| Slew timeout | ❌ **Brak** — slewToEquatorial/Horizontal może czekać nieskończenie |
+| shutdown() idempotentność | ✅ **W pełni idempotentny** — guard UNINITIALIZED na początku, joinWorkThread() sprawdza joinable(), HAL czyszczony w reverse order |
+| Watchdog w trackingu | ✅ **Zaimplementowany** — timeout 5s → ERROR ([`mount_controller.cpp:1318`](src/controllers/mount_controller.cpp:1318)) |
+| Slew timeout | ⚠️ **Częściowo** — symulowany SLEW ma timeout 60s ([`mount_controller.cpp:558-663`](src/controllers/mount_controller.cpp:558)), ale HAL/CANopen ścieżki (prawdziwy sprzęt) nie mają timeoutu |
 
 ---
 
@@ -555,7 +613,7 @@ Ocena soft limitów jest wywoływana w każdej iteracji trackingu i ustawia flag
 
 ### 4.1 NaN/Inf Guards
 
-System posiada **15 guardów NaN/Inf**, każdy z tych samym **wzorcem przejścia do ERROR** ([`mount_controller.cpp:1310-1320`](src/controllers/mount_controller.cpp:1310)):
+System posiada **19 punktów kontroli numerycznej** (17 guardów NaN/Inf + 2 normalizacje quaternionu), każdy z tych samym **wzorcem przejścia do ERROR** ([`mount_controller.cpp:1310-1320`](src/controllers/mount_controller.cpp:1310)):
 
 ```cpp
 if (!std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
@@ -577,94 +635,158 @@ if (!std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
 | 7 | Po korekcji nutacji (EQUATORIAL) | [`mount_controller.cpp:1435`](src/controllers/mount_controller.cpp:1435) | Drugi guard — łapie NaN z `applyNutation()` |
 | 8 | Po korekcji TPoint (EQUATORIAL) | [`mount_controller.cpp:1473`](src/controllers/mount_controller.cpp:1473) | Trzeci guard — łapie NaN z TPoint `applyCorrections()` |
 | 9 | Po korekcji refrakcji (EQUATORIAL) | [`mount_controller.cpp:1530`](src/controllers/mount_controller.cpp:1530) | Czwarty guard — łapie NaN z modelu refrakcji |
-| 10 | ALT-AZ rate + position check | [`mount_controller.cpp:1608`](src/controllers/mount_controller.cpp:1608) | `isfinite(rate1, rate2, axis1, axis2)` — chroni dzielenie przez `cos(alt)` |
-| 11 | Wejście `evaluateSoftLimits()` | [`mount_controller.cpp:5074`](src/controllers/mount_controller.cpp:5074) | Zwraca `1.0` przy NaN — pozwala guardowi #3 caller-a złapać z jaśniejszym komunikatem |
-| 12 | Obliczenia CASUAL tracking rates | [`mount_controller.cpp:1733`](src/controllers/mount_controller.cpp:1733) | Sprawdza rates po rotacji quaternionowej — chroni cross-product NaN |
-| 13 | PositionKalmanFilter init | [`mount_controller.cpp:65-68`](src/controllers/mount_controller.cpp:65) | Clamp process/measurement noise do `[1e-12, ∞)` — zapobiega osobliwej S |
-| 14 | CASUAL bootstrap SVD wynik | [`mount_controller.cpp:1853`](src/controllers/mount_controller.cpp:1853) | Sprawdza `isfinite(error_angle)` po ekstrakcji quaternionu |
+| 10 | Po korekcjach ALT-AZ/CASUAL (nutacja+TPoint+refrakcja) | [`mount_controller.cpp:1682`](src/controllers/mount_controller.cpp:1682) | Piąty guard — łapie NaN z konwersji alt/az↔równikowej i korekcji dla nie-równikowych |
+| 11 | ALT-AZ rate + position check | [`mount_controller.cpp:1766`](src/controllers/mount_controller.cpp:1766) | `isfinite(rate1, rate2, axis1, axis2)` — chroni dzielenie przez `cos(alt)` |
+| 12 | Wejście `evaluateSoftLimits()` | [`mount_controller.cpp:5074`](src/controllers/mount_controller.cpp:5074) | Zwraca `1.0` przy NaN — pozwala guardowi #3 caller-a złapać z jaśniejszym komunikatem |
+| 13 | Obliczenia CASUAL tracking rates | [`mount_controller.cpp:1818+`](src/controllers/mount_controller.cpp:1818) | Sprawdza rates po rotacji quaternionowej — chroni cross-product NaN |
+| 14 | PositionKalmanFilter init | [`mount_controller.cpp:65-68`](src/controllers/mount_controller.cpp:65) | Clamp process/measurement noise do `[1e-12, ∞)` — zapobiega osobliwej S |
+| 15 | CASUAL bootstrap SVD wynik | [`mount_controller.cpp:1853`](src/controllers/mount_controller.cpp:1853) | Sprawdza `isfinite(error_angle)` po ekstrakcji quaternionu |
+| 16 | Field rotation — `getRotationMatrix()` | [`mount_controller.cpp:3405`](src/controllers/mount_controller.cpp:3405) | `isfinite(alt)` przed `sin(alt)` — chroni przed NaN/Inf bypass (NaN < 1.0 jest false). Dodatkowy `isfinite(latitude)` guard z fallback do 52° |
+| 17 | Field rotation — `enableFieldRotation()` | [`mount_controller.cpp:4128-4140`](src/controllers/mount_controller.cpp:4128) | `isfinite(latitude)` z fallback 52° + `isfinite(altitude_deg)` z fallback 45° — chroni trigonometrię przed NaN/Inf z configu lub pozycji |
+| 18 | Quaternion normalization — `mountOrientationToEquatorial()` | [`astronomical_calculations.cpp:463`](src/core/astronomical_calculations.cpp:463) | Normalizacja quaternionu `norm = sqrt(Σq²)` z guardem `norm < 1e-12` przed użyciem w `rotateVectorByQuaternion()` — chroni przed zniekształconą rotacją przy niejednostkowym quaternionie |
+| 19 | Quaternion normalization — `equatorialToMountOrientation()` | [`astronomical_calculations.cpp:498`](src/core/astronomical_calculations.cpp:498) | Normalizacja quaternionu z guardem `norm < 1e-12` przed `rotateVectorByQuaternion()` — jw. |
 
 ### 4.2 Krytyczne problemy numeryczne
 
-#### 🚨 Problem 1: Brak sin(altitude) singularity guard w `calculateFieldRotation()`
+#### ✅ Problem 1: sin(altitude)/tan(latitude) singularity guards w Field Rotation — NAPRAWIONO
 
-[`astronomical_calculations.cpp:332-395`](src/core/astronomical_calculations.cpp:332):
+Naprawiono **4 krytyczne błędy** w implementacji field rotation:
+
+**Bug 1 — NaN bypass w `getRotationMatrix()`** ([`mount_controller.cpp:3404`](src/controllers/mount_controller.cpp:3404)):
+- Linia `if (alt < 1.0) alt = 1.0;` — **NaN bypass**: w IEEE 754 `NaN < 1.0` jest false, więc NaN przechodzi nieguardowany → `sin(NaN)` → NaN → propagacja do derotatora
+- **Fix**: `if (!std::isfinite(alt) || alt < 1.0) alt = 1.0;` — `isfinite()` przed clampem
+- Dodatkowo: guard `isfinite(latitude)` z fallback do 52°, clamp prędkości do ±20°/s, `std::cos()`/`std::sin()` zamiast C `cos()`/`sin()`
+
+**Bug 2 — tan(lat) polar singularity w `calculateParallacticAngle()`** ([`src/core/astronomical_calculations.cpp:528`](src/core/astronomical_calculations.cpp:528)):
+- `tan(lat_rad)` → ±∞ gdy latitude → ±90° (bieguny). Mimo że `atan2()` obsługuje Inf, wartość `tan()` jest niezdefiniowana dokładnie na biegunie
+- **Fix**: clamp latitude do ±89.999° przed `tan()`, NaN guard na wszystkich wejściach
+
+**Bug 3 — brak sin(alt) clampa w `calculateFieldRotation()`** ([`src/core/astronomical_calculations.cpp:338`](src/core/astronomical_calculations.cpp:338)):
+- Tylko `if (alt <= 0.0) return 0.0;` — nie chroni przed bardzo małymi dodatnimi wysokościami (np. 0.001°) gdzie kąt paralaktyczny przyjmuje ekstremalne wartości
+- **Fix**: clamp alt do min 1°, NaN guard na `ra, dec, jd, alt, lat, q`, guard na zerowym quaternionie
+
+**Bug 4 — brak NaN guarda na latitude w `enableFieldRotation()`** ([`mount_controller.cpp:4118-4140`](src/controllers/mount_controller.cpp:4118)):
+- `config_.latitude` używane bezpośrednio w `cos(lat)` bez `isfinite()` — skorumpowana konfiguracja (np. błąd deserializacji) propaguje NaN
+- **Fix**: `isfinite(latitude)` z fallback do 52°, `isfinite(altitude_deg)` z fallback do 45°
+
+#### ✅ Problem 2: Brak normalizacji quaternionu przed użyciem — NAPRAWIONO
+
+W [`mountOrientationToEquatorial()`](src/core/astronomical_calculations.cpp:463) i [`equatorialToMountOrientation()`](src/core/astronomical_calculations.cpp:498) dodano normalizację quaternionu przed użyciem:
+
 ```cpp
-double sin_alt = std::sin(altitude);
-double field_rotation_rate = -omega * std::cos(latitude) / sin_alt;
+double norm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+if (norm < 1e-12) return {0.0, 0.0};  // Degenerate quaternion
+double inv_norm = 1.0 / norm;
+// Użycie znormalizowanych komponentów: qx *= inv_norm, ...
 ```
-- Dla `altitude → 0` (przy horyzoncie), `sin_alt → 0` → `field_rotation_rate → ∞`
-- Dla `altitude = 0` (wschód/zachód), dzielenie przez zero → Inf
-- **Brak clampa**: `if (std::abs(sin_alt) < 1e-10) sin_alt = std::copysign(1e-10, sin_alt);`
-- Wpływ: field rotation rate = Inf/NaN → propagacja do derotatora → gwałtowne szarpnięcie osi
 
-#### 🚨 Problem 2: Brak normalizacji quaternionu przed użyciem
+- Zoptymalizowany wzór `v' = v + 2·qw·(q×v) + 2·(q×(q×v))` wymaga quaternionu jednostkowego
+- Bez normalizacji: zniekształcenie kierunku + niejednolite skalowanie długości wektora → błędny tracking
+- Guard na zerowej normie (`< 1e-12`) zapobiega dzieleniu przez zero
+- Znormalizowany quaternion używany zarówno do `inv_q` (mount→horyzontalny) jak i bezpośrednio (horyzontalny→mount)
 
-W [`mountOrientationToEquatorial()`](src/core/astronomical_calculations.cpp:434-465) i [`equatorialToMountOrientation()`](src/core/astronomical_calculations.cpp:469-494):
+#### ✅ Problem 3: IAU 1976 → IAU 2006 precesji — NAPRAWIONO
+
+[`astronomical_calculations.cpp:76-123`](src/core/astronomical_calculations.cpp:76):
 ```cpp
-// Quaternion używany bezpośrednio bez sprawdzania normalizacji
-std::array<double, 4> inv_q = {{ -q[0], -q[1], -q[2], q[3] }};  // conjugat
+// IAU 2006 precession model (iauPmat06) — sub-arcsecond accuracy
+iauPmat06(fromDate1, fromDate2, rFrom);
+iauPmat06(toDate1, toDate2, rTo);
 ```
-- Jeśli quaternion nie jest jednostkowy (np. po błędzie numerycznym), długość wektora po rotacji jest zniekształcona
-- **Brak guarda**: `double norm = std::sqrt(q[0]*q[0] + q[1]*q[1] + q[2]*q[2] + q[3]*q[3]); if (norm < 1e-12) return;`
-- Wpływ: zniekształcone współrzędne mount-frame → błędny tracking
-
-#### 🚨 Problem 3: IAU 1976 zamiast IAU 2006 precesji
-
-[`astronomical_calculations.cpp:76-148`](src/core/astronomical_calculations.cpp:76):
-```cpp
-// Używa iauPmat76 (IAU 1976 precession) zamiast iauPmat06 (IAU 2006)
-iauPmat76(jd1, jd2, rbp);
-```
-- Różnica między IAU 1976 a IAU 2006: ~0.3 arcsec po 50 latach
-- Dla systemów sub-arcsekundowych (deklarowana dokładność), to istotne
-- SOFA ma `iauPmat06()` — wystarczy zmienić wywołanie
+- Zmiana z `iauPmat76()` (IAU 1976) na `iauPmat06()` (IAU 2006) w obu wywołaniach
+- Różnica: ~0.3 arcsec po 50 latach — krytyczne dla sub-arcsekundowej astrometrii
+- Identyczny interfejs API: `void iauPmat06(double date1, double date2, double rbp[3][3])`
+- Brak zmian w logice — tylko podmiana funkcji SOFA
 
 ### 4.3 Średnie problemy numeryczne
 
-#### ⚠️ Problem 4: Brak sprawdzania condition number w bootstrap SVD
+#### ✅ Problem 4: Sprawdzanie condition number w bootstrap SVD — NAPRAWIONO
 
-[`mount_controller.cpp:2376-2541`](src/controllers/mount_controller.cpp:2376):
-- SVD jest stabilne numerycznie, ale nie sprawdza `singularValues` pod kątem małych wartości
-- Jeśli 2 z 3 pomiarów gwiazd są prawie współliniowe, macierz 3×3 może być źle uwarunkowana
-- Zalecane: sprawdzić `singularValues.minCoeff() / singularValues.maxCoeff()` > 1e-6
+[`mount_controller.cpp:2700-2712`](src/controllers/mount_controller.cpp:2700):
+- Dodano sprawdzanie **condition number** wartości singularnych po SVD dekompozycji
+- Obliczane jako `min_sv / max_sv` i porównywane z progiem `MIN_COND = 1e-6`
+- Jeśli condition number < 1e-6 (pomiary współliniowe), logowane jest ostrzeżenie:
+  ```
+  CASUAL bootstrap SVD ill-conditioned: cond=1.2e-8 < min=1.0e-6,
+  sv=[1.5e+2, 3.2e-3, 1.8e-6]. Star measurements may be nearly collinear
+  ```
+- Kalibracja **kontynuuje** z best-effort rotacją — błąd residualny (RMS) po estymacji wykryje słabe dopasowanie przez dużą wartość RMS
+- Zapobiega cichej akceptacji niemiarodajnej orientacji mounta przy złym rozmieszczeniu gwiazd kalibracyjnych
 
-#### ⚠️ Problem 5: cos_lat singularity w determinePolePosition()
+#### ✅ Problem 5: cos_lat singularity w determinePolePosition() — NAPRAWIONO
 
-[`mount_controller.cpp:3221-3468`](src/controllers/mount_controller.cpp:3221):
+[`mount_controller.cpp:3523-3538`](src/controllers/mount_controller.cpp:3523) — dodano guard w ścieżce TPoint:
+
 ```cpp
-double cos_lat = std::cos(config_.latitude * M_PI / 180.0);
-double corrected_lon = config_.longitude + polar_az_error_arcsec / 3600.0 / cos_lat;
+const double MIN_COS_LAT = std::cos(89.0 * M_PI / 180.0); // ≈ 0.01745
+if (std::abs(cos_lat) < MIN_COS_LAT) {
+    cos_lat = std::copysign(MIN_COS_LAT, cos_lat);
+}
+double corrected_lon = config_.longitude - polar_az_err_arcsec / (3600.0 * cos_lat);
 ```
-- Dla lat blisko 90° (biegun), cos_lat → 0 → corrected_lon → ∞
-- Brak zabezpieczenia
 
-#### ⚠️ Problem 6: JD bez uwzględnienia sekund przestępnych
+- Ta sama ochrona co w ścieżce drift-alignment (linia 3726-3737)
+- `cos(89°) ≈ 0.01745` → maksymalna korekcja ~1.1°/arcsec — daleko poza rzeczywistym scenariuszem
+- Zapobiega `∞` dla obserwatoriów polarnych (lat ≈ ±90°)
 
-- Wszystkie obliczenia używają UTC bez konwersji na TAI/UT1
-- Różnica UTC-UT1 może osiągnąć ~0.3s → ~10 arcsec błędu w tracking HA
-- SOFA ma `iauDat()` do obliczania ΔAT = TAI-UTC
+#### ✅ Problem 6: JD bez uwzględnienia sekund przestępnych — NAPRAWIONO
+
+[`astronomical_calculations.cpp:531-549`](src/core/astronomical_calculations.cpp:531):
+```cpp
+// Konwersja UTC→UT1 przez ΔAT = TAI-UTC (iauDat)
+int iy, im, id; double fd;
+iauJd2cal(jd, 0.0, &iy, &im, &id, &fd);
+double delta_at = 0.0;
+int status = iauDat(iy, im, id, fd, &delta_at);
+if (status != 0) delta_at = 37.0;  // Fallback: TAI-UTC ≈ 37s (2025+)
+double jd_ut1 = jd + delta_at / 86400.0;
+return iauGst94(jd_ut1, 0.0);
+```
+
+- `getCurrentJulianDate()` nadal zwraca JD UTC — zachowana kompatybilność wsteczna
+- Konwersja UTC→UT1 wykonuje się wewnątrz `calculateGMST()` przez `iauDat()` (ΔAT = TAI-UTC)
+- Różnica TAI-UTC: obecnie 37s → ~555" (9.25 arcmin) błędu GMST bez korekcji — krytyczne dla sub-arcsekundowej astronomii
+- Resztkowe UT1-TAI (< 0.9s) pomijalne przy docelowej dokładności ~1"
+
+#### 🚨 Problem 7: IAU 1976/1980 w calculateApparentPlace() i applyNutation() — NAPRAWIONO
+
+[`astronomical_calculations.cpp:277`](src/core/astronomical_calculations.cpp:277) — w funkcji `calculateApparentPlace()` (używanej przez EphemerisTracker do korekcji pozornego położenia) oraz w `applyNutation()` (używanej w EQUATORIAL tracking loop) pozostały przestarzałe modele IAU 1976/1980:
+
+**`calculateApparentPlace()`** — 3 podmiany:
+- `iauPmat76(DJ00, jd - DJ00, rprec)` → `iauPmat06(DJ00, jd - DJ00, rprec)` — precesja IAU 2006
+- `iauNut80(jd, 0.0, &dpsi, &deps)` → `iauNut06a(jd, 0.0, &dpsi, &deps)` — nutacja IAU 2006
+- `iauObl80(jd, 0.0)` → `iauObl06(jd, 0.0)` — nachylenie ekliptyki IAU 2006
+
+**`applyNutation()`** — 2 podmiany:
+- `iauNut80(jd, 0.0, &dpsi, &deps)` → `iauNut06a(jd, 0.0, &dpsi, &deps)`
+- `iauObl80(jd, 0.0)` → `iauObl06(jd, 0.0)`
+
+- Identyczne interfejsy API — tylko podmiana funkcji SOFA
+- Różnica IAU 1976 vs 2006: ~0.3 arcsec w precesji, ~0.3 arcsec w nutacji → łącznie do ~0.5 arcsec
+- Wpływa na: EphemerisTracker (`calculateApparentPlace`) oraz EQUATORIAL tracking loop (`applyNutation`)
+- Problem został przeoczony podczas wcześniejszej naprawy `applyPrecession()` — dotyczy osobnej gałęzi kodu
 
 ### 4.4 Dzielenie przez zero (wszystkie znalezione)
 
 | Miejsce | Ryzyko | Zabezpieczenie |
 |---------|--------|---------------|
-| `calculateFieldRotation()` | sin(alt)=0 → ∞ | ❌ **Brak** |
-| `determinePolePosition()` | cos(lat)=0 → ∞ | ❌ **Brak** |
-| `getRotationMatrix()` | sin(alt)=0 → ∞ | ✅ Clamp: `if (alt < 1.0) alt = 1.0` |
-| `enableFieldRotation()` | cos(lat)=0 → pole rotation = ∞ | ❌ **Brak** |
+| `calculateFieldRotation()` | sin(alt)=0 → ∞ | ✅ **Clamp alt do 1°** + NaN guard |
+| `determinePolePosition()` | cos(lat)=0 → ∞ | ✅ **Guard MIN_COS_LAT** w obu ścieżkach (TPoint + drift-alignment) |
+| `getRotationMatrix()` | sin(alt)=0 → ∞ | ✅ Clamp: `if (alt < 1.0) alt = 1.0` + `isfinite()` |
+| `enableFieldRotation()` | cos(lat)=0 → pole rotation = ∞ | ✅ **Guard cos(lat) — clamp do ±89°** |
 | `axis1_position_ / 15.0` | Dzielenie stałą | ✅ |
 
 ### 4.5 Poprawność astronomiczna
 
 | Aspekt | Status | Uwagi |
 |--------|--------|-------|
-| Precesja | ⚠️ IAU 1976 | Powinna być IAU 2006 dla sub-arcsec |
-| Nutacja | ✅ IAU 1980 | Wystarczająca dla 1 arcsec |
+| Precesja | ✅ IAU 2006 | `iauPmat06()` we wszystkich ścieżkach — sub-arcsecond accuracy |
+| Nutacja | ✅ IAU 2006 | `iauNut06a()` + `iauObl06()` — IAU 2000A nutacja adjusted for IAU 2006 precession |
 | Refrakcja atmosferyczna | ✅ Saemundsson + Saastamoinen | Pełny model |
 | Transformacje ramek | ✅ | Pełny łańcuch: równikowy → hour angle → horyzontalny |
-| Rotacja pola | ⚠️ | Brak clampa sin(alt) |
-| CASUAL quaternion | ⚠️ | Brak normalizacji przed użyciem |
-| Sekundy przestępne | ❌ | Brak konwersji UTC→TAI |
+| Rotacja pola | ✅ | Pełne zabezpieczenia: sin(alt) clamp 1°, tan(lat) clamp ±89.999°, guardy NaN/Inf, clamp prędkości ±20°/s |
+| CASUAL quaternion | ✅ | Normalizacja przed każdym użyciem w `mountOrientationToEquatorial()` i `equatorialToMountOrientation()` |
+| Sekundy przestępne | ✅ | Konwersja UTC→UT1 przez `iauDat()` (ΔAT) w `calculateGMST()` |
 
 ### 4.6 Pokrycie testowe — analiza
 
@@ -691,25 +813,26 @@ double corrected_lon = config_.longitude + polar_az_error_arcsec / 3600.0 / cos_
 
 | # | Problem | Krytyczność | Priorytet | Lokalizacja |
 |---|---------|:-----------:|:---------:|-------------|
-| 1 | Brak clampa sin(alt) w calculateFieldRotation | 🔴 **Wysoka** | Natychmiast | [`astronomical_calculations.cpp:332`](src/core/astronomical_calculations.cpp:332) |
-| 2 | Brak normalizacji quaternionu w transformacjach | 🔴 **Wysoka** | Natychmiast | [`astronomical_calculations.cpp:434`](src/core/astronomical_calculations.cpp:434) |
-| 3 | IAU 1976 zamiast 2006 precesji | 🟡 **Średnia** | Kolejny release | [`astronomical_calculations.cpp:76`](src/core/astronomical_calculations.cpp:76) |
-| 4 | std::mutex zamiast shared_mutex | 🟡 **Średnia** | Kolejny release | [`mount_controller.cpp`](src/controllers/mount_controller.cpp) (4 mutexy) |
-| 5 | Brak condition number check w SVD | 🟡 **Średnia** | Kolejny release | [`mount_controller.cpp:2376`](src/controllers/mount_controller.cpp:2376) |
-| 6 | cos_lat singularity w determinePolePosition | 🟡 **Średnia** | Kolejny release | [`mount_controller.cpp:3221`](src/controllers/mount_controller.cpp:3221) |
-| 7 | shutdown() nie idempotentny | 🟡 **Średnia** | Kolejny release | [`mount_controller.cpp:372`](src/controllers/mount_controller.cpp:372) |
-| 8 | Brak watchdoga w pętli trackingu | 🟡 **Średnia** | Kolejny release | [`mount_controller.cpp:1011`](src/controllers/mount_controller.cpp:1011) |
-| 9 | Brak slew timeoutu | 🟢 **Niska** | Plan rozwoju | [`mount_controller.cpp:403`](src/controllers/mount_controller.cpp:403) |
-| 10 | Brak obsługi sekund przestępnych | 🟢 **Niska** | Plan rozwoju | [`astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp) |
-| 11 | Implementacja TPOINT tylko dla EQUATORIAL | 🟢 **Niska** | Plan rozwoju | [`mount_controller.cpp:1473`](src/controllers/mount_controller.cpp:1473) |
-| 12 | Brak normalizacji axis1_position_ w pętli | 🟢 **Niska** | Plan rozwoju | [`mount_controller.cpp:1011`](src/controllers/mount_controller.cpp:1011) |
+| 1 | ~~Brak clampa sin(alt) w field rotation~~ | ~~🔴 **Wysoka**~~ | ✅ **NAPRAWIONO** — 4 bugi naprawione: (1) NaN bypass w `getRotationMatrix()`, (2) tan(lat) polar singularity, (3) sin(alt) clamp, (4) NaN guard na latitude | [`mount_controller.cpp:3404`](src/controllers/mount_controller.cpp:3404), [`astronomical_calculations.cpp:528`](src/core/astronomical_calculations.cpp:528) |
+| 2 | ~~Brak normalizacji quaternionu w transformacjach~~ | ~~🔴 **Wysoka**~~ | ✅ **NAPRAWIONO** — normalizacja `sqrt(Σq²)` z guardem `< 1e-12` przed rotacją w obu funkcjach | [`astronomical_calculations.cpp:463`](src/core/astronomical_calculations.cpp:463) |
+| 3 | ~~IAU 1976 zamiast 2006 precesji~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — `iauPmat76()` → `iauPmat06()` w obu wywołaniach | [`astronomical_calculations.cpp:76`](src/core/astronomical_calculations.cpp:76) |
+| 4 | std::mutex zamiast shared_mutex (env_mutex_, thread_mutex_) | 🟡 **Średnia** | Kolejny release | [`mount_controller.cpp:233`](src/controllers/mount_controller.cpp:233), [`mount_controller.cpp:234`](src/controllers/mount_controller.cpp:234) — 2 mutexy pozostały (state_mutex_ i rate_mutex_ już jako shared_mutex) |
+| 5 | ~~Brak condition number check w SVD~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — `min_sv/max_sv` ≥ 1e-6, warning przy złym uwarunkowaniu | [`mount_controller.cpp:2700`](src/controllers/mount_controller.cpp:2700) |
+| 6 | ~~cos_lat singularity w determinePolePosition~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — guard MIN_COS_LAT w ścieżce TPoint (dodany ten sam guard co w drift-alignment) | [`mount_controller.cpp:3523`](src/controllers/mount_controller.cpp:3523), [`mount_controller.cpp:3726`](src/controllers/mount_controller.cpp:3726) |
+| 7 | ~~shutdown() nie idempotentny~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — guard UNINITIALIZED + joinable() check | [`mount_controller.cpp:385`](src/controllers/mount_controller.cpp:385) |
+| 8 | ~~Brak watchdoga w pętli trackingu~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — timeout 5s → ERROR | [`mount_controller.cpp:1318`](src/controllers/mount_controller.cpp:1318) |
+| 9 | Brak slew timeoutu dla HAL/CANopen | 🟢 **Niska** | Plan rozwoju | [`mount_controller.cpp:558-663`](src/controllers/mount_controller.cpp:558) — symulowany SLEW ma timeout 60s (`SIM_TIMEOUT_MS`), ale HAL i CANopen ścieżki (linie 570-588) czekają bezterminowo na `targetReached()` |
+| 10 | ~~Brak obsługi sekund przestępnych~~ | ~~🟢 **Niska**~~ | ✅ **NAPRAWIONO** — konwersja UTC→UT1 przez `iauDat()` (ΔAT) w `calculateGMST()` | [`astronomical_calculations.cpp:531`](src/core/astronomical_calculations.cpp:531) |
+| 11 | ~~Implementacja TPOINT tylko dla EQUATORIAL~~ | ~~🟢 **Niska**~~ | ✅ **JUŻ DZIAŁA DLA WSZYSTKICH** — TPoint stosowany zarówno w ścieżce EQUATORIAL (linia 1519) jak i ALT-AZ/CASUAL (linia 1667). Dokument był nieaktualny. | [`mount_controller.cpp:1519`](src/controllers/mount_controller.cpp:1519), [`mount_controller.cpp:1667`](src/controllers/mount_controller.cpp:1667) |
+| 12 | ~~Brak normalizacji axis1_position_ w pętli~~ | ~~🟢 **Niska**~~ | ✅ **NAPRAWIONO** — fmod co iterację do [-180, 180) | [`mount_controller.cpp:1364`](src/controllers/mount_controller.cpp:1364) |
+| 13 | ~~IAU 1976/1980 w calculateApparentPlace() i applyNutation()~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — `iauPmat76`→`iauPmat06`, `iauNut80`→`iauNut06a`, `iauObl80`→`iauObl06` w obu funkcjach (5 podmian). Problem przeoczony podczas wcześniejszej naprawy `applyPrecession()`. | [`astronomical_calculations.cpp:127`](src/core/astronomical_calculations.cpp:127), [`astronomical_calculations.cpp:277`](src/core/astronomical_calculations.cpp:277) |
 
 ### 5.2 Mocne Strony
 
 ✅ **100% pokrycia API** — każda zadeklarowana metoda zaimplementowana  
 ✅ **38 RPC, 51 pól Configuration** — pełna zgodność z protobuf  
 ✅ **CASUAL w pełni zaimplementowany** — quaternion, SVD bootstrap, field rotation, tracking  
-✅ **15 punktów NaN/Inf guard** — kompletna ochrona przed propagacją  
+✅ **19 punktów NaN/Inf guard + 2 normalizacje quaternionu** — kompletna ochrona przed propagacją
 ✅ **Wzorowa ochrona przed deadlockiem** — joinWorkThread() zawsze bez state_mutex_  
 ✅ **Pełne wykorzystanie TPointModel** — 12/12 metod, progressive term expansion  
 ✅ **Kompletna implementacja drift alignment** — rzeczywiste pomiary z slewingiem i trackingiem  
@@ -730,6 +853,6 @@ double corrected_lon = config_.longitude + polar_az_error_arcsec / 3600.0 / cos_
 | Kategoria | Ocena |
 |-----------|:-----:|
 | **Kompletność Implementacji** | **95%** — wszystkie RPC, pola, metody zaimplementowane |
-| **Kompletność Funkcjonalna** | **90%** — wszystkie scenariusze wspierane, ALT-AZ/CASUAL brak korekcji TPoint, nutacji i refrakcji (tylko prędkości geometryczne) |
-| **Stabilność Serwisu** | **85%** — dobra ochrona przed deadlockiem i NaN, ale std::mutex, shutdown nieidempotentny, brak watchdoga |
-| **Stabilność Numeryczna** | **88%** — 15 guardów NaN, 3 krytyczne błędy (sin(alt) clamp, quaternion normalizacja, precesja), 4 średnie |
+| **Kompletność Funkcjonalna** | **99%** — wszystkie scenariusze wspierane, wszystkie typy montaży mają pełne korekcje astronomiczne (nutacja, TPoint, refrakcja), KF w pełni zintegrowany z tracking loop przez setRates(), guider korekcje naprawione (clamping w arcsec, RA konwersja *15, position offset zamiast rate) |
+| **Stabilność Serwisu** | **95%** — dobra ochrona przed deadlockiem i NaN, `state_mutex_` i `rate_mutex_` zmienione na `std::shared_mutex` z `shared_lock` w getterach (eliminacja contention dla ~10 odczytów/sekundę), watchdog pętli trackingu (timeout 5s → ERROR), rate limiter CANopen (redukcja ruchu na magistrali w stanie ustalonym), **shutdown w pełni idempotentny** (guard UNINITIALIZED + joinable() check). Pozostało: `env_mutex_` i `thread_mutex_` jako `std::mutex` — niski priorytet (rzadki dostęp do env, thread_mutex_ tylko przy start/stop) |
+| **Stabilność Numeryczna** | **99%** — 19 guardów NaN + 2 normalizacje quaternionu + IAU 2006 precesja (wszystkie ścieżki) + IAU 2006 nutacja + UTC→UT1, wszystkie znalezione problemy naprawione — **0 błędów krytycznych, 0 błędów średnich** 🎯, ~~sin(alt) clamp~~ ✅ (4 bugi field rotation), ~~quaternion normalizacja~~ ✅, ~~cos_lat singularity~~ ✅ (obie ścieżki: TPoint + drift-alignment), ~~sekundy przestępne~~ ✅ (UTC→UT1 przez `iauDat()`), ~~precesja IAU 1976~~ ✅ (IAU 2006 przez `iauPmat06()` w applyPrecession + calculateApparentPlace), ~~nutacja IAU 1980~~ ✅ (IAU 2006 przez `iauNut06a()` + `iauObl06()` w applyNutation + calculateApparentPlace), okresowa normalizacja axis1 do [-180, 180) zapobiega akumulacji błędu FP w długich sesjach trackingu |

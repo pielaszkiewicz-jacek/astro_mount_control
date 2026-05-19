@@ -591,7 +591,7 @@ public:
             if (config_.apply_precession && config_.apply_nutation && config_.apply_aberration) {
                 // All three corrections enabled — use the combined apparent place method.
                 // This applies: precession (J2000→date) → nutation → annual aberration
-                // using proper IAU SOFA routines (iauPmat76, iauNut80, iauNumat, iauEpv00, iauAb).
+                // using IAU 2006 SOFA routines (iauPmat06, iauNut06a, iauObl06, iauEpv00, iauAb).
                 std::tie(ra, dec) = astro_calc_->calculateApparentPlace(ra, dec, jd);
             } else {
                 // Apply individual corrections as configured

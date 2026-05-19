@@ -350,6 +350,8 @@ stub.Stop(empty_pb2.Empty())
 
 ## Kalibracja TPOINT
 
+> **Szczegółowy przewodnik przygotowania danych treningowych**: [`Przygotowanie danych treningowych i wejściowych`](dane_treningowe.md) — zawiera kompletne informacje o zbieraniu pomiarów, pokryciu nieba, jakości pomiarów, obsłudze outlierów oraz konfiguracji systemu.
+
 ### Zbieranie pomiarów
 
 #### C++

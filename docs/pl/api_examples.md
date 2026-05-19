@@ -133,6 +133,8 @@ def load_system_state(filename="mount_state.bin"):
 
 ### 3. Pomiar i kalibracja
 
+> **Szczegółowy przewodnik przygotowania danych pomiarowych**: [`Przygotowanie danych treningowych i wejściowych`](dane_treningowe.md) — opisuje jak zbierać wysokiej jakości pomiary, zapewnić odpowiednie pokrycie nieba, obsługiwać outliery oraz przygotować konfigurację systemu.
+
 #### AddMeasurement - Dodanie pomiaru kalibracyjnego
 ```python
 def add_calibration_measurement(observed_ra, observed_dec, 
@@ -844,6 +846,9 @@ def full_observing_session(target_ra, target_dec, object_name):
 ```
 
 ### Scenariusz 2: Kalibracja TPOINT
+
+> Przed wykonaniem kalibracji zapoznaj się ze szczegółowym przewodnikiem: [`Przygotowanie danych treningowych i wejściowych`](dane_treningowe.md).
+
 ```python
 def tpoint_calibration_session():
     """Sesja kalibracji modelu TPOINT."""

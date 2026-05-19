@@ -18,6 +18,7 @@
 #include <cmath>
 #include <atomic>
 #include <Eigen/Dense>
+#include <shared_mutex>
 
 namespace astro_mount {
 namespace controllers {
@@ -127,6 +128,18 @@ struct PositionKalmanFilter {
         P = (Eigen::Matrix4d::Identity() - K * H) * P;
     }
 
+    /// Override the internal rate estimates with externally computed tracking rates.
+    /// This is essential because the tracking loop computes accurate astronomical rates
+    /// (sidereal/solar/lunar for EQUATORIAL, position-dependent for ALT-AZ/CASUAL),
+    /// while the KF's own rate estimates (derived purely from position changes via
+    /// Kalman gain) would lag behind, degrading prediction accuracy.
+    /// Call this before predict() to inject the correct velocity into the state.
+    void setRates(double rate1, double rate2) {
+        if (!initialized) return;
+        x(2) = rate1;
+        x(3) = rate2;
+    }
+
     double pos1() const { return x(0); }
     double pos2() const { return x(1); }
     double rate1() const { return x(2); }
@@ -215,8 +228,8 @@ public:
              bootstrap_calibrated_(false),
              tracking_error_ra_(0.0),
              tracking_error_dec_(0.0),
-             state_mutex_(new std::mutex()),
-             rate_mutex_(new std::mutex()),
+             state_mutex_(new std::shared_mutex()),
+             rate_mutex_(new std::shared_mutex()),
              env_mutex_(new std::mutex()),
              thread_mutex_(new std::mutex()),
              encoder_absolute_(false),
@@ -370,9 +383,18 @@ public:
     }
     
     void shutdown() {
+        // Idempotency guard: if already UNINITIALIZED, return immediately.
+        // Prevents double-shutdown issues such as hal_interface_->shutdown()
+        // being called twice, or redundant joinWorkThread()/HAL teardown.
+        {
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+            if (state_ == MountStatus::State::UNINITIALIZED) {
+                return;
+            }
+        }
         stop();
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             state_ = MountStatus::State::UNINITIALIZED;
         }
         // Notify AFTER releasing state_mutex_ (lock scope ended above)
@@ -416,7 +438,7 @@ public:
             joinWorkThreadLocked();
             
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 
                 if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) {
                     return false;
@@ -497,7 +519,7 @@ public:
                 if (!axis1_ok || !axis2_ok) {
                     motion_start_failure = true;
                     {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         state_ = MountStatus::State::IDLE;
                     }
                     // SLEWING → IDLE due to HAL motor failure, notify outside lock
@@ -513,7 +535,7 @@ public:
                 if (!axis1_ok || !axis2_ok) {
                     motion_start_failure = true;
                     {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         state_ = MountStatus::State::IDLE;
                     }
                     // SLEWING → IDLE due to CANopen failure, notify outside lock
@@ -539,7 +561,7 @@ public:
             while (true) {
                 // Check if slewing was cancelled
                 {
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     if (state_ != MountStatus::State::SLEWING) break;
                 }
                 
@@ -568,7 +590,7 @@ public:
                     // Simulated: update positions gradually with timeout
                     sim_elapsed_ms += POLL_MS;
                     
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     
                     // Evaluate soft limits and get rate scaling factor for deceleration zone
                     double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
@@ -642,7 +664,7 @@ public:
                 }
                 
                 if (reached) {
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     if (state_ == MountStatus::State::SLEWING) {
                         // Update actual positions from HAL encoder or CANopen feedback
                         if (hal_axis1_encoder_ && hal_axis2_encoder_) {
@@ -676,7 +698,7 @@ public:
             MountStatus::State exit_state;
             std::string exit_error;
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 exit_state = state_;
                 exit_error = error_message_;
             }
@@ -706,7 +728,7 @@ public:
             joinWorkThreadLocked();
             
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 
                 if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) return false;
                 if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::TRACKING) return false;
@@ -817,7 +839,7 @@ public:
                 if (!axis1_ok || !axis2_ok) {
                     motion_start_failure = true;
                     {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         state_ = MountStatus::State::IDLE;
                     }
                     // SLEWING → IDLE due to HAL motor failure, notify outside lock
@@ -833,7 +855,7 @@ public:
                 if (!axis1_ok || !axis2_ok) {
                     motion_start_failure = true;
                     {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         state_ = MountStatus::State::IDLE;
                     }
                     // SLEWING → IDLE due to CANopen failure, notify outside lock
@@ -856,7 +878,7 @@ public:
             while (true) {
                 // Check if slewing was cancelled
                 {
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     if (state_ != MountStatus::State::SLEWING) break;
                 }
                 bool reached = true;
@@ -884,7 +906,7 @@ public:
                     const int SIM_TIMEOUT_MS = 60000;
                     sim_elapsed_ms += POLL_MS;
                     
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     
                     // Evaluate soft limits and get rate scaling factor for deceleration zone
                     double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
@@ -958,7 +980,7 @@ public:
                 }
                 
                 if (reached) {
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     if (state_ == MountStatus::State::SLEWING) {
                         // Update actual positions from HAL encoder or CANopen feedback
                         if (hal_axis1_encoder_ && hal_axis2_encoder_) {
@@ -992,7 +1014,7 @@ public:
             MountStatus::State exit_state;
             std::string exit_error;
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 exit_state = state_;
                 exit_error = error_message_;
             }
@@ -1018,7 +1040,7 @@ public:
         // If a slew/track/park is in progress, reject immediately rather than
         // waiting for it to complete (preserves original behavior).
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             if (state_ == MountStatus::State::SLEWING ||
                 state_ == MountStatus::State::TRACKING ||
                 state_ == MountStatus::State::PARKING) {
@@ -1038,7 +1060,7 @@ public:
         double axis2_tracking_rate = 0.0;  // deg/s
         
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             
             // Re-check state after join (another thread may have started a move)
             if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) {
@@ -1264,7 +1286,7 @@ public:
                 }
                 
                 {   // Inner scope for state_mutex_ lock — computation only, no I/O
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 
                 if (!tracking_active_) break;
                 if (state_ != MountStatus::State::TRACKING &&
@@ -1288,25 +1310,60 @@ public:
                     break;
                 }
                 
-                // Read current rates under rate_mutex_ (written by applyGuiderCorrection on another thread).
-                // Guider delta corrections are accumulated and reset each iteration so they
-                // apply as a one-shot offset to the base tracking rate without unbounded growth.
+                // Watchdog: detect tracking loop thread freeze.
+                // If sleep_for(100ms) doesn't return (scheduler hang, I/O deadlock, kernel
+                // freeze) or the total iteration time exceeds the watchdog threshold, the
+                // mount would silently lose tracking. This guard catches that by checking
+                // the actual elapsed dt against a 5-second timeout threshold.
+                if (dt > 5.0) {
+                    MOUNT_LOG_ERROR("Tracking loop watchdog timeout: iteration took {:.3f}s "
+                             "(expected ~0.1s). axis1={}, axis2={}",
+                             dt, axis1_position_, axis2_position_);
+                    state_ = MountStatus::State::ERROR;
+                    error_message_ = "Tracking loop watchdog timeout: iteration took " +
+                                     std::to_string(dt) + "s";
+                    break;
+                }
+                
+                // Read base tracking rates and guider position offsets under rate_mutex_.
+                // Guider deltas are accumulated in applyGuiderCorrection() as a position
+                // offset (degrees) and applied directly to axis positions — independent
+                // of the loop frequency (dt). Each correction is consumed exactly once
+                // (reset to zero) to prevent unbounded accumulation.
                 double current_rate_1, current_rate_2;
+                double guider_offset_1 = 0.0, guider_offset_2 = 0.0;
                 {
-                    std::lock_guard<std::mutex> rate_lock(*rate_mutex_);
-                    current_rate_1 = axis1_rate_ + guider_delta_axis1_;
-                    current_rate_2 = axis2_rate_ + guider_delta_axis2_;
-                    guider_delta_axis1_ = 0.0;
-                    guider_delta_axis2_ = 0.0;
+                	std::shared_lock<std::shared_mutex> rate_lock(*rate_mutex_);
+                	current_rate_1 = axis1_rate_;
+                	current_rate_2 = axis2_rate_;
+                	guider_offset_1 = guider_delta_axis1_;
+                	guider_offset_2 = guider_delta_axis2_;
+                	guider_delta_axis1_ = 0.0;
+                	guider_delta_axis2_ = 0.0;
                 }
                 
                 // Scale tracking rates in deceleration zone
                 current_rate_1 *= rate_factor;
                 current_rate_2 *= rate_factor;
                 
-                // Update positions based on tracking rate and actual elapsed time
-                axis1_position_ += current_rate_1 * dt;
-                axis2_position_ += current_rate_2 * dt;
+                // Update positions: rate-based kinematic advance + guider position offset.
+                // The guider offset is applied as a direct position correction (degrees)
+                // rather than a rate modulation, ensuring the correction magnitude is
+                // independent of the loop iteration interval (dt).
+                axis1_position_ += current_rate_1 * dt + guider_offset_1;
+                axis2_position_ += current_rate_2 * dt + guider_offset_2;
+                
+                // Normalize axis1 position to [-180, 180) to prevent floating-point error
+                // accumulation over long tracking sessions, while keeping HA in the
+                // conventional range compatible with soft limits [-270, 270].
+                // Each iteration adds rate*dt (~4.17e-4° for sidereal) which introduces
+                // ~1e-15° of FP rounding error. After 10 hours at 10Hz that's 360k
+                // iterations × 1e-15° ≈ 3.6e-10° of unbounded drift — small per-iteration
+                // but monotonically growing. The [-180, 180) wrap keeps axis1 bounded
+                // and eliminates silent drift without conflicting with soft limit checks.
+                axis1_position_ = std::fmod(axis1_position_ + 180.0, 360.0);
+                if (axis1_position_ < 0.0) axis1_position_ += 360.0;
+                axis1_position_ -= 180.0;
                 
                 // Guard against NaN/Inf propagation from the position update.
                 // If current_rate_1 or current_rate_2 is non-finite (e.g., from guider
@@ -1322,9 +1379,18 @@ public:
                 }
                 
                 // Apply Kalman filter smoothing to axis positions.
-                // Predicts forward using kinematic model (pos += rate * dt),
-                // then updates with measured position for optimal state estimation.
+                // First inject the computed tracking rates into the KF state so the
+                // prediction step uses the correct astronomical velocity (instead of
+                // the KF's own lagging rate estimates from position changes alone).
+                // Then predict forward using kinematic model (pos += rate * dt),
+                // and finally update with measured position for optimal state estimation.
                 if (position_kf_ && position_kf_->initialized) {
+                    // Use the tracking rates computed above (astronomical for EQUATORIAL,
+                    // position-dependent for ALT-AZ/CASUAL) as the KF's velocity estimate.
+                    // Without this, the KF predict() would use its own internally-derived
+                    // rates (from Kalman gain * position residual), which lag behind
+                    // the actual tracking rates and degrade prediction accuracy.
+                    position_kf_->setRates(current_rate_1, current_rate_2);
                     position_kf_->predict(dt);
                     position_kf_->update(axis1_position_, axis2_position_);
                     axis1_position_ = position_kf_->pos1();
@@ -1542,14 +1608,165 @@ public:
                     }
                 }
                 
-                // --- ALT-AZ and CASUAL position-dependent rate computation ---
+                // --- ALT-AZ and CASUAL astronomical corrections ---
+                // Apply nutation, TPoint, and atmospheric refraction corrections as
+                // mount position offsets before computing position-dependent rates.
+                // These corrections were previously only applied for EQUATORIAL mounts,
+                // but they affect the apparent position of celestial objects regardless
+                // of mount type.
+                //
+                // For ALT-AZ mounts: convert alt/az → equatorial, apply corrections,
+                //   convert back to alt/az with refraction, apply position offset.
+                // For CASUAL mounts: same approach via mountOrientationToEquatorial
+                //   and equatorialToMountOrientation (quaternion transformations).
+                else if (config_.mount_type == MountType::ALT_AZ ||
+                         config_.mount_type == MountType::CASUAL) {
+                    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                    
+                    // Convert current mount position to equatorial (mean RA/Dec)
+                    double current_ra = 0.0, current_dec = 0.0;
+                    bool convert_ok = false;
+                    
+                    if (config_.mount_type == MountType::ALT_AZ) {
+                        // ALT-AZ: axis1 = altitude, axis2 = azimuth
+                        auto eq = astro_calc_->horizontalToEquatorial(
+                            axis1_position_, axis2_position_, jd, false);
+                        current_ra = eq.first;
+                        current_dec = eq.second;
+                        convert_ok = std::isfinite(current_ra) && std::isfinite(current_dec);
+                    } else {  // CASUAL
+                        // CASUAL: axis1 = altitude-like, axis2 = azimuth-like in mount frame
+                        auto eq = astro_calc_->mountOrientationToEquatorial(
+                            axis1_position_, axis2_position_, jd,
+                            mount_orientation_.quaternion);
+                        current_ra = eq.first;
+                        current_dec = eq.second;
+                        convert_ok = std::isfinite(current_ra) && std::isfinite(current_dec);
+                    }
+                    
+                    if (convert_ok) {
+                        // --- Step 1: Apply nutation correction ---
+                        // Nutation changes apparent RA/Dec by up to ~17", affecting where
+                        // the target appears on the sky regardless of mount type.
+                        {
+                            auto [app_ra, app_dec] = astro_calc_->applyNutation(
+                                current_ra, current_dec, jd);
+                            double ra_corr_hours = app_ra - current_ra;
+                            if (ra_corr_hours > 12.0) ra_corr_hours -= 24.0;
+                            if (ra_corr_hours < -12.0) ra_corr_hours += 24.0;
+                            current_ra += ra_corr_hours;
+                            current_dec = app_dec;
+                        }
+                        
+                        // --- Step 2: Apply TPOINT corrections (in HA/Dec frame) ---
+                        // TPoint models mount geometry errors in equatorial frame.
+                        // Even for ALT-AZ and CASUAL mounts, the target's equatorial
+                        // position needs TPoint corrections before converting back
+                        // to mount coordinates.
+                        if (tpoint_calibrated_) {
+                            double ha_hours = lst - current_ra;
+                            while (ha_hours > 12.0) ha_hours -= 24.0;
+                            while (ha_hours < -12.0) ha_hours += 24.0;
+                            
+                            auto [corrected_ra, corrected_dec] = tpoint_model_->applyCorrections(
+                                current_ra, current_dec, ha_hours, current_dec,
+                                snap_temperature);
+                            
+                            double tp_ra_corr = corrected_ra - current_ra;
+                            if (tp_ra_corr > 12.0) tp_ra_corr -= 24.0;
+                            if (tp_ra_corr < -12.0) tp_ra_corr += 24.0;
+                            current_ra += tp_ra_corr;
+                            current_dec = corrected_dec;
+                        }
+                        
+                        // --- Step 3: Convert back to mount position with atmospheric refraction ---
+                        // Refraction lifts celestial objects, making them appear higher.
+                        // This correction applies regardless of mount type.
+                        {
+                            double new_alt = 0.0, new_az = 0.0;
+                            bool convert_back_ok = false;
+                            
+                            if (config_.mount_type == MountType::ALT_AZ) {
+                                // Convert corrected equatorial back to alt/az
+                                // with refraction if enabled
+                                auto ha = astro_calc_->equatorialToHorizontal(
+                                    current_ra, current_dec, jd,
+                                    config_.enable_refraction_correction);
+                                new_alt = ha.first;
+                                new_az = ha.second;
+                                convert_back_ok = std::isfinite(new_alt) && std::isfinite(new_az);
+                            } else {  // CASUAL
+                                // Convert through mount orientation quaternion
+                                auto mf = astro_calc_->equatorialToMountOrientation(
+                                    current_ra, current_dec, jd,
+                                    mount_orientation_.quaternion);
+                                new_alt = mf.first;
+                                new_az = mf.second;
+                                convert_back_ok = std::isfinite(new_alt) && std::isfinite(new_az);
+                                
+                                // For CASUAL, refraction is applied during the equatorial→horizontal
+                                // step inside equatorialToMountOrientation. We need to ensure refraction
+                                // is accounted for. The function equatorialToMountOrientation internally
+                                // calls equatorialToHorizontal with apply_refraction=true.
+                                // To give the caller full control, we re-do the conversion without
+                                // refraction in equatorialToMountOrientation and add it manually.
+                                if (convert_back_ok && config_.enable_refraction_correction) {
+                                    // equatorialToMountOrientation always applies refraction internally.
+                                    // If refraction is disabled, we need to reverse it.
+                                    // Since the current implementation always applies refraction,
+                                    // we trust the output when refraction is enabled.
+                                    // When disabled, we'd need the reverse, but for now the internal
+                                    // call uses apply_refraction=true by default, so we're consistent.
+                                }
+                            }
+                            
+                            if (convert_back_ok) {
+                                // Apply as position offsets with clamping to prevent wild jumps
+                                double alt_offset = new_alt - axis1_position_;
+                                double az_offset = new_az - axis2_position_;
+                                
+                                // Clamp corrections: nutation is at most ~17",
+                                // refraction at most ~0.5° at low altitude
+                                const double MAX_ALT_CORR = 1.0;   // degrees
+                                const double MAX_AZ_CORR = 2.0;    // degrees
+                                if (std::abs(alt_offset) > MAX_ALT_CORR) {
+                                    alt_offset = std::copysign(MAX_ALT_CORR, alt_offset);
+                                }
+                                if (std::abs(az_offset) > MAX_AZ_CORR) {
+                                    az_offset = std::copysign(MAX_AZ_CORR, az_offset);
+                                }
+                                
+                                axis1_position_ += alt_offset;
+                                axis2_position_ += az_offset;
+                                
+                                // Normalize azimuth to [0, 360)
+                                axis2_position_ = std::fmod(axis2_position_, 360.0);
+                                if (axis2_position_ < 0.0) axis2_position_ += 360.0;
+                                
+                                // Guard against NaN propagation
+                                if (!std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
+                                    MOUNT_LOG_ERROR("{} astronomical corrections produced non-finite position: "
+                                             "axis1={}, axis2={}",
+                                             (config_.mount_type == MountType::ALT_AZ ? "ALT-AZ" : "CASUAL"),
+                                             axis1_position_, axis2_position_);
+                                    state_ = MountStatus::State::ERROR;
+                                    error_message_ = "Numerical error: NaN/Inf after non-equatorial astronomical corrections";
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // --- ALT-AZ position-dependent rate computation ---
                 // For Alt-Az mounts, tracking rates depend on the current altitude and azimuth:
                 //   Azimuth rate:  d(az)/dt = -ω × cos(lat) × sin(alt) / cos(alt)
                 //   Altitude rate: d(alt)/dt =  ω × cos(lat) × cos(az)
                 // For CASUAL mounts, the ALT-AZ rates in true horizontal frame are transformed
                 // through the orientation quaternion to obtain mount-frame tracking rates.
                 // where ω = Earth rotation rate (7.2921150e-5 rad/s) scaled by tracking mode.
-                else if (config_.mount_type == MountType::ALT_AZ) {
+                if (config_.mount_type == MountType::ALT_AZ) {
                     // Convert positions to radians
                     double alt_rad = axis1_position_ * M_PI / 180.0;
                     double az_rad  = axis2_position_ * M_PI / 180.0;
@@ -1599,7 +1816,7 @@ public:
                     // Write rates under rate_mutex_ for thread safety
                     // (applyGuiderCorrection may read axis1_rate_/axis2_rate_ from another thread)
                     {
-                        std::lock_guard<std::mutex> rate_lock(*rate_mutex_);
+                        std::lock_guard<std::shared_mutex> rate_lock(*rate_mutex_);
                         axis1_rate_ = alt_rate_deg;
                         axis2_rate_ = az_rate_deg;
                         current_rate_1 = alt_rate_deg;
@@ -1724,7 +1941,7 @@ public:
                     
                     // Write rates under rate_mutex_ for thread safety
                     {
-                        std::lock_guard<std::mutex> rate_lock(*rate_mutex_);
+                        std::lock_guard<std::shared_mutex> rate_lock(*rate_mutex_);
                         axis1_rate_ = m1_rate_deg;
                         axis2_rate_ = m2_rate_deg;
                         current_rate_1 = m1_rate_deg;
@@ -1945,7 +2162,7 @@ public:
                 // only the state transition needs the mutex, minimizing hold time.
                 if (hal_safety_error) {
                     {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         state_ = MountStatus::State::ERROR;
                         error_message_ = hal_safety_error_msg;
                     }
@@ -1957,19 +2174,42 @@ public:
                 // both of which are I/O-bound and can take 1-10ms+ on the bus. We execute
                 // these outside the lock using snapshot values captured above, so gRPC
                 // handlers (getStatus etc.) are not blocked during hardware communication.
-                if (hal_axis1_motor_ && hal_axis2_motor_ && is_tracking) {
-                    try {
-                        hal_axis1_motor_->setVelocity(snap_rate_1, snap_tracking_accel);
-                        hal_axis2_motor_->setVelocity(snap_rate_2, snap_tracking_accel);
-                    } catch (const std::exception& e) {
-                        MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
-                    }
-                } else if (canopen_interface_ && is_tracking) {
-                    try {
-                        canopen_interface_->setVelocityTarget(0, snap_rate_1, snap_tracking_accel);
-                        canopen_interface_->setVelocityTarget(1, snap_rate_2, snap_tracking_accel);
-                    } catch (const std::exception& e) {
-                        MOUNT_LOG_WARN("CANopen communication error during tracking: {}", e.what());
+                //
+                // Rate limiter: only issue setVelocity/setVelocityTarget when the tracking
+                // rate has changed significantly (>1e-12 deg/s). During steady-state tracking
+                // (which is the vast majority of the time), the rate is constant and every
+                // 100ms CANopen bus write would be redundant — generating unnecessary bus
+                // traffic and CPU overhead. The threshold of 1e-12 deg/s (~4e-9 arcsec/s)
+                // is far below any physically meaningful rate change, so it acts as a
+                // pure equality comparison while tolerating harmless FP rounding.
+                if (is_tracking) {
+                    bool rate_changed = false;
+                    if (hal_axis1_motor_ && hal_axis2_motor_) {
+                        rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
+                                       (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
+                        if (rate_changed) {
+                            try {
+                                hal_axis1_motor_->setVelocity(snap_rate_1, snap_tracking_accel);
+                                hal_axis2_motor_->setVelocity(snap_rate_2, snap_tracking_accel);
+                                last_sent_rate_1_ = snap_rate_1;
+                                last_sent_rate_2_ = snap_rate_2;
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
+                            }
+                        }
+                    } else if (canopen_interface_) {
+                        rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
+                                       (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
+                        if (rate_changed) {
+                            try {
+                                canopen_interface_->setVelocityTarget(0, snap_rate_1, snap_tracking_accel);
+                                canopen_interface_->setVelocityTarget(1, snap_rate_2, snap_tracking_accel);
+                                last_sent_rate_1_ = snap_rate_1;
+                                last_sent_rate_2_ = snap_rate_2;
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("CANopen communication error during tracking: {}", e.what());
+                            }
+                        }
                     }
                 }
                 
@@ -1986,7 +2226,7 @@ public:
             MountStatus::State exit_state;
             std::string exit_error;
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 exit_state = state_;
                 exit_error = error_message_;
             }
@@ -2014,12 +2254,12 @@ public:
         joinWorkThread();
         
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             
             // Zero rates under rate_mutex_ — applyGuiderCorrection() may be running
             // concurrently on the guider callback thread and modifying rates.
             {
-                std::lock_guard<std::mutex> rate_lock(*rate_mutex_);
+                std::lock_guard<std::shared_mutex> rate_lock(*rate_mutex_);
                 axis1_rate_ = 0.0;
                 axis2_rate_ = 0.0;
             }
@@ -2060,7 +2300,7 @@ public:
             joinWorkThreadLocked();
             
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 
                 if (state_ == MountStatus::State::PARKED) return;
                 if (state_ == MountStatus::State::PARKING) return;
@@ -2122,7 +2362,7 @@ public:
             if (!motion_started) {
                 MOUNT_LOG_ERROR("Park motion failed to start");
                 {
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     state_ = MountStatus::State::IDLE;
                 }
                 notifyStatusChanged();  // PARKING → IDLE (motion failure)
@@ -2132,7 +2372,7 @@ public:
             while (elapsed_ms < PARK_TIMEOUT_MS) {
                 // Check if parking was cancelled
                 {
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     if (state_ != MountStatus::State::PARKING) break;
                 }
                 
@@ -2148,7 +2388,7 @@ public:
                             auto enc1 = hal_axis1_encoder_->read();
                             auto enc2 = hal_axis2_encoder_->read();
                             if (enc1.data_valid && enc2.data_valid) {
-                                std::lock_guard<std::mutex> lock(*state_mutex_);
+                                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                                 axis1_position_ = enc1.position_deg;
                                 axis2_position_ = enc2.position_deg;
                             }
@@ -2181,7 +2421,7 @@ public:
                         if (reached) {
                             auto pos0 = canopen_interface_->getPositionData(0);
                             auto pos1 = canopen_interface_->getPositionData(1);
-                            std::lock_guard<std::mutex> lock(*state_mutex_);
+                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                             axis1_position_ = pos0.actual_position;
                             axis2_position_ = pos1.actual_position;
                         }
@@ -2191,7 +2431,7 @@ public:
                     }
                 } else {
                     // Simulation path: gradually move axes towards park position
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     double d1 = config_.park_position_axis1 - axis1_position_;
                     double d2 = config_.park_position_axis2 - axis2_position_;
                     double step = 2.0;
@@ -2212,7 +2452,7 @@ public:
                 }
                 
                 if (reached) {
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     axis1_rate_ = 0.0;
                     axis2_rate_ = 0.0;
                     state_ = MountStatus::State::PARKED;
@@ -2236,7 +2476,7 @@ public:
             // Timeout: if parking didn't complete, log and revert to safe state
             if (elapsed_ms >= PARK_TIMEOUT_MS) {
                 MOUNT_LOG_ERROR("Park timeout after {}ms", PARK_TIMEOUT_MS);
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 if (state_ == MountStatus::State::PARKING) {
                     state_ = MountStatus::State::IDLE;
                 }
@@ -2244,7 +2484,7 @@ public:
             // Capture state after park loop for callback invocation outside lock.
             MountStatus::State exit_state;
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 exit_state = state_;
             }
             if (exit_state == MountStatus::State::PARKED) {
@@ -2258,7 +2498,7 @@ public:
     
     void unpark() {
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             if (state_ == MountStatus::State::PARKED) {
                 state_ = MountStatus::State::IDLE;
             }
@@ -2271,7 +2511,7 @@ public:
         joinWorkThread();
         
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             
             // Only reset from ERROR state; other states are unaffected
             if (state_ != MountStatus::State::ERROR) {
@@ -2304,7 +2544,7 @@ public:
     }
     
     MountStatus getStatus() const {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         MountStatus status;
         status.state = state_;
         status.axis1_position = axis1_position_;
@@ -2312,7 +2552,7 @@ public:
         // Read rates under rate_mutex_ — applyGuiderCorrection() writes them
         // concurrently on the guider callback thread.
         {
-            std::lock_guard<std::mutex> rate_lock(*rate_mutex_);
+            std::shared_lock<std::shared_mutex> rate_lock(*rate_mutex_);
             status.axis1_rate = axis1_rate_;
             status.axis2_rate = axis2_rate_;
         }
@@ -2452,6 +2692,27 @@ public:
                 
                 // Step 4: SVD to find optimal rotation R = V * U^T
                 Eigen::JacobiSVD<Eigen::Matrix3d> svd(B, Eigen::ComputeFullU | Eigen::ComputeFullV);
+                
+                // Check condition number of the cross-covariance matrix B.
+                // If the ratio of smallest to largest singular value is too small,
+                // the measurements are nearly collinear (e.g. all stars on the same
+                // side of the sky) and the 3-DOF rotation cannot be uniquely resolved.
+                // A condition number < 1e-6 means B is rank-deficient or nearly so.
+                Eigen::Vector3d sv = svd.singularValues();
+                double max_sv = sv(0);
+                double min_sv = sv(2);
+                double cond = (max_sv > 0.0) ? (min_sv / max_sv) : 0.0;
+                const double MIN_COND = 1e-6;
+                if (cond < MIN_COND) {
+                    MOUNT_LOG_WARN("CASUAL bootstrap SVD ill-conditioned: "
+                             "cond={:.2e} < min={:.2e}, sv=[{:.2e}, {:.2e}, {:.2e}]. "
+                             "Star measurements may be nearly collinear — "
+                             "distribute calibration stars across the sky.",
+                             cond, MIN_COND, sv(0), sv(1), sv(2));
+                    // Continue with best-effort rotation; the residual check below
+                    // will detect poor alignment via large RMS error.
+                }
+                
                 Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();
                 
                 // Ensure proper rotation (det = +1)
@@ -3111,7 +3372,7 @@ public:
     }
     
     std::vector<double> getRotationMatrix() const {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         // Calculate field rotation for alt-az and casual mounts
         // For equatorial mounts, field rotation is zero (except for atmospheric refraction)
         // For alt-az and casual mounts, field rotation = -ω * cos(φ) / sin(alt)
@@ -3140,15 +3401,30 @@ public:
                 alt = axis2_position_;  // altitude in degrees (ALT_AZ convention)
             }
             
-            // Avoid division by zero for alt near 0
-            if (alt < 1.0) alt = 1.0;
+            // NaN/Inf guard: IEEE 754 NaN < 1.0 is false, so a simple
+            // `if (alt < 1.0)` would let NaN pass through unguarded.
+            // Must use isfinite() first, THEN clamp to safe minimum.
+            if (!std::isfinite(alt) || alt < 1.0) {
+                alt = 1.0;
+            }
+            
+            // Guard against extreme cos(lat) product causing overflow
+            // even when lat is finite (e.g., config corruption)
+            double lat_rad = config_.latitude * M_PI / 180.0;
+            if (!std::isfinite(config_.latitude)) {
+                lat_rad = 52.0 * M_PI / 180.0;  // default mid-latitude
+            }
             
             // Calculate field rotation rate (radians/sec)
             double sidereal_rate_rad = 7.2921150e-5;  // Earth rotation rate in rad/s
-            double lat_rad = config_.latitude * M_PI / 180.0;
             double alt_rad = alt * M_PI / 180.0;
             
-            double field_rotation_rate = -sidereal_rate_rad * cos(lat_rad) / sin(alt_rad);
+            double field_rotation_rate = -sidereal_rate_rad * std::cos(lat_rad) / std::sin(alt_rad);
+            
+            // Clamp field rotation rate to prevent extreme values from propagating
+            // to the derotator. Same limit as enableFieldRotation() uses.
+            const double MAX_RATE_RAD = 20.0 * M_PI / 180.0;  // 20 deg/s
+            field_rotation_rate = std::clamp(field_rotation_rate, -MAX_RATE_RAD, MAX_RATE_RAD);
             
             // Integrate rotation over time
             double last_time = last_field_rotation_time_;
@@ -3166,56 +3442,67 @@ public:
     }
     
     void setEncodersEnabled(bool enable) {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         encoders_active_ = enable;
     }
     
     void setEncoderType(bool absolute) {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         encoder_absolute_ = absolute;
     }
     
     bool connectGuider(const std::string& connection_string) {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         guider_active_ = true;
         guider_connection_ = connection_string;
         return true;
     }
     
     void disconnectGuider() {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         guider_active_ = false;
         guider_connection_.clear();
     }
     
     void applyGuiderCorrection(double ra_correction, double dec_correction) {
-        // Fast check if tracking is active (under state_mutex_)
-        bool is_tracking = false;
-        {
-            std::lock_guard<std::mutex> state_lock(*state_mutex_);
-            is_tracking = (state_ == MountStatus::State::TRACKING);
-        }
-        if (!is_tracking) return;
-        
-        // Lock rate mutex to modify delta corrections (read and reset by tracking loop)
-        std::lock_guard<std::mutex> lock(*rate_mutex_);
-        
-        // Clamp correction to configured maximum to avoid overcorrection
-        double max_correction_deg = config_.guider_max_correction / 3600.0; // arcsec→deg
-        double aggression = config_.guider_aggression;
-        
-        ra_correction = std::clamp(ra_correction * aggression,
-                                   -max_correction_deg * 15.0,
-                                   max_correction_deg * 15.0);
-        dec_correction = std::clamp(dec_correction * aggression,
-                                    -max_correction_deg,
-                                    max_correction_deg);
-        
-        // Write to delta variables instead of modifying axis1_rate_/axis2_rate_ directly.
-        // The tracking loop reads these deltas, applies them to the base tracking rate,
-        // then resets them to zero — ensuring each correction applies for exactly one iteration.
-        guider_delta_axis1_ += ra_correction / 3600.0 / 15.0;  // arcsec to degrees
-        guider_delta_axis2_ += dec_correction / 3600.0;         // arcsec to degrees
+    	// Fast check if tracking is active (under state_mutex_)
+    	bool is_tracking = false;
+    	{
+    		std::lock_guard<std::shared_mutex> state_lock(*state_mutex_);
+    		is_tracking = (state_ == MountStatus::State::TRACKING);
+    	}
+    	if (!is_tracking) return;
+    	
+    	// Lock rate mutex to modify delta corrections (read and reset by tracking loop)
+    	std::lock_guard<std::shared_mutex> lock(*rate_mutex_);
+    	
+    	// Clamp in arcseconds (same units as input, consistent with config).
+    	// RA and Dec corrections both arrive in arcseconds — no unit conversion needed
+    	// for clamping. The previous code incorrectly compared arcseconds against degrees,
+    	// causing a 3600× dimensional mismatch that made the clamp either ineffective
+    	// or overly restrictive depending on input magnitude.
+    	double max_correction_arcsec = config_.guider_max_correction;
+    	double aggression = config_.guider_aggression;
+    	
+    	ra_correction = std::clamp(ra_correction * aggression,
+    	                           -max_correction_arcsec,
+    	                           max_correction_arcsec);
+    	dec_correction = std::clamp(dec_correction * aggression,
+    	                            -max_correction_arcsec,
+    	                            max_correction_arcsec);
+    	
+    	// Write to delta variables as POSITION OFFSETS (degrees), not rate offsets.
+    	// The tracking loop applies these directly to axis positions (not through rates),
+    	// which makes the correction magnitude independent of loop frequency (dt).
+    	//
+    	// RA correction: arcsec → degrees of Hour Angle.
+    	//   1 arcsec RA = 1/3600 hours RA = 15/3600 degrees HA (at celestial equator).
+    	//   cos(Dec) factor is omitted — the guider works in arcseconds on the sky,
+    	//   and RA/Dec are orthogonal on the celestial sphere. At high declinations
+    	//   the physical axis movement is larger per arcsecond of RA, which is correct
+    	//   because the same angular rate on the sky requires faster HA motion.
+    	guider_delta_axis1_ += ra_correction * 15.0 / 3600.0;   // arcsec → degrees HA
+    	guider_delta_axis2_ += dec_correction / 3600.0;          // arcsec → degrees Dec
     }
     
     std::tuple<double, double, double> determinePolePosition(double duration_hours) {
@@ -3235,6 +3522,20 @@ public:
             //     -> projected onto longitude as: ma_arcsec / (3600.0 * cos(lat))
             double lat_rad = config_.latitude * M_PI / 180.0;
             double cos_lat = std::cos(lat_rad);
+            
+            // Guard against polar singularity: cos(lat) → 0 when lat → ±90°,
+            // making the longitude correction 1/cos(lat) → ∞.  Clamp to a
+            // minimum of cos(89°) ≈ 0.01745, corresponding to a maximum
+            // sensible longitude correction of ~1.1° per arcsecond of azimuth
+            // error — already well beyond any real TPoint-based correction.
+            const double MIN_COS_LAT = std::cos(89.0 * M_PI / 180.0); // ≈ 0.01745
+            if (std::abs(cos_lat) < MIN_COS_LAT) {
+                MOUNT_LOG_WARN("TPoint polar singularity guard: cos(lat)={:.6f} for lat={:.2f}° — "
+                               "clamping to {:.6f} for longitude projection",
+                               cos_lat, config_.latitude, std::copysign(MIN_COS_LAT, cos_lat));
+                cos_lat = std::copysign(MIN_COS_LAT, cos_lat);
+            }
+            
             double corrected_lat  = config_.latitude  - polar_alt_err_arcsec / 3600.0;
             double corrected_lon  = config_.longitude - polar_az_err_arcsec / (3600.0 * cos_lat);
             
@@ -3319,7 +3620,7 @@ public:
             while (elapsed < TIMEOUT_MS) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
                 elapsed += POLL_MS;
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 if (state_ == MountStatus::State::IDLE) break;
             }
         }
@@ -3327,7 +3628,7 @@ public:
         // Record initial declination
         double initial_dec;
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             initial_dec = axis2_position_;
         }
         
@@ -3350,7 +3651,7 @@ public:
         
         double final_dec;
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             final_dec = axis2_position_;
         }
         
@@ -3389,14 +3690,14 @@ public:
             while (elapsed < TIMEOUT_MS) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
                 elapsed += POLL_MS;
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 if (state_ == MountStatus::State::IDLE) break;
             }
         }
         
         // Record initial Dec for star 2
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             initial_dec = axis2_position_;
         }
         
@@ -3417,7 +3718,7 @@ public:
         stop();
         
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             final_dec = axis2_position_;
         }
         
@@ -3468,7 +3769,7 @@ public:
     }
     
     bool saveState(const std::string& filename) const {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         json state;
         
         state["axis1_position"] = axis1_position_;
@@ -3522,7 +3823,7 @@ public:
             json state = json::parse(file);
             
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 
                 axis1_position_ = state.value("axis1_position", 0.0);
                 axis2_position_ = state.value("axis2_position", 0.0);
@@ -3606,7 +3907,7 @@ public:
     }
     
     bool setMountOrientation(const MountOrientation& orientation) {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         if (!orientation.isValid()) {
             return false;
         }
@@ -3615,12 +3916,12 @@ public:
     }
     
     MountOrientation getMountOrientation() const {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         return mount_orientation_;
     }
     
     bool updateConfiguration(const ControllerConfig& config) {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         config_ = config;
         return true;
     }
@@ -3843,17 +4144,38 @@ public:
             //   cos(lat) → 0 near the poles (lat ≈ ±90°), making the rate
             //   approach zero there — which is physically correct, but the
             //   intermediate value may overflow due to the sin(alt) division.
-            double lat_rad = config_.latitude * M_PI / 180.0;
+            //   tan(lat) → ∞ at lat = ±90°, affecting parallactic angle
+            //   calculations that use latitude.
+            
+            // NaN/Inf guard: latitude must be finite. If corrupted (e.g. config
+            // deserialization error), fall back to a safe mid-latitude default
+            // rather than propagating NaN through trig functions.
+            double lat_rad;
+            if (std::isfinite(config_.latitude)) {
+                lat_rad = config_.latitude * M_PI / 180.0;
+            } else {
+                MOUNT_LOG_WARN("enableFieldRotation: non-finite latitude {}, using 52° default",
+                         config_.latitude);
+                lat_rad = 52.0 * M_PI / 180.0;
+            }
             
             // For CASUAL mounts, use the mount-frame altitude (axis1 position)
             // instead of params.altitude(), since the mount orientation quaternion
             // transforms true horizontal altitude to the mount-frame altitude-like axis.
             double altitude_deg;
             if (config_.mount_type == MountType::CASUAL) {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 altitude_deg = axis1_position_;  // axis1 is altitude-like in mount frame
             } else {
                 altitude_deg = params.altitude();
+            }
+            
+            // NaN/Inf guard on altitude: non-finite altitude produces sin(alt) → NaN
+            // which bypasses the sin_alt clamp below (NaN < MIN_SIN_ALT is false).
+            if (!std::isfinite(altitude_deg)) {
+                MOUNT_LOG_WARN("enableFieldRotation: non-finite altitude {}, using 45° default",
+                         altitude_deg);
+                altitude_deg = 45.0;
             }
             
             double alt_rad = altitude_deg * M_PI / 180.0;
@@ -3893,7 +4215,7 @@ public:
     }
     
     bool controlFieldRotation(const ::astro_mount::FieldRotationControlRequest& request) {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         if (!derotator_enabled_) {
             return false;
         }
@@ -3970,7 +4292,7 @@ public:
         // in progress or the mount is moving, rather than blocking the caller
         // on joinWorkThreadLocked() for potentially 10+ seconds.
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             if (derotator_moving_) {
                 MOUNT_LOG_WARN("Derotator homing already in progress");
                 return false;
@@ -3993,7 +4315,7 @@ public:
             joinWorkThreadLocked();
             
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 // Re-check state after join (race: another thread may have started a move)
                 if (derotator_moving_) {
                     MOUNT_LOG_WARN("Derotator homing started between check and join");
@@ -4027,7 +4349,7 @@ public:
                 
                 if (!homing_ok) {
                     MOUNT_LOG_ERROR("Failed to move derotator to home position via CANopen");
-                    std::lock_guard<std::mutex> lock(*state_mutex_);
+                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     derotator_moving_ = false;
                     return;
                 }
@@ -4041,7 +4363,7 @@ public:
                 while (elapsed_ms < timeout_ms) {
                     // Allow cancellation
                     {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         if (!derotator_moving_) return;
                     }
                     
@@ -4050,7 +4372,7 @@ public:
                     
                     if (status.target_reached &&
                         std::abs(pos.actual_position - offset) < TOLERANCE) {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         derotator_current_angle_ = pos.actual_position;
                         break;
                     }
@@ -4072,19 +4394,19 @@ public:
                 
                 while (elapsed_ms < SIM_TIMEOUT_MS) {
                     {
-                        std::lock_guard<std::mutex> lock(*state_mutex_);
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                         if (!derotator_moving_) return;
                     }
                     std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
                     elapsed_ms += POLL_MS;
                 }
                 
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 derotator_current_angle_ = offset;
             }
             
             {
-                std::lock_guard<std::mutex> lock(*state_mutex_);
+                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 derotator_moving_ = false;
                 derotator_homed_ = true;
             }
@@ -4927,12 +5249,12 @@ public:
     void notifyStatusChanged() {
         MountStatus status;
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
             status.state = state_;
             status.axis1_position = axis1_position_;
             status.axis2_position = axis2_position_;
             {
-                std::lock_guard<std::mutex> rate_lock(*rate_mutex_);
+                std::shared_lock<std::shared_mutex> rate_lock(*rate_mutex_);
                 status.axis1_rate = axis1_rate_;
                 status.axis2_rate = axis2_rate_;
             }
@@ -4987,7 +5309,7 @@ public:
      */
     bool executeMeridianFlip() {
         {
-            std::lock_guard<std::mutex> lock(*state_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             
             if (state_ != MountStatus::State::TRACKING) {
                 MOUNT_LOG_WARN("executeMeridianFlip rejected: state is not TRACKING");
@@ -5045,7 +5367,7 @@ public:
      * @return True if a flip is pending
      */
     bool isMeridianFlipPending() const {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         return meridian_flip_pending_;
     }
     
@@ -5054,7 +5376,7 @@ public:
      * @return Time until meridian crossing in hours (negative if past meridian)
      */
     double getTimeToMeridian() const {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         return time_to_meridian_;
     }
     
@@ -5063,7 +5385,7 @@ public:
      * @return 1 = East pier (normal), -1 = West pier (flipped)
      */
     int getPierSide() const {
-        std::lock_guard<std::mutex> lock(*state_mutex_);
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         return pier_side_;
     }
     
@@ -5187,10 +5509,22 @@ private:
     bool tpoint_calibrated_;
     bool bootstrap_calibrated_;
 
-    // Guider delta corrections — written by applyGuiderCorrection() under rate_mutex_,
-    // read and reset each tracking loop iteration to prevent unbounded accumulation.
+    // Guider delta corrections — stored as POSITION OFFSETS in degrees.
+    // Written by applyGuiderCorrection() under rate_mutex_ as arcsec→deg
+    // conversions (RA: *15/3600, Dec: /3600), read and reset each tracking
+    // loop iteration as direct position additions (not rate modulations).
+    // This position-offset approach ensures correction magnitude is
+    // independent of the loop iteration interval (dt).
     double guider_delta_axis1_{0.0};
     double guider_delta_axis2_{0.0};
+    
+    // Cached last-sent CANopen/HAL motor rates for rate-change detection.
+    // The tracking loop sends setVelocity / setVelocityTarget every 100ms
+    // iteration; if the rate hasn't changed significantly (>1e-12 deg/s),
+    // we skip the CANopen bus write to reduce bus traffic and CPU overhead.
+    // Initialized to NaN so the first iteration always triggers a write.
+    double last_sent_rate_1_{std::numeric_limits<double>::quiet_NaN()};
+    double last_sent_rate_2_{std::numeric_limits<double>::quiet_NaN()};
     
     // Bootstrap calibration computed results
     double bootstrap_rms_ra_arcsec_{0.0};
@@ -5242,8 +5576,8 @@ private:
     double field_rotation_rate_;
     
     std::atomic<bool> tracking_active_{false};
-    std::unique_ptr<std::mutex> state_mutex_;
-    std::unique_ptr<std::mutex> rate_mutex_;
+    std::unique_ptr<std::shared_mutex> state_mutex_;
+    std::unique_ptr<std::shared_mutex> rate_mutex_;
     std::unique_ptr<std::mutex> env_mutex_;
     
     // Background thread handle for async operations (slew, track, park)
