@@ -95,10 +95,13 @@ TEST_F(KalmanFilterTest, PredictUpdatesStateAndTimestamp) {
     //   Δqx =  0.5*1.0*0.1*0.1 +  0.5*1.0*0.1*0.1 =  0.01
     //   Δqy = -0.5*1.0*0.1*0.1 +  0.5*1.0*0.1*0.1 =  0.0
     //   Δqz =  0.5*1.0*0.1*0.1 + -0.5*1.0*0.1*0.1 =  0.0
-    EXPECT_NEAR(after(0), 0.09, 1e-6);
-    EXPECT_NEAR(after(1), 0.11, 1e-6);
-    EXPECT_NEAR(after(2), 0.10, 1e-6);
-    EXPECT_NEAR(after(3), 0.10, 1e-6);
+    // After state transition: q = [0.09, 0.11, 0.10, 0.10], norm ≈ 0.2005
+    // Quaternion normalization divides by norm: q / ||q||
+    double q_norm = std::sqrt(0.09*0.09 + 0.11*0.11 + 0.10*0.10 + 0.10*0.10);
+    EXPECT_NEAR(after(0), 0.09 / q_norm, 1e-6);
+    EXPECT_NEAR(after(1), 0.11 / q_norm, 1e-6);
+    EXPECT_NEAR(after(2), 0.10 / q_norm, 1e-6);
+    EXPECT_NEAR(after(3), 0.10 / q_norm, 1e-6);
 }
 
 // ============================================================================
