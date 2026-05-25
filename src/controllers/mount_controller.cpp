@@ -124,8 +124,17 @@ struct PositionKalmanFilter {
         // Update state: x = x + K * y
         x = x + K * y;
 
-        // Update covariance: P = (I - K * H) * P
-        P = (Eigen::Matrix4d::Identity() - K * H) * P;
+        // Update covariance using Joseph stabilized form:
+        //   P = (I - K*H) * P * (I - K*H)^T + K * R * K^T
+        //
+        // This is analytically equivalent to the standard (I-KH)P update when K is the
+        // optimal Kalman gain, but remains symmetric positive-semidefinite even when K is
+        // suboptimal (e.g., numerical rounding, non-linear models). The standard form
+        // (I-KH)P can produce asymmetric or negative eigenvalues from rounding errors
+        // that destroy the positive-semidefinite constraint, leading to filter divergence.
+        // The Joseph form adds the K*R*K^T term which guarantees P remains symmetric PSD.
+        Eigen::Matrix4d I_KH = Eigen::Matrix4d::Identity() - K * H;
+        P = I_KH * P * I_KH.transpose() + K * R * K.transpose();
     }
 
     /// Override the internal rate estimates with externally computed tracking rates.
@@ -3465,44 +3474,51 @@ public:
     }
     
     void applyGuiderCorrection(double ra_correction, double dec_correction) {
-    	// Fast check if tracking is active (under state_mutex_)
-    	bool is_tracking = false;
-    	{
-    		std::lock_guard<std::shared_mutex> state_lock(*state_mutex_);
-    		is_tracking = (state_ == MountStatus::State::TRACKING);
-    	}
-    	if (!is_tracking) return;
-    	
-    	// Lock rate mutex to modify delta corrections (read and reset by tracking loop)
-    	std::lock_guard<std::shared_mutex> lock(*rate_mutex_);
-    	
-    	// Clamp in arcseconds (same units as input, consistent with config).
-    	// RA and Dec corrections both arrive in arcseconds — no unit conversion needed
-    	// for clamping. The previous code incorrectly compared arcseconds against degrees,
-    	// causing a 3600× dimensional mismatch that made the clamp either ineffective
-    	// or overly restrictive depending on input magnitude.
-    	double max_correction_arcsec = config_.guider_max_correction;
-    	double aggression = config_.guider_aggression;
-    	
-    	ra_correction = std::clamp(ra_correction * aggression,
-    	                           -max_correction_arcsec,
-    	                           max_correction_arcsec);
-    	dec_correction = std::clamp(dec_correction * aggression,
-    	                            -max_correction_arcsec,
-    	                            max_correction_arcsec);
-    	
-    	// Write to delta variables as POSITION OFFSETS (degrees), not rate offsets.
-    	// The tracking loop applies these directly to axis positions (not through rates),
-    	// which makes the correction magnitude independent of loop frequency (dt).
-    	//
-    	// RA correction: arcsec → degrees of Hour Angle.
-    	//   1 arcsec RA = 1/3600 hours RA = 15/3600 degrees HA (at celestial equator).
-    	//   cos(Dec) factor is omitted — the guider works in arcseconds on the sky,
-    	//   and RA/Dec are orthogonal on the celestial sphere. At high declinations
-    	//   the physical axis movement is larger per arcsecond of RA, which is correct
-    	//   because the same angular rate on the sky requires faster HA motion.
-    	guider_delta_axis1_ += ra_correction * 15.0 / 3600.0;   // arcsec → degrees HA
-    	guider_delta_axis2_ += dec_correction / 3600.0;          // arcsec → degrees Dec
+        // Fast check if tracking is active and read current declination (under state_mutex_)
+        bool is_tracking = false;
+        double current_dec_deg = 0.0;
+        {
+            std::lock_guard<std::shared_mutex> state_lock(*state_mutex_);
+            is_tracking = (state_ == MountStatus::State::TRACKING);
+            current_dec_deg = axis2_position_;
+        }
+        if (!is_tracking) return;
+        
+        // Lock rate mutex to modify delta corrections (read and reset by tracking loop)
+        std::lock_guard<std::shared_mutex> lock(*rate_mutex_);
+        
+        // Clamp in arcseconds (same units as input, consistent with config).
+        // RA and Dec corrections both arrive in arcseconds — no unit conversion needed
+        // for clamping.
+        double max_correction_arcsec = config_.guider_max_correction;
+        double aggression = config_.guider_aggression;
+        
+        ra_correction = std::clamp(ra_correction * aggression,
+                                   -max_correction_arcsec,
+                                   max_correction_arcsec);
+        dec_correction = std::clamp(dec_correction * aggression,
+                                    -max_correction_arcsec,
+                                    max_correction_arcsec);
+        
+        // Write to delta variables as POSITION OFFSETS (degrees), not rate offsets.
+        // The tracking loop applies these directly to axis positions (not through rates),
+        // which makes the correction magnitude independent of loop frequency (dt).
+        //
+        // RA correction: arcsec → degrees of Hour Angle.
+        //   1 arcsec RA = 1/3600 hours RA = 15/3600 degrees HA (at celestial equator).
+        //   On the sky, 1 arcsec of RA at declination δ corresponds to 1/cos(δ) arcsec
+        //   of HA motion. Without the cos(δ) factor, corrections at high declinations
+        //   would be too small, causing the mount to under-correct RA guide errors near
+        //   the celestial pole. With cos(δ) included, a 1 arcsec RA guide error produces
+        //   the correct HA axis movement for ANY declination.
+        double cos_dec = std::cos(current_dec_deg * M_PI / 180.0);
+        // Guard against division by zero or extreme amplification near the poles (|Dec| > 87°).
+        // cos(87°) ≈ 0.052, below which the 1/cos(δ) factor becomes pathologically large.
+        // Clamping to cos(85°) ≈ 0.087 limits the max amplification to ~11.5×, which is
+        // physically conservative — no practical tracking target exceeds |Dec|=85°.
+        if (cos_dec < 0.087) cos_dec = 0.087;
+        guider_delta_axis1_ += ra_correction * 15.0 / 3600.0 / cos_dec;  // arcsec → degrees HA
+        guider_delta_axis2_ += dec_correction / 3600.0;                   // arcsec → degrees Dec
     }
     
     std::tuple<double, double, double> determinePolePosition(double duration_hours) {
@@ -5247,6 +5263,13 @@ public:
      * after releasing the lock.
      */
     void notifyStatusChanged() {
+        // Re-entrancy guard: if the status_callback_ triggers another state
+        // change that calls notifyStatusChanged() again, skip the recursive
+        // call. The outer call's snapshot is already being delivered.
+        if (notify_in_progress_.exchange(true)) {
+            return;
+        }
+        
         MountStatus status;
         {
             std::shared_lock<std::shared_mutex> lock(*state_mutex_);
@@ -5280,14 +5303,22 @@ public:
         if (status_callback_) {
             status_callback_(status);
         }
+        notify_in_progress_.store(false);
     }
     
     /**
      * @brief Invoke error_callback_ if set.
      *
-     * Safe to call from any context (no mutex needed since std::function
-     * assignment is atomic on most platforms and the callback is typically
-     * set once during initialization).
+     * @note Thread safety: This function performs a read + call on error_callback_
+     * without holding a mutex. It relies on the callback being set once during
+     * initialization (before any thread starts) and never modified afterward.
+     * This is safe because:
+     *   1. std::function assignment is NOT atomic (contrary to a common myth),
+     *      but the callback is invariant after the first RPC arrives.
+     *   2. All setErrorCallback() calls happen during Impl construction or
+     *      before threads begin processing requests.
+     *   3. If runtime callback changes are needed in the future, a std::mutex
+     *      must be added to protect both the read and write of error_callback_.
      */
     void notifyError(const std::string& msg) {
         if (error_callback_) {
@@ -5576,6 +5607,16 @@ private:
     double field_rotation_rate_;
     
     std::atomic<bool> tracking_active_{false};
+    
+    // Re-entrancy guard for notifyStatusChanged(). Prevents deadlock when the
+    // status_callback_ itself triggers a state change that calls back into
+    // notifyStatusChanged() — the recursive call is safely skipped since the
+    // outer call will already have constructed the MountStatus snapshot.
+    // Without this guard, the status callback's re-entrant notifyStatusChanged
+    // call would block trying to re-acquire state_mutex_ (shared_lock on a
+    // shared_mutex already held by the current thread is undefined behavior).
+    std::atomic<bool> notify_in_progress_{false};
+    
     std::unique_ptr<std::shared_mutex> state_mutex_;
     std::unique_ptr<std::shared_mutex> rate_mutex_;
     std::unique_ptr<std::mutex> env_mutex_;

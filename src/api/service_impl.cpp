@@ -8,8 +8,6 @@
 #include <google/protobuf/util/time_util.h>
 #include <chrono>
 #include <thread>
-#include <sys/resource.h>
-#include <sys/sysinfo.h>
 #include <fstream>
 #include <filesystem>
 #ifdef _WIN32
@@ -17,6 +15,7 @@
 #include <psapi.h>
 #else
 #include <sys/resource.h>
+#include <sys/sysinfo.h>
 #endif
 
 namespace astro_mount {
@@ -143,8 +142,8 @@ grpc::Status MountControllerServiceImpl::SaveState(grpc::ServerContext* context,
         
         if (controller_.saveState(file_path)) {
             response->set_file_path(file_path);
-            // In a real implementation, we would get the actual file size
-            response->set_file_size(1024); // Placeholder
+            uintmax_t actual_size = std::filesystem::file_size(file_path);
+            response->set_file_size(static_cast<int64_t>(actual_size));
             return grpc::Status::OK;
         } else {
             return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to save state");

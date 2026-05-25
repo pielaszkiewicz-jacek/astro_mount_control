@@ -120,6 +120,20 @@ public:
         // Predict state
         x_ = F_ * x_;
 
+        // Normalize orientation quaternion (first 4 state elements) after state transition.
+        // The first-order quaternion integration dq/dt = 0.5*ω⊗q produces non-unit quaternions
+        // that accumulate numerical drift over thousands of iterations. Unit norm is a
+        // fundamental constraint for rotation representation — without it, the quaternion
+        // ceases to represent a valid rotation, corrupting all downstream calculations.
+        // Renormalization is O(n) and restores the unit-norm constraint with negligible
+        // computational cost (< 0.1 μs on modern hardware).
+        if (state_dim_ >= 4) {
+            double q_norm = x_.segment(0, 4).norm();
+            if (q_norm > 1e-12) {
+                x_.segment(0, 4) /= q_norm;
+            }
+        }
+
         // Predict covariance (Joseph form for numerical stability)
         P_ = F_ * P_ * F_.transpose() + Q_;
 

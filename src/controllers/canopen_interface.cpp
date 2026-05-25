@@ -829,6 +829,8 @@ private:
     double axis_target_position_[2];
     double axis_target_velocity_[2];
     
+    double trajectory_last_time_{0.0};
+    
     StatusCallback status_callback_;
     PositionCallback position_callback_;
     EncoderCallback encoder_callback_;
@@ -1306,9 +1308,8 @@ bool CanOpenInterface::executeTrajectory(int axis_id,
             
             // Sleep for trajectory update rate
             // Calculate dt from trajectory points
-            static double last_time = 0.0;
-            double dt = (last_time > 0) ? (point.time - last_time) : 0.01; // Default 100 Hz
-            last_time = point.time;
+            double dt = (pimpl->trajectory_last_time_ > 0) ? (point.time - pimpl->trajectory_last_time_) : 0.01; // Default 100 Hz
+            pimpl->trajectory_last_time_ = point.time;
             
             if (dt > 0) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(dt * 1000)));
