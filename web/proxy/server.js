@@ -921,44 +921,35 @@ app.get('/api/db/objects/search', async (req, res) => {
     if (catalogs) request.catalogs = catalogs.split(',');
     if (favoritesOnly === 'true') request.include_favorites_only = true;
     if (visibleOnly === 'true') request.include_visible_only = true;
+    if (constellation) request.constellation = constellation;
 
     const result = await dbGrpcCall('SearchObjects', request);
 
-    // Post-filter by constellation if requested.
-    // Constellation is stored in the custom_fields column (e.g. "constellation:UMA"),
-    // not as a dedicated database column, and the C++ server cannot be rebuilt
-    // (SOFA compiler bug), so we filter at the proxy level.
+    // Safety post-filter: if the backend didn't filter by constellation (e.g. old binary),
+    // apply client-side filtering on the returned page.
     if (constellation && result.objects && result.objects.length > 0) {
       const constelUpper = constellation.trim().toUpperCase();
-      // Debug: log first 3 objects' custom_fields to understand actual structure
-      for (let i = 0; i < Math.min(3, result.objects.length); i++) {
-        const obj = result.objects[i];
-        console.log(`[DEBUG] obj[${i}] name=${obj.name}, custom_fields=`, JSON.stringify(obj.custom_fields), 'type=', typeof obj.custom_fields);
-        if (obj.custom_fields && typeof obj.custom_fields === 'object') {
-          console.log(`[DEBUG]   keys=`, Object.keys(obj.custom_fields));
-          console.log(`[DEBUG]   constellation=`, obj.custom_fields.constellation);
-        }
-      }
-      result.objects = result.objects.filter(obj => {
+      const filtered = result.objects.filter(obj => {
         if (!obj.custom_fields) return false;
         const cf = obj.custom_fields;
         let objConstel = '';
-        // custom_fields is a map (object) where constellation is stored as a key
         if (typeof cf === 'object' && cf.constellation) {
           objConstel = cf.constellation.toUpperCase();
         }
-        // Also handle if custom_fields is a string (JSON-like format)
         if (typeof cf === 'string') {
           const match = cf.toUpperCase().match(/CONSTELLATION:(\w+)/);
           if (match) objConstel = match[1];
         }
         return objConstel === constelUpper;
       });
-      console.log(`[DEBUG] Constellation filter "${constelUpper}": ${result.objects.length} matches out of ${result.total_count} total`);
-      result.total_count = result.objects.length;
-      // Recalculate total_pages based on the original page size
-      const pageSize = parseInt(req.query.pageSize, 10) || 20;
-      result.total_pages = Math.ceil(result.objects.length / pageSize) || 1;
+      // Only apply post-filter if the backend returned items that don't match
+      // (indicating the backend didn't have the constellation filter)
+      if (filtered.length < result.objects.length) {
+        result.objects = filtered;
+        result.total_count = result.objects.length;
+        const pageSize = parseInt(req.query.pageSize, 10) || 20;
+        result.total_pages = Math.ceil(result.objects.length / pageSize) || 1;
+      }
     }
 
     res.json(result);

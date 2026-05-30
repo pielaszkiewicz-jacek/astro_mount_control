@@ -480,6 +480,11 @@ const DatabaseComponent = (() => {
     html += detailRow('Catalog', obj.catalog_name || '—');
     html += detailRow('Catalog ID', obj.catalog_id || '—');
     html += detailRow('Alternate Names', obj.alternate_names || '—');
+    // Constellation (stored in custom_fields)
+    const constel = obj.custom_fields && obj.custom_fields.constellation;
+    if (constel) {
+      html += detailRow('Constellation', constel);
+    }
     html += '</div>';
 
     // Coordinates
@@ -701,6 +706,12 @@ const DatabaseComponent = (() => {
       categories: getStrArray('db-new-categories'),
     };
 
+    // Constellation (stored in custom_fields)
+    const constel = getStr('db-new-constellation');
+    if (constel) {
+      objectData.custom_fields = { constellation: constel.toUpperCase() };
+    }
+
     // Remove undefined keys to keep payload clean
     Object.keys(objectData).forEach(key => {
       if (objectData[key] === undefined) {
@@ -831,6 +842,12 @@ function populateEditForm(obj) {
   setVal('db-edit-user-rating', obj.user_rating);
   setVal('db-edit-created-by', obj.created_by);
 
+  // Constellation (stored in custom_fields)
+  const constel = obj.custom_fields && obj.custom_fields.constellation;
+  if (constel) {
+    setVal('db-edit-constellation', constel);
+  }
+
   // Arrays → comma-separated
   if (obj.tags && Array.isArray(obj.tags) && obj.tags.length > 0) {
     setVal('db-edit-tags', obj.tags.join(', '));
@@ -891,7 +908,7 @@ function collectEditData() {
     return str.split(',').map(s => s.trim()).filter(s => s.length > 0);
   }
 
-  return {
+  const data = {
     name: getStr('db-edit-name') || '',
     object_type: getStr('db-edit-type') || 'STAR',
     catalog_name: getStr('db-edit-catalog-name'),
@@ -960,6 +977,14 @@ function collectEditData() {
     tags: getStrArray('db-edit-tags'),
     categories: getStrArray('db-edit-categories'),
   };
+
+  // Constellation (stored in custom_fields)
+  const constel = getStr('db-edit-constellation');
+  if (constel) {
+    data.custom_fields = { constellation: constel.toUpperCase() };
+  }
+
+  return data;
 }
 
 async function handleUpdate(event) {

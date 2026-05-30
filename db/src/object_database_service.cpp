@@ -1317,6 +1317,12 @@ bool ObjectDatabaseServiceImpl::SearchObjectsInternal(const ObjectSearchRequest&
         query += ")";
     }
     
+    // Constellation filter (stored in custom_fields as "constellation:XXX,...")
+    if (!request.constellation().empty()) {
+        query += " AND custom_fields LIKE ?";
+        params.push_back("%constellation:" + request.constellation() + "%");
+    }
+    
     // Execute query
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, query.c_str(), -1, &stmt, nullptr);

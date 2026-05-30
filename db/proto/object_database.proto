@@ -273,6 +273,7 @@ message ObjectSearchRequest {
     repeated string catalogs = 9;
     bool include_favorites_only = 10;
     bool include_visible_only = 11;
+    string constellation = 12;
 }
 
 message ObjectList {
