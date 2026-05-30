@@ -1127,6 +1127,11 @@ body {
   color: var(--color-text-muted);
 }
 
+.db-list-item .db-item-constellation {
+  color: var(--color-accent, #8ab4f8);
+  font-style: italic;
+}
+
 .db-list-item .db-item-actions {
   flex-shrink: 0;
   margin-left: 8px;

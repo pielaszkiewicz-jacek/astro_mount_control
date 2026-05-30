@@ -648,15 +648,15 @@ grpc::Status ObjectDatabaseServiceImpl::ImportCatalog(grpc::ServerContext* conte
         UPDATE astronomical_objects SET
             ra_hours = ?, dec_degrees = ?, v_magnitude = ?, b_magnitude = ?,
             spectral_type = ?, object_type = ?, alternate_names = ?,
-            catalog_id = ?, notes = ?, updated_at = ?
+            catalog_id = ?, notes = ?, custom_fields = ?, updated_at = ?
         WHERE id = ?
     )";
     const char* insert_sql = R"(
         INSERT INTO astronomical_objects (
             id, name, catalog_name, alternate_names, ra_hours, dec_degrees,
             v_magnitude, b_magnitude, spectral_type, object_type,
-            catalog_id, notes, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            catalog_id, notes, custom_fields, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )";
 
     // Lock the database mutex for the entire batch operation
@@ -779,6 +779,7 @@ grpc::Status ObjectDatabaseServiceImpl::ImportCatalog(grpc::ServerContext* conte
                         sqlite3_bind_text(update_stmt, p++, obj.alternate_names().c_str(), -1, SQLITE_TRANSIENT);
                         sqlite3_bind_text(update_stmt, p++, obj.catalog_id().c_str(), -1, SQLITE_TRANSIENT);
                         sqlite3_bind_text(update_stmt, p++, obj.notes().c_str(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text(update_stmt, p++, MapToString(obj.custom_fields()).c_str(), -1, SQLITE_TRANSIENT);
                         sqlite3_bind_text(update_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
                         sqlite3_bind_text(update_stmt, p++, existing_id.c_str(), -1, SQLITE_TRANSIENT);
 
@@ -809,6 +810,7 @@ grpc::Status ObjectDatabaseServiceImpl::ImportCatalog(grpc::ServerContext* conte
                     sqlite3_bind_int(insert_stmt, p++, static_cast<int>(obj.object_type()));
                     sqlite3_bind_text(insert_stmt, p++, obj.catalog_id().c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(insert_stmt, p++, obj.notes().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insert_stmt, p++, MapToString(obj.custom_fields()).c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(insert_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(insert_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
 

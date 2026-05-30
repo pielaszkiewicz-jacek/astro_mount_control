@@ -57,6 +57,7 @@ const DatabaseComponent = (() => {
     $('#db-fav-only').addEventListener('change', handleSearch);
     $('#db-visible-only').addEventListener('change', handleSearch);
     $('#db-catalogs').addEventListener('change', handleSearch);
+    $('#db-constellation').addEventListener('change', handleSearch);
 
     // Pagination
     $('#btn-db-prev').addEventListener('click', () => goToPage(currentPage - 1));
@@ -305,10 +306,14 @@ const DatabaseComponent = (() => {
       html += `<div class="db-item-name">${escapeHtml(obj.name || '(unnamed)')}`;
       if (obj.catalog_id) html += ` <span class="db-item-catalog">${escapeHtml(obj.catalog_id)}</span>`;
       html += `</div>`;
+      const constel = obj.custom_fields && obj.custom_fields.constellation
+        ? escapeHtml(obj.custom_fields.constellation) : null;
+
       html += `<div class="db-item-meta">`;
       html += `<span class="db-item-type">${formatTypeName(type)}</span>`;
       html += `<span class="db-item-mag">${mag}</span>`;
       html += `<span class="db-item-coord">${ra} ${dec}</span>`;
+      if (constel) html += `<span class="db-item-constellation">${constel}</span>`;
       html += `</div></div>`;
       html += `<div class="db-item-actions">`;
       html += `<button class="btn btn-sm ${isFav ? 'btn-fav' : 'btn-secondary'}" onclick="DatabaseComponent.toggleFavorite('${escapeHtml(obj.id || obj.name)}')" title="${isFav ? 'Remove from favorites' : 'Add to favorites'}">${isFav ? '★' : '☆'}</button>`;
