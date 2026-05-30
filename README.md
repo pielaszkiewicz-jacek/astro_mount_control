@@ -114,6 +114,7 @@ print(f"Status: {state.status}, Position: axis1={state.current_position.axis1:.4
 | [`docs/en/hal_layer.md`](docs/en/hal_layer.md) | Hardware Abstraction Layer documentation |
 | [`docs/en/data_flow.md`](docs/en/data_flow.md) | Data flow diagrams for all subsystems |
 | [`docs/en/developer_onboarding.md`](docs/en/developer_onboarding.md) | Developer onboarding guide |
+| [`web/README.md`](web/README.md) | Web dashboard documentation (HTTP/JSON proxy + SPA) |
 | [`docs/pl/`](docs/pl/) | Polish language documentation |
 
 ---
@@ -133,7 +134,7 @@ flowchart TB
     subgraph CLIENTS["Client Layer"]
         PY["Python Client<br/>(gRPC stub)"]
         CPP["C++ Client<br/>(gRPC stub)"]
-        WEB["Web Dashboard<br/>(gRPC-web)"]
+        WEB["Web Dashboard<br/>(HTTP/JSON proxy)"]
     end
 
     subgraph API["gRPC API Layer"]
@@ -221,6 +222,7 @@ flowchart TB
 ├── examples/         # Python and C++ examples
 ├── sofa/             # SOFA library
 ├── scripts/          # Build and utility scripts
+├── web/              # Web dashboard (Express proxy + SPA)
 └── db/               # Object database (SQLite)
 ```
 

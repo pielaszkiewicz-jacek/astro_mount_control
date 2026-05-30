@@ -87,33 +87,6 @@ make astro_object_database_server
 ./build/bin/astro_object_database_server --help
 ```
 
-## Web Integration
-
-The service is integrated with the web application through the enhanced proxy server (`web/proxy/server_enhanced.js`). The web interface provides:
-
-1. **Object Management UI**: Create, edit, delete astronomical objects
-2. **Object Browser**: Browse and search the database
-3. **Favorite Management**: User-specific favorite lists
-4. **Observation Planning**: Visibility and observation planning tools
-5. **Database Statistics**: Monitor database usage and contents
-
-### API Endpoints
-
-The proxy server exposes RESTful endpoints:
-
-- `GET /api/db/stats`: Database statistics
-- `GET /api/db/objects`: List objects with pagination
-- `POST /api/db/objects`: Create new object
-- `GET /api/db/objects/:id`: Get object by ID
-- `PUT /api/db/objects/:id`: Update object
-- `DELETE /api/db/objects/:id`: Delete object
-- `POST /api/db/objects/search`: Advanced search
-- `GET /api/db/favorites`: Get favorite objects
-- `POST /api/db/favorites/:objectId`: Add to favorites
-- `DELETE /api/db/favorites/:objectId`: Remove from favorites
-- `GET /api/db/categories`: List categories
-- `POST /api/db/categories`: Create category
-
 ## Example Usage
 
 ### Using the gRPC API (Python)
@@ -191,10 +164,6 @@ The server supports the following command-line options:
 - `--address HOST:PORT`: Server address (default: 0.0.0.0:50052)
 - `--db PATH`: Database file path (default: astronomy_objects.db)
 - `--help`: Show help message
-
-Environment variables for the web proxy:
-- `GRPC_DB_HOST`: Database gRPC host (default: localhost)
-- `GRPC_DB_PORT`: Database gRPC port (default: 50052)
 
 ## Performance Considerations
 

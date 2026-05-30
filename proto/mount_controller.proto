@@ -93,6 +93,7 @@ message TPointParameters {
     repeated double coefficients = 1;  // TPOINT model coefficients
     double chi_squared = 2;
     google.protobuf.Timestamp last_update = 3;
+    bool calibrated = 4;               // Whether TPOINT calibration has been performed
 }
 
 // Rotation matrix (quaternion representation for stability)

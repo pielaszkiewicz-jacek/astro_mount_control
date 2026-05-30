@@ -1101,12 +1101,10 @@ flowchart TB
     subgraph CLIENTS["💻 Client Applications"]
         PY["🐍 Python Client"]:::clients
         CPP["📝 C++ Client"]:::clients
-        WEB["🌐 Web GUI"]:::clients
     end
     
     PY -->|"gRPC :50052"| DBSRV
     CPP -->|"gRPC :50052"| DBSRV
-    WEB -->|"gRPC :50052"| DBSRV
     
     subgraph DBSRV["🗄️ ObjectDatabaseService<br/>db/src/object_database_service.cpp"]
         direction TB

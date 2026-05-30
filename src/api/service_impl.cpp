@@ -6,6 +6,7 @@
 #include "proto/mount_controller.pb.h"
 #include "proto/mount_controller.grpc.pb.h"
 #include <google/protobuf/util/time_util.h>
+#include <nlohmann/json.hpp>
 #include <chrono>
 #include <thread>
 #include <fstream>
@@ -22,6 +23,7 @@ namespace astro_mount {
 namespace api {
 
 using google::protobuf::util::TimeUtil;
+using json = nlohmann::json;
 
 MountControllerServiceImpl::MountControllerServiceImpl(controllers::MountController& controller)
     : controller_(controller) {}
@@ -488,10 +490,14 @@ grpc::Status MountControllerServiceImpl::GetTPointParameters(grpc::ServerContext
                                                             const google::protobuf::Empty* request,
                                                             astro_mount::TPointParameters* response) {
     try {
+        // Get TPOINT calibration status from the controller
+        auto status = controller_.getStatus();
+        response->set_calibrated(status.tpoint_calibrated);
+
+        // Parse JSON parameters for chi_squared and other stats
         auto params_str = controller_.getTPointParameters();
-        // In a real implementation, we would parse the JSON and fill the proto
-        // For now, return empty parameters
-        response->set_chi_squared(0.0);
+        auto j = json::parse(params_str);
+        response->set_chi_squared(j.value("chi_squared", 0.0));
         *response->mutable_last_update() = TimeUtil::GetCurrentTime();
         return grpc::Status::OK;
     } catch (const std::exception& e) {

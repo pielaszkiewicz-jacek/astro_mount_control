@@ -147,8 +147,8 @@ flowchart TD
     Root --> Tests["📁 tests"]
     Root --> Sofa["📁 sofa"]
     Root --> Examples["📁 examples"]
-    Root --> Db["📁 db"]
     Root --> Web["📁 web"]
+    Root --> Db["📁 db"]
     Root --> Scripts["📁 scripts"]
 
     Config --> DefJson["📄 default.json<br/><i>177 lines — defaults</i>"]
@@ -222,7 +222,7 @@ flowchart TD
     classDef misc fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,color:#616161
 
     class Root root
-    class Config,Include,Proto,Src,Tests,Sofa,Examples,Db,Web,Scripts,IncConfig,IncControllers,IncCore,IncHal,IncLogging,IncModels,SrcAPI,SrcConfig,SrcControllers,SrcCore,SrcHal,SrcLogging,SrcModels,CANopenHAL,SimHAL dir
+    class Config,Include,Proto,Src,Tests,Sofa,Examples,Web,Db,Scripts,IncConfig,IncControllers,IncCore,IncHal,IncLogging,IncModels,SrcAPI,SrcConfig,SrcControllers,SrcCore,SrcHal,SrcLogging,SrcModels,CANopenHAL,SimHAL dir
     class DefJson json
     class ConfigH,MCH,ICAN,AstroH,HALI,HALConfig,HALFactoryH,MotorCtrl,EncoderReader,SafetyMon,SensorI,LoggerH,TPointH,KFH,EphH header
     class MCPI,CANProto proto

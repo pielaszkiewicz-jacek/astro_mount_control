@@ -79,7 +79,7 @@ private:
     bool CreateTables();
     bool CreateIndexes();
     
-    bool InsertObject(const AstronomicalObject& object, std::string* id);
+    bool InsertObject(const AstronomicalObject& object, std::string* id, std::string* error_msg = nullptr);
     bool UpdateObjectInternal(const AstronomicalObject& object);
     bool DeleteObjectInternal(const std::string& id);
     bool GetObjectInternal(const std::string& id, AstronomicalObject* object);
@@ -97,7 +97,7 @@ private:
     bool ExecuteQueryWithParams(const std::string& query, const std::vector<std::string>& params);
     
     void ConvertRowToObject(sqlite3_stmt* stmt, AstronomicalObject* object);
-    void ConvertObjectToStatement(sqlite3_stmt* stmt, const AstronomicalObject& object);
+    void ConvertObjectToStatement(sqlite3_stmt* stmt, const AstronomicalObject& object, bool skip_id = false);
     
     std::string GenerateUUID();
     std::string GetCurrentTimestamp();

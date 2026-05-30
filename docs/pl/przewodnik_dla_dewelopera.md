@@ -161,7 +161,7 @@ astro-mount-controller/
 │   ├── logging/            #   System logowania
 │   └── models/             #   Implementacje modeli
 ├── tests/                  # Testy jednostkowe
-├── web/                    # Interfejs webowy i proxy
+├── web/                    # Interfejs WWW (serwer proxy Express + SPA)
 └── CMakeLists.txt          # Główny plik CMake
 ```
 

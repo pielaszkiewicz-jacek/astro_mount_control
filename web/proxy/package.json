@@ -1,0 +1,21 @@
+{
+  "name": "astro-mount-web-proxy",
+  "version": "1.0.0",
+  "description": "HTTP/JSON proxy server for Astronomical Mount Controller gRPC API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "@grpc/grpc-js": "^1.12.0",
+    "@grpc/proto-loader": "^0.7.13",
+    "morgan": "^1.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

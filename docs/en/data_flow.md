@@ -528,7 +528,7 @@ stateDiagram-v2
 ```mermaid
 flowchart LR
     subgraph Services["External Services"]
-        GRPC_CLIENT["gRPC Client<br/>(Web / Script)"]
+        GRPC_CLIENT["gRPC Client<br/>(Script)"]
         DB_GUI["Database Admin GUI"]
     end
     

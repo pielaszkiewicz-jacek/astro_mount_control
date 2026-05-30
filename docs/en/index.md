@@ -48,7 +48,7 @@ flowchart TB
     subgraph CLIENTS["🧑‍💻 Client Applications"]
         PY["Python Client<br/>(gRPC stub)"]
         CPP["C++ Client<br/>(gRPC stub)"]
-        WEB["Web GUI<br/>(gRPC-web)"]
+        WEB["Web GUI<br/>(HTTP/JSON proxy)"]
     end
 
     subgraph API["🌐 gRPC API"]
@@ -805,54 +805,35 @@ The accuracy of the Astronomical Mount Controller heavily depends on precise kno
 
 ## Web Interface
 
-The Astronomical Mount Controller includes a modern web-based interface that provides full telescope control through an intuitive browser-based application.
-
-### Features
-- **Full Telescope Control**: Slewing, tracking, parking, and emergency stop
-- **Real-time Monitoring**: Live mount status, position, temperature, and performance metrics
-- **TPOINT Calibration Interface**: Add measurements, run calibration, view parameters
-- **Autoguider Integration**: Connect/disconnect guider, send corrections
-- **Interactive Sky Map**: Visual representation of mount position and target
-- **Configuration Management**: Load and save mount configuration
-- **System Health Dashboard**: CPU usage, memory usage, connection status
-- **Comprehensive Logging**: Real-time system logs with filtering
+The project includes a browser-based web dashboard for remote mount control and monitoring, located in the [`web/`](../web/) directory.
 
 ### Architecture
-The web interface consists of three main components:
 
-1. **Frontend Application** (HTML/CSS/JavaScript)
-   - Single-page application with responsive design
-   - Real-time updates via WebSocket/AJAX
-   - Interactive sky map visualization
+```
+┌─────────────┐     HTTP/JSON      ┌──────────────┐     gRPC      ┌──────────────────┐
+│   Browser   │ ──────────────────>│  Proxy Server │ ────────────>│ Mount Controller │
+│   (SPA)     │<──────────────────│  (Express.js) │<────────────│   (C++ gRPC)     │
+└─────────────┘     JSON/HTML      └──────────────┘              └──────────────────┘
+```
 
-2. **HTTP/JSON Proxy Server** (Node.js)
-   - Bridges web interface to gRPC server
-   - Provides REST API endpoints
-   - Handles authentication and security
-   - Runs on port 8080 by default
-
-3. **gRPC Server Integration**
-   - Communicates with the main mount controller
-   - Uses protobuf for efficient data exchange
-   - Runs on port 50051 by default
+### Key Features
+- **Mobile-first responsive design** — adapts to phones, tablets, and desktops
+- **Card-based UI** — modular cards for status, control, and settings
+- **Real-time status** — 1-second polling loop for live mount data
+- **Mount control** — slew to coordinates, stop, park/unpark, clear errors
+- **Tab navigation** — Status, Control, Settings tabs (extensible framework)
 
 ### Quick Start
-1. Install Node.js dependencies: `cd web/proxy && npm install`
-2. Start proxy server: `cd web/proxy && npm start`
-3. Ensure mount controller is running on port 50051
-4. Open browser to: `http://localhost:8080`
+```bash
+cd web/proxy
+cp .env.example .env        # Edit if gRPC host/port differ
+npm install                 # Already installed
+npm start                   # Starts on http://localhost:3000
+```
 
-### Security Features
-- CORS configuration for controlled access
-- Optional HTTPS/SSL support
-- Authentication middleware ready for production deployment
-- Environment-based configuration
+### Documentation
+See [`web/README.md`](../web/README.md) for detailed setup, API endpoints, and extension guide.
 
-### Browser Support
-- Chrome 60+, Firefox 55+, Safari 12+, Edge 79+
-- Mobile Safari 12+, Chrome for Android 60+
-- Responsive design for desktop and mobile
-
-For detailed information about the web interface, see the [web/README.md](../web/README.md) file.
+---
 
 *For detailed information on specific components, please refer to the dedicated documentation files.*

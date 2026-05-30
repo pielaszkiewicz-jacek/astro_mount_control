@@ -48,7 +48,7 @@ flowchart TB
     subgraph CLIENTS["🧑‍💻 Aplikacje klienckie"]
         PY["Klient Python<br/>(gRPC stub)"]
         CPP["Klient C++<br/>(gRPC stub)"]
-        WEB["Interfejs Web<br/>(gRPC-web)"]
+        WEB["Interfejs Web<br/>(HTTP/JSON proxy)"]
     end
 
     subgraph API["🌐 API gRPC"]
@@ -744,54 +744,33 @@ Dokładność sterownika montażu astronomicznego w dużym stopniu zależy od pr
 
 ## Interfejs Web
 
-Astronomical Mount Controller zawiera nowoczesny interfejs webowy zapewniający pełną kontrolę teleskopu przez przeglądarkę.
-
-### Funkcje
-- **Pełna kontrola teleskopu**: Slewing, śledzenie, parkowanie i zatrzymanie awaryjne
-- **Monitorowanie w czasie rzeczywistym**: Status montażu, pozycja, temperatura i metryki wydajności
-- **Interfejs kalibracji TPOINT**: Dodawanie pomiarów, uruchamianie kalibracji, podgląd parametrów
-- **Integracja autoguidera**: Podłączanie/rozłączanie guidera, wysyłanie korekcji
-- **Interaktywna mapa nieba**: Wizualna reprezentacja pozycji montażu i celu
-- **Zarządzanie konfiguracją**: Zapisywanie i wczytywanie konfiguracji montażu
-- **Panel stanu systemu**: Użycie CPU, pamięci, status połączenia
-- **Logowanie**: Logi systemowe w czasie rzeczywistym z filtrowaniem
+Projekt zawiera przeglądarkowy dashboard webowy do zdalnego sterowania i monitorowania montażu, znajdujący się w katalogu [`web/`](../web/).
 
 ### Architektura
-Interfejs webowy składa się z trzech głównych komponentów:
 
-1. **Aplikacja frontendowa** (HTML/CSS/JavaScript)
-   - Aplikacja jednostronicowa z responsywnym designem
-   - Aktualizacje w czasie rzeczywistym przez WebSocket/AJAX
-   - Interaktywna wizualizacja mapy nieba
+```
+┌─────────────┐     HTTP/JSON      ┌──────────────┐     gRPC      ┌──────────────────┐
+│  Przeglądarka │ ──────────────────>│ Serwer Proxy  │ ────────────>│ Mount Controller │
+│   (SPA)     │<──────────────────│  (Express.js) │<────────────│   (C++ gRPC)     │
+└─────────────┘     JSON/HTML      └──────────────┘              └──────────────────┘
+```
 
-2. **Serwer proxy HTTP/JSON** (Node.js)
-   - Most między interfejsem webowym a serwerem gRPC
-   - Udostępnia punkty końcowe REST API
-   - Obsługuje uwierzytelnianie i bezpieczeństwo
-   - Działa domyślnie na porcie 8080
-
-3. **Integracja serwera gRPC**
-   - Komunikuje się z głównym kontrolerem montażu
-   - Używa protobuf do wydajnej wymiany danych
-   - Działa domyślnie na porcie 50051
+### Kluczowe funkcje
+- **Responsywny design mobile-first** — dostosowuje się do telefonów, tabletów i komputerów
+- **Interfejs oparty na kartach** — modułowe karty statusu, sterowania i ustawień
+- **Status w czasie rzeczywistym** — pętla odświeżania co 1 sekundę
+- **Sterowanie montażem** — slew do współrzędnych, stop, park/unpark, czyszczenie błędów
+- **Nawigacja zakładkami** — zakładki Status, Sterowanie, Ustawienia (rozszerzalny framework)
 
 ### Szybki start
-1. Zainstaluj zależności Node.js: `cd web/proxy && npm install`
-2. Uruchom serwer proxy: `cd web/proxy && npm start`
-3. Upewnij się, że kontroler montażu działa na porcie 50051
-4. Otwórz przeglądarkę na: `http://localhost:8080`
+```bash
+cd web/proxy
+cp .env.example .env        # Edytuj, jeśli gRPC host/port są inne
+npm install                 # Już zainstalowano
+npm start                   # Uruchamia na http://localhost:3000
+```
 
-### Funkcje bezpieczeństwa
-- Konfiguracja CORS dla kontrolowanego dostępu
-- Opcjonalne wsparcie HTTPS/SSL
-- Middleware uwierzytelniania gotowy do wdrożenia produkcyjnego
-- Konfiguracja oparta na zmiennych środowiskowych
-
-### Wsparcie przeglądarek
-- Chrome 60+, Firefox 55+, Safari 12+, Edge 79+
-- Mobile Safari 12+, Chrome for Android 60+
-- Responsywny design dla desktopu i urządzeń mobilnych
-
-Szczegółowe informacje o interfejsie webowym znajdują się w pliku [web/README.md](../web/README.md).
+### Dokumentacja
+Zobacz [`web/README.md`](../web/README.md) po szczegółową konfigurację, listę endpointów API i przewodnik rozszerzania.
 
 *Szczegółowe informacje o poszczególnych komponentach znajdują się w dedykowanych plikach dokumentacji.*

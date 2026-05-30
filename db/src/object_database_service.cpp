@@ -202,6 +202,173 @@ void SetTimestampFromString(google::protobuf::Timestamp* ts, const std::string& 
     google::protobuf::util::TimeUtil::FromString(str, ts);
 }
 
+// ─── CSV Import Helpers ─────────────────────────────────────────────────────
+
+static char DetectCsvDelimiter(const std::string& header) {
+    int semicolons = 0, commas = 0;
+    for (char c : header) {
+        if (c == ';') semicolons++;
+        if (c == ',') commas++;
+    }
+    return semicolons >= commas ? ';' : ',';
+}
+
+static std::vector<std::string> SplitCsvLine(const std::string& line, char delimiter) {
+    std::vector<std::string> columns;
+    std::stringstream ss(line);
+    std::string cell;
+    while (std::getline(ss, cell, delimiter)) {
+        columns.push_back(cell);
+    }
+    return columns;
+}
+
+static std::string TrimQuotes(const std::string& str) {
+    std::string result = str;
+    // Trim leading whitespace and quotes
+    size_t start = result.find_first_not_of(" \t\"");
+    if (start == std::string::npos) return "";
+    result = result.substr(start);
+    // Trim trailing whitespace and quotes
+    size_t end = result.find_last_not_of(" \t\"");
+    if (end != std::string::npos) result = result.substr(0, end + 1);
+    return result;
+}
+
+static ObjectType StringToObjectType(const std::string& typeStr) {
+    if (typeStr.empty()) return ObjectType::UNKNOWN_TYPE;
+    
+    // OpenNGC type codes (https://github.com/mattiaverga/OpenNGC)
+    // Exact matches for non-galaxy types (checked before prefix matches)
+    if (typeStr == "OC" || typeStr == "OCl" || typeStr == "Cl*")
+        return ObjectType::STAR_CLUSTER_OPEN;
+    if (typeStr == "Gb" || typeStr == "GlC")
+        return ObjectType::STAR_CLUSTER_GLOBULAR;
+    if (typeStr == "Nb" || typeStr == "Neb" || typeStr == "ISM")
+        return ObjectType::DIFFUSE_NEBULA;
+    if (typeStr == "Pn" || typeStr == "PN")
+        return ObjectType::PLANETARY_NEBULA;
+    if (typeStr == "En" || typeStr == "EmO" || typeStr == "EmN" || typeStr == "HII")
+        return ObjectType::EMISSION_NEBULA;
+    if (typeStr == "Rn" || typeStr == "RfN")
+        return ObjectType::REFLECTION_NEBULA;
+    if (typeStr == "Dk" || typeStr == "MolC")
+        return ObjectType::DARK_NEBULA;
+    if (typeStr == "SNR")
+        return ObjectType::SUPERNOVA_REMNANT;
+    if (typeStr == "*" || typeStr == "Star")
+        return ObjectType::STAR;
+    if (typeStr == "D*" || typeStr == "Double")
+        return ObjectType::DOUBLE_STAR;
+    if (typeStr == "V*" || typeStr == "Var")
+        return ObjectType::VARIABLE_STAR;
+    if (typeStr == "Ast")
+        return ObjectType::ASTEROID;
+    if (typeStr == "Kt" || typeStr == "Comet")
+        return ObjectType::COMET;
+    if (typeStr == "QSO" || typeStr == "GxQ")
+        return ObjectType::QUASAR;
+    if (typeStr == "Nova")
+        return ObjectType::VARIABLE_STAR;
+    if (typeStr == "SC?" || typeStr == "*Ass")
+        return ObjectType::STAR_CLUSTER_OPEN;
+    if (typeStr == "**" || typeStr == "Dup")
+        return ObjectType::DOUBLE_STAR;
+    
+    // Combined types (OpenNGC compound codes for objects with dual classification)
+    if (typeStr == "OC+Gb" || typeStr == "Cl+Nb" || typeStr == "OC+Nb" || typeStr == "Cl+N")
+        return ObjectType::STAR_CLUSTER_OPEN;
+    if (typeStr == "Gb+Nb")
+        return ObjectType::STAR_CLUSTER_GLOBULAR;
+    if (typeStr == "Nb+Pn")
+        return ObjectType::PLANETARY_NEBULA;
+    
+    // Galaxy cluster (GxC = Cluster of galaxies, GCl = cluster generic)
+    if (typeStr == "GxC" || typeStr == "GCl")
+        return ObjectType::GALAXY_ELLIPTICAL;
+    
+    // Galaxy groups / irregular galaxies
+    if (typeStr == "GxG" || typeStr == "GPair" || typeStr == "GTrpl" || typeStr == "GGroup" || typeStr == "Irr")
+        return ObjectType::GALAXY_IRREGULAR;
+    
+    // --- Galaxy type matching (uses prefix matching for OpenNGC sub-types) ---
+    
+    // Elliptical galaxies: "E", "E0".."E7", "Ell"
+    if (typeStr == "Ell" || typeStr == "E" ||
+        (typeStr.size() == 2 && typeStr[0] == 'E' && typeStr[1] >= '0' && typeStr[1] <= '7'))
+        return ObjectType::GALAXY_ELLIPTICAL;
+    
+    // Lenticular: "S0", "SB0", "Lent"
+    if (typeStr == "S0" || typeStr == "SB0" || typeStr == "Lent")
+        return ObjectType::GALAXY_LENTICULAR;
+    
+    // Barred spiral galaxies: "SBa", "SBb", "SBc", "SBd", "SBm", "SB"
+    if (typeStr.size() >= 2 && typeStr.size() <= 3 &&
+        typeStr[0] == 'S' && typeStr[1] == 'B')
+        return ObjectType::GALAXY_SPIRAL;
+    
+    // Unbarred spiral galaxies: "Sa", "Sab", "Sb", "Sbc", "Sc", "Scd", "Sd", "Sdm", "Sm", "S"
+    if (typeStr.size() >= 1 && typeStr.size() <= 3 &&
+        typeStr[0] == 'S')
+        return ObjectType::GALAXY_SPIRAL;
+    
+    // Generic galaxy (OpenNGC "Gx" = unspecified galaxy type)
+    if (typeStr == "Gx" || typeStr == "G")
+        return ObjectType::GALAXY_SPIRAL;  // Most common galaxy in OpenNGC is spiral
+    
+    // Non-existent objects (keep as unknown)
+    if (typeStr == "NonEx" || typeStr == "Other")
+        return ObjectType::UNKNOWN_TYPE;
+    
+    return ObjectType::UNKNOWN_TYPE;
+}
+
+static double ParseRaHours(const std::string& value) {
+    if (value.empty()) return 0.0;
+    // HH:MM:SS.s format (OpenNGC)
+    size_t c1 = value.find(':');
+    if (c1 != std::string::npos) {
+        double h = std::stod(value.substr(0, c1));
+        size_t c2 = value.find(':', c1 + 1);
+        if (c2 != std::string::npos) {
+            double m = std::stod(value.substr(c1 + 1, c2 - c1 - 1));
+            double s = std::stod(value.substr(c2 + 1));
+            return h + m / 60.0 + s / 3600.0;
+        }
+        double m = std::stod(value.substr(c1 + 1));
+        return h + m / 60.0;
+    }
+    // Decimal hours (HYG)
+    try { return std::stod(value); } catch (...) { return 0.0; }
+}
+
+static double ParseDecDegrees(const std::string& value) {
+    if (value.empty()) return 0.0;
+    // DD:MM:SS.s format (OpenNGC)
+    size_t c1 = value.find(':');
+    if (c1 != std::string::npos) {
+        double d = std::stod(value.substr(0, c1));
+        size_t c2 = value.find(':', c1 + 1);
+        if (c2 != std::string::npos) {
+            double m = std::stod(value.substr(c1 + 1, c2 - c1 - 1));
+            double s = std::stod(value.substr(c2 + 1));
+            double result = std::abs(d) + m / 60.0 + s / 3600.0;
+            return (d < 0) ? -result : result;
+        }
+        double m = std::stod(value.substr(c1 + 1));
+        double result = std::abs(d) + m / 60.0;
+        return (d < 0) ? -result : result;
+    }
+    // Decimal degrees (HYG)
+    try { return std::stod(value); } catch (...) { return 0.0; }
+}
+
+// Safe wrapper for sqlite3_column_text that returns empty string on NULL
+inline const char* SafeString(sqlite3_stmt* stmt, int col) {
+    const char* text = reinterpret_cast<const char*>(sqlite3_column_text(stmt, col));
+    return text ? text : "";
+}
+
 } // anonymous namespace
 
 ObjectDatabaseServiceImpl::ObjectDatabaseServiceImpl(const std::string& db_path)
@@ -224,6 +391,13 @@ bool ObjectDatabaseServiceImpl::InitializeDatabase() {
     if (rc != SQLITE_OK) {
         return false;
     }
+    
+    // Enable WAL mode for better concurrent read/write performance
+    // This also reduces memory usage during large transactions
+    ExecuteQuery("PRAGMA journal_mode=WAL");
+    
+    // Set busy timeout to avoid SQLITE_BUSY errors during concurrent access
+    ExecuteQuery("PRAGMA busy_timeout=5000");
     
     // Enable foreign keys
     ExecuteQuery("PRAGMA foreign_keys = ON");
@@ -334,7 +508,7 @@ bool ObjectDatabaseServiceImpl::RollbackTransaction() {
 
 // Implementation of gRPC service methods
 
-grpc::Status ObjectDatabaseServiceImpl::CreateObject(grpc::ServerContext* context, 
+grpc::Status ObjectDatabaseServiceImpl::CreateObject(grpc::ServerContext* context,
                                                      const AstronomicalObject* request,
                                                      ObjectId* response) {
     std::string id = GenerateUUID();
@@ -348,8 +522,10 @@ grpc::Status ObjectDatabaseServiceImpl::CreateObject(grpc::ServerContext* contex
     *object.mutable_created_at() = now;
     *object.mutable_updated_at() = now;
     
-    if (!InsertObject(object, &id)) {
-        return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to create object");
+    std::string sqlite_error;
+    if (!InsertObject(object, &id, &sqlite_error)) {
+        std::string error_msg = "Failed to create object: " + sqlite_error;
+        return grpc::Status(grpc::StatusCode::INTERNAL, error_msg);
     }
     
     response->set_id(id);
@@ -413,14 +589,260 @@ grpc::Status ObjectDatabaseServiceImpl::SearchObjects(grpc::ServerContext* conte
 grpc::Status ObjectDatabaseServiceImpl::ImportCatalog(grpc::ServerContext* context,
                                                       const ImportCatalogRequest* request,
                                                       ImportResult* response) {
-    // TODO: Implement catalog import
-    response->set_objects_imported(0);
-    response->set_objects_skipped(0);
-    response->set_objects_updated(0);
+    // 1. Validate format is CSV
+    if (request->format() != ImportCatalogRequest::CSV) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+            "Only CSV format is supported (requested format code: " +
+            std::to_string(static_cast<int>(request->format())) + ")");
+    }
+
+    // 2. Get CSV data
+    const std::string& csv_data = request->data();
+    if (csv_data.empty()) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "No data provided");
+    }
+
+    // 3. Split into non-empty lines
+    std::vector<std::string> lines;
+    {
+        std::istringstream ss(csv_data);
+        std::string line;
+        while (std::getline(ss, line)) {
+            // Trim trailing carriage return (Windows line endings)
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            if (!line.empty()) lines.push_back(line);
+        }
+    }
+
+    if (lines.size() < 2) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+            "CSV must contain at least a header line and one data row (found " +
+            std::to_string(lines.size()) + " lines)");
+    }
+
+    // 4. Parse header to build column-name → index map
+    std::string header = lines[0];
+    char delimiter = DetectCsvDelimiter(header);
+    std::vector<std::string> header_cols = SplitCsvLine(header, delimiter);
+
+    std::map<std::string, int> col_index;
+    for (size_t i = 0; i < header_cols.size(); ++i) {
+        col_index[TrimQuotes(header_cols[i])] = static_cast<int>(i);
+    }
+
+    // 5. Get field_mapping and catalog_name from request
+    const auto& field_mapping = request->field_mapping();
+    std::string request_catalog_name = request->catalog_name();
+
+    // 6. Process each data row in batches to avoid holding large transactions
+    int imported = 0, skipped = 0, updated = 0;
+    std::vector<std::string> errors;
+    std::string now_timestamp = GetCurrentTimestamp();
+
+    // Batch size: commit every 1000 rows to keep transaction journal small
+    static constexpr size_t BATCH_SIZE = 1000;
+
+    // Pre-allocate SQL statements (reused per batch for efficiency)
+    const char* check_sql = "SELECT id FROM astronomical_objects WHERE name = ? AND catalog_name = ?";
+    const char* update_sql = R"(
+        UPDATE astronomical_objects SET
+            ra_hours = ?, dec_degrees = ?, v_magnitude = ?, b_magnitude = ?,
+            spectral_type = ?, object_type = ?, alternate_names = ?,
+            catalog_id = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+    )";
+    const char* insert_sql = R"(
+        INSERT INTO astronomical_objects (
+            id, name, catalog_name, alternate_names, ra_hours, dec_degrees,
+            v_magnitude, b_magnitude, spectral_type, object_type,
+            catalog_id, notes, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )";
+
+    // Lock the database mutex for the entire batch operation
+    std::lock_guard<std::mutex> lock(db_mutex_);
+
+    BeginTransaction();
+
+    for (size_t row_idx = 1; row_idx < lines.size(); ++row_idx) {
+        try {
+            const std::string& raw_line = lines[row_idx];
+            std::vector<std::string> cells = SplitCsvLine(raw_line, delimiter);
+            if (cells.empty()) {
+                continue;
+            }
+
+            // Build AstronomicalObject from CSV row using field_mapping
+            AstronomicalObject obj;
+            bool has_name = false;
+
+            for (const auto& [proto_field, csv_value] : field_mapping) {
+                // Determine if csv_value refers to a CSV column or is a literal
+                int idx = -1;
+                auto it = col_index.find(csv_value);
+                if (it != col_index.end()) {
+                    idx = it->second;
+                }
+
+                std::string cell_value;
+                if (idx >= 0 && idx < static_cast<int>(cells.size())) {
+                    cell_value = TrimQuotes(cells[idx]);
+                } else {
+                    // Use as a literal value (e.g. catalog_name = "HYG")
+                    cell_value = csv_value;
+                }
+
+                if (cell_value.empty()) continue;
+
+                // Map proto field names to AstronomicalObject setters
+                if (proto_field == "name") {
+                    obj.set_name(cell_value);
+                    has_name = true;
+                } else if (proto_field == "ra") {
+                    obj.set_ra_hours(ParseRaHours(cell_value));
+                } else if (proto_field == "dec") {
+                    obj.set_dec_degrees(ParseDecDegrees(cell_value));
+                } else if (proto_field == "type") {
+                    obj.set_object_type(StringToObjectType(cell_value));
+                } else if (proto_field == "magnitude") {
+                    try { obj.set_v_magnitude(std::stod(cell_value)); }
+                    catch (...) { /* ignore parse errors for optional fields */ }
+                } else if (proto_field == "spectral_type") {
+                    obj.set_spectral_type(cell_value);
+                } else if (proto_field == "b_magnitude") {
+                    try { obj.set_b_magnitude(std::stod(cell_value)); }
+                    catch (...) { /* ignore parse errors */ }
+                } else if (proto_field == "catalog_id") {
+                    obj.set_catalog_id(cell_value);
+                } else if (proto_field == "catalog_name") {
+                    obj.set_catalog_name(cell_value);
+                } else if (proto_field == "constellation") {
+                    // No constellation field in proto yet; store in custom_fields
+                    (*obj.mutable_custom_fields())["constellation"] = cell_value;
+                } else if (proto_field == "angular_size") {
+                    try { obj.set_angular_size_arcmin(std::stod(cell_value)); }
+                    catch (...) { /* ignore parse errors */ }
+                } else if (proto_field == "radial_velocity") {
+                    try { obj.set_radial_velocity_kms(std::stod(cell_value)); }
+                    catch (...) { /* ignore parse errors */ }
+                } else if (proto_field == "redshift") {
+                    try { obj.set_redshift(std::stod(cell_value)); }
+                    catch (...) { /* ignore parse errors */ }
+                } else if (proto_field == "distance") {
+                    try { obj.set_distance_ly(std::stod(cell_value)); }
+                    catch (...) { /* ignore parse errors */ }
+                } else if (proto_field == "notes") {
+                    obj.set_notes(cell_value);
+                }
+                // Unknown proto_field keys are silently ignored
+            }
+
+            // Set catalog_name from request if not set via field_mapping
+            if (!request_catalog_name.empty() && obj.catalog_name().empty()) {
+                obj.set_catalog_name(request_catalog_name);
+            }
+
+            // Skip objects without a name
+            if (!has_name) {
+                skipped++;
+                continue;
+            }
+
+            // 7. Check if an object with the same (name, catalog_name) already exists
+            sqlite3_stmt* check_stmt = nullptr;
+            bool exists = false;
+            std::string existing_id;
+
+            if (sqlite3_prepare_v2(db_, check_sql, -1, &check_stmt, nullptr) == SQLITE_OK) {
+                sqlite3_bind_text(check_stmt, 1, obj.name().c_str(), -1, SQLITE_TRANSIENT);
+                sqlite3_bind_text(check_stmt, 2, obj.catalog_name().c_str(), -1, SQLITE_TRANSIENT);
+                if (sqlite3_step(check_stmt) == SQLITE_ROW) {
+                    exists = true;
+                    const char* eid = reinterpret_cast<const char*>(sqlite3_column_text(check_stmt, 0));
+                    if (eid) existing_id = eid;
+                }
+                sqlite3_finalize(check_stmt);
+            }
+
+            if (exists) {
+                if (request->overwrite()) {
+                    // Update existing object with imported data
+                    sqlite3_stmt* update_stmt = nullptr;
+                    if (sqlite3_prepare_v2(db_, update_sql, -1, &update_stmt, nullptr) == SQLITE_OK) {
+                        int p = 1;
+                        sqlite3_bind_double(update_stmt, p++, obj.ra_hours());
+                        sqlite3_bind_double(update_stmt, p++, obj.dec_degrees());
+                        sqlite3_bind_double(update_stmt, p++, obj.v_magnitude());
+                        sqlite3_bind_double(update_stmt, p++, obj.b_magnitude());
+                        sqlite3_bind_text(update_stmt, p++, obj.spectral_type().c_str(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_int(update_stmt, p++, static_cast<int>(obj.object_type()));
+                        sqlite3_bind_text(update_stmt, p++, obj.alternate_names().c_str(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text(update_stmt, p++, obj.catalog_id().c_str(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text(update_stmt, p++, obj.notes().c_str(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text(update_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
+                        sqlite3_bind_text(update_stmt, p++, existing_id.c_str(), -1, SQLITE_TRANSIENT);
+
+                        if (sqlite3_step(update_stmt) == SQLITE_DONE) {
+                            updated++;
+                        }
+                        sqlite3_finalize(update_stmt);
+                    }
+                } else {
+                    skipped++;
+                }
+            } else {
+                // Insert new object
+                std::string new_id = GenerateUUID();
+
+                sqlite3_stmt* insert_stmt = nullptr;
+                if (sqlite3_prepare_v2(db_, insert_sql, -1, &insert_stmt, nullptr) == SQLITE_OK) {
+                    int p = 1;
+                    sqlite3_bind_text(insert_stmt, p++, new_id.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insert_stmt, p++, obj.name().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insert_stmt, p++, obj.catalog_name().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insert_stmt, p++, obj.alternate_names().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_double(insert_stmt, p++, obj.ra_hours());
+                    sqlite3_bind_double(insert_stmt, p++, obj.dec_degrees());
+                    sqlite3_bind_double(insert_stmt, p++, obj.v_magnitude());
+                    sqlite3_bind_double(insert_stmt, p++, obj.b_magnitude());
+                    sqlite3_bind_text(insert_stmt, p++, obj.spectral_type().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_int(insert_stmt, p++, static_cast<int>(obj.object_type()));
+                    sqlite3_bind_text(insert_stmt, p++, obj.catalog_id().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insert_stmt, p++, obj.notes().c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insert_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
+                    sqlite3_bind_text(insert_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
+
+                    if (sqlite3_step(insert_stmt) == SQLITE_DONE) {
+                        imported++;
+                    }
+                    sqlite3_finalize(insert_stmt);
+                }
+            }
+        } catch (const std::exception& e) {
+            errors.push_back("Row " + std::to_string(row_idx + 1) + ": " + e.what());
+        }
+
+        // Commit in batches to keep transaction journal small
+        if (row_idx % BATCH_SIZE == 0 && row_idx < lines.size()) {
+            CommitTransaction();
+            BeginTransaction();
+        }
+    }
+
+    CommitTransaction();
+
+    // 8. Populate response
+    response->set_objects_imported(imported);
+    response->set_objects_skipped(skipped);
+    response->set_objects_updated(updated);
+    for (const auto& err : errors) {
+        response->add_errors(err);
+    }
     auto now = google::protobuf::util::TimeUtil::SecondsToTimestamp(
         std::chrono::duration_cast<std::chrono::seconds>(
             std::chrono::system_clock::now().time_since_epoch()).count());
     *response->mutable_import_time() = now;
+
     return grpc::Status::OK;
 }
 
@@ -625,7 +1047,7 @@ grpc::Status ObjectDatabaseServiceImpl::RestoreDatabase(grpc::ServerContext* con
 
 // Internal helper methods
 
-bool ObjectDatabaseServiceImpl::InsertObject(const AstronomicalObject& object, std::string* id) {
+bool ObjectDatabaseServiceImpl::InsertObject(const AstronomicalObject& object, std::string* id, std::string* error_msg) {
     std::lock_guard<std::mutex> lock(db_mutex_);
     
     const char* query = R"(
@@ -646,21 +1068,27 @@ bool ObjectDatabaseServiceImpl::InsertObject(const AstronomicalObject& object, s
             observation_count, last_observed_jd,
             is_favorite, is_visible, has_ephemeris, has_light_curve, has_spectrum,
             user_rating, user_notes, tags, categories, custom_fields
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
-                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                  ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                   ?, ?, ?, ?, ?, ?)
     )";
     
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, query, -1, &stmt, nullptr);
     if (rc != SQLITE_OK) {
+        if (error_msg) {
+            *error_msg = sqlite3_errmsg(db_);
+        }
         return false;
     }
     
     ConvertObjectToStatement(stmt, object);
     
     rc = sqlite3_step(stmt);
+    if (rc != SQLITE_DONE && error_msg) {
+        *error_msg = sqlite3_errmsg(db_);
+    }
     sqlite3_finalize(stmt);
     
     return rc == SQLITE_DONE;
@@ -683,7 +1111,7 @@ bool ObjectDatabaseServiceImpl::UpdateObjectInternal(const AstronomicalObject& o
             apparent_dimensions_arcmin_x = ?, apparent_dimensions_arcmin_y = ?,
             ra_error_mas = ?, dec_error_mas = ?, pm_ra_error = ?, pm_dec_error = ?, parallax_error = ?,
             catalog_id = ?, catalog_version = ?, data_source = ?,
-            updated_at = ?, created_by = ?, notes = ?,
+            created_at = ?, updated_at = ?, created_by = ?, notes = ?,
             observation_count = ?, last_observed_jd = ?,
             is_favorite = ?, is_visible = ?, has_ephemeris = ?, has_light_curve = ?, has_spectrum = ?,
             user_rating = ?, user_notes = ?, tags = ?, categories = ?, custom_fields = ?
@@ -696,10 +1124,12 @@ bool ObjectDatabaseServiceImpl::UpdateObjectInternal(const AstronomicalObject& o
         return false;
     }
     
-    ConvertObjectToStatement(stmt, object);
+    ConvertObjectToStatement(stmt, object, true);
     
     // Bind the ID as the last parameter
-    sqlite3_bind_text(stmt, 65, object.id().c_str(), -1, SQLITE_TRANSIENT);
+    // skip_id=true in ConvertObjectToStatement binds 62 params (name through custom_fields),
+    // so the WHERE id is parameter 63
+    sqlite3_bind_text(stmt, 63, object.id().c_str(), -1, SQLITE_TRANSIENT);
     
     rc = sqlite3_step(stmt);
     sqlite3_finalize(stmt);
@@ -871,6 +1301,22 @@ bool ObjectDatabaseServiceImpl::SearchObjectsInternal(const ObjectSearchRequest&
         query += " AND is_favorite = 1";
     }
     
+    // Visible only filter
+    if (request.include_visible_only()) {
+        query += " AND is_visible = 1";
+    }
+    
+    // Catalogs filter
+    if (request.catalogs_size() > 0) {
+        query += " AND (";
+        for (int i = 0; i < request.catalogs_size(); ++i) {
+            if (i > 0) query += " OR ";
+            query += "catalog_name LIKE ?";
+            params.push_back(request.catalogs(i) + "%");
+        }
+        query += ")";
+    }
+    
     // Execute query
     sqlite3_stmt* stmt;
     int rc = sqlite3_prepare_v2(db_, query.c_str(), -1, &stmt, nullptr);
@@ -975,10 +1421,10 @@ void ObjectDatabaseServiceImpl::ConvertRowToObject(sqlite3_stmt* stmt, Astronomi
     // Map column indices to object fields
     int col = 0;
     
-    object->set_id(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_name(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_catalog_name(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_alternate_names(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
+    object->set_id(SafeString(stmt, col++));
+    object->set_name(SafeString(stmt, col++));
+    object->set_catalog_name(SafeString(stmt, col++));
+    object->set_alternate_names(SafeString(stmt, col++));
     object->set_ra_hours(sqlite3_column_double(stmt, col++));
     object->set_dec_degrees(sqlite3_column_double(stmt, col++));
     object->set_pm_ra(sqlite3_column_double(stmt, col++));
@@ -991,8 +1437,8 @@ void ObjectDatabaseServiceImpl::ConvertRowToObject(sqlite3_stmt* stmt, Astronomi
     object->set_j_magnitude(sqlite3_column_double(stmt, col++));
     object->set_h_magnitude(sqlite3_column_double(stmt, col++));
     object->set_k_magnitude(sqlite3_column_double(stmt, col++));
-    object->set_spectral_type(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_luminosity_class(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
+    object->set_spectral_type(SafeString(stmt, col++));
+    object->set_luminosity_class(SafeString(stmt, col++));
     object->set_object_type(static_cast<ObjectType>(sqlite3_column_int(stmt, col++)));
     object->set_mass_solar(sqlite3_column_double(stmt, col++));
     object->set_radius_solar(sqlite3_column_double(stmt, col++));
@@ -1019,15 +1465,13 @@ void ObjectDatabaseServiceImpl::ConvertRowToObject(sqlite3_stmt* stmt, Astronomi
     object->set_pm_ra_error(sqlite3_column_double(stmt, col++));
     object->set_pm_dec_error(sqlite3_column_double(stmt, col++));
     object->set_parallax_error(sqlite3_column_double(stmt, col++));
-    object->set_catalog_id(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_catalog_version(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_data_source(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    SetTimestampFromString(object->mutable_created_at(),
-        reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    SetTimestampFromString(object->mutable_updated_at(),
-        reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_created_by(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
-    object->set_notes(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
+    object->set_catalog_id(SafeString(stmt, col++));
+    object->set_catalog_version(SafeString(stmt, col++));
+    object->set_data_source(SafeString(stmt, col++));
+    SetTimestampFromString(object->mutable_created_at(), SafeString(stmt, col++));
+    SetTimestampFromString(object->mutable_updated_at(), SafeString(stmt, col++));
+    object->set_created_by(SafeString(stmt, col++));
+    object->set_notes(SafeString(stmt, col++));
     object->set_observation_count(sqlite3_column_int(stmt, col++));
     object->set_last_observed_jd(sqlite3_column_double(stmt, col++));
     object->set_is_favorite(sqlite3_column_int(stmt, col++) != 0);
@@ -1036,11 +1480,11 @@ void ObjectDatabaseServiceImpl::ConvertRowToObject(sqlite3_stmt* stmt, Astronomi
     object->set_has_light_curve(sqlite3_column_int(stmt, col++) != 0);
     object->set_has_spectrum(sqlite3_column_int(stmt, col++) != 0);
     object->set_user_rating(sqlite3_column_double(stmt, col++));
-    object->set_user_notes(reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++)));
+    object->set_user_notes(SafeString(stmt, col++));
     
     // tags (repeated string)
-    const char* tags_str = reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++));
-    if (tags_str) {
+    const char* tags_str = SafeString(stmt, col++);
+    if (*tags_str) {
         std::string tags_s(tags_str);
         size_t start = 0, end = 0;
         while ((end = tags_s.find(',', start)) != std::string::npos) {
@@ -1053,8 +1497,8 @@ void ObjectDatabaseServiceImpl::ConvertRowToObject(sqlite3_stmt* stmt, Astronomi
     }
     
     // categories (repeated string)
-    const char* cats_str = reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++));
-    if (cats_str) {
+    const char* cats_str = SafeString(stmt, col++);
+    if (*cats_str) {
         std::string cats_s(cats_str);
         size_t start = 0, end = 0;
         while ((end = cats_s.find(',', start)) != std::string::npos) {
@@ -1067,8 +1511,8 @@ void ObjectDatabaseServiceImpl::ConvertRowToObject(sqlite3_stmt* stmt, Astronomi
     }
     
     // custom_fields (map<string, string>)
-    const char* cfs_str = reinterpret_cast<const char*>(sqlite3_column_text(stmt, col++));
-    if (cfs_str) {
+    const char* cfs_str = SafeString(stmt, col++);
+    if (*cfs_str) {
         std::string cfs_s(cfs_str);
         size_t start = 0, end = 0;
         while ((end = cfs_s.find(',', start)) != std::string::npos) {
@@ -1089,10 +1533,12 @@ void ObjectDatabaseServiceImpl::ConvertRowToObject(sqlite3_stmt* stmt, Astronomi
     }
 }
 
-void ObjectDatabaseServiceImpl::ConvertObjectToStatement(sqlite3_stmt* stmt, const AstronomicalObject& object) {
+void ObjectDatabaseServiceImpl::ConvertObjectToStatement(sqlite3_stmt* stmt, const AstronomicalObject& object, bool skip_id) {
     int col = 1;
     
-    sqlite3_bind_text(stmt, col++, object.id().c_str(), -1, SQLITE_TRANSIENT);
+    if (!skip_id) {
+        sqlite3_bind_text(stmt, col++, object.id().c_str(), -1, SQLITE_TRANSIENT);
+    }
     sqlite3_bind_text(stmt, col++, object.name().c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, col++, object.catalog_name().c_str(), -1, SQLITE_TRANSIENT);
     sqlite3_bind_text(stmt, col++, object.alternate_names().c_str(), -1, SQLITE_TRANSIENT);
@@ -1173,6 +1619,11 @@ bool ObjectDatabaseServer::Start() {
         grpc::ServerBuilder builder;
         builder.AddListeningPort(server_address_, grpc::InsecureServerCredentials());
         builder.RegisterService(service_.get());
+        
+        // Allow large messages (e.g. HYG catalog ~14MB CSV data)
+        // Set to 64MB to accommodate future growth
+        builder.SetMaxReceiveMessageSize(64 * 1024 * 1024);
+        builder.SetMaxSendMessageSize(64 * 1024 * 1024);
         
         server_ = builder.BuildAndStart();
         if (!server_) {

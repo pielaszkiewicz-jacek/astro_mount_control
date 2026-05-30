@@ -1,0 +1,1847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#1a1a2e">
+  <meta name="description" content="Astronomical Mount Controller - Web Interface">
+  <title>Astro Mount Control</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- ─── Header ──────────────────────────────────────────────────────── -->
+  <header class="app-header" role="banner">
+    <div class="header-left">
+      <h1 class="app-title">Mount Control</h1>
+    </div>
+    <div class="header-right">
+      <button id="mobile-toggle" class="theme-toggle" title="Toggle mobile layout mode" aria-label="Toggle mobile layout mode">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+          <line x1="12" y1="18" x2="12.01" y2="18"/>
+        </svg>
+      </button>
+      <button id="theme-toggle" class="theme-toggle" title="Toggle night-vision red theme" aria-label="Toggle night-vision red theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <span id="connection-indicator" class="connection-badge disconnected" title="Mount controller connection status">
+        <span class="badge-dot"></span>
+        <span class="badge-label">Disconnected</span>
+      </span>
+      <span id="db-connection-indicator" class="connection-badge connection-badge-db disconnected" title="Object database connection status">
+        <span class="badge-dot"></span>
+        <span class="badge-label">DB Off</span>
+      </span>
+    </div>
+  </header>
+
+  <!-- ─── Main Content ────────────────────────────────────────────────── -->
+  <main class="app-main" role="main">
+    <!-- Tab Navigation -->
+    <nav class="tab-nav" role="tablist" aria-label="Mount control tabs">
+      <button class="tab-btn active" data-tab="status" role="tab" aria-selected="true" aria-controls="panel-status">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="20" x2="4" y2="12"/><line x1="9" y1="20" x2="9" y2="6"/><line x1="14" y1="20" x2="14" y2="2"/><line x1="19" y1="20" x2="19" y2="10"/>
+          </svg>
+        </span>
+        <span class="tab-label">Status</span>
+      </button>
+      <button class="tab-btn" data-tab="control" role="tab" aria-selected="false" aria-controls="panel-control">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <polygon points="6,3 20,12 6,21"/>
+          </svg>
+        </span>
+        <span class="tab-label">Control</span>
+      </button>
+      <button class="tab-btn" data-tab="settings" role="tab" aria-selected="false" aria-controls="panel-settings">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="9" x2="20" y2="9"/><circle cx="9" cy="9" r="3"/><line x1="4" y1="16" x2="20" y2="16"/><circle cx="16" cy="16" r="3"/>
+          </svg>
+        </span>
+        <span class="tab-label">Settings</span>
+      </button>
+      <button class="tab-btn" data-tab="calibration" role="tab" aria-selected="false" aria-controls="panel-calibration">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+          </svg>
+        </span>
+        <span class="tab-label">Calibration</span>
+      </button>
+      <button class="tab-btn" data-tab="database" role="tab" aria-selected="false" aria-controls="panel-database">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="6" rx="9" ry="3"/><path d="M3 6v12c0 1.66 4.03 3 9 3s9-1.34 9-3V6"/><line x1="3" y1="12" x2="21" y2="12" opacity="0.3"/>
+          </svg>
+        </span>
+        <span class="tab-label">Database</span>
+      </button>
+      <button class="tab-btn" data-tab="tracking" role="tab" aria-selected="false" aria-controls="panel-tracking">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 2v4"/><path d="M12 22a10 10 0 0 0 10-10"/><path d="M12 22v-4"/><path d="M2 12h4"/><path d="M22 12h-4"/><path d="M12 6a6 6 0 1 0 6 6"/>
+          </svg>
+        </span>
+        <span class="tab-label">Tracking</span>
+      </button>
+    </nav>
+
+    <!-- Tab Panels -->
+    <div class="tab-panels">
+      <!-- Status Panel -->
+      <section id="panel-status" class="tab-panel active" role="tabpanel" aria-labelledby="tab-status">
+        <div class="card-grid">
+          <!-- Mount Status Card -->
+          <div id="card-mount-status" class="card">
+            <div class="card-header">
+              <h2 class="card-title">Mount Status</h2>
+              <span id="status-badge" class="status-badge idle">IDLE</span>
+            </div>
+            <div class="card-body" id="mount-status-content">
+              <div class="status-placeholder">Connecting to mount controller...</div>
+            </div>
+          </div>
+
+          <!-- Position Card -->
+          <div id="card-position" class="card">
+            <div class="card-header">
+              <h2 class="card-title">Position</h2>
+            </div>
+            <div class="card-body" id="position-content">
+              <div class="status-placeholder">Waiting for data...</div>
+            </div>
+          </div>
+
+          <!-- Environment Card -->
+          <div id="card-environment" class="card">
+            <div class="card-header">
+              <h2 class="card-title">Environment</h2>
+            </div>
+            <div class="card-body" id="environment-content">
+              <div class="status-placeholder">Waiting for data...</div>
+            </div>
+          </div>
+
+          <!-- Tracking Card -->
+          <div id="card-tracking" class="card">
+            <div class="card-header">
+              <h2 class="card-title">Tracking</h2>
+            </div>
+            <div class="card-body" id="tracking-content">
+              <div class="status-placeholder">Waiting for data...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Control Panel -->
+      <section id="panel-control" class="tab-panel" role="tabpanel" aria-labelledby="tab-control">
+        <div class="card-grid">
+          <!-- Slew Control Card -->
+          <div id="card-slew" class="card">
+            <div class="card-header">
+              <h2 class="card-title">Slew to Coordinates</h2>
+            </div>
+            <div class="card-body">
+              <form id="slew-form" class="control-form">
+                <div class="form-group">
+                  <label for="slew-ra">Right Ascension (hours)</label>
+                  <input type="number" id="slew-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="e.g. 10.5" required>
+                </div>
+                <div class="form-group">
+                  <label for="slew-dec">Declination (degrees)</label>
+                  <input type="number" id="slew-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="e.g. 41.27" required>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full">Slew</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Axis Control Card -->
+          <div id="card-axis-control" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Axis Control</h2>
+              <span id="axis-mode-badge" class="status-badge idle">Low-Level Mode</span>
+            </div>
+            <div class="card-body">
+              <!-- Mode indicator -->
+              <div id="axis-mode-info" class="axis-mode-info">
+                <span id="axis-mode-text">Uncalibrated — using direct axis velocity control</span>
+              </div>
+
+              <!-- Directional Pad -->
+              <div class="axis-pad">
+                <button id="btn-axis-up"    class="btn btn-axis btn-axis-up"    title="Move up (Dec+/Alt+)">▲</button>
+                <button id="btn-axis-left"  class="btn btn-axis btn-axis-left"  title="Move left (RA-/Az-)">◄</button>
+                <div class="axis-pad-center">
+                  <span id="axis-pad-icon" class="flat-icon">
+                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                      <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/>
+                      <line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/>
+                    </svg>
+                  </span>
+                </div>
+                <button id="btn-axis-right" class="btn btn-axis btn-axis-right" title="Move right (RA+/Az+)">►</button>
+                <button id="btn-axis-down"  class="btn btn-axis btn-axis-down"  title="Move down (Dec-/Alt-)">▼</button>
+              </div>
+
+              <!-- Speed Control -->
+              <div class="speed-control">
+                <label for="axis-speed">Speed: <span id="axis-speed-label">1.0</span> °/s</label>
+                <input type="range" id="axis-speed" class="speed-slider" min="0.1" max="5.0" step="0.1" value="1.0">
+                <div class="speed-labels">
+                  <span>Slow</span>
+                  <span>Fast</span>
+                </div>
+              </div>
+
+              <!-- Emergency Stop -->
+              <button id="btn-emergency-stop" class="btn btn-emergency">EMERGENCY STOP</button>
+            </div>
+          </div>
+
+          <!-- Quick Actions Card -->
+          <div id="card-actions" class="card">
+            <div class="card-header">
+              <h2 class="card-title">Quick Actions</h2>
+            </div>
+            <div class="card-body">
+              <div class="action-grid">
+                <button id="btn-stop" class="btn btn-danger">Stop</button>
+                <button id="btn-park" class="btn btn-warning">Park</button>
+                <button id="btn-unpark" class="btn btn-secondary">Unpark</button>
+                <button id="btn-clear-errors" class="btn btn-secondary">Clear Errors</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings Panel -->
+      <section id="panel-settings" class="tab-panel" role="tabpanel" aria-labelledby="tab-settings">
+        <div class="card-grid">
+          <!-- Server Info Card -->
+          <div id="card-server" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Server Info</h2>
+            </div>
+            <div class="card-body" id="server-info-content">
+              <div class="info-item">
+                <span class="info-label">Proxy Port</span>
+                <span class="info-value">8080</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Poll Interval</span>
+                <span class="info-value">1 second</span>
+              </div>
+              <div class="info-item">
+                <span class="info-label">Version</span>
+                <span class="info-value">1.0.0</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Connection Addresses Card (collapsible) -->
+          <div id="card-addresses" class="card full-width">
+            <details class="card-collapsible-details">
+              <summary class="card-header card-summary">
+                <h2 class="card-title">Connection Addresses</h2>
+              </summary>
+              <div class="card-body">
+                <div class="control-form">
+                  <h3 style="font-size:0.8rem;color:var(--color-text-secondary);margin-bottom:6px;font-weight:600;">Mount Controller</h3>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="ctrl-address-host">Host</label>
+                      <input type="text" id="ctrl-address-host" class="form-input" placeholder="e.g. 192.168.1.100" />
+                    </div>
+                    <div class="form-group">
+                      <label for="ctrl-address-port">Port</label>
+                      <input type="number" id="ctrl-address-port" class="form-input" min="1" max="65535" placeholder="50051" />
+                    </div>
+                  </div>
+
+                  <h3 style="font-size:0.8rem;color:var(--color-text-secondary);margin:12px 0 6px;font-weight:600;">Object Database</h3>
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label for="db-address-host">Host</label>
+                      <input type="text" id="db-address-host" class="form-input" placeholder="e.g. 192.168.1.100" />
+                    </div>
+                    <div class="form-group">
+                      <label for="db-address-port">Port</label>
+                      <input type="number" id="db-address-port" class="form-input" min="1" max="65535" placeholder="50052" />
+                    </div>
+                  </div>
+
+                  <div style="display:flex; gap:8px; align-items:center; margin-top:8px;">
+                    <button id="btn-save-addresses" class="btn btn-primary">Save & Reconnect</button>
+                    <span id="address-status" style="font-size:0.78rem;"></span>
+                  </div>
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <!-- Configuration Card -->
+          <div id="card-config" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Configuration</h2>
+              <div class="config-header-actions">
+                <button id="btn-reset-all-config" class="btn btn-sm btn-danger" title="Reset all configuration to default values" style="display:none;">Reset All to Defaults</button>
+              </div>
+            </div>
+            <div class="card-body" id="config-content">
+              <div class="status-placeholder">Loading configuration...</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Calibration Panel -->
+      <section id="panel-calibration" class="tab-panel" role="tabpanel" aria-labelledby="tab-calibration">
+        <div class="card-grid">
+
+          <!-- Calibration Help / Instructions -->
+          <div id="card-calibration-help" class="card full-width card-collapsible">
+            <div class="card-header" id="calibration-help-header">
+              <h2 class="card-title">How to Calibrate the Mount</h2>
+              <button class="card-toggle-btn" id="btn-toggle-calibration-help" aria-label="Toggle calibration instructions" title="Show/hide instructions">+</button>
+            </div>
+            <div class="card-body">
+              <div class="calibration-help-content">
+                <p>
+                  Calibration aligns the mount's internal model with the real sky. You need at least
+                  <strong>3 reference objects</strong> (stars) with known coordinates. The more
+                  measurements you add, the better the accuracy.
+                </p>
+
+                <details class="calibration-help-step" open>
+                  <summary class="calibration-help-step-summary">
+                    <span class="calibration-help-step-number">1</span>
+                    <span>Add reference measurements (Bootstrap)</span>
+                  </summary>
+                  <div class="calibration-help-step-body">
+                    <ol>
+                      <li>In the <strong>Initial Calibration (Bootstrap)</strong> card below, click <strong>"Add Reference Measurement"</strong> to expand the search section.</li>
+                      <li>Type a star name or catalog ID (e.g. <kbd>Polaris</kbd>, <kbd>Sirius</kbd>, <kbd>Vega</kbd>) and click <strong>"Search"</strong>.</li>
+                      <li>Click on an object from the search results to select it — its coordinates auto-fill into the form.</li>
+                      <li>Click <strong>"Slew & Add Measurement"</strong> to slew the mount to that object and record the measurement, or <strong>"Add Measurement Direct"</strong> if the mount is already pointing at it.</li>
+                      <li>Repeat for <strong>at least 3 objects</strong> spread across the sky.</li>
+                    </ol>
+                  </div>
+                </details>
+
+                <details class="calibration-help-step">
+                  <summary class="calibration-help-step-summary">
+                    <span class="calibration-help-step-number">2</span>
+                    <span>Run the initial calibration</span>
+                  </summary>
+                  <div class="calibration-help-step-body">
+                    <p>
+                      Once you have enough measurements, click the <strong>"Run Initial Calibration"</strong> button
+                      in the Bootstrap card. The controller computes the alignment transform. The <strong>"TPOINT Ready"</strong>
+                      field will show <em>Yes</em> when the mount is ready for precise calibration.
+                    </p>
+                    <p>
+                      You can track the <strong>Alignment Error</strong> and <strong>RMS Residual</strong> — lower
+                      values mean better alignment.
+                    </p>
+                  </div>
+                </details>
+
+                <details class="calibration-help-step">
+                  <summary class="calibration-help-step-summary">
+                    <span class="calibration-help-step-number">3</span>
+                    <span>Add precise measurements (TPOINT)</span>
+                  </summary>
+                  <div class="calibration-help-step-body">
+                    <ol>
+                      <li>In the <strong>Precise Calibration (TPOINT)</strong> card, use the same search workflow to add more reference measurements.</li>
+                      <li>Add measurements for <strong>10–20 objects</strong> distributed evenly across the sky for the best pointing model.</li>
+                      <li>Each measurement records the difference between the expected and actual position of the object.</li>
+                    </ol>
+                  </div>
+                </details>
+
+                <details class="calibration-help-step">
+                  <summary class="calibration-help-step-summary">
+                    <span class="calibration-help-step-number">4</span>
+                    <span>Run TPOINT calibration</span>
+                  </summary>
+                  <div class="calibration-help-step-body">
+                    <p>
+                      Click <strong>"Run TPOINT Calibration"</strong> to compute the full pointing model.
+                      The TPOINT model fits up to <strong>6 error terms</strong> (cone, hub, collimation,
+                      etc.) and reports:
+                    </p>
+                    <ul>
+                      <li><strong>Residual RMS</strong> — typical pointing error after correction</li>
+                      <li><strong>Max Residual</strong> — worst-case error</li>
+                      <li><strong>Chi-Squared</strong> — overall model fit quality (lower is better)</li>
+                    </ul>
+                  </div>
+                </details>
+
+                <details class="calibration-help-step">
+                  <summary class="calibration-help-step-summary">
+                    <span class="calibration-help-step-number">5</span>
+                    <span>Tips</span>
+                  </summary>
+                  <div class="calibration-help-step-body">
+                    <ul>
+                      <li><strong>Spread objects across the sky</strong> — avoid clustering them in one area.</li>
+                      <li>Use the <strong>"Clear Measurements"</strong> button to reset and start over if needed.</li>
+                      <li>Click <strong>"Refresh Status"</strong> to manually update the displayed statistics.</li>
+                      <li>After calibration, use the <strong>Control</strong> tab's calibrated nudge buttons for fine adjustments.</li>
+                      <li>Re-run calibration if you change the setup (new location, different load, etc.).</li>
+                    </ul>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bootstrap Calibration Card -->
+          <div id="card-bootstrap" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Initial Calibration (Bootstrap)</h2>
+              <span id="bootstrap-status-badge" class="status-badge idle">NOT CALIBRATED</span>
+            </div>
+            <div class="card-body">
+              <!-- Status -->
+              <div id="bootstrap-status-content">
+                <div class="calibration-status-grid">
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">State</span>
+                    <span id="bootstrap-state" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Measurements</span>
+                    <span id="bootstrap-measurement-count" class="calibration-stat-value">0</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Alignment Error</span>
+                    <span id="bootstrap-alignment-error" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">RMS Residual</span>
+                    <span id="bootstrap-residual-rms" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">TPOINT Ready</span>
+                    <span id="bootstrap-tpoint-ready" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Last Calibration</span>
+                    <span id="bootstrap-last-calibration" class="calibration-stat-value">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div class="calibration-actions">
+                <button id="btn-run-bootstrap" class="btn btn-primary">Run Initial Calibration</button>
+                <button id="btn-clear-bootstrap" class="btn btn-sm btn-danger">Clear Measurements</button>
+                <button id="btn-refresh-bootstrap" class="btn btn-sm btn-secondary">Refresh Status</button>
+              </div>
+              <div id="bootstrap-result" class="calibration-result" style="display:none;"></div>
+
+              <!-- Add Bootstrap Measurement with Object Search -->
+              <details class="calibration-measurement-section" id="bs-measurement-section">
+                <summary class="calibration-measurement-summary">
+                  <span class="calibration-measurement-icon">+</span>
+                  Add Reference Measurement
+                </summary>
+                <div class="calibration-measurement-body">
+                  <div class="calibration-search-bar">
+                    <input type="text" id="bs-ref-search" class="form-input" placeholder="Search reference object by name or catalog ID..." />
+                    <button id="btn-bs-search" class="btn btn-primary btn-sm">Search</button>
+                  </div>
+                  <div id="bs-search-results" class="calibration-search-results"></div>
+
+                  <div id="bs-measurement-form" class="calibration-measurement-form" style="display:none;">
+                    <div class="calibration-selected-object">
+                      <span class="calibration-selected-label">Selected:</span>
+                      <span id="bs-selected-name" class="calibration-selected-name">—</span>
+                    </div>
+                    <div class="calibration-coord-inputs">
+                      <div class="form-group">
+                        <label for="bs-expected-ra">Expected RA (hours)</label>
+                        <input type="number" id="bs-expected-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="Auto-filled" />
+                      </div>
+                      <div class="form-group">
+                        <label for="bs-expected-dec">Expected Dec (°)</label>
+                        <input type="number" id="bs-expected-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="Auto-filled" />
+                      </div>
+                    </div>
+                    <div class="calibration-measurement-actions">
+                      <button id="btn-bs-slew-and-measure" class="btn btn-primary btn-sm">Slew & Add Measurement</button>
+                      <button id="btn-bs-add-measurement" class="btn btn-secondary btn-sm">Add Measurement Direct</button>
+                      <button id="btn-bs-clear-selection" class="btn btn-sm btn-secondary">Clear</button>
+                    </div>
+                    <div id="bs-measurement-result" class="calibration-result" style="display:none;"></div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- TPOINT Calibration Card -->
+          <div id="card-tpoint" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Precise Calibration (TPOINT)</h2>
+              <span id="tpoint-status-badge" class="status-badge idle">INACTIVE</span>
+            </div>
+            <div class="card-body">
+              <!-- Status -->
+              <div id="tpoint-status-content">
+                <div class="calibration-status-grid">
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Measurements</span>
+                    <span id="tpoint-measurement-count" class="calibration-stat-value">0</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Residual RMS</span>
+                    <span id="tpoint-residual-rms" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Max Residual</span>
+                    <span id="tpoint-max-residual" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Chi-Squared</span>
+                    <span id="tpoint-chi-squared" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Last Update</span>
+                    <span id="tpoint-last-update" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Calibrated</span>
+                    <span id="tpoint-calibrated" class="calibration-stat-value">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div class="calibration-actions">
+                <button id="btn-run-tpoint" class="btn btn-primary">Run TPOINT Calibration</button>
+                <button id="btn-clear-tpoint" class="btn btn-sm btn-danger">Clear Measurements</button>
+                <button id="btn-refresh-tpoint" class="btn btn-sm btn-secondary">Refresh Status</button>
+              </div>
+              <div id="tpoint-result" class="calibration-result" style="display:none;"></div>
+
+              <!-- Add TPOINT Measurement with Object Search -->
+              <details class="calibration-measurement-section" id="tp-measurement-section">
+                <summary class="calibration-measurement-summary">
+                  <span class="calibration-measurement-icon">+</span>
+                  Add Precise Measurement
+                </summary>
+                <div class="calibration-measurement-body">
+                  <div class="calibration-search-bar">
+                    <input type="text" id="tp-ref-search" class="form-input" placeholder="Search reference object by name or catalog ID..." />
+                    <button id="btn-tp-search" class="btn btn-primary btn-sm">Search</button>
+                  </div>
+                  <div id="tp-search-results" class="calibration-search-results"></div>
+
+                  <div id="tp-measurement-form" class="calibration-measurement-form" style="display:none;">
+                    <div class="calibration-selected-object">
+                      <span class="calibration-selected-label">Selected:</span>
+                      <span id="tp-selected-name" class="calibration-selected-name">—</span>
+                    </div>
+                    <div class="calibration-coord-inputs">
+                      <div class="form-group">
+                        <label for="tp-expected-ra">Expected RA (hours)</label>
+                        <input type="number" id="tp-expected-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="Auto-filled" />
+                      </div>
+                      <div class="form-group">
+                        <label for="tp-expected-dec">Expected Dec (°)</label>
+                        <input type="number" id="tp-expected-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="Auto-filled" />
+                      </div>
+                    </div>
+                    <div class="calibration-measurement-actions">
+                      <button id="btn-tp-slew-and-measure" class="btn btn-primary btn-sm">Slew & Add Measurement</button>
+                      <button id="btn-tp-add-measurement" class="btn btn-secondary btn-sm">Add Measurement Direct</button>
+                      <button id="btn-tp-clear-selection" class="btn btn-sm btn-secondary">Clear</button>
+                    </div>
+                    <div id="tp-measurement-result" class="calibration-result" style="display:none;"></div>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Database Panel -->
+      <section id="panel-database" class="tab-panel" role="tabpanel" aria-labelledby="tab-database">
+        <div class="card-grid">
+          <!-- Database Stats Card (full width, collapsible, collapsed by default) -->
+          <div id="card-db-stats" class="card full-width card-collapsible card-collapsed">
+            <div class="card-header">
+              <h2 class="card-title">Database Stats</h2>
+              <span id="db-stats-badge" class="status-badge idle">—</span>
+              <button id="btn-db-stats-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle database stats">▶</button>
+            </div>
+            <div class="card-body" id="db-stats-content">
+              <div class="status-placeholder">Connecting to database...</div>
+            </div>
+          </div>
+
+          <!-- Search & Filter Card (full width) -->
+          <div id="card-db-search" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Search Objects</h2>
+            </div>
+            <div class="card-body">
+              <div class="search-bar">
+                <input type="text" id="db-search-input" class="form-input" placeholder="Search by name, catalog ID..." />
+                <button id="btn-db-search" class="btn btn-primary btn-search">Search</button>
+              </div>
+              <div class="search-filters">
+                <!-- Row 1: Type filter (full width) -->
+                <div class="form-group">
+                  <label for="db-type-filter">Type</label>
+                  <select id="db-type-filter" class="form-input form-select">
+                    <option value="">All Types</option>
+                    <option value="STAR">Star</option>
+                    <option value="DOUBLE_STAR">Double Star</option>
+                    <option value="VARIABLE_STAR">Variable Star</option>
+                    <option value="STAR_CLUSTER_OPEN">Open Cluster</option>
+                    <option value="STAR_CLUSTER_GLOBULAR">Globular Cluster</option>
+                    <option value="PLANETARY_NEBULA">Planetary Nebula</option>
+                    <option value="DIFFUSE_NEBULA">Diffuse Nebula</option>
+                    <option value="EMISSION_NEBULA">Emission Nebula</option>
+                    <option value="DARK_NEBULA">Dark Nebula</option>
+                    <option value="REFLECTION_NEBULA">Reflection Nebula</option>
+                    <option value="GALAXY_SPIRAL">Spiral Galaxy</option>
+                    <option value="GALAXY_ELLIPTICAL">Elliptical Galaxy</option>
+                    <option value="GALAXY_IRREGULAR">Irregular Galaxy</option>
+                    <option value="GALAXY_LENTICULAR">Lenticular Galaxy</option>
+                    <option value="QUASAR">Quasar</option>
+                    <option value="SUPERNOVA_REMNANT">Supernova Remnant</option>
+                    <option value="PLANET">Planet</option>
+                    <option value="DWARF_PLANET">Dwarf Planet</option>
+                    <option value="MOON">Moon</option>
+                    <option value="ASTEROID">Asteroid</option>
+                    <option value="COMET">Comet</option>
+                    <option value="SATELLITE">Satellite</option>
+                    <option value="EXOPLANET">Exoplanet</option>
+                    <option value="ARTIFICIAL_SATELLITE">Artificial Satellite</option>
+                    <option value="SPACE_DEBRIS">Space Debris</option>
+                  </select>
+                </div>
+                <!-- Row 2: Magnitude range + Sort -->
+                <div class="form-row-3">
+                  <div class="form-group">
+                    <label for="db-mag-max">Max Magnitude</label>
+                    <input type="number" id="db-mag-max" class="form-input" step="0.5" min="0" max="30" placeholder="e.g. 10" />
+                  </div>
+                  <div class="form-group">
+                    <label for="db-mag-min">Min Magnitude</label>
+                    <input type="number" id="db-mag-min" class="form-input" step="0.5" min="0" max="30" placeholder="e.g. 4" />
+                  </div>
+                  <div class="form-group">
+                    <label for="db-sort-by">Sort By</label>
+                    <select id="db-sort-by" class="form-input form-select">
+                      <option value="name">Name</option>
+                      <option value="magnitude">Magnitude</option>
+                      <option value="ra">Right Ascension</option>
+                      <option value="dec">Declination</option>
+                    </select>
+                  </div>
+                </div>
+                <!-- Row 3: Extra filters -->
+                <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                  <label class="checkbox-label" style="gap:8px;">
+                    <input type="checkbox" id="db-sort-desc" />
+                    Descending
+                  </label>
+                  <label class="checkbox-label" style="gap:8px;">
+                    <input type="checkbox" id="db-fav-only" />
+                    Favorites only
+                  </label>
+                  <label class="checkbox-label" style="gap:8px;">
+                    <input type="checkbox" id="db-visible-only" />
+                    Visible only
+                  </label>
+                  <div class="form-group" style="flex:1; min-width:150px;">
+                    <label for="db-catalogs" style="font-size:0.82rem;">Catalogs (comma separated)</label>
+                    <input type="text" id="db-catalogs" class="form-input" placeholder="e.g. NGC, IC, M" style="font-size:0.82rem; padding:6px 8px;" />
+                  </div>
+                  <div class="form-group" style="flex:1; min-width:160px;">
+                    <label for="db-constellation" style="font-size:0.82rem;">Constellation</label>
+                    <select id="db-constellation" class="form-input form-select" style="font-size:0.82rem; padding:6px 8px;">
+                      <option value="">— All —</option>
+                      <option value="AND">Andromeda (AND)</option>
+                      <option value="ANT">Antlia (ANT)</option>
+                      <option value="APS">Apus (APS)</option>
+                      <option value="AQR">Aquarius (AQR)</option>
+                      <option value="AQL">Aquila (AQL)</option>
+                      <option value="ARA">Ara (ARA)</option>
+                      <option value="ARI">Aries (ARI)</option>
+                      <option value="AUR">Auriga (AUR)</option>
+                      <option value="BOO">Bootes (BOO)</option>
+                      <option value="CAE">Caelum (CAE)</option>
+                      <option value="CAM">Camelopardalis (CAM)</option>
+                      <option value="CNC">Cancer (CNC)</option>
+                      <option value="CVN">Canes Venatici (CVN)</option>
+                      <option value="CMA">Canis Major (CMA)</option>
+                      <option value="CMI">Canis Minor (CMI)</option>
+                      <option value="CAP">Capricornus (CAP)</option>
+                      <option value="CAR">Carina (CAR)</option>
+                      <option value="CAS">Cassiopeia (CAS)</option>
+                      <option value="CEN">Centaurus (CEN)</option>
+                      <option value="CEP">Cepheus (CEP)</option>
+                      <option value="CET">Cetus (CET)</option>
+                      <option value="CHA">Chamaeleon (CHA)</option>
+                      <option value="CIR">Circinus (CIR)</option>
+                      <option value="COL">Columba (COL)</option>
+                      <option value="COM">Coma Berenices (COM)</option>
+                      <option value="CRA">Corona Australis (CRA)</option>
+                      <option value="CRB">Corona Borealis (CRB)</option>
+                      <option value="CRV">Corvus (CRV)</option>
+                      <option value="CRT">Crater (CRT)</option>
+                      <option value="CRU">Crux (CRU)</option>
+                      <option value="CYG">Cygnus (CYG)</option>
+                      <option value="DEL">Delphinus (DEL)</option>
+                      <option value="DOR">Dorado (DOR)</option>
+                      <option value="DRA">Draco (DRA)</option>
+                      <option value="EQU">Equuleus (EQU)</option>
+                      <option value="ERI">Eridanus (ERI)</option>
+                      <option value="FOR">Fornax (FOR)</option>
+                      <option value="GEM">Gemini (GEM)</option>
+                      <option value="GRU">Grus (GRU)</option>
+                      <option value="HER">Hercules (HER)</option>
+                      <option value="HOR">Horologium (HOR)</option>
+                      <option value="HYA">Hydra (HYA)</option>
+                      <option value="HYI">Hydrus (HYI)</option>
+                      <option value="IND">Indus (IND)</option>
+                      <option value="LAC">Lacerta (LAC)</option>
+                      <option value="LEO">Leo (LEO)</option>
+                      <option value="LMI">Leo Minor (LMI)</option>
+                      <option value="LEP">Lepus (LEP)</option>
+                      <option value="LIB">Libra (LIB)</option>
+                      <option value="LUP">Lupus (LUP)</option>
+                      <option value="LYN">Lynx (LYN)</option>
+                      <option value="LYR">Lyra (LYR)</option>
+                      <option value="MEN">Mensa (MEN)</option>
+                      <option value="MIC">Microscopium (MIC)</option>
+                      <option value="MON">Monoceros (MON)</option>
+                      <option value="MUS">Musca (MUS)</option>
+                      <option value="NOR">Norma (NOR)</option>
+                      <option value="OCT">Octans (OCT)</option>
+                      <option value="OPH">Ophiuchus (OPH)</option>
+                      <option value="ORI">Orion (ORI)</option>
+                      <option value="PAV">Pavo (PAV)</option>
+                      <option value="PEG">Pegasus (PEG)</option>
+                      <option value="PER">Perseus (PER)</option>
+                      <option value="PHE">Phoenix (PHE)</option>
+                      <option value="PIC">Pictor (PIC)</option>
+                      <option value="PSC">Pisces (PSC)</option>
+                      <option value="PSA">Piscis Austrinus (PSA)</option>
+                      <option value="PUP">Puppis (PUP)</option>
+                      <option value="PYX">Pyxis (PYX)</option>
+                      <option value="RET">Reticulum (RET)</option>
+                      <option value="SGE">Sagitta (SGE)</option>
+                      <option value="SGR">Sagittarius (SGR)</option>
+                      <option value="SCO">Scorpius (SCO)</option>
+                      <option value="SCL">Sculptor (SCL)</option>
+                      <option value="SCT">Scutum (SCT)</option>
+                      <option value="SER">Serpens (SER)</option>
+                      <option value="SEX">Sextans (SEX)</option>
+                      <option value="TAU">Taurus (TAU)</option>
+                      <option value="TEL">Telescopium (TEL)</option>
+                      <option value="TRI">Triangulum (TRI)</option>
+                      <option value="TRA">Triangulum Australe (TRA)</option>
+                      <option value="TUC">Tucana (TUC)</option>
+                      <option value="UMA">Ursa Major (UMA)</option>
+                      <option value="UMI">Ursa Minor (UMI)</option>
+                      <option value="VEL">Vela (VEL)</option>
+                      <option value="VIR">Virgo (VIR)</option>
+                      <option value="VOL">Volans (VOL)</option>
+                      <option value="VUL">Vulpecula (VUL)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Objects List Card (full width) -->
+          <div id="card-db-list" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Objects</h2>
+              <span id="db-list-count" class="status-badge idle">0</span>
+            </div>
+            <div class="card-body db-list-body">
+              <div id="db-list-content" class="db-list-container">
+                <div class="status-placeholder">Search or browse to load objects...</div>
+              </div>
+              <div id="db-pagination" class="db-pagination">
+                <div class="db-pagination-left">
+                  <label for="db-page-size" class="pagination-label">Per page:</label>
+                  <select id="db-page-size" class="form-input form-select pagination-select">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+                <div id="db-pagination-nav" class="db-pagination-center">
+                  <button id="btn-db-prev" class="btn btn-secondary btn-sm" disabled title="Previous page">←</button>
+                  <div id="db-page-numbers" class="db-page-numbers"></div>
+                  <button id="btn-db-next" class="btn btn-secondary btn-sm" title="Next page">→</button>
+                </div>
+                <div id="db-pagination-info" class="db-pagination-right">
+                  <span id="db-page-info" class="db-page-info">Page 1 of 1</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Object Detail Card (full width) -->
+          <div id="card-db-detail" class="card full-width" style="display:none;">
+            <div class="card-header">
+              <h2 class="card-title" id="db-detail-title">Object Details</h2>
+              <div class="detail-actions">
+                <button id="btn-db-slew" class="btn btn-primary btn-sm" title="Slew to this object">Slew</button>
+                <button id="btn-db-fav" class="btn btn-secondary btn-sm" title="Toggle favorite">Favorite</button>
+                <button id="btn-db-edit" class="btn btn-secondary btn-sm" title="Edit object">Edit</button>
+                <button id="btn-db-delete" class="btn btn-danger btn-sm" title="Delete object">Delete</button>
+                <button id="btn-db-close-detail" class="btn btn-secondary btn-sm" title="Close">✕</button>
+              </div>
+            </div>
+            <div class="card-body" id="db-detail-content">
+              <div class="status-placeholder">Select an object to view details...</div>
+            </div>
+          </div>
+
+          <!-- Edit Object Card (full width, hidden by default) -->
+          <div id="card-db-edit" class="card full-width" style="display:none;">
+            <div class="card-header">
+              <h2 class="card-title" id="db-edit-title">Edit Object</h2>
+              <div class="detail-actions">
+                <button id="btn-db-edit-cancel" class="btn btn-secondary btn-sm" title="Cancel editing">Cancel</button>
+              </div>
+            </div>
+            <div class="card-body">
+              <form id="db-edit-form" class="control-form">
+
+                <!-- ── Section: Basic Info ── -->
+                <div class="form-group">
+                  <label for="db-edit-name">Name *</label>
+                  <input type="text" id="db-edit-name" class="form-input" placeholder="e.g. M31" required />
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="db-edit-type">Object Type</label>
+                    <select id="db-edit-type" class="form-input form-select">
+                      <option value="STAR">Star</option>
+                      <option value="DOUBLE_STAR">Double Star</option>
+                      <option value="VARIABLE_STAR">Variable Star</option>
+                      <option value="STAR_CLUSTER_OPEN">Open Cluster</option>
+                      <option value="STAR_CLUSTER_GLOBULAR">Globular Cluster</option>
+                      <option value="PLANETARY_NEBULA">Planetary Nebula</option>
+                      <option value="DIFFUSE_NEBULA">Diffuse Nebula</option>
+                      <option value="DARK_NEBULA">Dark Nebula</option>
+                      <option value="EMISSION_NEBULA">Emission Nebula</option>
+                      <option value="REFLECTION_NEBULA">Reflection Nebula</option>
+                      <option value="GALAXY_SPIRAL">Spiral Galaxy</option>
+                      <option value="GALAXY_ELLIPTICAL">Elliptical Galaxy</option>
+                      <option value="GALAXY_IRREGULAR">Irregular Galaxy</option>
+                      <option value="GALAXY_LENTICULAR">Lenticular Galaxy</option>
+                      <option value="QUASAR">Quasar</option>
+                      <option value="SUPERNOVA_REMNANT">Supernova Remnant</option>
+                      <option value="PLANET">Planet</option>
+                      <option value="DWARF_PLANET">Dwarf Planet</option>
+                      <option value="MOON">Moon</option>
+                      <option value="ASTEROID">Asteroid</option>
+                      <option value="COMET">Comet</option>
+                      <option value="SATELLITE">Satellite</option>
+                      <option value="EXOPLANET">Exoplanet</option>
+                      <option value="ARTIFICIAL_SATELLITE">Artificial Satellite</option>
+                      <option value="SPACE_DEBRIS">Space Debris</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="db-edit-catalog-name">Catalog Name</label>
+                    <input type="text" id="db-edit-catalog-name" class="form-input" placeholder="e.g. NGC, Messier" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="db-edit-alt-names">Alternate Names</label>
+                  <input type="text" id="db-edit-alt-names" class="form-input" placeholder="Comma-separated" />
+                </div>
+
+                <!-- ── Section: Coordinates & Motion ── -->
+                <details class="form-section" open>
+                  <summary>Coordinates & Proper Motion</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-ra">RA (hours) J2000</label>
+                        <input type="number" id="db-edit-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-dec">Dec (°) J2000</label>
+                        <input type="number" id="db-edit-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-pm-ra">PM RA (mas/yr)</label>
+                        <input type="number" id="db-edit-pm-ra" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-pm-dec">PM Dec (mas/yr)</label>
+                        <input type="number" id="db-edit-pm-dec" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-parallax">Parallax (mas)</label>
+                        <input type="number" id="db-edit-parallax" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-dist-pc">Distance (pc)</label>
+                        <input type="number" id="db-edit-dist-pc" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-edit-dist-ly">Distance (ly)</label>
+                      <input type="number" id="db-edit-dist-ly" class="form-input" step="0.01" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Magnitudes ── -->
+                <details class="form-section">
+                  <summary>Magnitudes</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-mag-v">V Magnitude</label>
+                        <input type="number" id="db-edit-mag-v" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-mag-b">B Magnitude</label>
+                        <input type="number" id="db-edit-mag-b" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-mag-j">J Magnitude</label>
+                        <input type="number" id="db-edit-mag-j" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-mag-h">H Magnitude</label>
+                        <input type="number" id="db-edit-mag-h" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-edit-mag-k">K Magnitude</label>
+                      <input type="number" id="db-edit-mag-k" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Spectral Classification ── -->
+                <details class="form-section">
+                  <summary>Spectral Classification</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-spectral-type">Spectral Type</label>
+                        <input type="text" id="db-edit-spectral-type" class="form-input" placeholder="e.g. G2V" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-lum-class">Luminosity Class</label>
+                        <select id="db-edit-lum-class" class="form-input form-select">
+                          <option value="">—</option>
+                          <option value="0">0 — Hypergiant</option>
+                          <option value="I">I — Supergiant</option>
+                          <option value="II">II — Bright Giant</option>
+                          <option value="III">III — Giant</option>
+                          <option value="IV">IV — Subgiant</option>
+                          <option value="V">V — Main Sequence (Dwarf)</option>
+                          <option value="VI">VI — Subdwarf</option>
+                          <option value="VII">VII — White Dwarf</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Physical Parameters ── -->
+                <details class="form-section">
+                  <summary>Physical Parameters</summary>
+                  <div class="form-section-body">
+                    <div class="form-row-3">
+                      <div class="form-group">
+                        <label for="db-edit-mass">Mass (M☉)</label>
+                        <input type="number" id="db-edit-mass" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-radius">Radius (R☉)</label>
+                        <input type="number" id="db-edit-radius" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-temp">Temperature (K)</label>
+                        <input type="number" id="db-edit-temp" class="form-input" step="1" placeholder="0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-luminosity">Luminosity (L☉)</label>
+                        <input type="number" id="db-edit-luminosity" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-age">Age (Gyr)</label>
+                        <input type="number" id="db-edit-age" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-diameter">Diameter (km)</label>
+                        <input type="number" id="db-edit-diameter" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-albedo">Albedo</label>
+                        <input type="number" id="db-edit-albedo" class="form-input" step="0.01" min="0" max="1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-rotation">Rotation Period (hours)</label>
+                        <input type="number" id="db-edit-rotation" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-angular-size">Angular Size (arcmin)</label>
+                        <input type="number" id="db-edit-angular-size" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row-3">
+                      <div class="form-group">
+                        <label for="db-edit-redshift">Redshift (z)</label>
+                        <input type="number" id="db-edit-redshift" class="form-input" step="0.0001" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-radial-vel">Radial Velocity (km/s)</label>
+                        <input type="number" id="db-edit-radial-vel" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-app-dim-x">App. Dim. X (arcmin)</label>
+                        <input type="number" id="db-edit-app-dim-x" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-edit-app-dim-y">App. Dim. Y (arcmin)</label>
+                      <input type="number" id="db-edit-app-dim-y" class="form-input" step="0.1" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Orbital Elements ── -->
+                <details class="form-section">
+                  <summary>Orbital Elements</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-semi-major">Semi-Major Axis (AU)</label>
+                        <input type="number" id="db-edit-semi-major" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-eccentricity">Eccentricity</label>
+                        <input type="number" id="db-edit-eccentricity" class="form-input" step="0.001" min="0" max="1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-inclination">Inclination (°)</label>
+                        <input type="number" id="db-edit-inclination" class="form-input" step="0.01" min="0" max="180" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-long-node">Long. Asc. Node (°)</label>
+                        <input type="number" id="db-edit-long-node" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-arg-peri">Arg. of Perihelion (°)</label>
+                        <input type="number" id="db-edit-arg-peri" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-mean-anom">Mean Anomaly (°)</label>
+                        <input type="number" id="db-edit-mean-anom" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-edit-epoch-elem">Epoch of Elements (JD)</label>
+                      <input type="number" id="db-edit-epoch-elem" class="form-input" step="0.01" placeholder="2451545.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Positional Errors ── -->
+                <details class="form-section">
+                  <summary>Positional Errors</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-ra-error">RA Error (mas)</label>
+                        <input type="number" id="db-edit-ra-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-dec-error">Dec Error (mas)</label>
+                        <input type="number" id="db-edit-dec-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-pm-ra-error">PM RA Error (mas/yr)</label>
+                        <input type="number" id="db-edit-pm-ra-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-pm-dec-error">PM Dec Error (mas/yr)</label>
+                        <input type="number" id="db-edit-pm-dec-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-edit-parallax-error">Parallax Error (mas)</label>
+                      <input type="number" id="db-edit-parallax-error" class="form-input" step="0.01" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Catalog & Source ── -->
+                <details class="form-section">
+                  <summary>Catalog & Data Source</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-catalog-id">Catalog ID</label>
+                        <input type="text" id="db-edit-catalog-id" class="form-input" placeholder="e.g. NGC 224" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-catalog-ver">Catalog Version</label>
+                        <input type="text" id="db-edit-catalog-ver" class="form-input" placeholder="e.g. 2.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-edit-data-source">Data Source</label>
+                      <input type="text" id="db-edit-data-source" class="form-input" placeholder="e.g. SIMBAD, Gaia DR3" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Flags & Status ── -->
+                <details class="form-section">
+                  <summary>Flags & Status</summary>
+                  <div class="form-section-body">
+                    <div class="checkbox-group">
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-edit-fav" />
+                        Favorite
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-edit-visible" />
+                        Visible
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-edit-ephemeris" />
+                        Ephemeris Available
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-edit-light-curve" />
+                        Has Light Curve
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-edit-spectrum" />
+                        Has Spectrum
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Notes & Metadata ── -->
+                <details class="form-section">
+                  <summary>Notes & Metadata</summary>
+                  <div class="form-section-body">
+                    <div class="form-group">
+                      <label for="db-edit-notes">Notes</label>
+                      <textarea id="db-edit-notes" class="form-textarea" rows="3" placeholder="General notes..."></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-edit-user-notes">User Notes</label>
+                      <textarea id="db-edit-user-notes" class="form-textarea" rows="2" placeholder="Personal observations..."></textarea>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-user-rating">User Rating (0–5)</label>
+                        <input type="number" id="db-edit-user-rating" class="form-input" step="0.5" min="0" max="5" placeholder="0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-created-by">Created By</label>
+                        <input type="text" id="db-edit-created-by" class="form-input" placeholder="Observer name" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-edit-tags">Tags (comma-separated)</label>
+                        <input type="text" id="db-edit-tags" class="form-input" placeholder="e.g. bright, binary" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-edit-categories">Categories (comma-separated)</label>
+                        <input type="text" id="db-edit-categories" class="form-input" placeholder="e.g. Messier, Caldwell" />
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <div style="display:flex; gap:10px; margin-top:4px;">
+                  <button type="submit" class="btn btn-primary btn-full" style="flex:1;">Save Changes</button>
+                  <button type="button" id="btn-db-edit-cancel-form" class="btn btn-secondary" style="flex:0.4;">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Create Object Card (full width, collapsible) -->
+          <div id="card-db-create" class="card full-width card-collapsible card-collapsed">
+            <div class="card-header">
+              <h2 class="card-title">Add New Object</h2>
+              <button id="btn-db-create-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle add object form">▶</button>
+            </div>
+            <div class="card-body">
+              <form id="db-create-form" class="control-form">
+
+                <!-- ── Section: Basic Info (always visible) ── -->
+                <div class="form-group">
+                  <label for="db-new-name">Name *</label>
+                  <input type="text" id="db-new-name" class="form-input" placeholder="e.g. M31" required />
+                </div>
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="db-new-type">Object Type</label>
+                    <select id="db-new-type" class="form-input form-select">
+                      <option value="STAR">Star</option>
+                      <option value="DOUBLE_STAR">Double Star</option>
+                      <option value="VARIABLE_STAR">Variable Star</option>
+                      <option value="STAR_CLUSTER_OPEN">Open Cluster</option>
+                      <option value="STAR_CLUSTER_GLOBULAR">Globular Cluster</option>
+                      <option value="PLANETARY_NEBULA">Planetary Nebula</option>
+                      <option value="DIFFUSE_NEBULA">Diffuse Nebula</option>
+                      <option value="DARK_NEBULA">Dark Nebula</option>
+                      <option value="EMISSION_NEBULA">Emission Nebula</option>
+                      <option value="REFLECTION_NEBULA">Reflection Nebula</option>
+                      <option value="GALAXY_SPIRAL">Spiral Galaxy</option>
+                      <option value="GALAXY_ELLIPTICAL">Elliptical Galaxy</option>
+                      <option value="GALAXY_IRREGULAR">Irregular Galaxy</option>
+                      <option value="GALAXY_LENTICULAR">Lenticular Galaxy</option>
+                      <option value="QUASAR">Quasar</option>
+                      <option value="SUPERNOVA_REMNANT">Supernova Remnant</option>
+                      <option value="PLANET">Planet</option>
+                      <option value="DWARF_PLANET">Dwarf Planet</option>
+                      <option value="MOON">Moon</option>
+                      <option value="ASTEROID">Asteroid</option>
+                      <option value="COMET">Comet</option>
+                      <option value="SATELLITE">Satellite</option>
+                      <option value="EXOPLANET">Exoplanet</option>
+                      <option value="ARTIFICIAL_SATELLITE">Artificial Satellite</option>
+                      <option value="SPACE_DEBRIS">Space Debris</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="db-new-catalog-name">Catalog Name</label>
+                    <input type="text" id="db-new-catalog-name" class="form-input" placeholder="e.g. NGC, Messier" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="db-new-alt-names">Alternate Names</label>
+                  <input type="text" id="db-new-alt-names" class="form-input" placeholder="Comma-separated, e.g. NGC 224, Andromeda Galaxy" />
+                </div>
+
+                <!-- ── Section: Coordinates & Motion ── -->
+                <details class="form-section" open>
+                  <summary>Coordinates & Proper Motion</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-ra">RA (hours) J2000</label>
+                        <input type="number" id="db-new-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-dec">Dec (°) J2000</label>
+                        <input type="number" id="db-new-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-pm-ra">PM RA (mas/yr)</label>
+                        <input type="number" id="db-new-pm-ra" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-pm-dec">PM Dec (mas/yr)</label>
+                        <input type="number" id="db-new-pm-dec" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-parallax">Parallax (mas)</label>
+                        <input type="number" id="db-new-parallax" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-dist-pc">Distance (pc)</label>
+                        <input type="number" id="db-new-dist-pc" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-new-dist-ly">Distance (ly)</label>
+                      <input type="number" id="db-new-dist-ly" class="form-input" step="0.01" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Magnitudes ── -->
+                <details class="form-section">
+                  <summary>Magnitudes</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-mag-v">V Magnitude</label>
+                        <input type="number" id="db-new-mag-v" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-mag-b">B Magnitude</label>
+                        <input type="number" id="db-new-mag-b" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-mag-j">J Magnitude</label>
+                        <input type="number" id="db-new-mag-j" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-mag-h">H Magnitude</label>
+                        <input type="number" id="db-new-mag-h" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-new-mag-k">K Magnitude</label>
+                      <input type="number" id="db-new-mag-k" class="form-input" step="0.1" min="-30" max="30" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Spectral Classification ── -->
+                <details class="form-section">
+                  <summary>Spectral Classification</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-spectral-type">Spectral Type</label>
+                        <input type="text" id="db-new-spectral-type" class="form-input" placeholder="e.g. G2V, M3III" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-lum-class">Luminosity Class</label>
+                        <select id="db-new-lum-class" class="form-input form-select">
+                          <option value="">—</option>
+                          <option value="0">0 — Hypergiant</option>
+                          <option value="I">I — Supergiant</option>
+                          <option value="II">II — Bright Giant</option>
+                          <option value="III">III — Giant</option>
+                          <option value="IV">IV — Subgiant</option>
+                          <option value="V">V — Main Sequence (Dwarf)</option>
+                          <option value="VI">VI — Subdwarf</option>
+                          <option value="VII">VII — White Dwarf</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Physical Parameters ── -->
+                <details class="form-section">
+                  <summary>Physical Parameters</summary>
+                  <div class="form-section-body">
+                    <div class="form-row-3">
+                      <div class="form-group">
+                        <label for="db-new-mass">Mass (M☉)</label>
+                        <input type="number" id="db-new-mass" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-radius">Radius (R☉)</label>
+                        <input type="number" id="db-new-radius" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-temp">Temperature (K)</label>
+                        <input type="number" id="db-new-temp" class="form-input" step="1" placeholder="0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-luminosity">Luminosity (L☉)</label>
+                        <input type="number" id="db-new-luminosity" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-age">Age (Gyr)</label>
+                        <input type="number" id="db-new-age" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-diameter">Diameter (km)</label>
+                        <input type="number" id="db-new-diameter" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-albedo">Albedo</label>
+                        <input type="number" id="db-new-albedo" class="form-input" step="0.01" min="0" max="1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-rotation">Rotation Period (hours)</label>
+                        <input type="number" id="db-new-rotation" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-angular-size">Angular Size (arcmin)</label>
+                        <input type="number" id="db-new-angular-size" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row-3">
+                      <div class="form-group">
+                        <label for="db-new-redshift">Redshift (z)</label>
+                        <input type="number" id="db-new-redshift" class="form-input" step="0.0001" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-radial-vel">Radial Velocity (km/s)</label>
+                        <input type="number" id="db-new-radial-vel" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-app-dim-x">App. Dim. X (arcmin)</label>
+                        <input type="number" id="db-new-app-dim-x" class="form-input" step="0.1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-new-app-dim-y">App. Dim. Y (arcmin)</label>
+                      <input type="number" id="db-new-app-dim-y" class="form-input" step="0.1" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Orbital Elements ── -->
+                <details class="form-section">
+                  <summary>Orbital Elements</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-semi-major">Semi-Major Axis (AU)</label>
+                        <input type="number" id="db-new-semi-major" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-eccentricity">Eccentricity</label>
+                        <input type="number" id="db-new-eccentricity" class="form-input" step="0.001" min="0" max="1" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-inclination">Inclination (°)</label>
+                        <input type="number" id="db-new-inclination" class="form-input" step="0.01" min="0" max="180" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-long-node">Long. Asc. Node (°)</label>
+                        <input type="number" id="db-new-long-node" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-arg-peri">Arg. of Perihelion (°)</label>
+                        <input type="number" id="db-new-arg-peri" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-mean-anom">Mean Anomaly (°)</label>
+                        <input type="number" id="db-new-mean-anom" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-new-epoch-elem">Epoch of Elements (JD)</label>
+                      <input type="number" id="db-new-epoch-elem" class="form-input" step="0.01" placeholder="2451545.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Positional Errors ── -->
+                <details class="form-section">
+                  <summary>Positional Errors</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-ra-error">RA Error (mas)</label>
+                        <input type="number" id="db-new-ra-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-dec-error">Dec Error (mas)</label>
+                        <input type="number" id="db-new-dec-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-pm-ra-error">PM RA Error (mas/yr)</label>
+                        <input type="number" id="db-new-pm-ra-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-pm-dec-error">PM Dec Error (mas/yr)</label>
+                        <input type="number" id="db-new-pm-dec-error" class="form-input" step="0.01" placeholder="0.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-new-parallax-error">Parallax Error (mas)</label>
+                      <input type="number" id="db-new-parallax-error" class="form-input" step="0.01" placeholder="0.0" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Catalog & Source ── -->
+                <details class="form-section">
+                  <summary>Catalog & Data Source</summary>
+                  <div class="form-section-body">
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-catalog-id">Catalog ID</label>
+                        <input type="text" id="db-new-catalog-id" class="form-input" placeholder="e.g. NGC 224" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-catalog-ver">Catalog Version</label>
+                        <input type="text" id="db-new-catalog-ver" class="form-input" placeholder="e.g. 2.0" />
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-new-data-source">Data Source</label>
+                      <input type="text" id="db-new-data-source" class="form-input" placeholder="e.g. SIMBAD, NED, Gaia DR3" />
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Flags & Status ── -->
+                <details class="form-section">
+                  <summary>Flags & Status</summary>
+                  <div class="form-section-body">
+                    <div class="checkbox-group">
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-new-fav" />
+                        Favorite
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-new-visible" />
+                        Visible
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-new-ephemeris" />
+                        Ephemeris Available
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-new-light-curve" />
+                        Has Light Curve
+                      </label>
+                      <label class="checkbox-label">
+                        <input type="checkbox" id="db-new-spectrum" />
+                        Has Spectrum
+                      </label>
+                    </div>
+                  </div>
+                </details>
+
+                <!-- ── Section: Notes & Metadata ── -->
+                <details class="form-section">
+                  <summary>Notes & Metadata</summary>
+                  <div class="form-section-body">
+                    <div class="form-group">
+                      <label for="db-new-notes">Notes</label>
+                      <textarea id="db-new-notes" class="form-textarea" rows="3" placeholder="General notes about this object..."></textarea>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-new-user-notes">User Notes</label>
+                      <textarea id="db-new-user-notes" class="form-textarea" rows="2" placeholder="Personal observations..."></textarea>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-user-rating">User Rating (0–5)</label>
+                        <input type="number" id="db-new-user-rating" class="form-input" step="0.5" min="0" max="5" placeholder="0" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-created-by">Created By</label>
+                        <input type="text" id="db-new-created-by" class="form-input" placeholder="Observer name" />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="form-group">
+                        <label for="db-new-tags">Tags (comma-separated)</label>
+                        <input type="text" id="db-new-tags" class="form-input" placeholder="e.g. bright, binary, variable" />
+                      </div>
+                      <div class="form-group">
+                        <label for="db-new-categories">Categories (comma-separated)</label>
+                        <input type="text" id="db-new-categories" class="form-input" placeholder="e.g. Messier, Caldwell" />
+                      </div>
+                    </div>
+                  </div>
+                </details>
+
+                <button type="submit" class="btn btn-primary btn-full">Create Object</button>
+              </form>
+            </div>
+          </div>
+
+          <!-- ── Visual Separator ── -->
+          <div class="section-divider">
+            <span class="section-divider-line"></span>
+            <span class="section-divider-label">Bulk Import</span>
+            <span class="section-divider-line"></span>
+          </div>
+
+          <!-- Import Objects Card (full width, collapsible) -->
+          <div id="card-db-import" class="card full-width card-collapsible card-collapsed">
+            <div class="card-header">
+              <h2 class="card-title">Import Objects</h2>
+              <button id="btn-db-import-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle import panel">▶</button>
+            </div>
+            <div class="card-body">
+              <div class="control-form">
+
+                <!-- ── Tab-style sections ── -->
+                <details class="form-section" id="db-import-file-section" open>
+                  <summary class="form-section-summary">Import from File</summary>
+                  <div class="form-section-body">
+                    <div class="form-group">
+                      <label for="db-import-file">Select file (JSON, CSV, FITS, VOTable)</label>
+                      <input type="file" id="db-import-file" class="form-input" accept=".json,.csv,.fits,.votable,.xml" />
+                    </div>
+                    <div class="form-group">
+                      <label for="db-import-format">File format</label>
+                      <select id="db-import-format" class="form-input form-select">
+                        <option value="JSON">JSON</option>
+                        <option value="CSV" selected>CSV</option>
+                        <option value="FITS">FITS</option>
+                        <option value="VOTABLE">VOTable</option>
+                        <option value="SIMBAD">SIMBAD</option>
+                        <option value="NED">NED</option>
+                        <option value="MPC">MPC</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-import-catalog-name">Catalog name (optional)</label>
+                      <input type="text" id="db-import-catalog-name" class="form-input" placeholder="e.g. My Catalog" />
+                    </div>
+                    <label class="checkbox-label" style="margin:8px 0;">
+                      <input type="checkbox" id="db-import-overwrite" />
+                      Overwrite existing objects with same name
+                    </label>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                      <button id="btn-db-import-file" class="btn btn-primary">Import from File</button>
+                      <span id="db-import-file-status" class="import-status"></span>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="form-section" id="db-import-url-section">
+                  <summary class="form-section-summary">Import from URL</summary>
+                  <div class="form-section-body">
+                    <div class="form-group">
+                      <label for="db-import-url">Remote catalog URL</label>
+                      <input type="url" id="db-import-url" class="form-input" placeholder="https://example.com/catalog.json" />
+                    </div>
+                    <div class="form-group">
+                      <label for="db-import-url-format">Data format</label>
+                      <select id="db-import-url-format" class="form-input form-select">
+                        <option value="JSON">JSON</option>
+                        <option value="CSV" selected>CSV</option>
+                        <option value="FITS">FITS</option>
+                        <option value="VOTABLE">VOTable</option>
+                        <option value="SIMBAD">SIMBAD</option>
+                        <option value="NED">NED</option>
+                        <option value="MPC">MPC</option>
+                      </select>
+                    </div>
+                    <div class="form-group">
+                      <label for="db-import-url-name">Catalog name (optional)</label>
+                      <input type="text" id="db-import-url-name" class="form-input" placeholder="e.g. Remote Catalog" />
+                    </div>
+                    <label class="checkbox-label" style="margin:8px 0;">
+                      <input type="checkbox" id="db-import-url-overwrite" />
+                      Overwrite existing objects with same name
+                    </label>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                      <button id="btn-db-import-url" class="btn btn-primary">Fetch & Import from URL</button>
+                      <span id="db-import-url-status" class="import-status"></span>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="form-section" id="db-import-preset-section">
+                  <summary class="form-section-summary">Popular Catalogs (Presets)</summary>
+                  <div class="form-section-body">
+                    <p style="margin:0 0 12px 0; font-size:0.9em; opacity:0.8;">
+                      Import well-known astronomical catalogs with a single click. Data is fetched from online sources.
+                    </p>
+                    <div id="db-import-presets" class="preset-grid">
+                      <!-- Preset buttons will be populated dynamically -->
+                    </div>
+                    <div id="db-import-preset-status" class="import-status" style="margin-top:8px;"></div>
+                  </div>
+                </details>
+
+                <!-- ── Import Results ── -->
+                <div id="db-import-results" class="import-results" style="display:none; margin-top:12px; padding:12px; border:1px solid var(--border-color, #444); border-radius:6px;">
+                  <h3 style="margin:0 0 8px 0;">Import Results</h3>
+                  <div id="db-import-results-content"></div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tracking Panel -->
+      <section id="panel-tracking" class="tab-panel" role="tabpanel" aria-labelledby="tab-tracking">
+        <div class="card-grid">
+          <!-- Tracking Status Card -->
+          <div id="card-tracking-status" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Ephemeris Tracking Status</h2>
+              <span id="tracking-state-badge" class="status-badge idle">—</span>
+            </div>
+            <div class="card-body" id="tracking-status-content">
+              <div class="status-placeholder">Loading tracking status...</div>
+            </div>
+          </div>
+
+          <!-- Tracking Control Card -->
+          <div id="card-tracking-control" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Tracking Control</h2>
+            </div>
+            <div class="card-body">
+              <div class="control-form">
+                <div class="form-row">
+                  <div class="form-group" style="flex:1;">
+                    <label for="tracking-object-id">Object ID</label>
+                    <input type="text" id="tracking-object-id" class="form-input" placeholder="e.g. ISS, SAT-12345" />
+                  </div>
+                  <div style="display:flex; align-items:flex-end; gap:8px;">
+                    <button id="tracking-start-btn" class="btn btn-primary">Start Tracking</button>
+                    <button id="tracking-stop-btn" class="btn btn-danger" disabled>Stop</button>
+                  </div>
+                </div>
+                <div class="form-row" style="margin-top:8px;">
+                  <small class="form-help">Start tracking a previously uploaded ephemeris by object ID. Use the Ephemeris Upload section below to upload new data.</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tracking Metrics Card -->
+          <div id="card-tracking-metrics" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Tracking Metrics</h2>
+            </div>
+            <div class="card-body" id="tracking-metrics-content">
+              <div class="status-placeholder">No metrics available</div>
+            </div>
+          </div>
+
+          <!-- Ephemeris Upload Card -->
+          <div id="card-ephemeris-upload" class="card full-width card-collapsible">
+            <div class="card-header" id="ephemeris-upload-header">
+              <h2 class="card-title">Ephemeris Upload</h2>
+              <span class="card-collapse-icon">▾</span>
+            </div>
+            <div class="card-body">
+              <div class="control-form">
+                <details class="form-section" open>
+                  <summary class="form-section-summary">Upload Ephemeris Data (JSON)</summary>
+                  <div class="form-section-body">
+                    <div class="form-group">
+                      <label for="tracking-upload-json">Ephemeris JSON</label>
+                      <textarea id="tracking-upload-json" class="form-input form-textarea" rows="6"
+                        placeholder='{
+  "object_id": "ISS",
+  "object_name": "International Space Station",
+  "object_type": "satellite",
+  "points": [
+    {
+      "timestamp": {"seconds": 1700000000},
+      "ra": 10.5,
+      "dec": 20.3,
+      "ra_rate": 0.1,
+      "dec_rate": -0.05
+    }
+  ],
+  "interpolation_order": 3
+}'></textarea>
+                    </div>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                      <button id="tracking-upload-btn" class="btn btn-primary">Upload Ephemeris</button>
+                      <button id="tracking-clear-cache-btn" class="btn btn-secondary">Clear Cache</button>
+                    </div>
+                  </div>
+                </details>
+
+                <details class="form-section">
+                  <summary class="form-section-summary">Start Tracking with Data</summary>
+                  <div class="form-section-body">
+                    <div class="form-group">
+                      <label for="tracking-ephemeris-json">EphemerisTrackRequest JSON</label>
+                      <textarea id="tracking-ephemeris-json" class="form-input form-textarea" rows="6"
+                        placeholder='{
+  "ephemeris": {
+    "object_id": "ISS",
+    "object_name": "International Space Station",
+    "object_type": "satellite",
+    "points": [...],
+    "interpolation_order": 3
+  },
+  "lead_time_seconds": 30,
+  "auto_start": true,
+  "tracking_mode": "continuous"
+}'></textarea>
+                    </div>
+                    <button id="tracking-start-data-btn" class="btn btn-primary" style="margin-top:8px;">Upload & Start Tracking</button>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ─── Toast Notification Container ────────────────────────────────── -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- ─── Footer ──────────────────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <span>Astro Mount Controller v1.0.0</span>
+    <span id="last-update">—</span>
+  </footer>
+
+  <!-- ─── Scripts ─────────────────────────────────────────────────────── -->
+  <script src="js/utils.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/components/mountStatus.js"></script>
+  <script src="js/components/mountControl.js"></script>
+  <script src="js/components/settings.js"></script>
+  <script src="js/components/database.js"></script>
+  <script src="js/components/calibration.js"></script>
+  <script src="js/components/tracking.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

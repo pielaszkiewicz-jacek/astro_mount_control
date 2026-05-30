@@ -708,7 +708,6 @@ Return TPointParameters:
 ### Protobuf/gRPC Files:
 
 - [`proto/mount_controller.proto`](../../proto/mount_controller.proto) (1115 lines) — Main protobuf definition
-- [`web/proto/mount_controller.proto`](../../web/proto/mount_controller.proto) — Web version
 
 ### Configuration Files:
 

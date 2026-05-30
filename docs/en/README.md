@@ -8,6 +8,7 @@ flowchart TB
     classDef getting fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
     classDef coreDoc fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
     classDef guide fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c
+    classDef web fill:#fce4ec,stroke:#c62828,stroke-width:2px,color:#b71c1c
 
     README["📖 README.md<br/>Main entry point"]:::root
     
@@ -29,6 +30,10 @@ flowchart TB
         FLOW["📊 data_flow.md<br/>Data Flow Diagrams"]:::guide
     end
     
+    subgraph WEB["🌐 Web Interface"]
+        WDASH["🖥️ ../web/README.md<br/>Web Dashboard Docs"]:::web
+    end
+
     README --> INTRO
     README --> INSTALL
     README --> ARCH
@@ -38,6 +43,7 @@ flowchart TB
     README --> EX
     README --> APIEX
     README --> FLOW
+    README --> WDASH
 ```
 
 ## Table of Contents
@@ -49,6 +55,7 @@ flowchart TB
 5. [HAL Layer](hal_layer.md) - Hardware Abstraction Layer documentation
 6. [Usage Examples](examples.md) - Practical examples in C++ and Python
 7. [Object Database](api.md#object-database-api) - Astronomical object database (SQLite + gRPC)
+8. [Web Dashboard](../web/README.md) - Browser-based mount control interface (HTTP/JSON proxy + SPA)
 
 
 ## Quick Start
