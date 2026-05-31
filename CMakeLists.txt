@@ -97,13 +97,18 @@ add_custom_target(generate_proto DEPENDS ${PROTO_SRCS})
 
 # ============================================
 
-# Find CanOpen (assuming libcanopen is available)
-find_library(CANOPEN_LIB canopen)
-if(NOT CANOPEN_LIB)
-    message(WARNING "CanOpen library not found. CanOpen support will be disabled.")
-    set(HAVE_CANOPEN OFF)
-else()
+# CanOpen (CANopenNode + wrapper)
+# ------------------------------------
+# - make libcanopen  →  ExternalProject pobiera CANopenNode z GitHub (cmake/FetchLibCanopen.cmake)
+# - lib/canopen_wrapper/  →  lekka nakładka CANopen na SocketCAN (normalne .h/.cpp)
+if(EXISTS ${CMAKE_SOURCE_DIR}/cmake/FetchLibCanopen.cmake AND EXISTS ${CMAKE_SOURCE_DIR}/lib/canopen_wrapper/CMakeLists.txt)
+    include(cmake/FetchLibCanopen.cmake)
+    add_subdirectory(lib/canopen_wrapper)
     set(HAVE_CANOPEN ON)
+    message(STATUS "CanOpen library: enabled (wrapper: lib/canopen_wrapper/)")
+else()
+    message(WARNING "cmake/FetchLibCanopen.cmake or lib/canopen_wrapper/ not found. CanOpen disabled.")
+    set(HAVE_CANOPEN OFF)
 endif()
 
 # Find JSON library (nlohmann/json)
@@ -165,7 +170,11 @@ if(NOT GTest_FOUND)
 endif()
 
 # Add definitions
-add_definitions(-DHAVE_CANOPEN=${HAVE_CANOPEN})
+# HAVE_CANOPEN is ON/OFF — dodajemy -DHAVE_CANOPEN tylko gdy włączone,
+# inaczej #ifdef HAVE_CANOPEN byłoby prawdziwe nawet przy HAVE_CANOPEN=OFF
+if(HAVE_CANOPEN)
+    add_definitions(-DHAVE_CANOPEN)
+endif()
 
 # Source files
 set(CORE_SOURCES
@@ -246,7 +255,17 @@ target_include_directories(astro_mount_core PUBLIC
 )
 
 if(HAVE_CANOPEN)
-    target_link_libraries(astro_mount_core ${CANOPEN_LIB})
+    # Zależność: make libcanopen (ExternalProject → pobiera CANopenNode) musi
+    # wykonać się przed głównym buildem.
+    add_dependencies(astro_mount_core libcanopen)
+
+    target_link_libraries(astro_mount_core canopen)
+
+    # RPATH: umożliwia znalezienie libcanopen.so w czasie uruchomienia
+    # bez konieczności instalacji systemowej
+    set_target_properties(astro_mount_core PROPERTIES
+        LINK_FLAGS "-Wl,-rpath,$<TARGET_FILE_DIR:canopen>"
+    )
 endif()
 
 # Create executable
@@ -261,6 +280,12 @@ target_link_libraries(astro_mount_controller
     gRPC::grpc++
     protobuf::libprotobuf
 )
+
+if(HAVE_CANOPEN)
+    set_target_properties(astro_mount_controller PROPERTIES
+        LINK_FLAGS "-Wl,-rpath,$<TARGET_FILE_DIR:canopen>"
+    )
+endif()
 
 # Create object database server executable
 add_executable(astro_object_database_server
