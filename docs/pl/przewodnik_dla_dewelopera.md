@@ -188,21 +188,44 @@ astro-mount-controller/
 
 System jest zorganizowany w trzech głównych warstwach:
 
-```
-┌──────────────────────────────────────────────┐
-│            Warstwa Aplikacji                  │
-│  MountController, gRPC API, Zarządzanie      │
-│  konfiguracją, Logger                        │
-│  (współrzędne, śledzenie, kalibracja, MAS)   │
-├──────────────────────────────────────────────┤
-│         Warstwa Modeli Obliczeniowych         │
-│  TPOINT (40 parametrów), Kalman Filter (6D), │
-│  Efemerydy (splajny kubiczne), Bootstrap     │
-├──────────────────────────────────────────────┤
-│     Warstwa Abstrakcji Sprzętu (HAL)          │
-│  CANopen (CiA 402), Symulowany, Szeregowy,   │
-│  Ethernet (planowany), Gamepad               │
-└──────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    classDef web fill:#fce4ec,stroke:#c62828,stroke-width:2px,color:#b71c1c
+    classDef app fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef model fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef hal fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c
+
+    WEB["🌐 Interfejs Webowy (SPA)\nHTTP/JSON → Express Proxy → gRPC (port 50051)"]:::web
+
+    subgraph APP["📦 Warstwa Aplikacji"]
+        MC["MountController\n· koordynacja stanów MAS\n· slew / track / park\n· kalibracja"]
+        API["gRPC API\n· serwer usług\n· klient gRPC"]
+        CFG["Configuration\n· JSON → struct C++\n· walidacja\n· shared_mutex R/W"]
+        ASTR["AstronomicalCalculations\n· transformacje SOFA\n· refrakcja atmosferyczna"]
+        LOG["Logger\n· poziomy: debug..error\n· plik / konsola"]
+        SAFE["Safety / Watchdog\n· monitorowanie\n· timeout"]
+    end
+
+    subgraph MOD["🧮 Warstwa Modeli Obliczeniowych"]
+        TP["TPOINT\n· 40+ parametrów\n· korekcja błędów geometrycznych"]
+        KF["Kalman Filter\n· stan 6D\n· fuzja sensorów\n· estymacja"]
+        ET["Ephemeris Tracker\n· splajny kubiczne\n· interpolacja"]
+        BS["Bootstrap\n· wyrównanie współrzędnych\n· kalibracja wstępna"]
+    end
+
+    subgraph HAL["🔌 Warstwa Abstrakcji Sprzętu (HAL)"]
+        CO["CANopen\n(CiA 402)"]
+        ETH["Ethernet"]
+        SER["Szeregowy"]
+        GP["Gamepad"]
+        SIM["Symulowany"]
+    end
+
+    WEB -->|gRPC| API
+    API --> MC
+    MC --> CFG & ASTR & LOG & SAFE
+    MC -->|wywołania metod / ↑ wyniki| TP & KF & ET & BS
+    TP & KF & ET & BS -->|↓ komendy / ↑ odczyty| CO & ETH & SER & GP & SIM
 ```
 
 ### Odpowiedzialności komponentów
@@ -220,69 +243,51 @@ System jest zorganizowany w trzech głównych warstwach:
 
 ### Maszyna stanów
 
-```
-        ┌──────────────────────────────────────────┐
-        │                                          │
-        ▼                                          │
-    ┌───────┐     slew()     ┌──────────┐          │
-    │       │ ──────────────► │          │          │
-    │ IDLE  │                 │ SLEWING  │          │
-    │       │ ◄────────────── │          │          │
-    └───┬───┘   (target      └──────────┘          │
-        │        reached)                           │
-        │                                          │
-        │ track()               ┌────────────┐     │
-        ├──────────────────────►│            │     │
-        │                       │ TRACKING   │     │
-        │ ◄──────────────────── │            │     │
-        │   stop()              └────────────┘     │
-        │                                          │
-        │ park()               ┌──────────┐        │
-        ├─────────────────────►│          │        │
-        │                      │ PARKED   │        │
-        │ ◄─────────────────── │          │        │
-        │   unpark()           └──────────┘        │
-        │                                          │
-        │                     ┌───────────┐        │
-        └────────────────────►│           │────────┘
-                              │  ERROR    │
-                              │           │
-                              └───────────┘
-                                    ▲
-                                    │
-                              clearErrors()
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE: Start
+    IDLE --> SLEWING: slew()
+    SLEWING --> IDLE: target reached
+    IDLE --> TRACKING: track()
+    TRACKING --> IDLE: stop()
+    IDLE --> PARKED: park()
+    PARKED --> IDLE: unpark()
+    IDLE --> ERROR: błąd
+    ERROR --> IDLE: clearErrors()
 ```
 
-### Kluczowy przepływ danych (Slew do Track)
+### Kluczowy przepływ danych (Slew → Track)
 
-```
-SlewToEquatorial(ra=10.5h, dec=41.3°)
-    │
-    ▼
-1. Weryfikacja stanu (ERROR → odrzuć)
-2. Transformacja współrzędnych: RA/Dec → mount (przez TPOINT + bootstrap)
-3. Ustaw cel osi
-4. Stan → SLEWING
-5. Uruchom wątek monitorowania (tło)
-6. Return (natychmiastowy)
+```mermaid
+flowchart TD
+    START["SlewToEquatorial(ra=10.5h, dec=41.3°)"] --> VERIFY["1. Weryfikacja stanu"]
+    VERIFY -->|ERROR| REJECT["Odrzuć"]
+    VERIFY -->|OK| TRANSFORM["2. Transformacja współrzędnych<br/>RA/Dec → mount<br/>(TPOINT + bootstrap)"]
+    TRANSFORM --> SETTARGET["3. Ustaw cel osi"]
+    SETTARGET --> STATE["4. Stan → SLEWING"]
+    STATE --> MON_THREAD["5. Uruchom wątek monitorowania (tło)"]
+    MON_THREAD --> RETURN["6. Return (natychmiastowy)"]
 
-    │
-    ▼
-Wątek monitorowania (20 Hz):
-- Sprawdź pozycję przez HAL / symulację
-- Gdy cel osiągnięty → Stan → IDLE
+    subgraph MON["Wątek monitorowania (20 Hz)"]
+        CHECK["Sprawdź pozycję<br/>przez HAL / symulację"]
+        DONE["Gdy cel osiągnięty → Stan → IDLE"]
+        CHECK --> DONE
+    end
 
-    │
-    ▼
-TrackObject(ra=10.5h, dec=41.3°)
-    │
-    ▼
-1. Stan → TRACKING
-2. Uruchom wątek śledzenia (100 Hz):
-   - Oblicz prędkość śledzenia (15.041067 "/s × cos(dec))
-   - Aktualizuj pozycję
-   - Zastosuj korekcję guidera (jeśli aktywny)
-   - Wyślij do HAL
+    RETURN --> MON
+
+    TRACK["TrackObject(ra=10.5h, dec=41.3°)"] --> TRACK_STATE["1. Stan → TRACKING"]
+    TRACK_STATE --> TRACK_THREAD["2. Uruchom wątek śledzenia (100 Hz)"]
+
+    subgraph TRACK_LOOP["Wątek śledzenia (100 Hz)"]
+        CALC["Oblicz prędkość śledzenia<br/>15.041067 ″/s × cos(dec)"]
+        UPDATE["Aktualizuj pozycję"]
+        GUIDER["Zastosuj korekcję guidera<br/>(jeśli aktywny)"]
+        SEND_HAL["Wyślij do HAL"]
+        CALC --> UPDATE --> GUIDER --> SEND_HAL
+    end
+
+    TRACK_THREAD --> TRACK_LOOP
 ```
 
 ---
@@ -291,24 +296,14 @@ TrackObject(ra=10.5h, dec=41.3°)
 
 ### Konfiguracja trójwarstwowa
 
-```
-┌─────────────────────────────────────────────┐
-│  Pliki JSON (config/*.json)                  │
-│  Przykład:                                   │
-│  {                                           │
-│    "location": {"latitude": 52.0, ...},      │
-│    "mount": {"max_slew_rate": 5.0, ...},     │
-│    "calibration": {"tpoint_enabled_terms": 12}│
-│  }                                           │
-├─────────────────────────────────────────────┤
-│  Struktury C++ (Configuration struct)         │
-│  Walidacja podczas ładowania                 │
-│  Wartości domyślne dla brakujących pól       │
-├─────────────────────────────────────────────┤
-│  ControllerConfig (MountController::Impl)    │
-│  Używane w czasie rzeczywistym               │
-│  Ochrona przez shared_mutex (R/W)           │
-└─────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    JSON(("📄 Pliki JSON\nconfig/*.json"))
+    CPP["⚙️ Struktury C++\nConfiguration struct\n· walidacja\n· wartości domyślne"]
+    RT["🚀 ControllerConfig\nMountController::Impl\n· użycie runtime\n· shared_mutex R/W"]
+
+    JSON -->|ładowanie JSON → struct| CPP
+    CPP -->|struct → konfiguracja runtime| RT
 ```
 
 ### Dodawanie nowego parametru konfiguracji

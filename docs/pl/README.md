@@ -36,10 +36,10 @@ flowchart TB
     end
 
     subgraph CAN_DOCS["🔌 Konfiguracja CAN"]
-        CAN_OPENSUSE["📄 konfiguracja_can_u2c_opensuse.md<br/>openSUSE"]:::can
-        CAN_UBUNTU["📄 konfiguracja_can_u2c_ubuntu_debian.md<br/>Ubuntu/Debian"]:::can
-        CAN_FEDORA["📄 konfiguracja_can_u2c_fedora.md<br/>Fedora/RHEL"]:::can
-        CAN_ARCH["📄 konfiguracja_can_u2c_arch.md<br/>Arch Linux"]:::can
+        CAN_OPENSUSE["📄 konfiguracja_can/konfiguracja_can_u2c_opensuse.md<br/>openSUSE"]:::can
+        CAN_UBUNTU["📄 konfiguracja_can/konfiguracja_can_u2c_ubuntu_debian.md<br/>Ubuntu/Debian"]:::can
+        CAN_FEDORA["📄 konfiguracja_can/konfiguracja_can_u2c_fedora.md<br/>Fedora/RHEL"]:::can
+        CAN_ARCH["📄 konfiguracja_can/konfiguracja_can_u2c_arch.md<br/>Arch Linux"]:::can
     end
     
     README --> INTRO
@@ -68,10 +68,10 @@ flowchart TB
 6. [Przykłady użycia](examples.md) - Praktyczne przykłady w C++ i Python
 7. [Baza obiektów astronomicznych](api.md#object-database-api) - Astronomiczna baza obiektów (SQLite + gRPC)
 8. [Interfejs Web](../../web/README.md) - Przeglądarkowy interfejs sterowania (HTTP/JSON proxy + SPA)
-9. [Konfiguracja CAN U2C - openSUSE](konfiguracja_can_u2c_opensuse.md)
-10. [Konfiguracja CAN U2C - Ubuntu/Debian](konfiguracja_can_u2c_ubuntu_debian.md)
-11. [Konfiguracja CAN U2C - Fedora/RHEL](konfiguracja_can_u2c_fedora.md)
-12. [Konfiguracja CAN U2C - Arch Linux](konfiguracja_can_u2c_arch.md)
+9. [Konfiguracja CAN U2C - openSUSE](konfiguracja_can/konfiguracja_can_u2c_opensuse.md)
+10. [Konfiguracja CAN U2C - Ubuntu/Debian](konfiguracja_can/konfiguracja_can_u2c_ubuntu_debian.md)
+11. [Konfiguracja CAN U2C - Fedora/RHEL](konfiguracja_can/konfiguracja_can_u2c_fedora.md)
+12. [Konfiguracja CAN U2C - Arch Linux](konfiguracja_can/konfiguracja_can_u2c_arch.md)
 
 ## Szybki start
 

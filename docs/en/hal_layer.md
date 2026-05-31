@@ -731,18 +731,25 @@ The Gamepad HAL (`src/hal/gamepad_hal/`) provides manual mount control via a phy
 
 ### Architecture
 
-```
-Gamepad (USB/Bluetooth)
-    ↓
-EvdevGamepadInput (background polling thread)
-    ↓  applyButtonMapping() / applyAxisMapping() (from JSON config)
-GamepadState (7 axes, 7 semantic buttons)
-    ↓
-GamepadHAL::updateLoop() (50 Hz)
-    ↓
-GamepadMotorControl (axis 0 = left stick X, axis 1 = left stick Y)
-    ↓  velocity → integrate position
-GamepadEncoderReader ← GamepadMotorControl (position from integration)
+```mermaid
+flowchart TD
+    GP["Gamepad (USB/Bluetooth)"]
+    EGI["EvdevGamepadInput<br/>(background polling thread)"]
+    MAP["applyButtonMapping() / applyAxisMapping()<br/>(from JSON config)"]
+    GS["GamepadState<br/>(7 axes, 7 semantic buttons)"]
+    UL["GamepadHAL::updateLoop()<br/>(50 Hz)"]
+    GMC["GamepadMotorControl<br/>(axis 0 = left stick X, axis 1 = left stick Y)"]
+    GER["GamepadEncoderReader"]
+    INT["velocity → integrate position"]
+
+    GP --> EGI
+    EGI --> MAP
+    MAP --> GS
+    GS --> UL
+    UL --> GMC
+    GMC --> INT
+    INT --> GER
+    GMC -.->|position from integration| GER
 ```
 
 ### Input Backend — EvdevGamepadInput

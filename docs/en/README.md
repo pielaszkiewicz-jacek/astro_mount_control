@@ -31,10 +31,10 @@ flowchart TB
     end
     
     subgraph CAN_DOCS["🔌 CAN Configuration"]
-        CAN_OS["📄 can_u2c_config_opensuse.md<br/>openSUSE"]:::guide
-        CAN_UB["📄 can_u2c_config_ubuntu_debian.md<br/>Ubuntu/Debian"]:::guide
-        CAN_FED["📄 can_u2c_config_fedora.md<br/>Fedora/RHEL"]:::guide
-        CAN_ARCH["📄 can_u2c_config_arch.md<br/>Arch Linux"]:::guide
+        CAN_OS["📄 can/can_u2c_config_opensuse.md<br/>openSUSE"]:::guide
+        CAN_UB["📄 can/can_u2c_config_ubuntu_debian.md<br/>Ubuntu/Debian"]:::guide
+        CAN_FED["📄 can/can_u2c_config_fedora.md<br/>Fedora/RHEL"]:::guide
+        CAN_ARCH["📄 can/can_u2c_config_arch.md<br/>Arch Linux"]:::guide
     end
     
     subgraph WEB["🌐 Web Interface"]
@@ -67,10 +67,10 @@ flowchart TB
 6. [Usage Examples](examples.md) - Practical examples in C++ and Python
 7. [Object Database](api.md#object-database-api) - Astronomical object database (SQLite + gRPC)
 8. [Web Dashboard](../web/README.md) - Browser-based mount control interface (HTTP/JSON proxy + SPA)
-9. [CAN Bus Configuration - openSUSE](can_u2c_config_opensuse.md) - CAN bus setup on openSUSE with U2C converter
-10. [CAN Bus Configuration - Ubuntu/Debian](can_u2c_config_ubuntu_debian.md) - CAN bus setup on Ubuntu/Debian with U2C converter
-11. [CAN Bus Configuration - Fedora/RHEL](can_u2c_config_fedora.md) - CAN bus setup on Fedora/RHEL/CentOS with U2C converter
-12. [CAN Bus Configuration - Arch Linux](can_u2c_config_arch.md) - CAN bus setup on Arch Linux/Manjaro with U2C converter
+9. [CAN Bus Configuration - openSUSE](can/can_u2c_config_opensuse.md) - CAN bus setup on openSUSE with U2C converter
+10. [CAN Bus Configuration - Ubuntu/Debian](can/can_u2c_config_ubuntu_debian.md) - CAN bus setup on Ubuntu/Debian with U2C converter
+11. [CAN Bus Configuration - Fedora/RHEL](can/can_u2c_config_fedora.md) - CAN bus setup on Fedora/RHEL/CentOS with U2C converter
+12. [CAN Bus Configuration - Arch Linux](can/can_u2c_config_arch.md) - CAN bus setup on Arch Linux/Manjaro with U2C converter
 
 
 ## Quick Start

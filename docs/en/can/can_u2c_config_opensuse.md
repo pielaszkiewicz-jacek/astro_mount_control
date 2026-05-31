@@ -807,10 +807,10 @@ After completing these steps, the CAN bus will be ready for communication with C
 
 **See also**:
 
-- [`testing_and_running.md`](testing_and_running.md) — running the controller with CANopen,
-- [`hal_layer.md`](hal_layer.md) — CANopen HAL implementation details,
-- [`canopen_alternatives.md`](canopen_alternatives.md) — communication protocol comparison,
-- [`data_flow.md`](data_flow.md) — system data flow with CAN bus,
+- [`testing_and_running.md`](../testing_and_running.md) — running the controller with CANopen,
+- [`hal_layer.md`](../hal_layer.md) — CANopen HAL implementation details,
+- [`canopen_alternatives.md`](../canopen_alternatives.md) — communication protocol comparison,
+- [`data_flow.md`](../data_flow.md) — system data flow with CAN bus,
 
 **CAN configuration on other distributions:**
 

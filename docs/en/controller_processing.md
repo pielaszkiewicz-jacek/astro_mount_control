@@ -121,30 +121,34 @@ The primary source code for all described processes is located in [`mount_contro
 
 ## Component Architecture
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                      MountController                          │
-│  ┌────────────────────────────────────────────────────────┐  │
-│  │                    Impl (PIMPL)                         │  │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │  │
-│  │  │ Bootstrap│  │  TPOINT  │  │   KalmanFilter       │  │  │
-│  │  │  Model   │  │  Model   │  │   (State Estimator)  │  │  │
-│  │  └──────────┘  └──────────┘  └──────────────────────┘  │  │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────────────────┐  │  │
-│  │  │Ephemeris │  │  Guider  │  │   Configuration      │  │  │
-│  │  │ Tracker  │  │  Control │  │   Manager            │  │  │
-│  │  └──────────┘  └──────────┘  └──────────────────────┘  │  │
-│  │  ┌──────────────────────────────────────────────────┐  │  │
-│  │  │         HAL Interface (Hardware Abstraction)     │  │  │
-│  │  └──────────────────────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────┘
-         │                       │
-         ▼                       ▼
-   ┌──────────┐          ┌──────────────┐
-   │   gRPC   │          │   CANopen/   │
-   │   API    │          │   Simulator  │
-   └──────────┘          └──────────────┘
+```mermaid
+flowchart TD
+    MC["MountController"]
+    IMPL["Impl (PIMPL)"]
+
+    subgraph MODELS["Computational Models"]
+        BM["Bootstrap Model"]
+        TM["TPOINT Model"]
+        KF["KalmanFilter<br/>(State Estimator)"]
+    end
+
+    subgraph CONTROL["Control Components"]
+        ET["Ephemeris Tracker"]
+        GC["Guider Control"]
+        CM["Configuration Manager"]
+    end
+
+    HAL["HAL Interface<br/>(Hardware Abstraction)"]
+
+    GRPC["gRPC API"]
+    CAN_SIM["CANopen / Simulator"]
+
+    MC --> IMPL
+    IMPL --> MODELS
+    IMPL --> CONTROL
+    IMPL --> HAL
+    MC --> GRPC
+    MC --> CAN_SIM
 ```
 
 ---
@@ -575,101 +579,80 @@ Error recovery (if auto_recovery_ enabled):
 
 ### Object Tracking Flow with Guider
 
-```
-User command: TrackObject(ra=12.5h, dec=30.0°)
-    │
-    ▼
-MountController::TrackObject()
-    │
-    ├──→ Convert RA/Dec to mount coordinates
-    │    (TPOINT + bootstrap correction)
-    │
-    ├──→ State: IDLE → TRACKING
-    │
-    ├──→ Start tracking thread:
-    │    │
-    │    ▼
-    │    Loop (every 10ms):
-    │    │
-    │    ├──→ Calculate tracking rate:
-    │    │    ra_rate = 15.041067 * cos(dec)  [arcsec/s]
-    │    │    dec_rate = 0.0
-    │    │
-    │    ├──→ Position update:
-    │    │    axis1_target += ra_rate * dt / 3600.0  [deg]
-    │    │    axis2_target += dec_rate * dt / 3600.0  [deg]
-    │    │
-    │    └──→ Send to HAL/ICanOpenInterface:
-    │         HAL::MotorControl::setPosition(axis1, axis2)
-    │
-    └──→ Guider (if connected):
-         │
-         ▼
-         PHD2 correction received:
-         │
-         ├──→ ra_corr = +1.5", dec_corr = -0.8"
-         │
-         ├──→ KalmanFilter::update(ra_corr, dec_corr)
-         │    │
-         │    ▼
-         │    Filtered correction: +1.2", -0.6"
-         │
-         └──→ Position correction:
-              axis1_target += 1.2 / 3600.0  [deg]
-              axis2_target += -0.6 / 3600.0  [deg]
+```mermaid
+flowchart TD
+    CMD["User command:<br/>TrackObject(ra=12.5h, dec=30.0\u00b0)"] --> MC["MountController::TrackObject()"]
+
+    MC --> CONV["Convert RA/Dec to mount coordinates<br/>(TPOINT + bootstrap correction)"]
+    CONV --> STATE["State: IDLE \u2192 TRACKING"]
+    STATE --> START["Start tracking thread"]
+
+    subgraph LOOP["Tracking Loop (every 10 ms)"]
+        RATE["Calculate tracking rate:<br/>ra_rate = 15.041067 * cos(dec) [arcsec/s]<br/>dec_rate = 0.0"]
+        POS["Position update:<br/>axis1_target += ra_rate * dt / 3600.0 [deg]<br/>axis2_target += dec_rate * dt / 3600.0 [deg]"]
+        SEND["Send to HAL/ICanOpenInterface:<br/>HAL::MotorControl::setPosition(axis1, axis2)"]
+        RATE --> POS --> SEND
+    end
+
+    START --> LOOP
+
+    GUIDER["Guider (if connected):"]
+    PHD2["PHD2 correction received:"]
+    CORR["ra_corr = +1.5\u2033, dec_corr = -0.8\u2033"]
+    KF["KalmanFilter::update(ra_corr, dec_corr)"]
+    FILT["Filtered correction: +1.2\u2033, -0.6\u2033"]
+    POSCORR["Position correction:<br/>axis1_target += 1.2 / 3600.0 [deg]<br/>axis2_target += -0.6 / 3600.0 [deg]"]
+
+    GUIDER --> PHD2 --> CORR --> KF --> FILT --> POSCORR
+    POSCORR --> LOOP
 ```
 
 ### TPOINT Calibration Flow
 
-```
-Measurement collection:
-  AddTPointMeasurement(obs={ra,dec}, exp={ra,dec}, mount={ha,dec}, env)
-    │
-    ▼
-  tpoint_measurements_.push_back(measurement)
-    │
-    ▼
-  (Repeat N times, N >= enabled_terms)
-    │
-    ▼
-RunTPointCalibration()
-    │
-    ▼
-Pre-processing:
-  │
-  ├──→ Filter outliers:
-  │    - Remove measurements with SNR < threshold
-  │    - 3σ clipping (after optional initial fit)
-  │
-  ├──→ Build design matrix A:
-  │    - For each measurement i, term j:
-  │      A[i][j] = term_j(HA_i, Dec_i, ...)
-  │
-  └──→ Build observation vector b:
-       - b[i] = (observed_ra - expected_ra) * cos(dec)
-       - b[i+N] = observed_dec - expected_dec
-    │
-    ▼
-Solve: A * x = b
-  │
-  ├──→ SVD decomposition: A = U * Σ * V^T
-  ├──→ x = V * Σ^{-1} * U^T * b
-  │
-  ▼
-Post-processing:
-  │
-  ├──→ Calculate residuals: r = b - A * x
-  ├──→ Calculate RMS = sqrt(mean(r^2))
-  ├──→ Calculate chi-squared = sum(r_i^2 / sigma_i^2)
-  │
-  └──→ Update TPointModel with coefficients x
-    │
-    ▼
-Return TPointParameters:
-  - coefficients (6-40+ values)
-  - residuals (RMS, max)
-  - chi-squared
-  - measurement count
+```mermaid
+flowchart TD
+    COLLECT["Measurement collection:<br/>AddTPointMeasurement(obs, exp, mount, env)"]
+    STORE["tpoint_measurements_.push_back(measurement)"]
+    REPEAT["Repeat N times<br/>(N >= enabled_terms)"]
+    RUN["RunTPointCalibration()"]
+
+    COLLECT --> STORE --> REPEAT --> RUN
+
+    PREPROC["Pre-processing"]
+
+    FILTER["Filter outliers:<br/>- Remove SNR < threshold<br/>- 3\u03c3 clipping"]
+    MATRIX["Build design matrix A:<br/>A[i][j] = term_j(HA_i, Dec_i, ...)"]
+    VECTOR["Build observation vector b:<br/>b[i] = (obs_ra - exp_ra) * cos(dec)<br/>b[i+N] = obs_dec - exp_dec"]
+
+    RUN --> PREPROC
+    PREPROC --> FILTER
+    PREPROC --> MATRIX
+    PREPROC --> VECTOR
+
+    SOLVE["Solve: A * x = b"]
+    SVD["SVD decomposition:<br/>A = U * \u03a3 * V^T"]
+    XVAL["x = V * \u03a3\u207b\u00b9 * U^T * b"]
+
+    FILTER --> SOLVE
+    MATRIX --> SOLVE
+    VECTOR --> SOLVE
+    SOLVE --> SVD --> XVAL
+
+    POSTPROC["Post-processing"]
+
+    RESID["Calculate residuals:<br/>r = b - A * x"]
+    RMS["Calculate RMS:<br/>sqrt(mean(r\u00b2))"]
+    CHI2["Calculate chi-squared:<br/>sum(r_i\u00b2 / \u03c3_i\u00b2)"]
+    UPDATE["Update TPointModel<br/>with coefficients x"]
+
+    XVAL --> POSTPROC
+    POSTPROC --> RESID
+    POSTPROC --> RMS
+    POSTPROC --> CHI2
+    POSTPROC --> UPDATE
+
+    RETURN["Return TPointParameters:<br/>- coefficients (6-40+ values)<br/>- residuals (RMS, max)<br/>- chi-squared<br/>- measurement count"]
+    UPDATE --> RETURN
 ```
 
 ---
@@ -1375,24 +1358,18 @@ endif()
 
 The HAL (Hardware Abstraction Layer) provides a clean separation between high-level controller logic and low-level hardware control:
 
-```
-┌──────────────────────────────────────────────┐
-│           MountController                     │
-│  (high-level: coord transforms, tracking,    │
-│   calibration, state machine)                │
-└──────────────────┬───────────────────────────┘
-                   │ uses
-┌──────────────────▼───────────────────────────┐
-│           HALInterface                        │
-│  (abstract: MotorControl, EncoderReader,     │
-│   SafetyMonitor, SensorInterface)            │
-└──────┬────────────┬──────────────┬───────────┘
-       │            │              │
-┌──────▼─────┐ ┌───▼──────┐ ┌───▼──────────┐
-│ CanOpenHAL │ │SerialHAL │ │SimulatedHAL   │
-│ (CANopen   │ │(RS-232/  │ │(testing,     │
-│  CiA 402)  │ │ 485)     │ │ development) │
-└────────────┘ └──────────┘ └──────────────┘
+```mermaid
+flowchart TD
+    MC["MountController<br/>(high-level: coord transforms,<br/>tracking, calibration, state machine)"]
+    HAL["HALInterface<br/>(abstract: MotorControl, EncoderReader,<br/>SafetyMonitor, SensorInterface)"]
+    CAN_HAL["CanOpenHAL<br/>(CANopen, CiA 402)"]
+    SER_HAL["SerialHAL<br/>(RS-232/485)"]
+    SIM_HAL["SimulatedHAL<br/>(testing, development)"]
+
+    MC -->|uses| HAL
+    HAL --> CAN_HAL
+    HAL --> SER_HAL
+    HAL --> SIM_HAL
 ```
 
 ---
@@ -1782,34 +1759,35 @@ The Hardware Abstraction Layer (HAL) provides a clean separation between high-le
 
 ### 16.1 Layered Architecture with HAL
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                   Application Layer                           │
-│  MountController, gRPC API, Configuration Manager            │
-│  (coordinates, tracking, calibration, state machine)         │
-├──────────────────────────────────────────────────────────────┤
-│                   HAL Interface Layer                         │
-│  HALInterface, MotorControl, EncoderReader,                  │
-│  SafetyMonitor, SensorInterface                               │
-├──────────────┬──────────────┬──────────────┬────────────────┤
-│  CANopenHAL  │  SerialHAL   │ SimulatedHAL │  EthernetHAL   │
-│  (CAN bus,   │  (RS-232/   │  (testing,   │  (future:      │
-│   CiA 402)   │   485)      │  simulation) │   EtherCAT)    │
-├──────────────┴──────────────┴──────────────┴────────────────┤
-│                      Hardware Layer                           │
-│  CAN bus, serial ports, network interfaces, GPIO             │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    APP["Application Layer<br/>MountController, gRPC API,<br/>Configuration Manager<br/>(coordinates, tracking,<br/>calibration, state machine)"]
+    IFACE["HAL Interface Layer<br/>HALInterface, MotorControl,<br/>EncoderReader, SafetyMonitor,<br/>SensorInterface"]
+    CAN_HAL["CANopenHAL<br/>(CAN bus, CiA 402)"]
+    SER_HAL["SerialHAL<br/>(RS-232/485)"]
+    SIM_HAL["SimulatedHAL<br/>(testing, simulation)"]
+    ETH_HAL["EthernetHAL<br/>(future: EtherCAT)"]
+    HW["Hardware Layer<br/>CAN bus, serial ports,<br/>network interfaces, GPIO"]
+
+    APP --> IFACE
+    IFACE --> CAN_HAL
+    IFACE --> SER_HAL
+    IFACE --> SIM_HAL
+    IFACE --> ETH_HAL
+    CAN_HAL --> HW
+    SER_HAL --> HW
+    SIM_HAL --> HW
+    ETH_HAL --> HW
 ```
 
-```
-Data flow visualization:
-  MC → HAL → IMPL → HW
+Data flow visualization: **MC → HAL → IMPL → HW**
 
-  MC  = MountController (business logic)
-  HAL = Hardware Abstraction Layer (interfaces)
-  IMPL = Concrete implementation (CanOpenHAL, SimulatedHAL)
-  HW  = Physical hardware
-```
+| Abbreviation | Meaning |
+|---|---|
+| MC | MountController (business logic) |
+| HAL | Hardware Abstraction Layer (interfaces) |
+| IMPL | Concrete implementation (CanOpenHAL, SimulatedHAL) |
+| HW | Physical hardware |
 
 ### 16.2 HAL Interface
 

@@ -1,6 +1,6 @@
-# CAN Bus Configuration on Arch Linux with U2C Converter
+# CAN Bus Configuration on Fedora/RHEL with U2C Converter
 
-> This document describes step-by-step configuration of the CAN (Controller Area Network) bus on **Arch Linux** (and derivatives: Manjaro, EndeavourOS, Garuda) using the Lawicel U2C USB-to-CAN converter (or compatible). This configuration is required to run [`astro-mount-controller`](index.md) with real CANopen drives.
+> This document describes step-by-step configuration of the CAN (Controller Area Network) bus on **Fedora**, **Red Hat Enterprise Linux (RHEL)** and derivatives (CentOS, Rocky Linux, AlmaLinux) using the Lawicel U2C USB-to-CAN converter (or compatible). This configuration is required to run [`astro-mount-controller`](index.md) with real CANopen drives.
 
 ---
 
@@ -23,21 +23,22 @@
 
 **Lawicel U2C** (USB-to-CAN) is a popular, ready-to-use USB ↔ CAN 2.0B converter, compatible with the **SocketCAN** implementation in the Linux kernel. For the Linux user, the device appears as a network interface (e.g., `can0`), allowing use of the entire CAN tool ecosystem (can-utils, wireshark, and CANopen stacks such as [`CANopenSocket`](https://github.com/CANopenNode/CANopenSocket) or `lely-canopen`).
 
-Arch Linux by default uses:
+Fedora/RHEL systems by default use:
 
-- **systemd-networkd** — network interface management tool, available by default but **not always enabled by default**,
-- **NetworkManager** — often installed on desktops (especially GNOME, KDE environments),
+- **NetworkManager** (with `nmcli` / GUI) — default network interface management tool, managed by `systemd`,
+- **firewalld** — firewall,
 - **systemd** — init and service management system,
-- **mkinitcpio** — initramfs system (kernel modules can be loaded earlier if needed before filesystem mount).
+- **SELinux** — enabled by default (in enforcing mode on RHEL/Fedora), which may affect some tools.
 
-**Arch Linux characteristics:**
+**Consequences for CAN:**
 
-- **Rolling release model** — kernel and software are constantly updated; CAN modules (`gs_usb`) are always the latest.
-- **No default network manager** — during a base Arch Linux installation, neither NetworkManager nor wicked is present; `systemd-networkd` is the only available tool, but requires manual enabling.
-- **AUR (Arch User Repository)** — contains tools such as `can-utils` (also available in official repositories).
-- **Systemd-networkd has built-in CAN support** (`Kind=can`) — this is the simplest and recommended method for persistent configuration on Arch Linux.
+- NetworkManager **does not have native CAN interface support** and may attempt to manage `can0` like a regular network interface — it should be disabled for CAN via `unmanaged-devices` (section [5.1](#51-disabling-can0-in-networkmanager))
+- **systemd-networkd** has **built-in CAN support** (`Kind=can`) and is the recommended solution for persistent configuration — however on Fedora/RHEL it is **not enabled by default**, as the default backend is NetworkManager
+- **NetworkManager + custom systemd service** is a practical solution for desktop Fedora users (section [5.3](#53-option-b-custom-systemd-service))
+- **nmcli** can be used to disable management of `can0` without disabling NetworkManager for other interfaces
+- **SELinux** by default does not block SocketCAN, but may block application access to CAN interfaces if they run with the wrong context — see section [8.5](#85-selinux-blocking-can-access) if you encounter issues
 
-This guide has been prepared for **Arch Linux (current rolling release)** and its derivatives (Manjaro, EndeavourOS, Garuda Linux).
+This guide has been prepared for **Fedora 39/40/41 and RHEL 9.x**, but general principles also apply to CentOS Stream, Rocky Linux, and AlmaLinux.
 
 ---
 
@@ -96,34 +97,40 @@ Clones may have other identifiers — check with `lsusb` and optionally load `gs
 
 ```bash
 # ── CAN tools (can-utils) ──
-sudo pacman -S --noconfirm can-utils
+sudo dnf install -y can-utils
 
 # ── Diagnostic tools (optional) ──
-sudo pacman -S --noconfirm       \
-    wireshark-qt                 \   # CAN frame analysis (GUI)
-    iproute2                     \   # ip link, ip -details (already installed)
-    usbutils                         # lsusb
+sudo dnf install -y         \
+    wireshark               \   # CAN frame analysis
+    iproute                 \   # ip link, ip -details (already installed)
+    usbutils                    # lsusb
 ```
+
+> **Note**: On RHEL 9.x, you may need to enable the `epel` repository (Extra Packages for Enterprise Linux) for packages such as `can-utils`:
+> ```bash
+> sudo dnf install -y epel-release
+> sudo dnf install -y can-utils
+> ```
 
 If building [`astro-mount-controller`](installation.md) from source, additionally:
 
 ```bash
-sudo pacman -S --noconfirm       \
-    base-devel cmake              \
-    git                           \
-    openssl                       \
-    protobuf                      \
-    grpc                          \
-    nlohmann-json                 \
-    eigen                         \
-    fmt spdlog                    \
-    gtest                         \
-    sqlite
+sudo dnf install -y         \
+    gcc-c++ gcc make cmake   \
+    git pkg-config           \
+    openssl-devel            \
+    protobuf-devel protobuf-compiler \
+    grpc-devel grpc-cpp-devel \
+    nlohmann-json-devel      \
+    eigen3-devel             \
+    fmt-devel spdlog-devel   \
+    gtest-devel              \
+    sqlite-devel
 ```
 
 ### 3.2 Loading Kernel Modules
 
-The `gs_usb` module is built into the standard Arch Linux kernel. Load it manually:
+The `gs_usb` module is built into the standard Fedora/RHEL kernel. Load it manually:
 
 ```bash
 sudo modprobe can
@@ -143,7 +150,7 @@ lsmod | grep can
 # can_dev              16384  1 gs_usb
 ```
 
-To load modules automatically after reboot, create a configuration file:
+To load modules automatically after reboot:
 
 ```bash
 sudo tee /etc/modules-load.d/can.conf << 'EOF'
@@ -153,20 +160,6 @@ can_dev
 gs_usb
 EOF
 ```
-
-#### 3.2.1 Loading Modules in initramfs (Optional)
-
-If you need the CAN interface **before the filesystem is mounted** (e.g., on an embedded Arch system with root on NFS over CAN), add the modules to mkinitcpio:
-
-```bash
-# Add modules to mkinitcpio config
-sudo sed -i 's/^MODULES=()/MODULES=(can can_raw can_dev gs_usb)/' /etc/mkinitcpio.conf
-
-# Rebuild initramfs
-sudo mkinitcpio -P
-```
-
-> This is not required for a typical desktop setup — modules loaded via `modules-load.d` are available right after kernel startup.
 
 ### 3.3 Connecting the U2C Converter
 
@@ -264,15 +257,36 @@ sudo ip link set can0 up
 
 ## 5. Persistent Configuration (at System Boot)
 
-Arch Linux can use several methods for managing interfaces. Below are three options — choose the one appropriate for your environment.
+Fedora/RHEL by default use **NetworkManager**. Below are three options for persistent configuration — choose the one appropriate for your environment.
 
-### 5.1 Option A: systemd-networkd (Recommended)
+### 5.1 Disabling can0 in NetworkManager
 
-**systemd-networkd** has built-in CAN interface support via `Kind=can` — on Arch Linux this is the simplest and most reliable method.
-
-> **Note**: On a clean Arch Linux installation, `systemd-networkd` is not enabled by default. It must be enabled manually.
+Regardless of your chosen CAN configuration method, **first** disable NetworkManager management of `can0`:
 
 ```bash
+sudo tee /etc/NetworkManager/conf.d/90-can-unmanaged.conf << 'EOF'
+[keyfile]
+unmanaged-devices=interface-name:can0
+EOF
+
+sudo systemctl restart NetworkManager
+```
+
+You can also use `nmcli`:
+
+```bash
+sudo nmcli device set can0 managed no
+```
+
+### 5.2 Option A: systemd-networkd (Recommended for Servers)
+
+**systemd-networkd** has built-in CAN interface support via `Kind=can`. On Fedora/RHEL it is not enabled by default, but can be activated:
+
+```bash
+# ── Disable NetworkManager (optional, if you want to fully switch to networkd) ──
+# sudo systemctl disable NetworkManager
+# sudo systemctl stop NetworkManager
+
 # ── Enable systemd-networkd ──
 sudo systemctl enable --now systemd-networkd
 
@@ -299,41 +313,11 @@ EOF
 sudo systemctl restart systemd-networkd
 ```
 
-**Check if the configuration was applied:**
+> **Note**: If you keep NetworkManager active for other interfaces (WiFi, Ethernet), make sure section [5.1](#51-disabling-can0-in-networkmanager) has been executed.
 
-```bash
-networkctl status can0
-# Expected output:
-# ● 2: can0
-#              Type: can
-#             State: up (configuring)
-#               MTU: 16
-#             QDisc: pfifo_fast
-#      Configured: yes
-```
+### 5.3 Option B: Custom systemd Service
 
-#### 5.1.1 Disabling can0 in NetworkManager (if using NetworkManager)
-
-If you use NetworkManager on Arch Linux (common on GNOME/KDE desktops), block `can0` management:
-
-```bash
-sudo tee /etc/NetworkManager/conf.d/90-can-unmanaged.conf << 'EOF'
-[keyfile]
-unmanaged-devices=interface-name:can0
-EOF
-
-sudo systemctl restart NetworkManager
-```
-
-You can also use `nmcli`:
-
-```bash
-sudo nmcli device set can0 managed no
-```
-
-### 5.2 Option B: Custom systemd Service
-
-If you prefer not to use systemd-networkd (e.g., you use NetworkManager and don't want to mix backends), create a standalone systemd service:
+If you use NetworkManager on a Fedora desktop and prefer not to switch to systemd-networkd, create a standalone systemd service:
 
 > **Note**: The service below **loads the necessary kernel modules** before configuring the interface. This is necessary because `After=network.target` does not guarantee CAN modules are already loaded.
 
@@ -402,25 +386,6 @@ sudo systemctl enable --now can-setup.service
 | 5 | `ip link set can0 down` | Disables interface before changing bitrate |
 | 6 | `ip link set can0 type can bitrate ...` | Attempts to set the desired speed |
 | 7 | Fallback: `ip link set can0 up` | If bitrate change fails — brings up existing interface with default bitrate |
-
-### 5.3 Option C: udev + ip (for Advanced Users)
-
-Arch Linux is known for its "do-it-yourself" approach. You can configure CAN directly via a udev rule, which is particularly useful for users who don't want to use systemd-networkd or a separate service:
-
-```bash
-sudo tee /etc/udev/rules.d/99-can-setup.rules << 'EOF'
-# CAN configuration upon U2C connection
-ACTION=="add", SUBSYSTEM=="net", KERNEL=="can*", \
-    RUN+="/usr/bin/ip link set $name type can bitrate 1000000"
-ACTION=="add", SUBSYSTEM=="net", KERNEL=="can*", \
-    RUN+="/usr/bin/ip link set $name up"
-EOF
-
-sudo udevadm control --reload-rules
-```
-
-> **Pros**: Very simple, works immediately upon U2C connection, no systemd-networkd required.
-> **Cons**: Works only for a specific bitrate (must change in rule for another), no advanced diagnostics.
 
 ### 5.4 udev Rule for Static Interface Name
 
@@ -646,7 +611,38 @@ The Lawicel U2C has an LED that indicates status:
 | Flashing red | Frame errors (e.g., missing terminator, wrong speed) |
 | Solid red | Hardware error (disconnect and reconnect) |
 
-### 8.5 Low Stability at 1 Mbit/s
+### 8.5 SELinux Blocking CAN Access
+
+**Symptom**: Application like `astro-mount-controller` cannot open the CAN interface, despite correct permissions.
+
+**Diagnostics**:
+
+```bash
+# Check SELinux logs
+sudo ausearch -m avc -ts recent | grep can
+# or
+sudo journalctl | grep -i "selinux\|avc.*can"
+```
+
+**Solution**:
+
+```bash
+# Temporarily disable SELinux (for testing):
+sudo setenforce 0
+# Test the operation; if the problem disappears — SELinux is blocking access.
+
+# Permanent solution — create an allow rule:
+sudo ausearch -m avc -ts recent -c can-setup | tee /tmp/can-avc.log
+# Generate and load the rule:
+# (requires policycoreutils-python-utils package)
+sudo grep "avc" /tmp/can-avc.log | audit2allow -M can_setup
+sudo semodule -i can_setup.pp
+
+# Restore SELinux enforcing:
+sudo setenforce 1
+```
+
+### 8.6 Low Stability at 1 Mbit/s
 
 **Symptom**: Occasional CRC errors, `state BUS-OFF`.
 
@@ -666,27 +662,6 @@ sudo ip link set can0 up
 
 # Or reduce speed to 500 kbit/s
 sudo ip link set can0 type can bitrate 500000
-```
-
-### 8.6 Conflict with NetworkManager (Arch Linux with GNOME/KDE Desktop)
-
-**Symptom**: The `can0` interface disappears after reboot or cannot be configured.
-
-**Cause**: NetworkManager takes over management of `can0` and blocks configuration via `ip`.
-
-**Solution**:
-
-```bash
-# Disable can0 management by NetworkManager
-sudo nmcli device set can0 managed no
-
-# Or create a configuration file:
-sudo tee /etc/NetworkManager/conf.d/90-can-unmanaged.conf << 'EOF'
-[keyfile]
-unmanaged-devices=interface-name:can0
-EOF
-
-sudo systemctl restart NetworkManager
 ```
 
 ---
@@ -785,14 +760,15 @@ GND ────────────────╯
 
 ## Summary
 
-Configuring the U2C converter on Arch Linux involves a few steps:
+Configuring the U2C converter on Fedora/RHEL involves a few steps:
 
 1. **Connect** the USB converter — the `gs_usb` module will automatically create the `can0` interface.
 2. **Configure** the speed: `sudo ip link set can0 type can bitrate 1000000 && sudo ip link set can0 up`.
 3. **Verify**: `ip -details link show can0` → state `UP`, no errors.
-4. **Create persistent configuration** — via systemd-networkd (recommended), a custom systemd service, or a udev rule.
-5. If using NetworkManager — **disable it for can0** via `unmanaged-devices`.
+4. **Create persistent configuration** — via systemd-networkd or a custom systemd service.
+5. **Disable NetworkManager for can0** via `unmanaged-devices` (section 5.1).
 6. **Configure** [`astro-mount-controller`](installation.md) with parameters `can_interface: can0`, `bitrate: 1000000`.
+7. If you encounter access issues — **check SELinux** (section 8.5).
 
 After completing these steps, the CAN bus will be ready for communication with CANopen drives (RA, Dec, derotator) according to the CiA 402 profile.
 
@@ -800,10 +776,10 @@ After completing these steps, the CAN bus will be ready for communication with C
 
 **See also**:
 
-- [`testing_and_running.md`](testing_and_running.md) — running the controller with CANopen,
-- [`hal_layer.md`](hal_layer.md) — CANopen HAL implementation details,
-- [`canopen_alternatives.md`](canopen_alternatives.md) — communication protocol comparison,
-- [`data_flow.md`](data_flow.md) — system data flow with CAN bus,
+- [`testing_and_running.md`](../testing_and_running.md) — running the controller with CANopen,
+- [`hal_layer.md`](../hal_layer.md) — CANopen HAL implementation details,
+- [`canopen_alternatives.md`](../canopen_alternatives.md) — communication protocol comparison,
+- [`data_flow.md`](../data_flow.md) — system data flow with CAN bus,
 - [`can_u2c_config_opensuse.md`](can_u2c_config_opensuse.md) — openSUSE version,
 - [`can_u2c_config_ubuntu_debian.md`](can_u2c_config_ubuntu_debian.md) — Ubuntu/Debian version,
-- [`can_u2c_config_fedora.md`](can_u2c_config_fedora.md) — Fedora/RHEL version.
+- [`can_u2c_config_arch.md`](can_u2c_config_arch.md) — Arch Linux version.

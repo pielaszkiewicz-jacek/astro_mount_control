@@ -1,50 +1,54 @@
 # Controller Threads
 
 ## Table of Contents
-1. [Introduction](#1-introduction)
-2. [Thread Architecture Overview](#2-thread-architecture-overview)
-3. [MountController Threads](#3-mountcontroller-threads)
-   - 3.1 [`slewToEquatorial()` — movement monitoring loop](#31-slewtotropical-movement-monitoring-loop)
-   - 3.2 [`slewToHorizontal()` — analogous to equatorial](#32-slewohorizontal-analogous-to-equatorial)
-   - 3.3 [`park()` — parking loop](#33-park-parking-loop)
-   - 3.4 [`startTracking()` — tracking thread](#34-starttracking-tracking-thread)
-   - 3.5 [`stop()` — movement stop (synchronous)](#35-stop-movement-stop-synchronous)
-4. [Blocking Operations in MountController (Derotator, Calibration)](#4-blocking-operations-in-mountcontroller-derotator-calibration)
-   - 4.1 [`homeDerotator()` — homing with blocking CANopen polling](#41-homederotator-homing-with-blocking-canopen-polling)
-   - 4.2 [`runDerotatorCalibration()` / `runCANopenDerotatorCalibration()` — derotator calibration](#42-runderotatocalibration-runcanopenderotatorcalibration-derotator-calibration)
-   - 4.3 [`measureBacklash()` — backlash measurement](#43-measurebacklash-backlash-measurement)
-   - 4.4 [`calibrateAbsoluteEncoder()` — absolute encoder calibration](#44-calibrateabsoluteencoder-absolute-encoder-calibration)
-   - 4.5 [`generateCalibrationTable()` — calibration table generation](#45-generatecalibrationtable-calibration-table-generation)
-5. [CanOpenInterface Threads](#5-canopeninterface-threads)
-   - 5.1 [`CanOpenMotor::controlLoop()` — PID loop](#51-canopenmotorcontrolloop-pid-loop)
-   - 5.2 [`CanOpenEncoder::pdoReceiveThread()` — actual PDO reception](#52-canopenencoderpdoreceivethread-actual-pdo-reception)
-   - 5.3 [`CanOpenSafetyMonitor::monitoringLoop()` — safety monitoring](#53-canopensafetymonitormonitoringloop-safety-monitoring)
-   - 5.4 [`CanOpenHAL::nmtMonitoringThread()` — NMT monitoring (CiA 301)](#54-canopenhalnmtonitoringthread-nmt-monitoring-cia-301)
-6. [SimulatedHAL Threads](#6-simulatedhal-threads)
-   - 6.1 [`SimulatedMotor::simulationThread()` — physics simulation](#61-simulatedmotorsimulationthread-physics-simulation)
-   - 6.2 [`SimulatedEncoder::readingThread()` — encoder simulation](#62-simulatedencoderreadingthread-encoder-simulation)
-7. [EphemerisTracker Threads](#7-ephemeristracker-threads)
-   - 7.1 [`Impl::trackingLoop()` — ephemeris tracking loop](#71-imptrackingloop-ephemeris-tracking-loop)
-   - 7.2 [`updateTracking()` — tracking position update](#72-updatetracking-tracking-position-update)
-8. [EphemerisTrackerManager Threads](#8-ephemeristrackermanager-threads)
-9. [Mock/Test Threads](#9-mocktest-threads)
-   - 9.1 [`TestCanOpenService` (mock)](#91-testcanopenservice-mock)
-   - 9.2 [`CanOpenInterfaceAdapter` (adapter for real CANopen)](#92-canopeninterfaceadapter-adapter-for-real-canopen)
-10. [Thread Flow Diagrams](#10-thread-flow-diagrams)
-    - [10.1 System initialization — thread startup sequence](#101-system-initialization-thread-startup-sequence)
-    - [10.2 Movement execution — thread interaction](#102-movement-execution-thread-interaction)
-    - [10.3 Ephemeris tracking — thread interaction](#103-ephemeris-tracking-thread-interaction)
-11. [Synchronization and Common Problems](#11-synchronization-and-common-problems)
-    - [11.1 Synchronization matrix](#111-synchronization-matrix)
-    - [11.2 Synchronization patterns](#112-synchronization-patterns)
-    - [11.3 Potential problems](#113-potential-problems)
-12. [Debugging](#12-debugging)
-    - [12.1 Thread listing](#121-thread-listing)
-    - [12.2 Thread-ID logging](#122-thread-id-logging)
-    - [12.3 GDB thread debugging](#123-gdb-thread-debugging)
-    - [12.4 Valgrind/Helgrind for data race detection](#124-valgrind-helgrind-for-data-race-detection)
-    - [12.5 Summary — thread count](#125-summary-thread-count)
-13. [Appendix A: Quick Thread Overview](#appendix-a-quick-thread-overview)
+- [Controller Threads](#controller-threads)
+  - [Table of Contents](#table-of-contents)
+  - [1. Introduction](#1-introduction)
+  - [2. Thread Architecture Overview](#2-thread-architecture-overview)
+  - [3. MountController Threads](#3-mountcontroller-threads)
+    - [3.1 `slewToEquatorial()` — Movement Monitoring Loop](#31-slewtoequatorial--movement-monitoring-loop)
+      - [Phase 1: Initiation (main thread, lines 342–445)](#phase-1-initiation-main-thread-lines-342445)
+      - [Phase 2: Monitoring (worker thread, lines 448–607)](#phase-2-monitoring-worker-thread-lines-448607)
+    - [3.2 `slewToHorizontal()` — Analogous to Equatorial](#32-slewtohorizontal--analogous-to-equatorial)
+    - [3.3 `park()` — Parking Loop](#33-park--parking-loop)
+    - [3.4 `startTracking()` — Tracking Thread](#34-starttracking--tracking-thread)
+    - [3.5 `stop()` — Movement Stop (Synchronous)](#35-stop--movement-stop-synchronous)
+  - [4. Blocking Operations in MountController (Derotator, Calibration)](#4-blocking-operations-in-mountcontroller-derotator-calibration)
+    - [4.1 `homeDerotator()` — Homing with Blocking CANopen Polling](#41-homederotator--homing-with-blocking-canopen-polling)
+    - [4.2 `runDerotatorCalibration()` / `runCANopenDerotatorCalibration()` — Derotator Calibration](#42-runderotatorcalibration--runcanopenderotatorcalibration--derotator-calibration)
+    - [4.3 `measureBacklash()` — Backlash Measurement](#43-measurebacklash--backlash-measurement)
+    - [4.4 `calibrateAbsoluteEncoder()` — Absolute Encoder Calibration](#44-calibrateabsoluteencoder--absolute-encoder-calibration)
+    - [4.5 `generateCalibrationTable()` — Calibration Table Generation](#45-generatecalibrationtable--calibration-table-generation)
+  - [5. CanOpenInterface Threads](#5-canopeninterface-threads)
+    - [5.1 `CanOpenMotor::controlLoop()` — PID Loop](#51-canopenmotorcontrolloop--pid-loop)
+    - [5.2 `CanOpenEncoder::pdoReceiveThread()` — Actual PDO Reception](#52-canopenencoderpdoreceivethread--actual-pdo-reception)
+    - [5.3 `CanOpenSafetyMonitor::monitoringLoop()` — Safety Monitoring](#53-canopensafetymonitormonitoringloop--safety-monitoring)
+    - [5.4 `CanOpenHAL::nmtMonitoringThread()` — NMT Monitoring (CiA 301)](#54-canopenhalnmtmonitoringthread--nmt-monitoring-cia-301)
+  - [6. SimulatedHAL Threads](#6-simulatedhal-threads)
+    - [6.1 `SimulatedMotor::simulationThread()` — Physics Simulation](#61-simulatedmotorsimulationthread--physics-simulation)
+    - [6.2 `SimulatedEncoder::readingThread()` — Encoder Simulation](#62-simulatedencoderreadingthread--encoder-simulation)
+  - [7. EphemerisTracker Threads](#7-ephemeristracker-threads)
+    - [7.1 `Impl::trackingLoop()` — Ephemeris Tracking Loop](#71-impltrackingloop--ephemeris-tracking-loop)
+    - [7.2 `updateTracking()` — Tracking Position Update](#72-updatetracking--tracking-position-update)
+  - [8. EphemerisTrackerManager Threads](#8-ephemeristrackermanager-threads)
+  - [9. Mock/Test Threads](#9-mocktest-threads)
+    - [9.1 `TestCanOpenService` (Mock)](#91-testcanopenservice-mock)
+    - [9.2 `CanOpenInterfaceAdapter` (Adapter for Real CANopen)](#92-canopeninterfaceadapter-adapter-for-real-canopen)
+  - [10. Thread Flow Diagrams](#10-thread-flow-diagrams)
+    - [10.1 System Initialization — Thread Startup Sequence](#101-system-initialization--thread-startup-sequence)
+    - [10.2 Movement Execution — Thread Interaction](#102-movement-execution--thread-interaction)
+    - [10.3 Ephemeris Tracking — Thread Interaction](#103-ephemeris-tracking--thread-interaction)
+  - [11. Synchronization and Common Problems](#11-synchronization-and-common-problems)
+    - [11.1 Synchronization Matrix](#111-synchronization-matrix)
+    - [11.2 Synchronization Patterns](#112-synchronization-patterns)
+    - [11.3 Potential Problems](#113-potential-problems)
+  - [12. Debugging](#12-debugging)
+    - [12.1 Listing Threads](#121-listing-threads)
+    - [12.2 Thread-ID Logging](#122-thread-id-logging)
+    - [12.3 GDB Thread Debugging](#123-gdb-thread-debugging)
+    - [12.4 Valgrind / Helgrind for Data Race Detection](#124-valgrind--helgrind-for-data-race-detection)
+    - [12.5 Summary — Thread Count](#125-summary--thread-count)
+  - [Appendix A: Quick Thread Overview](#appendix-a-quick-thread-overview)
 
 ---
 
@@ -68,31 +72,52 @@ The system uses a multi-threaded architecture where each major component manages
 
 **Thread hierarchy:**
 
-```
-Main Thread (initialization, gRPC request handling)
-├── MountController threads
-│   ├── slewToEquatorial monitoring thread (temporary)
-│   ├── slewToHorizontal monitoring thread (temporary)
-│   ├── park monitoring thread (temporary)
-│   ├── startTracking thread (long-lived)
-│   └── stop (synchronous, no thread)
-├── CanOpenInterface threads
-│   ├── SYNC thread (periodic)
-│   └── simulateMovement (periodic, simulation only)
-├── CanOpenHAL threads (if CANOPEN backend)
-│   ├── PID control loop (periodic)
-│   ├── PDO receive thread (reactive/periodic)
-│   ├── safety monitoring loop (periodic)
-│   └── NMT monitoring thread (periodic)
-├── SimulatedHAL threads (if SIMULATED backend)
-│   ├── simulation thread (periodic)
-│   └── encoder reading thread (periodic)
-├── EphemerisTracker threads
-│   ├── trackingLoop (long-lived)
-│   └── updateTracking (periodic)
-├── EphemerisTrackerManager thread
-├── ConfigurationMonitor thread (periodic)
-└── gRPC server thread (long-lived)
+```mermaid
+flowchart TD
+    MAIN["🧵 Main Thread<br/>(initialization, gRPC request handling)"]
+
+    subgraph MC_THR["MountController Threads"]
+        SLEW_E["slewToEquatorial monitoring<br/>(temporary)"]
+        SLEW_H["slewToHorizontal monitoring<br/>(temporary)"]
+        PARK_THR["park monitoring<br/>(temporary)"]
+        START_TRK["startTracking<br/>(long-lived)"]
+        STOP["stop<br/>(synchronous, no thread)"]
+    end
+
+    subgraph CAN_IF["CanOpenInterface Threads"]
+        SYNC_THR["SYNC thread<br/>(periodic)"]
+        SIM_MOVE["simulateMovement<br/>(periodic, simulation only)"]
+    end
+
+    subgraph CAN_HAL["CanOpenHAL Threads (if CANOPEN backend)"]
+        PID_CTRL["PID control loop<br/>(periodic)"]
+        PDO_RECV["PDO receive thread<br/>(reactive/periodic)"]
+        SAFETY_MON["safety monitoring loop<br/>(periodic)"]
+        NMT_MON["NMT monitoring thread<br/>(periodic)"]
+    end
+
+    subgraph SIM_HAL["SimulatedHAL Threads (if SIMULATED backend)"]
+        SIM_THR["simulation thread<br/>(periodic)"]
+        ENC_THR["encoder reading thread<br/>(periodic)"]
+    end
+
+    subgraph EPHEM_THR["EphemerisTracker Threads"]
+        TRK_LOOP["trackingLoop<br/>(long-lived)"]
+        UPD_TRK["updateTracking<br/>(periodic)"]
+    end
+
+    MAIN --> MC_THR
+    MAIN --> CAN_IF
+    MAIN --> CAN_HAL
+    MAIN --> SIM_HAL
+    MAIN --> EPHEM_THR
+    MAIN --> EPH_MGR
+    MAIN --> CFG_MON
+    MAIN --> GRPC_THR
+
+    EPH_MGR["EphemerisTrackerManager thread"]
+    CFG_MON["ConfigurationMonitor thread<br/>(periodic)"]
+    GRPC_THR["gRPC server thread<br/>(long-lived)"]
 ```
 
 **Key characteristics:**
@@ -812,105 +837,104 @@ public:
 
 ### 10.1 System Initialization — Thread Startup Sequence
 
-```
-Main Thread
-    │
-    ├── MountController::initialize()
-    │   │
-    │   ├── Create CANopen interface (if configured)
-    │   │   └── CanOpenInterface starts:
-    │   │       ├── SYNC thread (if use_sync)
-    │   │       └── simulateMovement thread (if simulation)
-    │   │
-    │   ├── Create SimulatedHAL (if configured)
-    │   │   └── SimulatedHAL starts:
-    │   │       ├── simulationThread
-    │   │       └── readingThread
-    │   │
-    │   ├── Create CanOpenHAL (if configured)
-    │   │   └── CanOpenHAL starts:
-    │   │       ├── controlLoop (per motor)
-    │   │       ├── pdoReceiveThread (per encoder)
-    │   │       ├── monitoringLoop (safety)
-    │   │       └── nmtMonitoringThread
-    │   │
-    │   ├── gRPC server starts
-    │   │   └── gRPC handler threads (thread pool)
-    │   │
-    │   └── ConfigMonitor starts
-    │       └── monitoringLoop
-    │
-    └── State → IDLE
+```mermaid
+flowchart TD
+    MAIN["Main Thread"]
+    INIT["MountController::initialize()"]
+
+    subgraph CAN_IF["If CANOPEN configured"]
+        SYNC_THR["SYNC thread<br/>(if use_sync)"]
+        SIM_MOVE["simulateMovement thread<br/>(if simulation)"]
+    end
+
+    subgraph SIM_HAL["If SIMULATED configured"]
+        SIM_THR["simulationThread"]
+        ENC_THR["readingThread"]
+    end
+
+    subgraph CAN_HAL["If CANOPEN backend"]
+        CTRL_LOOP["controlLoop (per motor)"]
+        PDO_THR["pdoReceiveThread<br/>(per encoder)"]
+        MON_LOOP["monitoringLoop (safety)"]
+        NMT_THR["nmtMonitoringThread"]
+    end
+
+    GRPC_THR["gRPC handler threads<br/>(thread pool)"]
+    CFG_MON["monitoringLoop"]
+
+    MAIN --> INIT
+    INIT --> CAN_IF
+    INIT --> SIM_HAL
+    INIT --> CAN_HAL
+    INIT --> GRPC_THR
+    INIT --> CFG_MON
+    INIT --> STATE_IDLE["State → IDLE"]
 ```
 
 ### 10.2 Movement Execution — Thread Interaction
 
-```
-gRPC Client                  MountController             HAL
-    │                              │                      │
-    ├── SlewToEquatorial(ra, dec)  │                      │
-    │   ──────────────────────────►│                      │
-    │                              │                      │
-    │                              ├── Lock mutex          │
-    │                              ├── Set targets        │
-    │                              ├── State → SLEWING    │
-    │                              ├── Start monitor thread│
-    │                              │                      │
-    │   ◄──────────────────────────┘ (return immediately) │
-    │                              │                      │
-    │                  ┌───────────┴───────────┐          │
-    │                  │ Monitor Thread (20 Hz) │          │
-    │                  │                       │          │
-    │                  │ Loop:                 │          │
-    │                  │ ├── Lock mutex        │          │
-    │                  │ ├── Update position   │          │
-    │                  │ │   (simulation or    │          │
-    │                  │ │    via HAL)         ├─────────►│
-    │                  │ ├── Check target      │          │
-    │                  │ │   reached           │          │
-    │                  │ ├── Unlock mutex      │          │
-    │                  │ └── Sleep 50 ms       │          │
-    │                  │                       │          │
-    │                  │ When target reached:  │          │
-    │                  │ ├── State → IDLE      │          │
-    │                  │ └── Thread exits      │          │
-    │                  └───────────────────────┘          │
+```mermaid
+sequenceDiagram
+    participant GRPC as gRPC Client
+    participant MC as MountController
+    participant HAL as HAL
+
+    GRPC->>MC: SlewToEquatorial(ra, dec)
+    activate MC
+    MC->>MC: Lock mutex
+    MC->>MC: Set targets
+    MC->>MC: State → SLEWING
+    MC->>MC: Start monitor thread
+    MC-->>GRPC: (return immediately)
+    deactivate MC
+
+    rect rgb(20, 40, 80)
+        Note over MC: Monitor Thread (20 Hz)
+        loop Every 50 ms
+            MC->>MC: Lock mutex
+            MC->>HAL: Update position<br/>(simulation or via HAL)
+            MC->>MC: Check target reached
+            MC->>MC: Unlock mutex
+            MC->>MC: Sleep 50 ms
+        end
+        Note over MC: When target reached:
+        MC->>MC: State → IDLE
+        Note over MC: Thread exits
+    end
 ```
 
 ### 10.3 Ephemeris Tracking — Thread Interaction
 
-```
-gRPC Client             MountController        EphemerisTracker
-    │                          │                     │
-    ├── UploadEphemeris(data)  │                     │
-    │   ──────────────────────►│                     │
-    │                          ├── validateEphemeris │
-    │                          ├── store data ──────►│
-    │                          │                     │
-    ├── StartEphemerisTracking │                     │
-    │   ──────────────────────►│                     │
-    │                          ├── State → TRACKING  │
-    │                          ├── Start track loop  │
-    │                          │                     │
-    │                          │   ┌─────────────────┴────────┐
-    │                          │   │ trackingLoop (10 Hz)     │
-    │                          │   │                         │
-    │                          │   │ Loop:                   │
-    │                          │   │ ├── interpolate(jd)     │
-    │                          │   │ ├── Update ra/dec/rate  │
-    │                          │   │ ├── callback(mountCtrl) │
-    │                          │   │ └── Sleep 100 ms        │
-    │                          │   └─────────────────────────┘
-    │                          │                     │
-    │                          │ ◄── position update │
-    │                          ├── axis1_target =    │
-    │                          │    ra_to_ha(pos.ra) │
-    │                          ├── axis2_target =    │
-    │                          │    dec              │
-    │                          ├── Apply guider      │
-    │                          │    (if active)      │
-    │                          ├── Send to HAL       │
-    │                          │                     │
+```mermaid
+sequenceDiagram
+    participant GRPC as gRPC Client
+    participant MC as MountController
+    participant ET as EphemerisTracker
+
+    GRPC->>MC: UploadEphemeris(data)
+    MC->>MC: validateEphemeris
+    MC->>ET: store data
+
+    GRPC->>MC: StartEphemerisTracking
+    activate MC
+    MC->>MC: State → TRACKING
+    MC->>MC: Start track loop
+    deactivate MC
+
+    rect rgb(20, 40, 80)
+        Note over ET: trackingLoop (10 Hz)
+        loop Every 100 ms
+            ET->>ET: interpolate(jd)
+            ET->>ET: Update ra/dec/rate
+            ET->>MC: callback(mountCtrl) - position update
+            ET->>ET: Sleep 100 ms
+        end
+    end
+
+    MC->>MC: axis1_target = ra_to_ha(pos.ra)
+    MC->>MC: axis2_target = dec
+    MC->>MC: Apply guider (if active)
+    MC->>MC: Send to HAL
 ```
 
 ---

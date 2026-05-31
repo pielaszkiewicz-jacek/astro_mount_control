@@ -386,16 +386,28 @@ bool isMeridianFlipPending() const {
 
 ### 3.2 State Machine
 
-```
-UNINITIALIZED → [initialize] → IDLE
-IDLE → [slewToEquatorial/slewToHorizontal] → SLEWING → [stop/done] → IDLE
-IDLE → [startTracking] → TRACKING → [stop] → IDLE
-TRACKING → [meridian flip detected] → MERIDIAN_FLIP → [flip done] → TRACKING
-IDLE/TRACKING → [park] → PARKING → [done] → PARKED
-PARKED → [unpark] → IDLE
-SLEWING/TRACKING → [soft limit violation] → ERROR
-Any state → [shutdown] → UNINITIALIZED
-ERROR → [clearErrors] → IDLE
+```mermaid
+stateDiagram-v2
+    UNINITIALIZED --> IDLE : initialize()
+    IDLE --> SLEWING : slewToEquatorial / slewToHorizontal
+    SLEWING --> IDLE : stop / done
+    IDLE --> TRACKING : startTracking
+    TRACKING --> IDLE : stop
+    TRACKING --> MERIDIAN_FLIP : meridian flip detected
+    MERIDIAN_FLIP --> TRACKING : flip done
+    IDLE --> PARKING : park
+    TRACKING --> PARKING : park
+    PARKING --> PARKED : done
+    PARKED --> IDLE : unpark
+    SLEWING --> ERROR : soft limit violation
+    TRACKING --> ERROR : soft limit violation
+    UNINITIALIZED --> UNINITIALIZED : shutdown
+    IDLE --> ERROR : fault
+    SLEWING --> ERROR : fault
+    TRACKING --> ERROR : fault
+    PARKING --> ERROR : fault
+    PARKED --> ERROR : fault
+    ERROR --> IDLE : clearErrors()
 ```
 
 **ERROR state**: `clearErrors()` is fully implemented — resets flags, joins thread, cleans HAL, notifies.

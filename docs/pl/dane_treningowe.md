@@ -394,18 +394,18 @@ Dla uzyskania dobrze uwarunkowanego modelu TPOINT, pomiary powinny **równomiern
 
 #### Zalecany rozkład pomiarów
 
-```
-                  +90° Dec (biegun północny)
-                        |
-                        |    *    *      <- gwiazdy okołobiegunowe
-                        |  *     *
-                        |
-      -12h HA ----------+---------- +12h HA
-            *     *     |     *     *
-                  *     |     *
-            *     *     |     *     *
-                        |
-                  -90° Dec (biegun południowy)
+```mermaid
+flowchart TB
+    NP["+90° Dec (biegun północny)"]
+    STARS1["*    *      <- gwiazdy okołobiegunowe<br/>*     *"]
+    EQUATOR["-12h HA ---------- +12h HA"]
+    STARS2["*     *     |     *     *<br/>      *     |     *<br/>*     *     |     *     *"]
+    SP["-90° Dec (biegun południowy)"]
+
+    NP --> STARS1
+    STARS1 --> EQUATOR
+    EQUATOR --> STARS2
+    STARS2 --> SP
 ```
 
 **Zalecenia**:

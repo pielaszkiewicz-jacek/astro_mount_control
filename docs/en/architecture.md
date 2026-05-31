@@ -295,32 +295,39 @@ std::vector<std::string> Configuration::validate() const {
 
 ### 1. Object Tracking
 
-```
-Client → gRPC(TrackObject) → MountController → AstronomicalCalculations
-                                      ↓
-                        CanOpenInterface/CiA 402 → Servo drives
-                                      ↓
-                          Encoders (PDO) → KalmanFilter
-                                      ↓
-                           TPointModel update
+```mermaid
+flowchart LR
+    CLIENT["Client"] -->|gRPC TrackObject| MC["MountController"]
+    MC --> ASTRO["AstronomicalCalculations"]
+    MC --> CAN["CanOpenInterface / CiA 402"]
+    CAN --> DRIVES["Servo drives"]
+    MC --> ENC["Encoders (PDO)"]
+    ENC --> KF["KalmanFilter"]
+    MC --> TP["TPointModel update"]
 ```
 
 ### 2. TPOINT Calibration
 
-```
-Measurement → AddMeasurement → TPointModel → Nonlinear fitting
-                    ↓
-             KalmanFilter → Parameter update
-                    ↓
-          MountController → Apply corrections
+```mermaid
+flowchart LR
+    MEAS["Measurement"] --> ADD["AddMeasurement"]
+    ADD --> TPM["TPointModel"]
+    TPM --> FIT["Nonlinear fitting"]
+    ADD --> KF2["KalmanFilter"]
+    KF2 --> PARAM["Parameter update"]
+    TPM --> MC2["MountController"]
+    MC2 --> CORR["Apply corrections"]
 ```
 
 ### 3. Autoguiding
 
-```
-Guider → SendGuiderCorrection → MountController → Trajectory generation
-                            ↓
-                   CanOpenInterface → Velocity correction (PDO)
+```mermaid
+flowchart LR
+    GUIDER["Guider"] --> CORR2["SendGuiderCorrection"]
+    CORR2 --> MC3["MountController"]
+    MC3 --> TRAJ["Trajectory generation"]
+    CORR2 --> CAN2["CanOpenInterface"]
+    CAN2 --> VEL["Velocity correction (PDO)"]
 ```
 
 ### 4. HAL Integration Flow

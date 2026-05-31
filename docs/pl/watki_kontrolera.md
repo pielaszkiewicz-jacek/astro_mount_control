@@ -1258,150 +1258,156 @@ Klasa `CanOpenInterfaceAdapter` (linie 272-541) deleguje wszystkie operacje do `
 
 ### 10.1 Inicjalizacja systemu — sekwencja uruchamiania wątków
 
-```
-MountController::initialize()
-  │
-  ├── CanOpenFactory::create()
-  │     └── new CanOpenInterfaceAdapter / TestCanOpenService
-  │
-  ├── ICanOpenInterface::initialize()
-  │     └── CanOpenInterface::Impl::initialize()
-  │           ├── sync_thread_running_ = true
-  │           └── sync_thread_ = std::thread(&Impl::syncThreadFunction, this)
-  │                 └── co config_.sync_period_ms (domyślnie 100ms):
-  │                       [lock] → sendSync() → sleep(100ms)
-  │
-  ├── HALFactory::create(type=HALType::CANOPEN, config)
-  │     └── new CanOpenHAL(canopen_interface)
-  │           └── CanOpenHAL::initialize(config)
-  │                 ├── canopen_interface_->initialize()
-  │                 ├── nmt_running_ = true
-  │                 └── nmt_thread_ = std::thread(&CanOpenHAL::nmtMonitoringThread, this)
-  │                       └── NMT monitoring (100 Hz): bootup→heartbeat→recovery
-  │
-  ├── CanOpenHAL::createMotorControl(0)  // RA axis
-  │     └── new CanOpenMotor(0, canopen)
-  │           ├── control_running_ = true
-  │           └── control_thread_ = std::thread(&CanOpenMotor::controlLoop, this)
-  │                 └── co 10ms: read position → callback → sleep(10ms)
-  │
-  ├── CanOpenHAL::createMotorControl(1)  // Dec axis
-  │     └── new CanOpenMotor(1, canopen)
-  │           └── control_thread_ = std::thread(...)
-  │
-  ├── CanOpenHAL::createEncoderReader(0)  // RA encoder
-  │     └── new CanOpenEncoder(0, canopen)
-  │           ├── initialize(config)
-  │           └── jeśli interface == CANOPEN:
-  │                 ├── pdo_running_ = true
-  │                 └── pdo_thread_ = std::thread(&CanOpenEncoder::pdoReceiveThread, this)
-  │                       └── co update_interval: getEncoderData() → cache → sleep(config.update_rate_hz)
-  │
-  ├── CanOpenHAL::createEncoderReader(1)  // Dec encoder
-  │     └── ... analogicznie
-  │
-  ├── CanOpenHAL::createSafetyMonitor()
-  │     └── new CanOpenSafetyMonitor(canopen)
-  │           ├── initialize(config)
-  │           ├── monitoring_running_ = true
-  │           └── monitoring_thread_ = std::thread(&CanOpenSafetyMonitor::monitoringLoop, this)
-  │                 └── co 10ms: checkLimits(0..2) → sleep(10ms)
-  │
-  └── state_ = IDLE
+```mermaid
+flowchart TD
+    START["MountController::initialize()"]
+    START --> FACTORY["CanOpenFactory::create()"]
+    FACTORY --> ADAPTER["new CanOpenInterfaceAdapter / TestCanOpenService"]
+
+    START --> INIT["ICanOpenInterface::initialize()"]
+    INIT --> INIT2["CanOpenInterface::Impl::initialize()"]
+    INIT2 --> SYNC_ON["sync_thread_running_ = true"]
+    SYNC_ON --> SYNC_THREAD["sync_thread_ = std::thread(syncThreadFunction)"]
+    SYNC_THREAD --> SYNC_LOOP["Loop: co config_.sync_period_ms (100ms):<br/>[lock] → sendSync() → sleep(100ms)"]
+
+    START --> HAL["HALFactory::create(type=CANOPEN, config)"]
+    HAL --> HAL_OBJ["new CanOpenHAL(canopen_interface)"]
+    HAL_OBJ --> HAL_INIT["CanOpenHAL::initialize(config)"]
+    HAL_INIT --> CAN_INIT["canopen_interface_->initialize()"]
+    HAL_INIT --> NMT_ON["nmt_running_ = true"]
+    NMT_ON --> NMT_THREAD["nmt_thread_ = std::thread(nmtMonitoringThread)"]
+    NMT_THREAD --> NMT_LOOP["NMT monitoring (100 Hz):<br/>bootup → heartbeat → recovery"]
+
+    START --> MC0["CanOpenHAL::createMotorControl(0)  // RA axis"]
+    MC0 --> MOTOR0["new CanOpenMotor(0, canopen)"]
+    MOTOR0 --> CTRL0_ON["control_running_ = true"]
+    CTRL0_ON --> CTRL0_THREAD["control_thread_ = std::thread(controlLoop)"]
+    CTRL0_THREAD --> CTRL0_LOOP["Loop: co 10ms:<br/>read position → callback → sleep(10ms)"]
+
+    START --> MC1["CanOpenHAL::createMotorControl(1)  // Dec axis"]
+    MC1 --> MOTOR1["new CanOpenMotor(1, canopen)"]
+    MOTOR1 --> CTRL1_THREAD2["control_thread_ = std::thread(...)"]
+
+    START --> ENC0["CanOpenHAL::createEncoderReader(0)  // RA encoder"]
+    ENC0 --> ENC0_OBJ["new CanOpenEncoder(0, canopen)"]
+    ENC0_OBJ --> ENC0_INIT["initialize(config)"]
+    ENC0_INIT --> ENC0_CHECK{"interface == CANOPEN?"}
+    ENC0_CHECK -->|tak| PDO_ON["pdo_running_ = true"]
+    PDO_ON --> PDO_THREAD["pdo_thread_ = std::thread(pdoReceiveThread)"]
+    PDO_THREAD --> PDO_LOOP["Loop: co update_interval:<br/>getEncoderData() → cache → sleep(interval)"]
+
+    START --> ENC1["CanOpenHAL::createEncoderReader(1)  // Dec encoder"]
+    ENC1 --> ENC1_ANALOG["... analogicznie"]
+
+    START --> SAFETY["CanOpenHAL::createSafetyMonitor()"]
+    SAFETY --> SAFETY_OBJ["new CanOpenSafetyMonitor(canopen)"]
+    SAFETY_OBJ --> SAFETY_INIT["initialize(config)"]
+    SAFETY_INIT --> MON_ON["monitoring_running_ = true"]
+    MON_ON --> MON_THREAD["monitoring_thread_ = std::thread(monitoringLoop)"]
+    MON_THREAD --> MON_LOOP["Loop: co 10ms:<br/>checkLimits(0..2) → sleep(10ms)"]
+
+    START --> STATE["state_ = IDLE"]
 ```
 
 ### 10.2 Wykonanie ruchu — interakcja wątków
 
-```
-MountController::slewToEquatorial(ra, dec)
-  │
-  ├── [wątek główny] lock(thread_mutex_)
-  │     ├── joinWorkThreadLocked() ← czeka na poprzedni wątek
-  │     ├── lock(state_mutex_)
-  │     │     ├── sprawdza state_ (UNINITIALIZED/ERROR → return false)
-  │     │     ├── oblicza HA = LST - RA, normalize [-12, +12]h
-  │     │     ├── jeśli TPOINT calibrated: predictMountPosition(ra, dec)
-  │     │     ├── sprawdza soft limits (axis1/2 min/max)
-  │     │     ├── state_ = SLEWING, slew_count_++
-  │     │     └── unlock(state_mutex_)
-  │     ├── notifyStatusChanged() ← IDLE → SLEWING
-  │     │
-  │     ├── [HAL path - priorytet]
-  │     │     hal_axis1_motor_->setPosition(target1, velocity, accel)
-  │     │     hal_axis2_motor_->setPosition(target2, velocity, accel)
-  │     │
-  │     ├── [CANopen path - fallback]
-  │     │     canopen_interface_->setPositionTarget(0, target1, ...)
-  │     │     canopen_interface_->setPositionTarget(1, target2, ...)
-  │     │
-  │     └── work_thread_ = std::thread([this]() { ... })
-  │           └── [wątek roboczy ~10 Hz] co 100ms:
-  │                 ├── lock(state_mutex_) → check state_ != SLEWING? break
-  │                 │
-  │                 ├── [HAL] hal_axis1_motor_->targetReached() && ...
-  │                 ├── [CANopen] getDriveStatus(0...1).target_reached
-  │                 ├── [symulacja] evaluateSoftLimits(), SafetyMonitor, step += 1.0°
-  │                 │
-  │                 ├── jeśli reached:
-  │                 │     ├── lock(state_mutex_)
-  │                 │     ├── [HAL] enc1 = hal_axis1_encoder_->read()
-  │                 │     ├── [CANopen] getPositionData(0...1)
-  │                 │     ├── axis1_rate_ = 0, axis2_rate_ = 0
-  │                 │     ├── state_ = IDLE
-  │                 │     └── unlock(state_mutex_)
-  │                 │         notifyStatusChanged()
-  │                 └── sleep(100ms)
-  │
-  └── unlock(thread_mutex_) ← wątek główny kontynuuje, work_thread_ żyje
+```mermaid
+sequenceDiagram
+    participant MAIN as Wątek główny
+    participant WORK as Wątek roboczy (10 Hz)
+    participant HAL as HAL
+    participant CAN as CANopen
+    participant SIM as Symulacja
 
-  ─── symultanicznie ──► (jeśli użyto CANopen HAL)
+    MAIN->>MAIN: lock(thread_mutex_)
+    MAIN->>MAIN: joinWorkThreadLocked() — czeka na poprzedni
+    MAIN->>MAIN: lock(state_mutex_)
+    MAIN->>MAIN: sprawdza state_ (UNINITIALIZED/ERROR → return)
+    MAIN->>MAIN: oblicza HA = LST - RA, normalize [-12,+12]h
+    MAIN->>MAIN: jeśli TPOINT: predictMountPosition()
+    MAIN->>MAIN: sprawdza soft limits (axis1/2)
+    MAIN->>MAIN: state_ = SLEWING, slew_count_++
+    MAIN->>MAIN: unlock(state_mutex_)
+    MAIN->>MAIN: notifyStatusChanged() — IDLE → SLEWING
 
-  ┌─ CanOpenMotor::controlLoop (100Hz) ────────────────────────┐
-  │  co 10ms: read position → PID → setpoint → sleep(10ms)     │
-  └─────────────────────────────────────────────────────────────┘
+    par HAL path (priorytet)
+        MAIN->>HAL: hal_axis1_motor_->setPosition(target1)
+        MAIN->>HAL: hal_axis2_motor_->setPosition(target2)
+    and CANopen path (fallback)
+        MAIN->>CAN: setPositionTarget(0, target1, ...)
+        MAIN->>CAN: setPositionTarget(1, target2, ...)
+    end
 
-  ┌─ CanOpenSafetyMonitor::monitoringLoop (~100Hz) ────────────┐
-  │  co 10ms: checkLimits(0..2) → sleep(10ms)                  │
-  └─────────────────────────────────────────────────────────────┘
+    MAIN->>WORK: work_thread_ = std::thread(...)
+    MAIN->>MAIN: unlock(thread_mutex_) — kontynuuje
 
-  ┌─ CanOpenEncoder::pdoReceiveThread (100-1000Hz) ────────────┐
-  │  co update_interval: getEncoderData() → cache               │
-  └─────────────────────────────────────────────────────────────┘
+    loop co 100ms
+        WORK->>WORK: lock(state_mutex_) — check state_ != SLEWING? break
+        par HAL check
+            WORK->>HAL: targetReached()?
+        and CANopen check
+            WORK->>CAN: getDriveStatus().target_reached?
+        and Symulacja
+            WORK->>SIM: evaluateSoftLimits(), SafetyMonitor, step += 1.0°
+        end
+        alt target reached
+            WORK->>WORK: lock(state_mutex_)
+            WORK->>HAL: enc1 = hal_axis1_encoder_->read()
+            WORK->>CAN: getPositionData(0...1)
+            WORK->>WORK: axis1_rate_ = 0, axis2_rate_ = 0
+            WORK->>WORK: state_ = IDLE
+            WORK->>WORK: unlock(state_mutex_)
+            WORK->>WORK: notifyStatusChanged()
+        end
+        WORK->>WORK: sleep(100ms)
+    end
 
-  ┌─ CanOpenHAL::nmtMonitoringThread (10Hz) ───────────────────┐
-  │  co 100ms: heartbeat → recovery if NMT state != OPERATIONAL │
-  └─────────────────────────────────────────────────────────────┘
+    Note over CAN: Symultanicznie (jeśli CANopen HAL)
+
+    par CanOpenMotor::controlLoop (100 Hz)
+        CAN->>CAN: co 10ms: read position → PID → setpoint → sleep
+    and CanOpenSafetyMonitor::monitoringLoop (~100 Hz)
+        CAN->>CAN: co 10ms: checkLimits(0..2) → sleep
+    and CanOpenEncoder::pdoReceiveThread (100-1000 Hz)
+        CAN->>CAN: co update_interval: getEncoderData() → cache
+    and CanOpenHAL::nmtMonitoringThread (10 Hz)
+        CAN->>CAN: co 100ms: heartbeat → recovery
+    end
 ```
 
 ### 10.3 Śledzenie efemeryd — interakcja wątków
 
-```
-MountController::startEphemerisTracking(object_id, ...)
-  │
-  ├── EphemerisTrackerManager::startTracking()
-  │     ├── [wątek główny] tworzy EphemerisTracker
-  │     └── tracker->startTracking(start_time, config)
-  │           ├── [wątek główny] oblicza pozycję startową
-  │           ├── tracking_active_ = true
-  │           └── tracking_thread_ = std::thread(&Impl::trackingLoop)
-  │                 │
-  │                 └── [wątek śledzenia ~1-10Hz]
-  │                       co update_rate:
-  │                       ├── lock(state_mutex_)
-  │                       ├── sprawdza czas (koniec śledzenia?)
-  │                       ├── model_->getApparentPosition(now, ...)
-  │                       │     ├── interpolacja Lagrange'a (1-3 rzędu)
-  │                       │     ├── korekcja rotacji Ziemi
-  │                       │     ├── korekcja atmosferyczna
-  │                       │     └── korekcja TPOINT (jeśli skonfigurowana)
-  │                       ├── updateStatistics()
-  │                       └── unlock(state_mutex_)
-  │                             sleep(1000/update_rate ms)
-  │
-  └── MountController::stopEphemerisTracking(tracker_id)
-        └── tracker->stopTracking()
-              ├── stop_requested_ = true
-              └── tracking_thread_.join()
+```mermaid
+sequenceDiagram
+    participant MAIN as Wątek główny
+    participant TM as EphemerisTrackerManager
+    participant TR as EphemerisTracker
+    participant TW as Wątek śledzenia (1-10 Hz)
+
+    MAIN->>TM: startTracking(object_id, ...)
+    TM->>TR: new EphemerisTracker
+    TM->>TR: startTracking(start_time, config)
+    TR->>TR: oblicza pozycję startową
+    TR->>TR: tracking_active_ = true
+    TR->>TW: tracking_thread_ = std::thread(trackingLoop)
+
+    loop co update_rate
+        TW->>TW: lock(state_mutex_)
+        TW->>TW: sprawdza czas (koniec śledzenia?)
+        TW->>TW: model_->getApparentPosition(now, ...)
+        TW->>TW: interpolacja Lagrange'a (1-3 rzędu)
+        TW->>TW: korekcja rotacji Ziemi
+        TW->>TW: korekcja atmosferyczna
+        TW->>TW: korekcja TPOINT (jeśli skonfigurowana)
+        TW->>TW: updateStatistics()
+        TW->>TW: unlock(state_mutex_)
+        TW->>TW: sleep(1000/update_rate ms)
+    end
+
+    MAIN->>TR: stopEphemerisTracking(tracker_id)
+    TR->>TR: stopTracking()
+    TR->>TR: stop_requested_ = true
+    TR->>TW: tracking_thread_.join()
 ```
 
 ---

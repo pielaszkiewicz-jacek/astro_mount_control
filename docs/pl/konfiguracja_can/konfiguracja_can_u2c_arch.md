@@ -800,10 +800,10 @@ Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napęda
 
 **Zobacz także**:
 
-- [`testowanie_i_uruchamianie.md`](testowanie_i_uruchamianie.md) — uruchamianie kontrolera z CANopen,
-- [`hal_layer.md`](hal_layer.md) — szczegóły implementacji CANopen HAL,
-- [`alternatywy_dla_canopen.md`](alternatywy_dla_canopen.md) — porównanie protokołów komunikacji,
-- [`przeplyw_danych.md`](przeplyw_danych.md) — przepływ danych w systemie z magistralą CAN,
+- [`testowanie_i_uruchamianie.md`](../testowanie_i_uruchamianie.md) — uruchamianie kontrolera z CANopen,
+- [`hal_layer.md`](../hal_layer.md) — szczegóły implementacji CANopen HAL,
+- [`alternatywy_dla_canopen.md`](../alternatywy_dla_canopen.md) — porównanie protokołów komunikacji,
+- [`przeplyw_danych.md`](../przeplyw_danych.md) — przepływ danych w systemie z magistralą CAN,
 - [`konfiguracja_can_u2c_opensuse.md`](konfiguracja_can_u2c_opensuse.md) — wersja dla openSUSE,
 - [`konfiguracja_can_u2c_ubuntu_debian.md`](konfiguracja_can_u2c_ubuntu_debian.md) — wersja dla Ubuntu/Debian,
 - [`konfiguracja_can_u2c_fedora.md`](konfiguracja_can_u2c_fedora.md) — wersja dla Fedora/RHEL.

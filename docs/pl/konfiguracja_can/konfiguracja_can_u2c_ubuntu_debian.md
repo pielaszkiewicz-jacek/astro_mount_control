@@ -1,6 +1,6 @@
-# Konfiguracja magistrali CAN na Fedora/RHEL z konwerterem U2C
+# Konfiguracja magistrali CAN na Ubuntu/Debian z konwerterem U2C
 
-> Dokument opisuje krok po kroku konfigurację magistrali CAN (Controller Area Network) w systemach **Fedora**, **Red Hat Enterprise Linux (RHEL)** oraz pochodnych (CentOS, Rocky Linux, AlmaLinux) przy użyciu konwertera USB–CAN Lawicel U2C (lub kompatybilnego). Konfiguracja jest niezbędna do uruchomienia [`astro-mount-controller`](index.md) z rzeczywistymi napędami CANopen.
+> Dokument opisuje krok po kroku konfigurację magistrali CAN (Controller Area Network) w systemach **Ubuntu** i **Debian** przy użyciu konwertera USB–CAN Lawicel U2C (lub kompatybilnego). Konfiguracja jest niezbędna do uruchomienia [`astro-mount-controller`](index.md) z rzeczywistymi napędami CANopen.
 
 ---
 
@@ -23,22 +23,20 @@
 
 **Lawicel U2C** (USB‑to‑CAN) to popularny, gotowy konwerter USB ↔ CAN 2.0B, kompatybilny z implementacją **SocketCAN** w jądrze Linux. Dla użytkownika systemu Linux urządzenie jest widziane jako interfejs sieciowy (np. `can0`), co pozwala korzystać z całego ekosystemu narzędzi CAN (can-utils, wireshark, a przede wszystkim stosów CANopen jak [`CANopenSocket`](https://github.com/CANopenNode/CANopenSocket) czy `lely-canopen`).
 
-Systemy Fedora/RHEL domyślnie używają:
+Systemy Ubuntu/Debian domyślnie używają:
 
-- **NetworkManager** (z `nmcli` / GUI) — domyślnego narzędzia do zarządzania interfejsami sieciowymi, zarządzanego przez `systemd`,
-- **firewalld** — zapory sieciowej,
-- **systemd** — systemu inicjalizacji i zarządzania usługami,
-- **SELinux** — domyślnie włączony (w trybie enforcing na RHEL/Fedora), co może wpływać na działanie niektórych narzędzi.
+- **NetworkManager** (z `nmcli` / GUI) — domyślnego narzędzia do zarządzania interfejsami sieciowymi,
+- **systemd-networkd** — dostępnego alternatywnie, często stosowanego na serwerach i systemach bez graficznego interfejsu,
+- **systemd** — systemu inicjalizacji i zarządzania usługami.
 
 **Konsekwencje dla CAN:**
 
-- NetworkManager **nie ma natywnej obsługi interfejsów CAN** i może próbować zarządzać `can0` jak zwykłym interfejsem sieciowym — należy go wyłączyć dla CAN przez `unmanaged-devices` (sekcja [5.1](#51-wyłączenie-can0-w-networkmanager))
-- **systemd-networkd** ma **wbudowaną obsługę CAN** (`Kind=can`) i jest zalecanym rozwiązaniem dla trwałej konfiguracji — jednak na Fedora/RHEL **nie jest domyślnie włączony**, ponieważ domyślnym backendem jest NetworkManager
-- **NetworkManager + niestandardowa usługa systemd** to praktyczne rozwiązanie dla użytkowników desktopowych Fedory (sekcja [5.3](#53-opcja-b-niestandardowa-usługa-systemd))
-- **nmcli** może być użyte do wyłączenia zarządzania `can0` bez wyłączania NetworkManagera dla innych interfejsów
-- **SELinux** domyślnie nie blokuje SocketCAN, ale może blokować dostęp aplikacji do interfejsów CAN, jeśli działają z niewłaściwym kontekstem — w razie problemów sprawdź sekcję [8.5](#85-selinux-blocking-dostępu-do-can)
+- NetworkManager **nie ma natywnej obsługi interfejsów CAN** i może próbować zarządzać `can0` jak zwykłym interfejsem sieciowym — należy go wyłączyć dla CAN przez `unmanaged-devices` (sekcja [5.1](#51-opcja-a-systemd-networkd-zalecana-dla-serwerów))
+- **systemd-networkd** ma **wbudowaną obsługę CAN** (`Kind=can`) i jest to zalecana metoda trwałej konfiguracji na Ubuntu/Debian (sekcja [5.1](#51-opcja-a-systemd-networkd-zalecana-dla-serwerów))
+- Jeśli używasz czystego NetworkManagera na desktopie, możesz skonfigurować CAN przez niestandardową usługę systemd (sekcja [5.2](#52-opcja-b-niestandardowa-usługa-systemd))
+- Na serwerach Ubuntu (bez GUI) często NetworkManager nie jest w ogóle zainstalowany — wtedy `systemd-networkd` jest naturalnym wyborem
 
-Poniższy przewodnik został przygotowany dla **Fedora 39/40/41 oraz RHEL 9.x**, ale ogólne zasady dotyczą również CentOS Stream, Rocky Linux i AlmaLinux.
+Poniższy przewodnik został przygotowany dla **Ubuntu 22.04 LTS / 24.04 LTS oraz Debian 12 (Bookworm)**, ale ogólne zasady dotyczą również innych wersji i pochodnych (Linux Mint, Pop!_OS).
 
 ---
 
@@ -96,41 +94,38 @@ Klonów może być więcej — w razie problemów sprawdź `lsusb` i ewentualnie
 ### 3.1 Instalacja pakietów systemowych
 
 ```bash
+# ── Aktualizacja listy pakietów ──
+sudo apt update
+
 # ── Narzędzia CAN (can-utils) ──
-sudo dnf install -y can-utils
+sudo apt install -y can-utils
 
 # ── Narzędzia diagnostyczne (opcjonalne) ──
-sudo dnf install -y         \
+sudo apt install -y         \
     wireshark               \   # analiza ramek CAN
-    iproute                 \   # ip link, ip -details (już zainstalowane)
+    iproute2                \   # ip link, ip -details (już zainstalowane)
     usbutils                    # lsusb
 ```
-
-> **Uwaga**: Na RHEL 9.x może być konieczne włączenie repozytorium `epel` (Extra Packages for Enterprise Linux) dla pakietów takich jak `can-utils`:
-> ```bash
-> sudo dnf install -y epel-release
-> sudo dnf install -y can-utils
-> ```
 
 Jeśli budujesz [`astro-mount-controller`](installation.md) ze źródeł, dodatkowo:
 
 ```bash
-sudo dnf install -y         \
-    gcc-c++ gcc make cmake   \
+sudo apt install -y         \
+    build-essential cmake    \
     git pkg-config           \
-    openssl-devel            \
-    protobuf-devel protobuf-compiler \
-    grpc-devel grpc-cpp-devel \
-    nlohmann-json-devel      \
-    eigen3-devel             \
-    fmt-devel spdlog-devel   \
-    gtest-devel              \
-    sqlite-devel
+    libssl-dev               \
+    libprotobuf-dev protobuf-compiler \
+    libgrpc-dev libgrpc++-dev \
+    nlohmann-json3-dev       \
+    libeigen3-dev            \
+    libfmt-dev libspdlog-dev \
+    libgtest-dev             \
+    libsqlite3-dev
 ```
 
 ### 3.2 Ładowanie modułów jądra
 
-Moduł `gs_usb` jest wbudowany w standardowe jądro Fedora/RHEL. Załaduj go ręcznie:
+Moduł `gs_usb` jest wbudowany w standardowe jądro Ubuntu/Debian. Załaduj go ręcznie:
 
 ```bash
 sudo modprobe can
@@ -257,37 +252,22 @@ sudo ip link set can0 up
 
 ## 5. Trwała konfiguracja (przy starcie systemu)
 
-Fedora/RHEL domyślnie używają **NetworkManagera**. Poniżej trzy opcje trwałej konfiguracji — wybierz odpowiednią dla swojego środowiska.
+Ubuntu/Debian mogą korzystać z kilku metod zarządzania interfejsami. Poniżej trzy opcje — wybierz odpowiednią dla swojego środowiska.
 
-### 5.1 Wyłączenie can0 w NetworkManager
+### 5.1 Opcja A: systemd-networkd (zalecana dla serwerów)
 
-Niezależnie od wybranej opcji konfiguracji CAN, **najpierw** wyłącz zarządzanie `can0` przez NetworkManager:
+**systemd-networkd** ma wbudowaną obsługę interfejsów CAN przez `Kind=can` — jest to najprostsza i najbardziej niezawodna metoda.
 
-```bash
-sudo tee /etc/NetworkManager/conf.d/90-can-unmanaged.conf << 'EOF'
-[keyfile]
-unmanaged-devices=interface-name:can0
-EOF
-
-sudo systemctl restart NetworkManager
-```
-
-Można też użyć `nmcli`:
+> **Uwaga**: Jeśli używasz NetworkManagera (np. na pulpicie GNOME), wyłącz go dla interfejsu `can0` przed przejściem na systemd-networkd:
+> ```bash
+> sudo systemctl stop NetworkManager
+> sudo systemctl disable NetworkManager
+> sudo systemctl enable --now systemd-networkd
+> ```
+> Możesz też użyć hybrydowego podejścia — pozostawić NetworkManager dla WiFi/Ethernet, a CAN skonfigurować przez systemd-networkd. W tym celu upewnij się, że NetworkManager nie przejmuje `can0` (sekcja [5.1.1](#511-wyłączenie-can0-w-networkmanager)).
 
 ```bash
-sudo nmcli device set can0 managed no
-```
-
-### 5.2 Opcja A: systemd-networkd (zalecana dla serwerów)
-
-**systemd-networkd** ma wbudowaną obsługę interfejsów CAN przez `Kind=can`. Na Fedora/RHEL nie jest domyślnie włączony, ale można go aktywować:
-
-```bash
-# ── Wyłącz NetworkManager (opcjonalnie, jeśli chcesz w pełni przejść na networkd) ──
-# sudo systemctl disable NetworkManager
-# sudo systemctl stop NetworkManager
-
-# ── Włącz systemd-networkd ──
+# ── Włącz systemd-networkd (jeśli nie jest aktywny) ──
 sudo systemctl enable --now systemd-networkd
 
 # ── Utwórz konfigurację CAN netdev ──
@@ -313,11 +293,22 @@ EOF
 sudo systemctl restart systemd-networkd
 ```
 
-> **Uwaga**: Jeśli pozostawiasz NetworkManager aktywny dla innych interfejsów (WiFi, Ethernet), upewnij się, że sekcja [5.1](#51-wyłączenie-can0-w-networkmanager) została wykonana.
+#### 5.1.1 Wyłączenie can0 w NetworkManager
 
-### 5.3 Opcja B: niestandardowa usługa systemd
+Jeśli NetworkManager jest aktywny, zablokuj zarządzanie `can0`:
 
-Jeśli używasz NetworkManagera na desktopie Fedora i nie chcesz przełączać się na systemd-networkd, utwórz samodzielną usługę systemd:
+```bash
+sudo tee /etc/NetworkManager/conf.d/90-can-unmanaged.conf << 'EOF'
+[keyfile]
+unmanaged-devices=interface-name:can0
+EOF
+
+sudo systemctl restart NetworkManager
+```
+
+### 5.2 Opcja B: niestandardowa usługa systemd
+
+Jeśli używasz NetworkManagera na desktopie i nie chcesz przełączać się na systemd-networkd, utwórz samodzielną usługę systemd:
 
 > **Uwaga**: Usługa poniżej **załadowuje niezbędne moduły jądra** przed konfiguracją interfejsu. Jest to konieczne, ponieważ `After=network.target` nie gwarantuje, że moduły CAN są już załadowane.
 
@@ -386,6 +377,32 @@ sudo systemctl enable --now can-setup.service
 | 5 | `ip link set can0 down` | Wyłącza interfejs przed zmianą bitrate |
 | 6 | `ip link set can0 type can bitrate ...` | Próbuje ustawić żądaną prędkość |
 | 7 | Fallback: `ip link set can0 up` | Jeśli zmiana bitrate się nie powiodła — podnosi istniejący interfejs z domyślnym bitrate |
+
+### 5.3 Opcja C: Netplan (Ubuntu Server)
+
+Na Ubuntu Server (18.04+) domyślnym narzędziem konfiguracji sieci jest **Netplan**, który może używać backendu `systemd-networkd` lub `NetworkManager`. Netplan nie ma jednak natywnej obsługi interfejsów CAN, dlatego konfiguracja CAN przez Netplan sprowadza się do dodania niestandardowego skryptu `runcmd`:
+
+```bash
+sudo tee /etc/netplan/99-can.yaml << 'EOF'
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    can0:
+      match:
+        driver: gs_usb
+      # Uwaga: Netplan nie wspiera CAN bezpośrednio,
+      # dlatego używamy parametru 'link-local: []', aby nie próbował
+      # konfigurować can0 jako zwykłego ethernetu.
+      link-local: []
+      optional: true
+EOF
+
+# Netplan nie może sam skonfigurować CAN, więc dodajemy usługę systemd
+# jako uzupełnienie - patrz Opcja B (sekcja 5.2)
+```
+
+> **Zalecenie**: Na Ubuntu Server używaj bezpośrednio opcji **A** (systemd-networkd) — pomiń Netplan dla interfejsu CAN.
 
 ### 5.4 Reguła udev dla statycznej nazwy interfejsu
 
@@ -611,38 +628,7 @@ Lawicel U2C ma diodę LED sygnalizującą stan:
 | Miga czerwony | Błędy ramek (np. brak terminatora, zła prędkość) |
 | Ciągły czerwony | Błąd sprzętowy (odłącz i podłącz ponownie) |
 
-### 8.5 SELinux blokujący dostęp do CAN
-
-**Objaw**: Aplikacja typu `astro-mount-controller` nie może otworzyć interfejsu CAN, mimo poprawnych uprawnień.
-
-**Diagnostyka**:
-
-```bash
-# Sprawdź logi SELinux
-sudo ausearch -m avc -ts recent | grep can
-# lub
-sudo journalctl | grep -i "selinux\|avc.*can"
-```
-
-**Rozwiązanie**:
-
-```bash
-# Tymczasowe wyłączenie SELinux (dla testów):
-sudo setenforce 0
-# Przetestuj działanie; jeśli problem zniknął — SELinux blokuje dostęp.
-
-# Trwałe rozwiązanie — utwórz regułę zezwalającą:
-sudo ausearch -m avc -ts recent -c can-setup | tee /tmp/can-avc.log
-# Wygeneruj i załaduj regułę:
-# (wymaga pakietu policycoreutils-python-utils)
-sudo grep "avc" /tmp/can-avc.log | audit2allow -M can_setup
-sudo semodule -i can_setup.pp
-
-# Przywróć SELinux enforcing:
-sudo setenforce 1
-```
-
-### 8.6 Niska stabilność przy 1 Mbit/s
+### 8.5 Niska stabilność przy 1 Mbit/s
 
 **Objaw**: Sporadyczne błędy CRC, `state BUS-OFF`.
 
@@ -760,15 +746,14 @@ GND ────────────────╯
 
 ## Podsumowanie
 
-Konfiguracja konwertera U2C na Fedora/RHEL sprowadza się do kilku kroków:
+Konfiguracja konwertera U2C na Ubuntu/Debian sprowadza się do kilku kroków:
 
 1. **Podłącz** konwerter USB — moduł `gs_usb` automatycznie utworzy interfejs `can0`.
 2. **Skonfiguruj** prędkość: `sudo ip link set can0 type can bitrate 1000000 && sudo ip link set can0 up`.
 3. **Zweryfikuj**: `ip -details link show can0` → stan `UP`, brak błędów.
-4. **Utwórz trwałą konfigurację** — przez systemd-networkd lub własną usługę systemd.
-5. **Wyłącz NetworkManager dla can0** przez `unmanaged-devices` (sekcja 5.1).
-6. **Skonfiguruj** [`astro-mount-controller`](installation.md) z parametrami `can_interface: can0`, `bitrate: 1000000`.
-7. W razie problemów z dostępem — **sprawdź SELinux** (sekcja 8.5).
+4. **Utwórz trwałą konfigurację** przez systemd-networkd (zalecane) lub własną usługę systemd.
+5. **Skonfiguruj** [`astro-mount-controller`](installation.md) z parametrami `can_interface: can0`, `bitrate: 1000000`.
+6. Jeśli używasz NetworkManagera — **wyłącz go dla can0** przez `unmanaged-devices`.
 
 Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napędami CANopen (RA, Dec, derotator) zgodnie z profilem CiA 402.
 
@@ -777,9 +762,9 @@ Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napęda
 **Zobacz także**:
 
 - [`testowanie_i_uruchamianie.md`](testowanie_i_uruchamianie.md) — uruchamianie kontrolera z CANopen,
-- [`hal_layer.md`](hal_layer.md) — szczegóły implementacji CANopen HAL,
-- [`alternatywy_dla_canopen.md`](alternatywy_dla_canopen.md) — porównanie protokołów komunikacji,
-- [`przeplyw_danych.md`](przeplyw_danych.md) — przepływ danych w systemie z magistralą CAN,
+- [`hal_layer.md`](../hal_layer.md) — szczegóły implementacji CANopen HAL,
+- [`alternatywy_dla_canopen.md`](../alternatywy_dla_canopen.md) — porównanie protokołów komunikacji,
+- [`przeplyw_danych.md`](../przeplyw_danych.md) — przepływ danych w systemie z magistralą CAN,
 - [`konfiguracja_can_u2c_opensuse.md`](konfiguracja_can_u2c_opensuse.md) — wersja dla openSUSE,
-- [`konfiguracja_can_u2c_ubuntu_debian.md`](konfiguracja_can_u2c_ubuntu_debian.md) — wersja dla Ubuntu/Debian,
+- [`konfiguracja_can_u2c_fedora.md`](konfiguracja_can_u2c_fedora.md) — wersja dla Fedora/RHEL,
 - [`konfiguracja_can_u2c_arch.md`](konfiguracja_can_u2c_arch.md) — wersja dla Arch Linux.
