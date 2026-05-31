@@ -123,6 +123,49 @@ const Api = (() => {
   }
 
   /**
+   * Save the current mount controller state (position, calibration, tracking).
+   * POST /api/state/save
+   * @param {object} [options] - Optional save parameters
+   * @param {string} [options.file_path] - Custom file path (empty = default location)
+   * @param {boolean} [options.include_measurements] - Include calibration measurements
+   * @returns {Promise<{success:boolean, message:string, file_path:string, file_size:number}>}
+   */
+  async function saveState(options = {}) {
+    return request('/state/save', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  /**
+   * Load and restore a previously saved mount controller state.
+   * POST /api/state/load
+   * @param {object} [options] - Optional load parameters
+   * @param {string} [options.file_path] - Path to state file (empty = default location)
+   * @returns {Promise<{success:boolean, message:string}>}
+   */
+  async function loadState(options = {}) {
+    return request('/state/load', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  /**
+   * Upload a state file from the user's computer and restore it to the mount controller.
+   * POST /api/state/upload-and-load
+   * @param {string} fileContent - The full text content of the state JSON file
+   * @param {string} fileName - The original filename for reference
+   * @returns {Promise<{success:boolean, message:string}>}
+   */
+  async function uploadAndLoadState(fileContent, fileName) {
+    return request('/state/upload-and-load', {
+      method: 'POST',
+      body: JSON.stringify({ file_content: fileContent, file_name: fileName }),
+    });
+  }
+
+  /**
    * Get the mount controller configuration.
    * GET /api/config
    * @returns {Promise<object>}
@@ -684,6 +727,9 @@ const Api = (() => {
     parkMount,
     unparkMount,
     clearErrors,
+    saveState,
+    loadState,
+    uploadAndLoadState,
     moveAxis,
     stopAxis,
     emergencyStop,

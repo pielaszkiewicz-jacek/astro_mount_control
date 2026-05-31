@@ -8,6 +8,8 @@ flowchart TB
     classDef getting fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
     classDef coreDoc fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
     classDef guide fill:#fff3e0,stroke:#e65100,stroke-width:2px,color:#bf360c
+    classDef web fill:#fce4ec,stroke:#c62828,stroke-width:2px,color:#b71c1c
+    classDef can fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#004d40
 
     README["📖 README.md<br/>Strona główna"]:::root
     
@@ -29,6 +31,17 @@ flowchart TB
         FLOW["📊 przeplyw_danych.md<br/>Diagramy przepływu"]:::guide
     end
     
+    subgraph WEB["🌐 Interfejs Web"]
+        WDASH["🖥️ ../../web/README.md<br/>Dokumentacja Web UI"]:::web
+    end
+
+    subgraph CAN_DOCS["🔌 Konfiguracja CAN"]
+        CAN_OPENSUSE["📄 konfiguracja_can_u2c_opensuse.md<br/>openSUSE"]:::can
+        CAN_UBUNTU["📄 konfiguracja_can_u2c_ubuntu_debian.md<br/>Ubuntu/Debian"]:::can
+        CAN_FEDORA["📄 konfiguracja_can_u2c_fedora.md<br/>Fedora/RHEL"]:::can
+        CAN_ARCH["📄 konfiguracja_can_u2c_arch.md<br/>Arch Linux"]:::can
+    end
+    
     README --> INTRO
     README --> INSTALL
     README --> ARCH
@@ -38,6 +51,11 @@ flowchart TB
     README --> EX
     README --> APIEX
     README --> FLOW
+    README --> WDASH
+    README --> CAN_OPENSUSE
+    README --> CAN_UBUNTU
+    README --> CAN_FEDORA
+    README --> CAN_ARCH
 ```
 
 ## Spis treści
@@ -49,6 +67,11 @@ flowchart TB
 5. [Warstwa HAL](hal_layer.md) - Dokumentacja warstwy abstrakcji sprzętowej
 6. [Przykłady użycia](examples.md) - Praktyczne przykłady w C++ i Python
 7. [Baza obiektów astronomicznych](api.md#object-database-api) - Astronomiczna baza obiektów (SQLite + gRPC)
+8. [Interfejs Web](../../web/README.md) - Przeglądarkowy interfejs sterowania (HTTP/JSON proxy + SPA)
+9. [Konfiguracja CAN U2C - openSUSE](konfiguracja_can_u2c_opensuse.md)
+10. [Konfiguracja CAN U2C - Ubuntu/Debian](konfiguracja_can_u2c_ubuntu_debian.md)
+11. [Konfiguracja CAN U2C - Fedora/RHEL](konfiguracja_can_u2c_fedora.md)
+12. [Konfiguracja CAN U2C - Arch Linux](konfiguracja_can_u2c_arch.md)
 
 ## Szybki start
 
@@ -87,9 +110,19 @@ stub.SlewToCoordinates(coords)
 ## Kluczowe funkcjonalności
 
 ### Precyzyjne śledzenie
-- Sub-arcsecond tracking accuracy
+- Dokładność śledzenia sub-arcsecond
 - Automatyczna kalibracja TPOINT
 - Rozszerzony filtr Kalmana do ciągłej kalibracji
+
+### Interfejs Web
+- SPA w przeglądarce z serwerem proxy HTTP/JSON (Node.js/Express)
+- 6 zakładek: Status, Sterowanie, Ustawienia, Kalibracja, Baza Danych, Śledzenie
+- Status montażu w czasie rzeczywistym (odświeżanie co 1s)
+- Pełne zarządzanie konfiguracją z importem/eksportem
+- Baza obiektów astronomicznych z katalogami preset (Messier, NGC, IC, HYG, Caldwell)
+- Dwuetapowa kalibracja (Bootstrap + TPOINT) z wyszukiwaniem gwiazd referencyjnych
+- Śledzenie efemeryd obiektów ruchomych (satelity, komety, asteroidy)
+- Motyw noktowizyjny (czerwony) i tryb mobilny
 
 ### Zaawansowane modele matematyczne
 - Pełny model TPOINT (21 parametrów)
@@ -97,12 +130,13 @@ stub.SlewToCoordinates(coords)
 - Transformacje układów współrzędnych
 
 ### Integracja sprzętowa
-- CANopen interface (CiA 301, CiA 402)
+- Interfejs CANopen (CiA 301, CiA 402)
 - Obsługa enkoderów absolutnych
 - Integracja z systemami autoguiding
 
 ### API
-- Kompletne gRPC API
+- Kompletne gRPC API (50+ metod RPC)
+- REST API HTTP/JSON przez proxy (~40 endpointów)
 - Obsługa wielu klientów jednocześnie
 - Serializacja protobuf
 

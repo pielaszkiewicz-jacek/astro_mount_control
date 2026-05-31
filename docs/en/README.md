@@ -99,6 +99,16 @@ stub.SlewToCoordinates(coords)
 - Automatic TPOINT calibration
 - Extended Kalman filter for continuous calibration
 
+### Web Interface
+- Browser-based SPA with HTTP/JSON proxy (Node.js/Express)
+- 6-tab interface: Status, Control, Settings, Calibration, Database, Tracking
+- Real-time mount status with 1-second polling
+- Full configuration management with import/export
+- Object database with catalog presets (Messier, NGC, IC, HYG, Caldwell)
+- Two-stage calibration (Bootstrap + TPOINT) with reference object search
+- Ephemeris tracking for moving objects (satellites, comets, asteroids)
+- Night-vision red theme and mobile layout toggle
+
 ### Advanced Mathematical Models
 - Full TPOINT model (21 parameters)
 - Astronomical calculations with refraction correction
@@ -110,7 +120,8 @@ stub.SlewToCoordinates(coords)
 - Autoguiding system integration
 
 ### API
-- Complete gRPC API
+- Complete gRPC API (50+ RPC methods)
+- HTTP/JSON REST API via proxy (~40 endpoints)
 - Support for multiple simultaneous clients
 - Protobuf serialization
 

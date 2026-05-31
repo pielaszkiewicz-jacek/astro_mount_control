@@ -86,7 +86,7 @@
       <button class="tab-btn" data-tab="tracking" role="tab" aria-selected="false" aria-controls="panel-tracking">
         <span class="tab-icon-svg">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="2"/><path d="M12 2a10 10 0 0 1 10 10"/><path d="M12 2v4"/><path d="M12 22a10 10 0 0 0 10-10"/><path d="M12 22v-4"/><path d="M2 12h4"/><path d="M22 12h-4"/><path d="M12 6a6 6 0 1 0 6 6"/>
+            <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="2"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
           </svg>
         </span>
         <span class="tab-label">Tracking</span>
@@ -182,7 +182,7 @@
                 <button id="btn-axis-left"  class="btn btn-axis btn-axis-left"  title="Move left (RA-/Az-)">◄</button>
                 <div class="axis-pad-center">
                   <span id="axis-pad-icon" class="flat-icon">
-                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                       <circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/>
                       <line x1="2" y1="12" x2="7" y2="12"/><line x1="17" y1="12" x2="22" y2="12"/>
                     </svg>
@@ -190,6 +190,19 @@
                 </div>
                 <button id="btn-axis-right" class="btn btn-axis btn-axis-right" title="Move right (RA+/Az+)">►</button>
                 <button id="btn-axis-down"  class="btn btn-axis btn-axis-down"  title="Move down (Dec-/Alt-)">▼</button>
+              </div>
+
+              <!-- Axis Mode Selector -->
+              <div class="axis-mode-select">
+                <span class="axis-mode-label">Mode:</span>
+                <button id="btn-axis-mode-toggle" class="btn btn-sm btn-secondary" title="Toggle between Step mode (single move by set amount) and Velocity mode (continuous while held)">
+                  <span id="axis-mode-toggle-label">Velocity</span>
+                </button>
+                <div id="axis-step-control" class="axis-step-control" style="display:none;">
+                  <label for="axis-step-size" class="axis-mode-label">Step:</label>
+                  <input type="number" id="axis-step-size" class="form-input axis-step-input" value="1.0" min="0.01" max="90" step="0.1" />
+                  <span class="axis-mode-label">°</span>
+                </div>
               </div>
 
               <!-- Speed Control -->
@@ -218,6 +231,56 @@
                 <button id="btn-park" class="btn btn-warning">Park</button>
                 <button id="btn-unpark" class="btn btn-secondary">Unpark</button>
                 <button id="btn-clear-errors" class="btn btn-secondary">Clear Errors</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mount State Card -->
+          <div id="card-state" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Mount State</h2>
+            </div>
+            <div class="card-body">
+              <div style="font-size:0.85rem; color:var(--color-text-secondary); margin-bottom:8px;">
+                Save the current mount controller state (axis positions, status, calibration, orientation) to a file on the server, or restore from a previously saved file by selecting it on your computer.
+              </div>
+
+              <div class="control-form" style="margin-bottom:10px;">
+                <div class="form-group">
+                  <label for="state-dir-path" style="font-size:0.8rem; color:var(--color-text-secondary);">Directory (server-side)</label>
+                  <input type="text" id="state-dir-path" class="form-input" value="data/"
+                         style="width:100%; font-size:0.82rem; padding:6px 8px; font-family:monospace;" />
+                </div>
+                <div style="display:flex; gap:6px; align-items:flex-end;">
+                  <div class="form-group" style="flex:1;">
+                    <label for="state-file-name" style="font-size:0.8rem; color:var(--color-text-secondary);">Filename (server-side)</label>
+                    <input type="text" id="state-file-name" class="form-input" placeholder="mount_state.json"
+                           style="width:100%; font-size:0.82rem; padding:6px 8px; font-family:monospace;" />
+                  </div>
+                  <button id="btn-state-default-name" class="btn btn-sm btn-secondary" style="margin-bottom:1px;" title="Generate filename with current date/time">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px;">
+                      <circle cx="12" cy="12" r="10"/>
+                      <polyline points="12 6 12 12 16 14"/>
+                    </svg>
+                    Now
+                  </button>
+                </div>
+              </div>
+              <div class="action-grid">
+                <button id="btn-save-state" class="btn btn-secondary" title="Save current mount state to server">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                    <polyline points="17 21 17 13 7 13 7 21"/>
+                    <polyline points="7 3 7 8 15 8"/>
+                  </svg>
+                  Save State
+                </button>
+                <button id="btn-load-state" class="btn btn-secondary" title="Load mount state from a file on the server">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  Load State
+                </button>
               </div>
             </div>
           </div>
@@ -294,6 +357,22 @@
             <div class="card-header">
               <h2 class="card-title">Configuration</h2>
               <div class="config-header-actions">
+                <button id="btn-export-config" class="btn btn-sm btn-secondary" title="Export configuration to a JSON file">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="17 8 12 3 7 8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                  </svg>
+                  Export
+                </button>
+                <button id="btn-import-config" class="btn btn-sm btn-secondary" title="Import configuration from a JSON file">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Import
+                </button>
                 <button id="btn-reset-all-config" class="btn btn-sm btn-danger" title="Reset all configuration to default values" style="display:none;">Reset All to Defaults</button>
               </div>
             </div>
@@ -1711,6 +1790,153 @@
                   <div id="db-import-results-content"></div>
                 </div>
 
+                <!-- ── Supported File Formats Documentation ── -->
+                <details class="form-section" id="db-import-format-info" style="margin-top:12px;">
+                  <summary class="form-section-summary">📋 Supported File Formats</summary>
+                  <div class="form-section-body" style="font-size:0.85em; line-height:1.6;">
+
+                    <!-- CSV -->
+                    <h4 style="margin:0 0 6px 0;">✅ CSV (Comma-Separated Values) — <em>w pełni obsługiwany</em></h4>
+                    <p style="margin:0 0 4px 0;">
+                      Jedyny format w pełni zaimplementowany po stronie serwera. System korzysta z <strong>mapowania pól</strong>
+                      (<code>field_mapping</code>), które dopasowuje kolumny CSV do pól obiektów astronomicznych.
+                      Separator wykrywany jest automatycznie (<code>;</code> lub <code>,</code>).
+                    </p>
+                    <p style="margin:0 0 8px 0;"><strong>Dostępne klucze mapowania:</strong></p>
+                    <table style="width:100%; border-collapse:collapse; margin-bottom:8px;">
+                      <thead>
+                        <tr style="border-bottom:1px solid var(--border-color, #444);">
+                          <th style="text-align:left; padding:4px 8px;">Klucz</th>
+                          <th style="text-align:left; padding:4px 8px;">Wymagany</th>
+                          <th style="text-align:left; padding:4px 8px;">Format</th>
+                          <th style="text-align:left; padding:4px 8px;">Przykład</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr><td style="padding:2px 8px;"><code>name</code></td><td style="padding:2px 8px;">✅ Tak</td><td style="padding:2px 8px;">Tekst (nazwa obiektu)</td><td style="padding:2px 8px;"><code>M31</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>ra</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">HH:MM:SS.s lub godziny dziesiętne</td><td style="padding:2px 8px;"><code>00:42:44.3</code> lub <code>0.7123</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>dec</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">DD:MM:SS.s lub stopnie dziesiętne</td><td style="padding:2px 8px;"><code>+41:16:09</code> lub <code>41.269</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>type</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Kod typu NGC (Gx, OC, Pn, itd.)</td><td style="padding:2px 8px;"><code>Gx</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>magnitude</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Liczba dziesiętna (wizualna)</td><td style="padding:2px 8px;"><code>3.44</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>constellation</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">3-literowy kod IAU</td><td style="padding:2px 8px;"><code>And</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>b_magnitude</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Liczba dziesiętna (niebieska)</td><td style="padding:2px 8px;"><code>4.2</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>spectral_type</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Klasa widmowa MK</td><td style="padding:2px 8px;"><code>G2V</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>catalog_id</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Identyfikator katalogowy</td><td style="padding:2px 8px;"><code>HIP 1234</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>catalog_name</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Tekst</td><td style="padding:2px 8px;"><code>NGC</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>angular_size</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Minuty kątowe</td><td style="padding:2px 8px;"><code>178</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>distance</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Lata świetlne</td><td style="padding:2px 8px;"><code>2537000</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>radial_velocity</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">km/s</td><td style="padding:2px 8px;"><code>-301</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>redshift</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Liczba dziesiętna</td><td style="padding:2px 8px;"><code>0.0013</code></td></tr>
+                        <tr><td style="padding:2px 8px;"><code>notes</code></td><td style="padding:2px 8px;">Opcjonalny</td><td style="padding:2px 8px;">Dowolny tekst</td><td style="padding:2px 8px;"><code>Najjaśniejsza galaktyka w Grupie Lokalnej</code></td></tr>
+                      </tbody>
+                    </table>
+                    <p style="margin:4px 0 0 0;">
+                      <strong>📌 Kody typów:</strong> Obsługuje standardowe kody OpenNGC — <code>Gx</code> (galaktyka), <code>OC</code> (gromada otwarta),
+                      <code>Gb</code> (gromada kulista), <code>Pn</code> (mgławica planetarna), <code>Nb</code> (mgławica dyfuzyjna),
+                      <code>*</code> (gwiazda), <code>SNR</code> (pozostałość po supernowej), <code>QSO</code> (kwazar) i wiele innych.<br>
+                      <strong>📌 Konstelacja:</strong> Używaj standardowych 3-literowych kodów IAU (np. <code>And</code>, <code>Ori</code>, <code>UMa</code>).
+                      Konstelacja jest widoczna zarówno na liście obiektów, jak i w szczegółowym widoku.
+                    </p>
+
+                    <hr style="border:none; border-top:1px solid var(--border-color, #444); margin:12px 0;">
+
+                    <!-- JSON -->
+                    <h4 style="margin:0 0 6px 0;">⚠️ JSON — <em>niezaimplementowany</em></h4>
+                    <p style="margin:0 0 4px 0;">
+                      Format zdefiniowany w protokole gRPC, ale nie jest jeszcze obsługiwany przez serwer.
+                      Docelowo spodziewana struktura:
+                    </p>
+                    <pre style="background:var(--bg-secondary, #222); padding:6px 10px; border-radius:4px; overflow-x:auto; font-size:0.9em;"><code>{
+      "objects": [
+        {
+          "name": "M31",
+          "ra_hours": 0.7123,
+          "dec_degrees": 41.269,
+          "v_magnitude": 3.44,
+          "constellation": "And",
+          ...
+        }
+      ]
+    }</code></pre>
+                    <p style="margin:4px 0 0 0;">
+                      Każdy obiekt odpowiada polom zdefiniowanym w <code>AstronomicalObject</code> protobuf.
+                    </p>
+
+                    <hr style="border:none; border-top:1px solid var(--border-color, #444); margin:12px 0;">
+
+                    <!-- FITS -->
+                    <h4 style="margin:0 0 6px 0;">⚠️ FITS (Flexible Image Transport System) — <em>niezaimplementowany</em></h4>
+                    <p style="margin:0 0 4px 0;">
+                      Standardowy format używany w astronomii do przechowywania danych obrazowych i tabelarycznych.
+                      Docelowo system będzie odczytywać tabele binarne (BINTABLE) z rozszerzeń FITS zawierające
+                      kolumny z katalogami obiektów (np. katalogi z misji <em>Gaia</em>, <em>2MASS</em>, <em>SDSS</em>).
+                    </p>
+                    <p style="margin:0 0 0 0;">
+                      Wymagana będzie osobna biblioteka (<code>cfitsio</code>) do parsowania formatu.
+                    </p>
+
+                    <hr style="border:none; border-top:1px solid var(--border-color, #444); margin:12px 0;">
+
+                    <!-- VOTable -->
+                    <h4 style="margin:0 0 6px 0;">⚠️ VOTable (XML) — <em>niezaimplementowany</em></h4>
+                    <p style="margin:0 0 4px 0;">
+                      Format XML przyjęty przez Międzynarodową Unię Astronomiczną (IAU) do wymiany danych tabelarycznych.
+                      Docelowo system będzie parsować strukturę <code>&lt;RESOURCE&gt;</code> → <code>&lt;TABLE&gt;</code> →
+                      <code>&lt;FIELD&gt;</code> / <code>&lt;DATA&gt;</code> → <code>&lt;TR&gt;</code> / <code>&lt;TD&gt;</code>
+                      z mapowaniem typów VOTable na pola protobuf.
+                    </p>
+                    <p style="margin:0 0 0 0;">
+                      Wykorzystywany przez serwisy takie jak <em>VizieR</em>, <em>SIMBAD</em> i <em>IRSA</em>.
+                    </p>
+
+                    <hr style="border:none; border-top:1px solid var(--border-color, #444); margin:12px 0;">
+
+                    <!-- SIMBAD -->
+                    <h4 style="margin:0 0 6px 0;">⚠️ SIMBAD — <em>niezaimplementowany</em></h4>
+                    <p style="margin:0 0 4px 0;">
+                      Format eksportu z bazy danych SIMBAD (CDS, Strasbourg). Docelowo system będzie akceptować
+                      wyniki zapytań w formacie tekstowym SIMBAD, zawierające:
+                    </p>
+                    <ul style="margin:0 0 4px 16px; padding:0;">
+                      <li>główny identyfikator obiektu,</li>
+                      <li>typ obiektu według klasyfikacji SIMBAD,</li>
+                      <li>współrzędne równikowe (J2000),</li>
+                      <li>wielkości gwiazdowe (V, B),</li>
+                      <li>klasę widmową,</li>
+                      <li>oznaczenia w innych katalogach.</li>
+                    </ul>
+
+                    <hr style="border:none; border-top:1px solid var(--border-color, #444); margin:12px 0;">
+
+                    <!-- NED -->
+                    <h4 style="margin:0 0 6px 0;">⚠️ NED (NASA/IPAC Extragalactic Database) — <em>niezaimplementowany</em></h4>
+                    <p style="margin:0 0 4px 0;">
+                      Format eksportu z bazy danych NASA/IPAC zawierającej obiekty pozagalaktyczne.
+                      Docelowo system będzie akceptować wyniki zapytań NED w formacie tekstowym,
+                      zawierające nazwy obiektów, współrzędne, przesunięcie ku czerwieni (redshift),
+                      wielkości gwiazdowe, morfologię galaktyk i odległości.
+                    </p>
+
+                    <hr style="border:none; border-top:1px solid var(--border-color, #444); margin:12px 0;">
+
+                    <!-- MPC -->
+                    <h4 style="margin:0 0 6px 0;">⚠️ MPC (Minor Planet Center) — <em>niezaimplementowany</em></h4>
+                    <p style="margin:0 0 4px 0;">
+                      Standardowy format używany przez Minor Planet Center do publikacji danych orbitalnych
+                      planetoid i komet. Docelowo system będzie parsować format <strong>MPC 80-column</strong>
+                      (lub rozszerzony <strong>MPC Packed</strong>), zawierający:
+                    </p>
+                    <ul style="margin:0 0 4px 16px; padding:0;">
+                      <li>tymczasowe i stałe oznaczenie obiektu,</li>
+                      <li>elementy orbitalne (a, e, i, Ω, ω, M, epoka),</li>
+                      <li>bezwzględną wielkość gwiazdową (H),</li>
+                      <li>parametr nachylenia jasności (G),</li>
+                      <li>datę ostatniej obserwacji.</li>
+                    </ul>
+
+                  </div>
+                </details>
+
               </div>
             </div>
           </div>
@@ -1720,38 +1946,15 @@
       <!-- Tracking Panel -->
       <section id="panel-tracking" class="tab-panel" role="tabpanel" aria-labelledby="tab-tracking">
         <div class="card-grid">
+
           <!-- Tracking Status Card -->
           <div id="card-tracking-status" class="card full-width">
             <div class="card-header">
-              <h2 class="card-title">Ephemeris Tracking Status</h2>
-              <span id="tracking-state-badge" class="status-badge idle">—</span>
+              <h2 class="card-title">Tracking Status</h2>
+              <span id="tracking-state-badge" class="status-badge idle">Idle</span>
             </div>
             <div class="card-body" id="tracking-status-content">
-              <div class="status-placeholder">Loading tracking status...</div>
-            </div>
-          </div>
-
-          <!-- Tracking Control Card -->
-          <div id="card-tracking-control" class="card full-width">
-            <div class="card-header">
-              <h2 class="card-title">Tracking Control</h2>
-            </div>
-            <div class="card-body">
-              <div class="control-form">
-                <div class="form-row">
-                  <div class="form-group" style="flex:1;">
-                    <label for="tracking-object-id">Object ID</label>
-                    <input type="text" id="tracking-object-id" class="form-input" placeholder="e.g. ISS, SAT-12345" />
-                  </div>
-                  <div style="display:flex; align-items:flex-end; gap:8px;">
-                    <button id="tracking-start-btn" class="btn btn-primary">Start Tracking</button>
-                    <button id="tracking-stop-btn" class="btn btn-danger" disabled>Stop</button>
-                  </div>
-                </div>
-                <div class="form-row" style="margin-top:8px;">
-                  <small class="form-help">Start tracking a previously uploaded ephemeris by object ID. Use the Ephemeris Upload section below to upload new data.</small>
-                </div>
-              </div>
+              <div class="status-placeholder">No tracking active</div>
             </div>
           </div>
 
@@ -1765,70 +1968,61 @@
             </div>
           </div>
 
-          <!-- Ephemeris Upload Card -->
-          <div id="card-ephemeris-upload" class="card full-width card-collapsible">
-            <div class="card-header" id="ephemeris-upload-header">
-              <h2 class="card-title">Ephemeris Upload</h2>
-              <span class="card-collapse-icon">▾</span>
+          <!-- Start Tracking Card -->
+          <div id="card-tracking-start" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Start Tracking</h2>
             </div>
             <div class="card-body">
               <div class="control-form">
-                <details class="form-section" open>
-                  <summary class="form-section-summary">Upload Ephemeris Data (JSON)</summary>
-                  <div class="form-section-body">
-                    <div class="form-group">
-                      <label for="tracking-upload-json">Ephemeris JSON</label>
-                      <textarea id="tracking-upload-json" class="form-input form-textarea" rows="6"
-                        placeholder='{
-  "object_id": "ISS",
-  "object_name": "International Space Station",
-  "object_type": "satellite",
-  "points": [
-    {
-      "timestamp": {"seconds": 1700000000},
-      "ra": 10.5,
-      "dec": 20.3,
-      "ra_rate": 0.1,
-      "dec_rate": -0.05
-    }
-  ],
-  "interpolation_order": 3
-}'></textarea>
-                    </div>
-                    <div style="display:flex; gap:8px; margin-top:8px;">
-                      <button id="tracking-upload-btn" class="btn btn-primary">Upload Ephemeris</button>
-                      <button id="tracking-clear-cache-btn" class="btn btn-secondary">Clear Cache</button>
-                    </div>
-                  </div>
-                </details>
-
-                <details class="form-section">
-                  <summary class="form-section-summary">Start Tracking with Data</summary>
-                  <div class="form-section-body">
-                    <div class="form-group">
-                      <label for="tracking-ephemeris-json">EphemerisTrackRequest JSON</label>
-                      <textarea id="tracking-ephemeris-json" class="form-input form-textarea" rows="6"
-                        placeholder='{
-  "ephemeris": {
-    "object_id": "ISS",
-    "object_name": "International Space Station",
-    "object_type": "satellite",
-    "points": [...],
-    "interpolation_order": 3
-  },
-  "lead_time_seconds": 30,
-  "auto_start": true,
-  "tracking_mode": "continuous"
-}'></textarea>
-                    </div>
-                    <button id="tracking-start-data-btn" class="btn btn-primary" style="margin-top:8px;">Upload & Start Tracking</button>
-                  </div>
-                </details>
+                <div class="form-group">
+                  <label for="tracking-object-id" class="form-label">Object ID / Name</label>
+                  <input type="text" id="tracking-object-id" class="form-input" placeholder="e.g. ISS (ZARYA)">
+                </div>
+                <button id="tracking-start-btn" class="btn btn-primary">Start Tracking</button>
               </div>
+
+              <details class="form-section" style="margin-top:16px;">
+                <summary>Start with Ephemeris Data</summary>
+                <div class="form-section-body">
+                  <div class="form-group">
+                    <label for="tracking-ephemeris-json" class="form-label">Ephemeris Data (JSON)</label>
+                    <textarea id="tracking-ephemeris-json" class="form-input" rows="6" placeholder='[{"time": 0.0, "ra": 12.5, "dec": 42.0}, ...]'></textarea>
+                  </div>
+                  <button id="tracking-start-data-btn" class="btn btn-primary">Start with Data</button>
+                </div>
+              </details>
             </div>
           </div>
+
+          <!-- Controls Card -->
+          <div id="card-tracking-controls" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Controls</h2>
+            </div>
+            <div class="card-body" style="display:flex; flex-direction:column; gap:8px;">
+              <button id="tracking-stop-btn" class="btn btn-danger" disabled>Stop Tracking</button>
+              <button id="tracking-clear-cache-btn" class="btn btn-secondary">Clear Ephemeris Cache</button>
+            </div>
+          </div>
+
+          <!-- Upload Ephemeris Card -->
+          <div id="card-tracking-upload" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Upload Ephemeris</h2>
+            </div>
+            <div class="card-body">
+              <div class="form-group">
+                <label for="tracking-upload-json" class="form-label">Ephemeris Data (JSON)</label>
+                <textarea id="tracking-upload-json" class="form-input" rows="4" placeholder='{"object_id": "ISS", ...}'></textarea>
+              </div>
+              <button id="tracking-upload-btn" class="btn btn-secondary" style="margin-top:8px;">Upload</button>
+            </div>
+          </div>
+
         </div>
       </section>
+
     </div>
   </main>
 
@@ -1837,11 +2031,23 @@
 
   <!-- ─── Footer ──────────────────────────────────────────────────────── -->
   <footer class="app-footer">
-    <span>Astro Mount Controller v1.0.0</span>
-    <span id="last-update">—</span>
+    <div class="footer-bar">
+      <span>Astro Mount Controller v1.0.0</span>
+      <span id="last-update">—</span>
+      <button id="btn-toggle-log" class="btn btn-sm btn-secondary log-toggle-btn" title="Toggle application log panel">📋 Logs</button>
+    </div>
+    <div id="log-panel" class="log-panel" style="display:none;">
+      <div class="log-toolbar">
+        <span class="log-title">Application Log</span>
+        <button id="btn-clear-log" class="btn btn-sm btn-secondary">Clear</button>
+        <button id="btn-close-log" class="btn btn-sm btn-secondary">Close</button>
+      </div>
+      <div id="log-content" class="log-content"></div>
+    </div>
   </footer>
 
   <!-- ─── Scripts ─────────────────────────────────────────────────────── -->
+  <script src="js/logger.js"></script>
   <script src="js/utils.js"></script>
   <script src="js/api.js"></script>
   <script src="js/components/mountStatus.js"></script>

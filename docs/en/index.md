@@ -45,14 +45,19 @@ flowchart TB
     classDef hw fill:#efebe9,stroke:#4e342e,stroke-width:2px,color:#3e2723
     classDef cfg fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#004d40
 
-    subgraph CLIENTS["🧑‍💻 Client Applications"]
+    subgraph WEBUI["🌐 Web Interface"]
+        SPA["Browser SPA<br/>web/public/index.html<br/>Vanilla JS · 6 tabs"]
+        PROXY["Node.js Express Proxy<br/>web/proxy/server.js<br/>HTTP/JSON → gRPC · port 8080"]
+    end
+
+    subgraph CLIENTS["🧑‍💻 Other Clients"]
         PY["Python Client<br/>(gRPC stub)"]
         CPP["C++ Client<br/>(gRPC stub)"]
-        WEB["Web GUI<br/>(HTTP/JSON proxy)"]
     end
 
     subgraph API["🌐 gRPC API"]
         GRPC["MountControllerServiceImpl<br/>proto/mount_controller.proto"]
+        DB_GRPC["ObjectDatabaseServiceImpl<br/>proto/object_database.proto"]
     end
 
     subgraph CORE["⚙️ Mount Controller Core"]
@@ -70,14 +75,23 @@ flowchart TB
         CONFIG["Configuration System<br/>JSON-based · 25+ validations<br/>config/default.json"]
     end
 
+    subgraph DB_SVC["🗄️ Object Database"]
+        DB_SERVICE["ObjectDatabaseService<br/>db/src/object_database_service.cpp<br/>SQLite · Catalog CRUD · Search · Import"]
+    end
+
     subgraph HW["🔧 Hardware"]
         HW1["Servo drives"]
         HW2["Absolute encoders"]
         HW3["Sensors<br/>Temperature · Pressure"]
     end
 
-    CLIENTS -->|gRPC| GRPC
+    SPA -->|"HTTP/JSON"| PROXY
+    PROXY -->|"gRPC"| GRPC
+    PROXY -->|"gRPC"| DB_GRPC
+    PY -->|gRPC| GRPC
+    CPP -->|gRPC| GRPC
     GRPC --> MC
+    DB_GRPC --> DB_SERVICE
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
@@ -87,8 +101,9 @@ flowchart TB
     CONFIG --> CAN
     CAN --> HW
 
-    class PY,CPP,WEB client
-    class GRPC api
+    class SPA,PROXY client
+    class PY,CPP client
+    class GRPC,DB_GRPC api
     class MC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
@@ -132,7 +147,31 @@ CANopen protocol implementation (CiA 301, CiA 402):
 - Motion trajectory generation
 - Drive status monitoring
 
-#### 6. **Configuration System**
+#### 6. **Web Proxy (HTTP/JSON → gRPC)**
+Node.js Express proxy server bridging browser to gRPC backends:
+- HTTP/JSON REST API (~40 endpoints) for mount control, calibration, tracking, config, database
+- Static file serving for the SPA
+- Catalog import data enrichment and filtering
+- Mount state file upload and management
+- CORS support, SSL/TLS, configurable gRPC addresses
+
+#### 7. **Web Interface (Browser SPA)**
+Single-page application with 6 tabs:
+- **Status** — real-time mount state, position, environment, tracked object
+- **Control** — slew to coordinates, axis control pad (velocity/step mode), state save/load
+- **Settings** — 18 config groups with Save/Restore Defaults, export/import, address config
+- **Calibration** — Bootstrap coarse alignment + TPOINT precise pointing model
+- **Database** — object CRUD, search/filter, favorites, catalog import (presets/file/URL)
+- **Tracking** — ephemeris tracking for moving objects (satellites, comets, asteroids)
+
+#### 8. **Object Database Service**
+SQLite-backed astronomical object catalog:
+- Full CRUD with pagination and search
+- Multiple catalog support (Messier, NGC, IC, Caldwell, HYG, SAO)
+- Favorite objects, categories, import/export
+- gRPC API on port 50052
+
+#### 9. **Configuration System**
 Configuration management system:
 - Loading/saving JSON configuration
 - Parameter validation
@@ -805,34 +844,16 @@ The accuracy of the Astronomical Mount Controller heavily depends on precise kno
 
 ## Web Interface
 
-The project includes a browser-based web dashboard for remote mount control and monitoring, located in the [`web/`](../web/) directory.
-
-### Architecture
-
-```
-┌─────────────┐     HTTP/JSON      ┌──────────────┐     gRPC      ┌──────────────────┐
-│   Browser   │ ──────────────────>│  Proxy Server │ ────────────>│ Mount Controller │
-│   (SPA)     │<──────────────────│  (Express.js) │<────────────│   (C++ gRPC)     │
-└─────────────┘     JSON/HTML      └──────────────┘              └──────────────────┘
-```
-
-### Key Features
-- **Mobile-first responsive design** — adapts to phones, tablets, and desktops
-- **Card-based UI** — modular cards for status, control, and settings
-- **Real-time status** — 1-second polling loop for live mount data
-- **Mount control** — slew to coordinates, stop, park/unpark, clear errors
-- **Tab navigation** — Status, Control, Settings tabs (extensible framework)
+See sections [**6. Web Proxy**](#6-web-proxy-httpjson--grpc) and [**7. Web Interface**](#7-web-interface-browser-spa) above for component descriptions. The complete WEB UI documentation is in [`web/README.md`](../web/README.md).
 
 ### Quick Start
+
 ```bash
 cd web/proxy
-cp .env.example .env        # Edit if gRPC host/port differ
-npm install                 # Already installed
-npm start                   # Starts on http://localhost:3000
+cp .env.example .env        # Edit gRPC/DB host/port if needed
+npm install
+npm start                   # Starts on http://localhost:8080
 ```
-
-### Documentation
-See [`web/README.md`](../web/README.md) for detailed setup, API endpoints, and extension guide.
 
 ---
 

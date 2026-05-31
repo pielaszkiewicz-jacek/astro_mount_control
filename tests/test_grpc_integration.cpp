@@ -984,11 +984,11 @@ TEST_F(GrpcIntegrationTest, SaveState_EmptyPath) {
 
     auto status = stub_->SaveState(&context, request, &response);
     EXPECT_TRUE(status.ok());
-    // Should use default path when empty
-    EXPECT_EQ(response.file_path(), "mount_state.json");
+    // Should use default path when empty — now "data/mount_state.json"
+    EXPECT_EQ(response.file_path(), "data/mount_state.json");
 
     // Cleanup
-    std::remove("mount_state.json");
+    std::remove("data/mount_state.json");
 }
 
 TEST_F(GrpcIntegrationTest, SaveState_VeryLongPath) {

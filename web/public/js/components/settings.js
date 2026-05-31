@@ -846,10 +846,83 @@ const SettingsComponent = (() => {
     }
   }
 
+  // ─── Export / Import Configuration ────────────────────────────────────────
+
+  /**
+   * Export the current configuration as a downloadable JSON file.
+   */
+  async function handleExportConfig() {
+    try {
+      const configData = await Api.getConfig();
+      const blob = new Blob([JSON.stringify(configData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 19).replace(/[:-]/g, '');
+      a.download = `mount-config-${dateStr}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      App.showToast('✅ Configuration exported successfully', 'success', 3000);
+    } catch (err) {
+      App.showToast(`Export failed: ${err.message}`, 'error');
+    }
+  }
+
+  /**
+   * Import configuration from a JSON file selected by the user.
+   * Reads the file and applies it via the API.
+   */
+  function handleImportConfig() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.addEventListener('change', async (event) => {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      // Validate file extension
+      if (!file.name.endsWith('.json')) {
+        App.showToast('Please select a .json file', 'error');
+        return;
+      }
+
+      try {
+        const text = await file.text();
+        let configData;
+        try {
+          configData = JSON.parse(text);
+        } catch (e) {
+          App.showToast('Invalid JSON file', 'error');
+          return;
+        }
+
+        if (typeof configData !== 'object' || configData === null || Array.isArray(configData)) {
+          App.showToast('Config file must contain a JSON object', 'error');
+          return;
+        }
+
+        await Api.updateConfig(configData);
+        App.showToast(`✅ Configuration imported from ${file.name}`, 'success', 4000);
+
+        // Reload config to reflect changes
+        const fresh = await Api.getConfig();
+        currentConfig = fresh;
+        const container = $('#config-content');
+        if (container) renderConfig(fresh, container);
+      } catch (err) {
+        App.showToast(`Import failed: ${err.message}`, 'error');
+      }
+    });
+    input.click();
+  }
+
   // ─── Event Binding ────────────────────────────────────────────────────────
 
   /**
-   * Bind events for save/reset buttons and the reset-all button.
+   * Bind events for save/reset buttons, export/import, and the reset-all button.
    */
   function initEventHandlers() {
     // Delegate click events for save/reset buttons
@@ -875,6 +948,18 @@ const SettingsComponent = (() => {
         if (confirm('Reset ALL configuration to default values? This cannot be undone.')) {
           resetAllConfig();
         }
+        return;
+      }
+
+      const exportBtn = e.target.closest('#btn-export-config');
+      if (exportBtn) {
+        handleExportConfig();
+        return;
+      }
+
+      const importBtn = e.target.closest('#btn-import-config');
+      if (importBtn) {
+        handleImportConfig();
         return;
       }
     });

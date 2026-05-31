@@ -51,6 +51,7 @@ const TrackingComponent = (() => {
   // ─── Initialization ───────────────────────────────────────────────────────
 
   function init() {
+    console.log('[TrackingComponent] init() called');
     bindEvents();
   }
 
@@ -214,10 +215,13 @@ const TrackingComponent = (() => {
    * Fetch and display the current tracking status.
    */
   async function loadTrackingStatus() {
+    console.log('[TrackingComponent] loadTrackingStatus() called');
     try {
       const status = await Api.getTrackingStatus();
+      console.log('[TrackingComponent] getTrackingStatus response:', status);
       updateTrackingStatusUI(status);
     } catch (err) {
+      console.warn('[TrackingComponent] getTrackingStatus error:', err.message);
       showStatusPlaceholder('Tracking service unavailable');
     }
   }
@@ -226,11 +230,13 @@ const TrackingComponent = (() => {
    * Fetch and display tracking metrics.
    */
   async function loadTrackingMetrics() {
+    console.log('[TrackingComponent] loadTrackingMetrics() called');
     try {
       const metrics = await Api.getTrackingMetrics();
+      console.log('[TrackingComponent] getTrackingMetrics response:', metrics);
       updateTrackingMetricsUI(metrics);
-    } catch {
-      // Metrics may not be available — that's OK
+    } catch (err) {
+      console.warn('[TrackingComponent] getTrackingMetrics error:', err.message);
       showMetricsPlaceholder('No metrics available');
     }
   }
@@ -242,8 +248,12 @@ const TrackingComponent = (() => {
    * @param {object} status - EphemerisTrackStatus from API
    */
   function updateTrackingStatusUI(status) {
+    console.log('[TrackingComponent] updateTrackingStatusUI() called, status:', status);
     const container = $('#tracking-status-content');
-    if (!container) return;
+    if (!container) {
+      console.warn('[TrackingComponent] #tracking-status-content NOT FOUND');
+      return;
+    }
 
     // Update state badge
     const badge = $('#tracking-state-badge');
@@ -343,8 +353,12 @@ const TrackingComponent = (() => {
    * @param {object} metrics - EphemerisMetrics from API
    */
   function updateTrackingMetricsUI(metrics) {
+    console.log('[TrackingComponent] updateTrackingMetricsUI() called, metrics:', metrics);
     const container = $('#tracking-metrics-content');
-    if (!container) return;
+    if (!container) {
+      console.warn('[TrackingComponent] #tracking-metrics-content NOT FOUND');
+      return;
+    }
 
     if (!metrics || !metrics.object_id) {
       container.innerHTML = `<div class="status-placeholder">No tracking metrics available</div>`;
@@ -406,9 +420,12 @@ const TrackingComponent = (() => {
   }
 
   function showStatusPlaceholder(message) {
+    console.log('[TrackingComponent] showStatusPlaceholder:', message);
     const container = $('#tracking-status-content');
     if (container) {
       container.innerHTML = `<div class="status-placeholder">${message}</div>`;
+    } else {
+      console.warn('[TrackingComponent] #tracking-status-content NOT FOUND in showStatusPlaceholder');
     }
     const badge = $('#tracking-state-badge');
     if (badge) {
@@ -418,9 +435,12 @@ const TrackingComponent = (() => {
   }
 
   function showMetricsPlaceholder(message) {
+    console.log('[TrackingComponent] showMetricsPlaceholder:', message);
     const container = $('#tracking-metrics-content');
     if (container) {
       container.innerHTML = `<div class="status-placeholder">${message}</div>`;
+    } else {
+      console.warn('[TrackingComponent] #tracking-metrics-content NOT FOUND in showMetricsPlaceholder');
     }
   }
 
@@ -431,7 +451,10 @@ const TrackingComponent = (() => {
    * Called when the tracking tab becomes active.
    */
   function startPolling() {
-    if (pollInterval) return;
+    console.log('[TrackingComponent] startPolling() called, isActive:', isActive, 'pollInterval:', pollInterval);
+    if (pollInterval) {
+      return;
+    }
     isActive = true;
     loadTrackingStatus();
     loadTrackingMetrics();
@@ -446,6 +469,7 @@ const TrackingComponent = (() => {
    * Called when the tracking tab becomes hidden.
    */
   function stopPolling() {
+    console.log('[TrackingComponent] stopPolling() called');
     isActive = false;
     if (pollInterval) {
       clearInterval(pollInterval);

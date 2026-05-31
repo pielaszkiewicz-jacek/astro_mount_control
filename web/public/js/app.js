@@ -25,7 +25,6 @@ const App = (() => {
   let isConnected = false;
   let lastState = null;
   let dbConnected = false;
-
   // Polling interval in milliseconds
   const POLL_INTERVAL_MS = 1000;
 
@@ -36,13 +35,20 @@ const App = (() => {
    * Called when the DOM is ready.
    */
   function init() {
+    Logger.init(); // Must be first — wraps console methods to capture all output
+    console.log('[App] Logger.init() done');
     initTabs();
     initRedThemeToggle();
     initMobileModeToggle();
+    initLogPanel();
     MountControlComponent.init();
+    console.log('[App] MountControlComponent.init() done');
     DatabaseComponent.init();
+    console.log('[App] DatabaseComponent.init() done');
     CalibrationComponent.init();
+    console.log('[App] CalibrationComponent.init() done');
     TrackingComponent.init();
+    console.log('[App] TrackingComponent.init() done');
     SettingsComponent.initAddressForm();
     startPolling();
   }
@@ -54,11 +60,14 @@ const App = (() => {
    * Clicking a tab shows its corresponding panel and hides others.
    */
   function initTabs() {
+    console.log('[App] initTabs() called');
     const tabs = $$('.tab-btn:not([disabled])');
+    console.log('[App] found', tabs.length, 'tab buttons');
 
     tabs.forEach(tab => {
       tab.addEventListener('click', () => {
         const tabName = tab.dataset.tab;
+        console.log('[App] tab clicked:', tabName);
         if (!tabName) return;
 
         // Deactivate all tabs and panels
@@ -74,7 +83,11 @@ const App = (() => {
 
         const panel = $(`#panel-${tabName}`);
         if (panel) {
+          console.log('[App] activating panel:', '#panel-' + tabName);
           panel.classList.add('active');
+          console.log('[App] panel classes after active:', panel.className);
+        } else {
+          console.warn('[App] panel NOT FOUND:', '#panel-' + tabName);
         }
 
         // Lazy-load settings data when tab is first shown
@@ -101,8 +114,59 @@ const App = (() => {
         } else {
           TrackingComponent.stopPolling();
         }
+
       });
     });
+  }
+
+  // ─── Log Panel ────────────────────────────────────────────────────────
+
+  /**
+   * Initialize the collapsible log panel in the footer.
+   */
+  function initLogPanel() {
+    const toggleBtn = $('#btn-toggle-log');
+    const closeBtn = $('#btn-close-log');
+    const clearBtn = $('#btn-clear-log');
+    const panel = $('#log-panel');
+    if (!toggleBtn || !panel) return;
+
+    // Toggle log panel visibility
+    toggleBtn.addEventListener('click', () => {
+      const isHidden = panel.style.display === 'none' || !panel.style.display;
+      panel.style.display = isHidden ? 'flex' : 'none';
+      toggleBtn.textContent = isHidden ? '📋 Hide Logs' : '📋 Logs';
+      if (isHidden) {
+        renderLogContent();
+      }
+    });
+
+    // Close button
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        panel.style.display = 'none';
+        toggleBtn.textContent = '📋 Logs';
+      });
+    }
+
+    // Clear button
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        Logger.clearLogs();
+        renderLogContent();
+      });
+    }
+  }
+
+  /**
+   * Render the current log entries into the log panel content area.
+   */
+  function renderLogContent() {
+    const content = $('#log-content');
+    if (!content) return;
+    content.innerHTML = Logger.getLogHtml();
+    // Auto-scroll to bottom
+    content.scrollTop = content.scrollHeight;
   }
 
   // ─── Red/Night-Vision Theme Toggle ─────────────────────────────────────
@@ -200,6 +264,12 @@ const App = (() => {
     } catch {
       dbConnected = false;
       updateDbConnectionBadge(false);
+    }
+
+    // Refresh log panel content if visible
+    const logPanel = $('#log-panel');
+    if (logPanel && logPanel.style.display === 'flex') {
+      renderLogContent();
     }
   }
 

@@ -1288,6 +1288,7 @@ async function handleUpdate(event) {
 
   return {
     init,
+    loadStats,
     selectObject,
     toggleFavorite,
   };

@@ -15,6 +15,7 @@
 #include <thread>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <filesystem>
 #include <cmath>
 #include <atomic>
 #include <Eigen/Dense>
@@ -3806,6 +3807,19 @@ public:
             state["env_pressure"] = env_pressure_;
             state["env_humidity"] = env_humidity_;
         }
+        state["pier_side"] = pier_side_;
+        state["meridian_flipped"] = meridian_flipped_;
+        state["tpoint_enabled_terms"] = static_cast<int>(tpoint_enabled_terms_);
+        state["guider_connection"] = guider_connection_;
+        state["tracking_error_ra"] = tracking_error_ra_;
+        state["tracking_error_dec"] = tracking_error_dec_;
+        
+        // Mount orientation quaternion [qx, qy, qz, qw] — critical for CASUAL mounts
+        state["mount_orientation_qx"] = mount_orientation_.quaternion[0];
+        state["mount_orientation_qy"] = mount_orientation_.quaternion[1];
+        state["mount_orientation_qz"] = mount_orientation_.quaternion[2];
+        state["mount_orientation_qw"] = mount_orientation_.quaternion[3];
+        
         state["timestamp"] = std::chrono::system_clock::to_time_t(
             std::chrono::system_clock::now());
         
@@ -3818,6 +3832,12 @@ public:
             } else {
                 MOUNT_LOG_WARN("Failed to save TPOINT model to {}", tpoint_file);
             }
+        }
+        
+        // Ensure the parent directory exists before opening the file.
+        std::filesystem::path parent_dir = std::filesystem::path(filename).parent_path();
+        if (!parent_dir.empty()) {
+            std::filesystem::create_directories(parent_dir);
         }
         
         std::ofstream file(filename);
@@ -3864,6 +3884,19 @@ public:
                     env_pressure_ = state.value("env_pressure", 1013.25);
                     env_humidity_ = state.value("env_humidity", 0.5);
                 }
+                
+                pier_side_ = state.value("pier_side", 1);
+                meridian_flipped_ = state.value("meridian_flipped", false);
+                tpoint_enabled_terms_ = static_cast<uint32_t>(state.value("tpoint_enabled_terms", 0));
+                guider_connection_ = state.value("guider_connection", "");
+                tracking_error_ra_ = state.value("tracking_error_ra", 0.0);
+                tracking_error_dec_ = state.value("tracking_error_dec", 0.0);
+                
+                // Restore mount orientation quaternion
+                mount_orientation_.quaternion[0] = state.value("mount_orientation_qx", 0.0);
+                mount_orientation_.quaternion[1] = state.value("mount_orientation_qy", 0.0);
+                mount_orientation_.quaternion[2] = state.value("mount_orientation_qz", 0.0);
+                mount_orientation_.quaternion[3] = state.value("mount_orientation_qw", 1.0);
             }
             
             // Forward restored env params to AstronomicalCalculations outside

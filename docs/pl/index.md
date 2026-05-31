@@ -7,10 +7,14 @@
 3. [Modele matematyczne](#modele-matematyczne)
 4. [API gRPC](#api-grpc)
 5. [Konfiguracja](#konfiguracja)
-6. [Przykłady użycia](#przykłady-użycia)
-7. [Instalacja i budowanie](#instalacja-i-budowanie)
-8. [Testowanie](#testowanie)
-9. [Parametry fizyczne osi](#parametry-fizyczne-osi)
+6. [Interfejs Web (Serwer Proxy)](#6-web-proxy-httpjson--grpc)
+7. [Interfejs Web (SPA w przeglądarce)](#7-web-interface-browser-spa)
+8. [Baza obiektów astronomicznych](#8-object-database-service)
+9. [System konfiguracji](#9-configuration-system)
+10. [Przykłady użycia](#przykłady-użycia)
+11. [Instalacja i budowanie](#instalacja-i-budowanie)
+12. [Testowanie](#testowanie)
+13. [Parametry fizyczne osi](#parametry-fizyczne-osi)
 
 ## Wprowadzenie
 
@@ -45,14 +49,19 @@ flowchart TB
     classDef hw fill:#efebe9,stroke:#4e342e,stroke-width:2px,color:#3e2723
     classDef cfg fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#004d40
 
-    subgraph CLIENTS["🧑‍💻 Aplikacje klienckie"]
+    subgraph WEBUI["🌐 Interfejs Web"]
+        SPA["SPA w przeglądarce<br/>web/public/index.html<br/>Vanilla JS · 6 zakładek"]
+        PROXY["Serwer proxy Node.js Express<br/>web/proxy/server.js<br/>HTTP/JSON → gRPC · port 8080"]
+    end
+
+    subgraph CLIENTS["🧑‍💻 Inni klienci"]
         PY["Klient Python<br/>(gRPC stub)"]
         CPP["Klient C++<br/>(gRPC stub)"]
-        WEB["Interfejs Web<br/>(HTTP/JSON proxy)"]
     end
 
     subgraph API["🌐 API gRPC"]
         GRPC["MountControllerServiceImpl<br/>proto/mount_controller.proto"]
+        DB_GRPC["ObjectDatabaseServiceImpl<br/>proto/object_database.proto"]
     end
 
     subgraph CORE["⚙️ Rdzeń kontrolera"]
@@ -70,14 +79,23 @@ flowchart TB
         CONFIG["System konfiguracji<br/>JSON · 25+ walidacji<br/>config/default.json"]
     end
 
+    subgraph DB_SVC["🗄️ Baza obiektów"]
+        DB_SERVICE["ObjectDatabaseService<br/>db/src/object_database_service.cpp<br/>SQLite · CRUD katalogów · Wyszukiwanie · Import"]
+    end
+
     subgraph HW["🔧 Sprzęt"]
         HW1["Napędy serwo"]
         HW2["Enkodery absolutne"]
         HW3["Czujniki<br/>Temperatura · Ciśnienie"]
     end
 
-    CLIENTS -->|gRPC| GRPC
+    SPA -->|"HTTP/JSON"| PROXY
+    PROXY -->|"gRPC"| GRPC
+    PROXY -->|"gRPC"| DB_GRPC
+    PY -->|gRPC| GRPC
+    CPP -->|gRPC| GRPC
     GRPC --> MC
+    DB_GRPC --> DB_SERVICE
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
@@ -87,8 +105,9 @@ flowchart TB
     CONFIG --> CAN
     CAN --> HW
 
-    class PY,CPP,WEB client
-    class GRPC api
+    class SPA,PROXY client
+    class PY,CPP client
+    class GRPC,DB_GRPC api
     class MC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
@@ -132,7 +151,31 @@ Implementacja protokołu CANopen (CiA 301, CiA 402):
 - Generacja trajektorii ruchu
 - Monitorowanie statusu napędów
 
-#### 6. **Configuration System**
+#### 6. **Web Proxy (HTTP/JSON → gRPC)**
+Serwer proxy Node.js Express łączący przeglądarkę z backendami gRPC:
+- REST API HTTP/JSON (~40 endpointów) do sterowania montażem, kalibracji, śledzenia, konfiguracji, bazy danych
+- Serwowanie plików statycznych dla SPA
+- Wzbogacanie i filtrowanie danych przy imporcie katalogów
+- Przesyłanie i zarządzanie plikami stanu montażu
+- Obsługa CORS, SSL/TLS, konfigurowalne adresy gRPC
+
+#### 7. **Web Interface (SPA w przeglądarce)**
+Aplikacja jednostronicowa z 6 zakładkami:
+- **Status** — stan montażu w czasie rzeczywistym, pozycja, środowisko, śledzony obiekt
+- **Sterowanie** — slew do współrzędnych, panel osi (tryb prędkości/krokowy), zapis/odczyt stanu
+- **Ustawienia** — 18 grup konfiguracyjnych z przywracaniem domyślnych, eksport/import, konfiguracja adresów
+- **Kalibracja** — Bootstrap (wstępne wyrównanie) + TPOINT (precyzyjny model wskazań)
+- **Baza danych** — CRUD obiektów, wyszukiwanie/filtrowanie, ulubione, import katalogów (presety/plik/URL)
+- **Śledzenie** — śledzenie efemeryd obiektów ruchomych (satelity, komety, asteroidy)
+
+#### 8. **Object Database Service**
+Katalog obiektów astronomicznych oparty na SQLite:
+- Pełny CRUD z paginacją i wyszukiwaniem
+- Obsługa wielu katalogów (Messier, NGC, IC, Caldwell, HYG, SAO)
+- Ulubione obiekty, kategorie, import/eksport
+- API gRPC na porcie 50052
+
+#### 9. **System konfiguracji**
 System zarządzania konfiguracją:
 - Ładowanie/zapisywanie konfiguracji JSON
 - Walidacja parametrów
@@ -744,33 +787,15 @@ Dokładność sterownika montażu astronomicznego w dużym stopniu zależy od pr
 
 ## Interfejs Web
 
-Projekt zawiera przeglądarkowy dashboard webowy do zdalnego sterowania i monitorowania montażu, znajdujący się w katalogu [`web/`](../web/).
-
-### Architektura
-
-```
-┌─────────────┐     HTTP/JSON      ┌──────────────┐     gRPC      ┌──────────────────┐
-│  Przeglądarka │ ──────────────────>│ Serwer Proxy  │ ────────────>│ Mount Controller │
-│   (SPA)     │<──────────────────│  (Express.js) │<────────────│   (C++ gRPC)     │
-└─────────────┘     JSON/HTML      └──────────────┘              └──────────────────┘
-```
-
-### Kluczowe funkcje
-- **Responsywny design mobile-first** — dostosowuje się do telefonów, tabletów i komputerów
-- **Interfejs oparty na kartach** — modułowe karty statusu, sterowania i ustawień
-- **Status w czasie rzeczywistym** — pętla odświeżania co 1 sekundę
-- **Sterowanie montażem** — slew do współrzędnych, stop, park/unpark, czyszczenie błędów
-- **Nawigacja zakładkami** — zakładki Status, Sterowanie, Ustawienia (rozszerzalny framework)
+Patrz sekcje [**6. Web Proxy**](#6-web-proxy-httpjson--grpc) i [**7. Web Interface**](#7-web-interface-browser-spa) powyżej. Pełna dokumentacja Web UI znajduje się w [`web/README.md`](../web/README.md).
 
 ### Szybki start
+
 ```bash
 cd web/proxy
-cp .env.example .env        # Edytuj, jeśli gRPC host/port są inne
-npm install                 # Już zainstalowano
-npm start                   # Uruchamia na http://localhost:3000
+cp .env.example .env        # Edytuj gRPC/DB host/port jeśli potrzebne
+npm install
+npm start                   # Uruchamia na http://localhost:8080
 ```
-
-### Dokumentacja
-Zobacz [`web/README.md`](../web/README.md) po szczegółową konfigurację, listę endpointów API i przewodnik rozszerzania.
 
 *Szczegółowe informacje o poszczególnych komponentach znajdują się w dedykowanych plikach dokumentacji.*

@@ -503,6 +503,8 @@ body {
 .status-badge.tracking   { background: var(--color-success-bg); color: var(--status-tracking); }
 .status-badge.parked     { background: rgba(66, 165, 245, 0.15); color: var(--status-parked); }
 .status-badge.error      { background: var(--color-danger-bg); color: var(--status-error); }
+.status-badge.warning    { background: var(--color-warning-bg); color: var(--status-slewing); }
+.status-badge.muted      { background: rgba(120, 144, 156, 0.1); color: var(--color-text-muted); }
 
 /* ─── Status data rows ────────────────────────────────────────────────────── */
 .stat-row {
@@ -543,6 +545,10 @@ body {
 
 .stat-value.success {
   color: var(--color-success);
+}
+
+.stat-value.mono {
+  font-family: var(--font-mono);
 }
 
 /* ─── Status Placeholder ──────────────────────────────────────────────────── */
@@ -693,21 +699,51 @@ body {
   margin-bottom: 16px;
 }
 
+/* Axis mode selector */
+.axis-mode-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  background: var(--color-surface-1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+}
+
+.axis-mode-label {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.axis-step-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.axis-step-input {
+  width: 70px;
+  font-size: 0.82rem;
+  padding: 4px 6px;
+}
+
 /* Directional pad grid */
 .axis-pad {
   display: grid;
-  grid-template-columns: 64px 64px 64px;
-  grid-template-rows: 64px 64px 64px;
-  gap: 4px;
+  grid-template-columns: 96px 96px 96px;
+  grid-template-rows: 96px 96px 96px;
+  gap: 6px;
   justify-content: center;
   margin-bottom: 16px;
 }
 
 .btn-axis {
-  width: 64px;
-  height: 64px;
+  width: 96px;
+  height: 96px;
   padding: 0;
-  font-size: 1.4rem;
+  font-size: 2.1rem;
   border-radius: var(--radius-sm);
   background: var(--color-surface-2);
   color: var(--color-text);
@@ -741,8 +777,8 @@ body {
 .axis-pad-center {
   grid-column: 2;
   grid-row: 2;
-  width: 64px;
-  height: 64px;
+  width: 96px;
+  height: 96px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1382,17 +1418,111 @@ body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--footer-height);
   background: var(--color-surface);
   border-top: 1px solid var(--color-border);
+  z-index: 100;
+}
+
+.footer-bar {
+  height: var(--footer-height);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0 16px;
   font-size: 0.68rem;
   color: var(--color-text-muted);
-  z-index: 100;
 }
+
+.log-toggle-btn {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+}
+
+/* ─── Log Panel ─────────────────────────────────────────────────────────── */
+.log-panel {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.log-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-right: auto;
+}
+
+.log-content {
+  overflow-y: auto;
+  padding: 4px 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  max-height: 260px;
+}
+
+.log-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 1px 12px;
+  border-bottom: 1px solid transparent;
+}
+
+.log-entry:hover {
+  background: var(--color-surface);
+}
+
+.log-time {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  min-width: 64px;
+  font-size: 0.65rem;
+}
+
+.log-level {
+  flex-shrink: 0;
+  min-width: 42px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.log-msg {
+  word-break: break-word;
+  color: var(--color-text);
+}
+
+/* Log level colors */
+.log-entry.log-error .log-level { color: #e74c3c; }
+.log-entry.log-error .log-msg   { color: #e74c3c; }
+.log-entry.log-warn  .log-level { color: #f39c12; }
+.log-entry.log-warn  .log-msg   { color: #f39c12; }
+.log-entry.log-info  .log-level { color: var(--color-text-muted); }
+.log-entry.log-debug .log-level { color: #7f8c8d; }
+.log-entry.log-debug .log-msg   { color: #7f8c8d; }
+
+/* Red theme overrides for log panel */
+.red-theme .log-entry.log-error .log-level { color: #ff4444; }
+.red-theme .log-entry.log-error .log-msg   { color: #ff4444; }
+.red-theme .log-entry.log-warn  .log-level { color: #ff8800; }
+.red-theme .log-entry.log-warn  .log-msg   { color: #ff8800; }
+.red-theme .log-entry.log-info  .log-level { color: #aa6666; }
+.red-theme .log-entry.log-debug .log-level { color: #664444; }
+.red-theme .log-entry.log-debug .log-msg   { color: #664444; }
 
 /* ─── Calibration Measurement Forms ─────────────────────────────────────── */
 

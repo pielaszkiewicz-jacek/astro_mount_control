@@ -33,6 +33,12 @@ const MountControlComponent = (() => {
   /** Current movement direction sign: 1 (forward) or -1 (backward) */
   let activeDirection = 0;
 
+  /** Axis control mode: 'velocity' (press-hold-release-stop) or 'step' (single click, move by set amount) */
+  let axisControlMode = 'velocity';
+
+  /** Step size for step mode in degrees */
+  let stepSizeDeg = 1.0;
+
   // ─── Initialization ─────────────────────────────────────────────────
 
   /**
@@ -43,6 +49,90 @@ const MountControlComponent = (() => {
     initSlewForm();
     initQuickActions();
     initAxisControl();
+    initAxisModeControls();
+    initStateFileInput();
+  }
+
+  /**
+   * Build the full file path from the directory + filename inputs.
+   * Handles trailing-slash / double-slash joining.
+   */
+  function getStateFilePath() {
+    const dirInput = $('#state-dir-path');
+    const nameInput = $('#state-file-name');
+    const dir = dirInput ? dirInput.value.trim() : 'data/';
+    const name = nameInput ? nameInput.value.trim() : '';
+    if (!name) return dir.replace(/\/+$/, '') + '/mount_state.json';
+    const dirClean = dir.replace(/\/+$/, '');
+    const nameClean = name.replace(/^\/+/, '');
+    return dirClean ? dirClean + '/' + nameClean : nameClean;
+  }
+
+  /**
+   * Generate a default state filename with current date and time.
+   */
+  function generateStateFileName() {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const timeStr = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    return `mount_state_${dateStr}_${timeStr}.json`;
+  }
+
+  /**
+   * Initialize the state file path input with "Now" button.
+   */
+  function initStateFileInput() {
+    const nowBtn = $('#btn-state-default-name');
+    if (nowBtn) {
+      nowBtn.addEventListener('click', () => {
+        const input = $('#state-file-name');
+        if (input) {
+          input.value = generateStateFileName();
+        }
+      });
+    }
+  }
+
+  /**
+   * Initialize the hidden file picker for loading state from a local file.
+   * When the user selects a file via the native OS picker, reads the content
+   * and uploads it to the server to restore controller state.
+   */
+  function initStateFilePicker() {
+    const fileInput = $('#state-file-picker');
+    if (!fileInput) return;
+
+    fileInput.addEventListener('change', async (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (loadEvent) => {
+        const fileContent = loadEvent.target.result;
+
+        const loadBtn = $('#btn-load-state');
+        if (loadBtn) loadBtn.disabled = true;
+
+        try {
+          await Api.uploadAndLoadState(fileContent, file.name);
+          App.showToast('✅ Mount state restored successfully from ' + file.name, 'success', 4000);
+        } catch (err) {
+          App.showToast(`Restore state failed: ${err.message}`, 'error');
+        } finally {
+          if (loadBtn) loadBtn.disabled = false;
+          // Reset the file input so the same file can be picked again
+          fileInput.value = '';
+        }
+      };
+
+      reader.onerror = () => {
+        App.showToast('Failed to read the selected file', 'error');
+        fileInput.value = '';
+      };
+
+      reader.readAsText(file);
+    });
   }
 
   // ─── Slew Form ───────────────────────────────────────────────────────
@@ -102,6 +192,12 @@ const MountControlComponent = (() => {
 
     const clearBtn = $('#btn-clear-errors');
     if (clearBtn) clearBtn.addEventListener('click', handleClearErrors);
+
+    const saveStateBtn = $('#btn-save-state');
+    if (saveStateBtn) saveStateBtn.addEventListener('click', handleSaveState);
+
+    const loadStateBtn = $('#btn-load-state');
+    if (loadStateBtn) loadStateBtn.addEventListener('click', handleLoadState);
   }
 
   async function handleStop() {
@@ -154,6 +250,89 @@ const MountControlComponent = (() => {
     } finally {
       if (btn) btn.disabled = false;
     }
+  }
+
+  // ─── Save / Restore State ────────────────────────────────────────────
+
+  async function handleSaveState() {
+    const btn = $('#btn-save-state');
+    if (btn) btn.disabled = true;
+    try {
+      const file_path = getStateFilePath();
+      const options = { file_path };
+      const result = await Api.saveState(options);
+      App.showToast(`✅ State saved: ${result.file_path} (${(result.file_size / 1024).toFixed(1)} KB)`, 'success', 5000);
+    } catch (err) {
+      App.showToast(`Save state failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function handleLoadState() {
+    const btn = $('#btn-load-state');
+    if (btn) btn.disabled = true;
+    try {
+      const file_path = getStateFilePath();
+      const result = await Api.loadState({ file_path });
+      App.showToast(`✅ State restored: ${file_path}`, 'success', 5000);
+    } catch (err) {
+      App.showToast(`Load state failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ─── Axis Mode Selector ──────────────────────────────────────────────
+
+  /**
+   * Initialize the axis mode toggle (Velocity ↔ Step) and step size input.
+   */
+  function initAxisModeControls() {
+    const toggleBtn = $('#btn-axis-mode-toggle');
+    const stepControl = $('#axis-step-control');
+    const stepInput = $('#axis-step-size');
+    const toggleLabel = $('#axis-mode-toggle-label');
+
+    if (!toggleBtn) return;
+
+    toggleBtn.addEventListener('click', () => {
+      if (axisControlMode === 'velocity') {
+        axisControlMode = 'step';
+        if (toggleLabel) toggleLabel.textContent = 'Step';
+        if (stepControl) stepControl.style.display = 'flex';
+        toggleBtn.title = 'Step mode: single click moves axis by the set angle. Click to switch to Velocity mode.';
+      } else {
+        axisControlMode = 'velocity';
+        if (toggleLabel) toggleLabel.textContent = 'Velocity';
+        if (stepControl) stepControl.style.display = 'none';
+        toggleBtn.title = 'Velocity mode: hold button to rotate axis, release to stop. Click to switch to Step mode.';
+      }
+    });
+
+    if (stepInput) {
+      stepInput.addEventListener('change', () => {
+        const val = parseFloat(stepInput.value);
+        if (!isNaN(val) && val > 0) {
+          stepSizeDeg = val;
+        } else {
+          stepInput.value = stepSizeDeg.toFixed(1);
+        }
+      });
+    }
+  }
+
+  /**
+   * Get the current step size from the input, falling back to stored value.
+   * @returns {number} Step size in degrees
+   */
+  function getStepSize() {
+    const input = $('#axis-step-size');
+    if (input) {
+      const val = parseFloat(input.value);
+      if (!isNaN(val) && val > 0) return val;
+    }
+    return stepSizeDeg;
   }
 
   // ─── Axis Control ────────────────────────────────────────────────────
@@ -287,8 +466,18 @@ const MountControlComponent = (() => {
    * @param {number} direction - +1 or -1
    */
   function startAxisMovement(axisId, direction) {
-    // Prevent duplicate calls
+    console.log('[AxisCtrl] startAxisMovement: axisId=%d, direction=%d, mode=%s, isCalibrated=%s',
+                axisId, direction, axisControlMode, isCalibrated);
+
+    if (axisControlMode === 'step') {
+      // Step mode: single click triggers a complete move by stepSize degrees
+      performStepMove(axisId, direction);
+      return;
+    }
+
+    // Velocity mode: prevent duplicate, then start continuous movement
     if (activeAxisTimer) {
+      console.log('[AxisCtrl] startAxisMovement: stopping previous movement on axis %d', activeAxisId);
       stopAxisMovement(activeAxisId);
     }
 
@@ -296,10 +485,17 @@ const MountControlComponent = (() => {
     activeDirection = direction;
 
     if (isCalibrated) {
-      // Calibrated mode: single coordinate nudge
-      performCalibratedNudge(axisId, direction);
+      // Calibrated velocity mode: repeated coordinate nudges on a timer
+      console.log('[AxisCtrl] startAxisMovement: starting CALIBRATED velocity mode, interval 250ms');
+      if (activeAxisTimer) clearInterval(activeAxisTimer);
+      activeAxisTimer = setInterval(() => {
+        const speed = getCurrentSpeed();
+        const delta = speed * 0.25; // nudge 4× per second
+        performCalibratedNudge(axisId, direction, delta);
+      }, 250);
     } else {
-      // Uncalibrated mode: continuous velocity control
+      // Uncalibrated velocity mode: single ControlAxis (controller maintains velocity)
+      console.log('[AxisCtrl] startAxisMovement: starting UNCALIBRATED velocity mode');
       performVelocityMove(axisId, direction);
     }
   }
@@ -312,15 +508,21 @@ const MountControlComponent = (() => {
    * @param {number} axisId
    */
   function stopAxisMovement(axisId) {
+    if (axisControlMode === 'step') {
+      // Step mode: movement auto-completes via its own timeout, nothing to stop here
+      return;
+    }
+
+    // Velocity mode: stop continuous movement
     if (activeAxisTimer) {
       clearInterval(activeAxisTimer);
       activeAxisTimer = null;
     }
 
     if (!isCalibrated && activeAxisId >= 0) {
-      // Only stop if we were moving this axis
       Api.stopAxis(axisId).catch(() => {});
     }
+    // Calibrated velocity mode: handled by clearing the interval above
 
     activeAxisId = -1;
     activeDirection = 0;
@@ -337,11 +539,14 @@ const MountControlComponent = (() => {
   async function performVelocityMove(axisId, direction) {
     const speed = getCurrentSpeed();
     const velocity = direction * speed;
+    console.log('[AxisCtrl] performVelocityMove: axisId=%d, direction=%d, speed=%f, velocity=%f, isCalibrated=%s',
+                axisId, direction, speed, velocity, isCalibrated);
 
     try {
       await Api.moveAxis(axisId, velocity);
-      App.showToast(`Axis ${axisId} moving at ${velocity.toFixed(1)}°/s`, 'info', 1500);
+      console.log('[AxisCtrl] performVelocityMove: SUCCESS axisId=%d, velocity=%f', axisId, velocity);
     } catch (err) {
+      console.error('[AxisCtrl] performVelocityMove: FAILED axisId=%d, velocity=%f, error=%s', axisId, velocity, err.message);
       App.showToast(`Axis move failed: ${err.message}`, 'error');
     }
   }
@@ -354,7 +559,9 @@ const MountControlComponent = (() => {
    * @param {number} axisId   - 0 (RA/Az) or 1 (Dec/Alt)
    * @param {number} direction - +1 or -1
    */
-  async function performCalibratedNudge(axisId, direction) {
+  async function performCalibratedNudge(axisId, direction, overrideDelta) {
+    console.log('[AxisCtrl] performCalibratedNudge: axisId=%d, direction=%d, overrideDelta=%s',
+                axisId, direction, overrideDelta !== undefined ? overrideDelta.toFixed(4) : 'undefined');
     const state = App.getLastState();
     if (!state || !state.position) {
       App.showToast('No position data available for nudge', 'error');
@@ -362,7 +569,7 @@ const MountControlComponent = (() => {
     }
 
     const speed = getCurrentSpeed();
-    const delta = speed * 0.5; // Nudge by half-second worth of movement (degrees)
+    const delta = (overrideDelta !== undefined) ? overrideDelta : speed * 0.5;
     const offset = direction * delta;
 
     try {
@@ -417,8 +624,55 @@ const MountControlComponent = (() => {
   }
 
   /**
-   * Handle emergency stop button.
+   * Perform a step move (Mode 1): move axis by the configured step size at the current speed.
+   * Works in both calibrated and uncalibrated states.
+   *
+   * @param {number} axisId   - 0 (horizontal) or 1 (vertical)
+   * @param {number} direction - +1 or -1
    */
+  async function performStepMove(axisId, direction) {
+    const speed = getCurrentSpeed();
+    const stepSize = getStepSize();
+    const offset = direction * stepSize;
+    console.log('[AxisCtrl] performStepMove: axisId=%d, direction=%d, speed=%f, stepSize=%f, isCalibrated=%s',
+                axisId, direction, speed, stepSize, isCalibrated);
+
+    activeAxisId = axisId;
+    activeDirection = direction;
+
+    if (isCalibrated) {
+      // Calibrated: single coordinate nudge by stepSize degrees
+      await performCalibratedNudge(axisId, direction, stepSize);
+      App.showToast(`Step ${stepSize.toFixed(1)}° on axis ${axisId}`, 'success', 1500);
+    } else {
+      // Uncalibrated: send ControlAxis, then StopAxis after duration = stepSize / speed
+      const velocity = direction * speed;
+      const durationMs = Math.max(100, (stepSize / Math.max(speed, 0.01)) * 1000);
+      console.log('[AxisCtrl] performStepMove uncalibrated: velocity=%f, durationMs=%d', velocity, durationMs);
+
+      try {
+        await Api.moveAxis(axisId, velocity);
+        console.log('[AxisCtrl] performStepMove: moveAxis SUCCESS');
+      } catch (err) {
+        console.error('[AxisCtrl] performStepMove: moveAxis FAILED: %s', err.message);
+        App.showToast(`Step move failed: ${err.message}`, 'error');
+        activeAxisId = -1;
+        activeDirection = 0;
+        return;
+      }
+
+      // Schedule stop after the calculated duration
+      if (activeAxisTimer) clearTimeout(activeAxisTimer);
+      activeAxisTimer = setTimeout(() => {
+        activeAxisTimer = null;
+        console.log('[AxisCtrl] performStepMove: auto-stop after %dms', durationMs);
+        Api.stopAxis(axisId).catch(() => {});
+        activeAxisId = -1;
+        activeDirection = 0;
+      }, durationMs);
+    }
+  }
+
   async function handleEmergencyStop() {
     // Stop any active movement first
     if (activeAxisTimer) {

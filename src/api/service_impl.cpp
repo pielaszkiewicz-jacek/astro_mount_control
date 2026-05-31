@@ -139,7 +139,7 @@ grpc::Status MountControllerServiceImpl::SaveState(grpc::ServerContext* context,
     try {
         std::string file_path = request->file_path();
         if (file_path.empty()) {
-            file_path = "mount_state.json";
+            file_path = "data/mount_state.json";
         }
         
         if (controller_.saveState(file_path)) {
@@ -161,7 +161,7 @@ grpc::Status MountControllerServiceImpl::LoadState(grpc::ServerContext* context,
     try {
         std::string file_path = request->file_path();
         if (file_path.empty()) {
-            file_path = "mount_state.json";
+            file_path = "data/mount_state.json";
         }
         
         if (controller_.loadState(file_path)) {

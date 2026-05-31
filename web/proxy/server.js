@@ -16,6 +16,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
+const fs = require('fs');
 const path = require('path');
 const grpc = require('@grpc/grpc-js');
 const protoLoader = require('@grpc/proto-loader');
@@ -361,6 +362,105 @@ app.post('/api/unpark', async (req, res) => {
     res.json({ success: true, message: 'Mount unparked' });
   } catch (err) {
     res.status(502).json({ error: 'Unpark failed', details: err.message });
+  }
+});
+
+/**
+ * POST /api/state/save
+ * Save the current mount controller state (park position, calibration data, etc.)
+ * Maps to gRPC: SaveState()
+ * Body (optional): { file_path?: string, include_measurements?: boolean }
+ */
+app.post('/api/state/save', async (req, res) => {
+  try {
+    const { file_path, include_measurements } = req.body || {};
+    const request = {};
+    if (file_path) request.file_path = file_path;
+    if (include_measurements !== undefined) request.include_measurements = include_measurements;
+
+    const result = await grpcCall('SaveState', request);
+    res.json({
+      success: true,
+      message: `State saved to ${result.file_path}`,
+      file_path: result.file_path,
+      file_size: result.file_size,
+    });
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to save mount state', details: err.message });
+  }
+});
+
+/**
+ * POST /api/state/load
+ * Load a previously saved mount controller state.
+ * Maps to gRPC: LoadState()
+ * Body (optional): { file_path?: string }
+ */
+app.post('/api/state/load', async (req, res) => {
+  try {
+    const { file_path } = req.body || {};
+    const request = {};
+    if (file_path) request.file_path = file_path;
+
+    await grpcCall('LoadState', request);
+    res.json({ success: true, message: 'Mount state restored successfully' });
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to restore mount state', details: err.message });
+  }
+});
+
+/**
+ * POST /api/state/upload-and-load
+ * Accept an uploaded state file from the browser, save it to a temporary
+ * location on the server, then call gRPC LoadState to restore the controller.
+ *
+ * Body: { file_content: string, file_name: string }
+ *
+ * The file is written to data/uploads/<timestamp>_<original_name> so the
+ * gRPC backend (running from the project root) can read it.
+ */
+app.post('/api/state/upload-and-load', async (req, res) => {
+  try {
+    const { file_content, file_name } = req.body || {};
+    if (!file_content) {
+      return res.status(400).json({ error: 'Missing file_content in request body' });
+    }
+
+    // Build the upload path relative to the project root
+    // server.js runs from web/proxy/, so ../.. takes us to the project root
+    const projectRoot = path.resolve(__dirname, '../..');
+    const uploadDir = path.join(projectRoot, 'data', 'uploads');
+
+    // Ensure upload directory exists
+    fs.mkdirSync(uploadDir, { recursive: true });
+
+    // Use a timestamp prefix to avoid name collisions
+    const timestamp = Date.now();
+    const safeName = (file_name || 'mount_state.json').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const tempFilePath = path.join(uploadDir, `${timestamp}_${safeName}`);
+
+    // Write the uploaded content to a temp file
+    fs.writeFileSync(tempFilePath, file_content, 'utf-8');
+    console.log(`[upload-and-load] Written ${file_content.length} bytes to ${tempFilePath}`);
+
+    // Call gRPC LoadState with the temp file path
+    const grpcRequest = { file_path: tempFilePath };
+    await grpcCall('LoadState', grpcRequest);
+
+    console.log(`[upload-and-load] State restored successfully from ${tempFilePath}`);
+    res.json({ success: true, message: `Mount state restored from ${file_name || 'uploaded file'}` });
+
+    // Clean up: remove the temp file after successful load (fire-and-forget)
+    fs.unlink(tempFilePath, (unlinkErr) => {
+      if (unlinkErr) {
+        console.warn(`[upload-and-load] Failed to clean up temp file ${tempFilePath}:`, unlinkErr.message);
+      } else {
+        console.log(`[upload-and-load] Cleaned up temp file ${tempFilePath}`);
+      }
+    });
+  } catch (err) {
+    console.error('[upload-and-load] Error:', err.message);
+    res.status(502).json({ error: 'Failed to restore mount state from uploaded file', details: err.message });
   }
 });
 
