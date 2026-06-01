@@ -43,11 +43,60 @@ Definiuje sposób zapisu logów systemowych.
 |---|---|---|---|---|
 | `level` | string | `"DEBUG"`, `"INFO"`, `"WARNING"`, `"ERROR"`, `"CRITICAL"` | `"INFO"` | Poziom szczegółowości logów |
 | `directory` | string | dowolna ścieżka bezwzględna | `"/var/log/astro-mount"` | Katalog docelowy plików logów |
-| `rotation_days` | integer | ≥ 1 | `7` | Rotacja logów po N dniach |
-| `max_file_size_mb` | integer | ≥ 1 | `100` | Maksymalny rozmiar pliku logu (MB) |
+| `rotation_days` | integer | ≥ 1 | `7` | Rotacja logów po N dniach (nieużywane — patrz uwagi poniżej) |
+| `max_file_size_mb` | integer | ≥ 1 | `100` | Maksymalny rozmiar pliku logu (MB) (nieużywane — patrz uwagi poniżej) |
 | `console_output` | boolean | `true`, `false` | `true` | Czy wypisywać logi również na konsolę |
 
 Walidacja poziomów logowania: [`Configuration::Impl::isValidLogLevel()`](src/config/configuration.cpp:1055).
+
+### Szczegóły implementacyjne (stan na czerwiec 2025)
+
+System logowania oparty jest na bibliotece **spdlog**. Inicjalizacja odbywa się w [`Logger::initProgrammatic()`](src/logging/logger.cpp:68), wywoływanej z [`main.cpp`](src/main.cpp:48).
+
+#### Architektura
+
+- **Sink plikowy**: [`basic_file_sink_mt`](src/logging/logger.cpp:90) — zapis w trybie append (`"ab"`, bez rotacji). Rotacja plików logów obsługiwana jest **zewnętrznie** (np. przez `logrotate`). Parametry `rotation_days` i `max_file_size_mb` są zachowane w konfiguracji dla kompatybilności wstecznej, ale nie są funkcjonalnie wykorzystywane.
+- **Sink konsolowy**: [`stdout_color_sink_mt`](src/logging/logger.cpp:97) — kolorowe wyjście na stdout.
+- **Sink syslog** (opcjonalny): [`syslog_sink_mt`](src/logging/logger.cpp:104).
+- **Rejestracja w globalnym rejestrze spdlog**: Logger-y są rejestrowane przez [`spdlog::register_logger()`](src/logging/logger.cpp:384-386), co umożliwia działanie `spdlog::flush_every()`.
+- **Periodiczny flush**: [`spdlog::flush_every(5s)`](src/logging/logger.cpp:119) — bufor stdio jest opróżniany na dysk co 5 sekund.
+
+#### Format logu
+
+```
+[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] %v
+```
+
+Przykładowy wpis:
+```
+[2025-06-01 22:30:15.123] [INFO] [mount] System initialized
+```
+
+#### Logger-y komponentowe
+
+Przy starcie tworzonych jest 13 predefiniowanych logger-ów ([`createDefaultLoggers()`](src/logging/logger.cpp:368)):
+
+| Nazwa | Przeznaczenie |
+|---|---|
+| `mount` | Główny kontroler montażu |
+| `api` | API i gRPC |
+| `canopen` | Magistrala CANopen |
+| `tpoint` | Model TPoint |
+| `kalman` | Filtr Kalmana |
+| `config` | Zarządzanie konfiguracją |
+| `safety` | System bezpieczeństwa |
+| `structured` | Dane strukturalne |
+| `audit` | Audyt operacji |
+| `performance` | Wydajność i timing |
+| `error` | Błędy i wyjątki |
+| `calibration` | Kalibracja |
+| `health` | Stan systemu |
+
+Dodatkowe logger-y mogą być tworzone na żądanie przez [`Logger::get(name)`](src/logging/logger.cpp:166-185) — każdy nowy logger jest automatycznie rejestrowany w globalnym rejestrze spdlog i dziedziczy te same sink-i.
+
+#### Plik logu
+
+Domyślnie: `{directory}/astro-mount.log` (np. `/var/log/astro-mount/astro-mount.log`).
 
 ---
 
