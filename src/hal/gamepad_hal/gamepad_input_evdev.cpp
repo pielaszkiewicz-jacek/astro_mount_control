@@ -3,8 +3,8 @@
 #include <unistd.h>
 #include <cstring>
 #include <cerrno>
-#include <iostream>
 #include <dirent.h>
+#include "logging/logger.h"
 #include <sys/stat.h>
 #include <linux/joystick.h>
 #include <linux/input.h>
@@ -31,30 +31,29 @@ EvdevGamepadInput::~EvdevGamepadInput() {
 
 bool EvdevGamepadInput::initialize(const std::string& device_path) {
     if (running_) {
-        std::cerr << "[EvdevGamepadInput] Already initialized" << std::endl;
+        logging::Logger::get("gamepad")->error("[EvdevGamepadInput] Already initialized");
         return false;
     }
-
+    
     std::string path = device_path;
     if (path.empty()) {
         path = autoDetect();
         if (path.empty()) {
-            std::cerr << "[EvdevGamepadInput] No gamepad device found" << std::endl;
+            logging::Logger::get("gamepad")->error("[EvdevGamepadInput] No gamepad device found");
             return false;
         }
     }
-
+    
     if (!openDevice(path)) {
         return false;
     }
-
+    
     device_path_ = path;
     running_ = true;
     poll_thread_ = std::thread(&EvdevGamepadInput::pollLoop, this);
-
-    std::cout << "[EvdevGamepadInput] Opened: " << device_name_
-              << " (" << path << ") axes=" << axis_count_
-              << " buttons=" << button_count_ << std::endl;
+    
+    logging::Logger::get("gamepad")->info("[EvdevGamepadInput] Opened: {} ({}) axes={} buttons={}",
+              device_name_, path, axis_count_, button_count_);
     return true;
 }
 
@@ -109,8 +108,7 @@ void EvdevGamepadInput::applyButtonMapping(const std::map<int, std::string>& map
         else if (action_str == "manual_toggle") button_map_[idx] = ButtonAction::MANUAL_TOGGLE;
         else if (action_str == "none")      button_map_[idx] = ButtonAction::NONE;
         else {
-            std::cerr << "[EvdevGamepadInput] Unknown button action '" << action_str
-                      << "' for index " << idx << std::endl;
+            logging::Logger::get("gamepad")->warn("[EvdevGamepadInput] Unknown button action '{}' for index {}", action_str, idx);
         }
     }
 }
@@ -127,8 +125,7 @@ void EvdevGamepadInput::applyAxisMapping(const std::map<int, std::string>& mappi
         else if (axis_str == "pov_y")  axis_map_[idx] = AxisAction::POV_Y;
         else if (axis_str == "none")   axis_map_[idx] = AxisAction::NONE;
         else {
-            std::cerr << "[EvdevGamepadInput] Unknown axis action '" << axis_str
-                      << "' for index " << idx << std::endl;
+            logging::Logger::get("gamepad")->warn("[EvdevGamepadInput] Unknown axis action '{}' for index {}", axis_str, idx);
         }
     }
 }
@@ -149,8 +146,7 @@ bool EvdevGamepadInput::openDevice(const std::string& path) {
 bool EvdevGamepadInput::openJoystickDevice(const std::string& path) {
     fd_ = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
     if (fd_ < 0) {
-        std::cerr << "[EvdevGamepadInput] Cannot open " << path
-                  << ": " << strerror(errno) << std::endl;
+        logging::Logger::get("gamepad")->error("[EvdevGamepadInput] Cannot open {}: {}", path, strerror(errno));
         return false;
     }
 
@@ -184,8 +180,7 @@ bool EvdevGamepadInput::openJoystickDevice(const std::string& path) {
 bool EvdevGamepadInput::openEvdevDevice(const std::string& path) {
     fd_ = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
     if (fd_ < 0) {
-        std::cerr << "[EvdevGamepadInput] Cannot open " << path
-                  << ": " << strerror(errno) << std::endl;
+        logging::Logger::get("gamepad")->error("[EvdevGamepadInput] Cannot open {}: {}", path, strerror(errno));
         return false;
     }
 

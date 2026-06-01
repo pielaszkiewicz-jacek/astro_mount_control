@@ -1,9 +1,9 @@
 #include "gamepad_hal.h"
 #include "gamepad_input_evdev.h"
 #include <cmath>
-#include <iostream>
 #include <algorithm>
 #include <sstream>
+#include "logging/logger.h"
 
 namespace astro_mount {
 namespace hal {
@@ -53,7 +53,7 @@ bool GamepadHAL::initialize(const HALConfig& config) {
     std::string device_path = config_.gamepad.device_path;
     if (!gamepad_input_->initialize(device_path)) {
         error_messages_ = "Failed to initialize gamepad input";
-        std::cerr << "[GamepadHAL] " << error_messages_ << std::endl;
+        logging::Logger::get("gamepad")->error("[GamepadHAL] {}", error_messages_);
         return false;
     }
 
@@ -66,8 +66,8 @@ bool GamepadHAL::initialize(const HALConfig& config) {
     }
 
     initialized_ = true;
-    std::cout << "[GamepadHAL] Initialized with device: "
-              << gamepad_input_->getDeviceName() << std::endl;
+    logging::Logger::get("gamepad")->info("[GamepadHAL] Initialized with device: {}",
+              gamepad_input_->getDeviceName());
     return true;
 }
 
@@ -162,7 +162,7 @@ bool GamepadHAL::start() {
     running_ = true;
     update_thread_ = std::thread(&GamepadHAL::updateLoop, this);
 
-    std::cout << "[GamepadHAL] Started update loop" << std::endl;
+    logging::Logger::get("gamepad")->info("[GamepadHAL] Started update loop");
     return true;
 }
 
@@ -221,14 +221,14 @@ void GamepadHAL::cycleSpeedUp() {
     int idx = speed_preset_idx_.load();
     idx = std::min(idx + 1, (int)manual_cfg_.speed_presets_deg_s.size() - 1);
     speed_preset_idx_ = idx;
-    std::cout << "[GamepadHAL] Speed preset: " << getCurrentSpeedPreset() << " deg/s" << std::endl;
+    logging::Logger::get("gamepad")->info("[GamepadHAL] Speed preset: {} deg/s", getCurrentSpeedPreset());
 }
 
 void GamepadHAL::cycleSpeedDown() {
     int idx = speed_preset_idx_.load();
     idx = std::max(idx - 1, 0);
     speed_preset_idx_ = idx;
-    std::cout << "[GamepadHAL] Speed preset: " << getCurrentSpeedPreset() << " deg/s" << std::endl;
+    logging::Logger::get("gamepad")->info("[GamepadHAL] Speed preset: {} deg/s", getCurrentSpeedPreset());
 }
 
 std::shared_ptr<GamepadMotorControl> GamepadHAL::getMotor(int axis_id) {

@@ -1,6 +1,6 @@
 #include "controllers/canopen_factory.h"
 #include "controllers/canopen_interface.h"
-#include <iostream>
+#include "logging/logger.h"
 #include <stdexcept>
 #include <algorithm>
 #include <thread>
@@ -193,8 +193,7 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
             
             bool sendNMT(uint8_t node_id, uint8_t command) override {
                 // Simulate NMT command
-                std::cout << "NMT: Sending command 0x" << std::hex << (int)command 
-                          << std::dec << " to node " << (int)node_id << std::endl;
+                logging::Logger::get("canopen")->info("NMT: Sending command 0x{:02X} to node {}", command, node_id);
                 
                 // For Reset Node (0x81) - simulate re-initialization
                 if (command == 0x81 || command == 0x82) {

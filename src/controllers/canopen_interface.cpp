@@ -1,5 +1,5 @@
 #include "controllers/canopen_interface.h"
-#include <iostream>
+#include "logging/logger.h"
 #include <thread>
 #include <chrono>
 #include <mutex>
@@ -42,8 +42,8 @@ public:
         connected_ = false;
         
         // Initialize simulated CAN bus
-        std::cout << "CANopen: Initializing interface " << config.interface_name 
-                  << " at " << config.bitrate << " bps" << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: Initializing interface {} at {} bps",
+                  config.interface_name, config.bitrate);
         
         return true;
     }
@@ -75,8 +75,8 @@ public:
         }
         
         // Simulate CAN connection
-        std::cout << "CANopen: Connecting to " << config_.interface_name 
-                  << " (node " << config_.node_id << ")" << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: Connecting to {} (node {})",
+                  config_.interface_name, config_.node_id);
         
         // Start SYNC thread if configured
         if (config_.use_sync && config_.sync_period_ms > 0) {
@@ -130,7 +130,7 @@ public:
             
             connected_ = false;
             
-            std::cout << "CANopen: Disconnected" << std::endl;
+            logging::Logger::get("canopen")->info("CANopen: Disconnected");
         }
     }
     
@@ -152,10 +152,10 @@ public:
             // Parse configuration (simplified)
             // In real implementation, this would configure object dictionary entries
             
-            std::cout << "CANopen: Configuring axis " << axis_id << std::endl;
+            logging::Logger::get("canopen")->info("CANopen: Configuring axis {}", axis_id);
             return true;
         } catch (const std::exception& e) {
-            std::cerr << "CANopen: Configuration error: " << e.what() << std::endl;
+            logging::Logger::get("canopen")->error("CANopen: Configuration error: {}", e.what());
             return false;
         }
     }
@@ -177,7 +177,7 @@ public:
         axis_status_[axis_id].operational = true;
         axis_status_[axis_id].timestamp = std::chrono::system_clock::now();
         
-        std::cout << "CANopen: Axis " << axis_id << " enabled" << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: Axis {} enabled", axis_id);
         
         // Notify status callback
         if (status_callback_) {
@@ -397,10 +397,8 @@ public:
         }
         
         // Simulate SDO write
-        std::cout << "CANopen: SDO write to axis " << axis_id 
-                  << " index=0x" << std::hex << index 
-                  << " subindex=0x" << (int)subindex << std::dec
-                  << " size=" << data_size << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: SDO write to axis {} index=0x{:04X} subindex=0x{:02X} size={}",
+                  axis_id, index, subindex, data_size);
         
         return true;
     }
@@ -414,9 +412,8 @@ public:
         }
         
         // Simulate SDO read
-        std::cout << "CANopen: SDO read from axis " << axis_id 
-                  << " index=0x" << std::hex << index 
-                  << " subindex=0x" << (int)subindex << std::dec << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: SDO read from axis {} index=0x{:04X} subindex=0x{:02X}",
+                  axis_id, index, subindex);
         
         // Return simulated data
         if (data_size >= 4) {
@@ -436,8 +433,7 @@ public:
         }
         
         // Simulate PDO configuration
-        std::cout << "CANopen: Configuring PDO " << pdo_number 
-                  << " for axis " << axis_id << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: Configuring PDO {} for axis {}", pdo_number, axis_id);
         
         return true;
     }
@@ -449,8 +445,7 @@ public:
             return;
         }
         
-        std::cout << "CANopen: " << (enable ? "Enabling" : "Disabling") 
-                  << " PDO " << pdo_number << " for axis " << axis_id << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: {} PDO {} for axis {}", (enable ? "Enabling" : "Disabling"), pdo_number, axis_id);
     }
     
     bool sendNMT(uint8_t node_id, uint8_t command) {
@@ -462,8 +457,7 @@ public:
         
         // Simulate NMT command transmission
         // In real CANopen: send CAN frame COB-ID 0x000 with data[0]=command, data[1]=node_id
-        std::cout << "CANopen: Sending NMT command 0x" << std::hex << (int)command 
-                  << std::dec << " to node " << (int)node_id << std::endl;
+        logging::Logger::get("canopen")->info("CANopen: Sending NMT command 0x{:02X} to node {}", command, node_id);
         
         // Handle NMT commands - update internal state accordingly
         if (command == 0x81 || command == 0x82) {
@@ -590,7 +584,7 @@ public:
             file << config.dump(4);
             return true;
         } catch (const std::exception& e) {
-            std::cerr << "CANopen: Save configuration error: " << e.what() << std::endl;
+            logging::Logger::get("canopen")->error("CANopen: Save configuration error: {}", e.what());
             return false;
         }
     }
@@ -615,7 +609,7 @@ public:
             
             return true;
         } catch (const std::exception& e) {
-            std::cerr << "CANopen: Load configuration error: " << e.what() << std::endl;
+            logging::Logger::get("canopen")->error("CANopen: Load configuration error: {}", e.what());
             return false;
         }
     }

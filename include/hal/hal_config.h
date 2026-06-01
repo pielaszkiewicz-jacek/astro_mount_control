@@ -132,6 +132,7 @@ struct HALConfig {
     struct AxisConfig {
         int id{0};
         std::string name{"Axis_0"};
+        uint8_t can_node_id{0};  // CANopen node ID (0 = auto: axis_id + 1)
         MotorConfig motor_config;
         EncoderConfig encoder_config;
         
@@ -276,6 +277,7 @@ struct HALConfig {
             AxisConfig axis;
             axis.id = axis_json.value("id", 0);
             axis.name = axis_json.value("name", "Axis_0");
+            axis.can_node_id = axis_json.value("can_node_id", 0);
             
             // Parse motor config
             auto motor_json = axis_json.value("motor_config", nlohmann::json::object());
@@ -490,6 +492,7 @@ struct HALConfig {
             nlohmann::json axis_json;
             axis_json["id"] = axis.id;
             axis_json["name"] = axis.name;
+            axis_json["can_node_id"] = axis.can_node_id;
             
             // Save motor config
             nlohmann::json motor_json;

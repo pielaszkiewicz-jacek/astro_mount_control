@@ -20,7 +20,7 @@ bool Logger::console_enabled_ = true;
 bool Logger::syslog_enabled_ = false;
 LogLevel Logger::level_ = LogLevel::INFO;
 
-std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> Logger::file_sink_ = nullptr;
+std::shared_ptr<spdlog::sinks::basic_file_sink_mt> Logger::file_sink_ = nullptr;
 std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> Logger::console_sink_ = nullptr;
 std::shared_ptr<spdlog::sinks::syslog_sink_mt> Logger::syslog_sink_ = nullptr;
 
@@ -85,10 +85,10 @@ bool Logger::initProgrammatic(const std::string& log_dir, size_t max_size_mb,
         
         std::vector<spdlog::sink_ptr> sinks;
         
-        // File sink with rotation
+        // File sink (simple append; rotation handled externally by logrotate)
         std::string log_file = log_dir_ + "/astro-mount.log";
-        file_sink_ = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-            log_file, max_size_mb_ * 1024 * 1024, max_files_);
+        file_sink_ = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+            log_file, false);
         file_sink_->set_level(toSpdlogLevel(level_));
         sinks.push_back(file_sink_);
         
@@ -171,6 +171,16 @@ std::shared_ptr<spdlog::logger> Logger::get(const std::string& name) {
     
     auto logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
     logger->set_level(toSpdlogLevel(level_));
+    // Register with spdlog global registry so periodic flush_every() flushes this logger's sinks
+    try {
+        spdlog::register_logger(logger);
+    } catch (const spdlog::spdlog_ex&) {
+        // Logger name already registered; retrieve existing one
+        auto existing = spdlog::get(name);
+        if (existing) {
+            logger = existing;
+        }
+    }
     loggers_[name] = logger;
     
     return logger;
@@ -370,6 +380,16 @@ void Logger::createDefaultLoggers() {
     for (const auto& name : default_loggers) {
         auto logger = std::make_shared<spdlog::logger>(name, sinks.begin(), sinks.end());
         logger->set_level(toSpdlogLevel(level_));
+        // Register with spdlog global registry so periodic flush_every() flushes this logger's sinks
+        try {
+            spdlog::register_logger(logger);
+        } catch (const spdlog::spdlog_ex&) {
+            // Logger name already registered; retrieve existing one
+            auto existing = spdlog::get(name);
+            if (existing) {
+                logger = existing;
+            }
+        }
         loggers_[name] = logger;
     }
 }

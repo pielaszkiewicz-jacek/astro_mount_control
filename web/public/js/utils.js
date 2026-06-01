@@ -124,6 +124,18 @@ const Utils = (() => {
     return context.querySelectorAll(selector);
   }
 
+  /**
+   * Escape HTML special characters to prevent XSS.
+   * @param {string} str
+   * @returns {string}
+   */
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(String(str)));
+    return div.innerHTML;
+  }
+
   // Public API
   return {
     formatNumber,
@@ -131,6 +143,7 @@ const Utils = (() => {
     formatDec,
     formatTime,
     clamp,
+    escapeHtml,
     EventBus,
     $,
     $$,

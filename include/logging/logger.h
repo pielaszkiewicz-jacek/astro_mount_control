@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/sinks/syslog_sink.h>
@@ -216,7 +217,7 @@ private:
     static bool syslog_enabled_;
     static LogLevel level_;
     
-    static std::shared_ptr<spdlog::sinks::rotating_file_sink_mt> file_sink_;
+    static std::shared_ptr<spdlog::sinks::basic_file_sink_mt> file_sink_;
     static std::shared_ptr<spdlog::sinks::stdout_color_sink_mt> console_sink_;
     static std::shared_ptr<spdlog::sinks::syslog_sink_mt> syslog_sink_;
     

@@ -1,6 +1,6 @@
 #include "hal/canopen_hal/canopen_hal.h"
+#include "logging/logger.h"
 #include <chrono>
-#include <iostream>
 #include <iomanip>
 #include <sstream>
 
@@ -236,7 +236,7 @@ bool CanOpenHAL::CanOpenMotor::setTorque(double torque_percent) {
             actual_torque_ = static_cast<double>(actual_torque_raw) / 10.0;
             
         } catch (const std::exception& e) {
-            std::cerr << "Motor " << axis_id_ << ": Torque SDO failed: " << e.what() << std::endl;
+            astro_mount::logging::Logger::get("canopen")->error("Motor {}: Torque SDO failed: {}", axis_id_, e.what());
             // Fallback: używamy PID, jeśli SDO się nie powiedzie
         }
         
@@ -428,8 +428,7 @@ bool CanOpenHAL::CanOpenMotor::sendControlWord(uint16_t controlword) {
     try {
         return canopen_.sendSDO(axis_id_, 0x6040, 0x00, &controlword, sizeof(controlword));
     } catch (const std::exception& e) {
-        std::cerr << "Motor " << axis_id_ << ": sendControlWord(0x" 
-                  << std::hex << controlword << std::dec << ") failed: " << e.what() << std::endl;
+        astro_mount::logging::Logger::get("canopen")->error("Motor {}: sendControlWord(0x{:04X}) failed: {}", axis_id_, controlword, e.what());
         return false;
     }
 }
@@ -447,7 +446,7 @@ bool CanOpenHAL::CanOpenMotor::readStatusWord() {
             return true;
         }
     } catch (const std::exception& e) {
-        std::cerr << "Motor " << axis_id_ << ": readStatusWord() failed: " << e.what() << std::endl;
+        astro_mount::logging::Logger::get("canopen")->error("Motor {}: readStatusWord() failed: {}", axis_id_, e.what());
     }
     return false;
 }
@@ -483,7 +482,7 @@ bool CanOpenHAL::CanOpenMotor::configureCiA402() {
         
         return true;
     } catch (const std::exception& e) {
-        std::cerr << "Motor " << axis_id_ << ": configureCiA402() failed: " << e.what() << std::endl;
+        astro_mount::logging::Logger::get("canopen")->error("Motor {}: configureCiA402() failed: {}", axis_id_, e.what());
         return false;
     }
 }
@@ -1142,7 +1141,7 @@ bool CanOpenHAL::initialize(const HALConfig& config) {
         canopen_config.sync_period_ms = config.canopen.sync_period_ms;
         
         if (!canopen_interface_->initialize(canopen_config)) {
-            std::cerr << "Failed to initialize CANopen interface" << std::endl;
+            astro_mount::logging::Logger::get("canopen")->error("Failed to initialize CANopen interface");
             return false;
         }
         
@@ -1154,7 +1153,7 @@ bool CanOpenHAL::initialize(const HALConfig& config) {
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Failed to initialize CanOpenHAL: " << e.what() << std::endl;
+        astro_mount::logging::Logger::get("canopen")->error("Failed to initialize CanOpenHAL: {}", e.what());
         return false;
     }
 }
@@ -1324,7 +1323,7 @@ bool CanOpenHAL::start() {
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "Failed to start CanOpenHAL: " << e.what() << std::endl;
+        astro_mount::logging::Logger::get("canopen")->error("Failed to start CanOpenHAL: {}", e.what());
         return false;
     }
 }
@@ -1402,7 +1401,7 @@ void CanOpenHAL::nmtMonitoringThread() {
     // === Krok 0: Odczytaj konfigurację NMT ===
     const auto& nmt_cfg = config_.canopen.nmt;
     if (!nmt_cfg.enable_nmt) {
-        std::cout << "NMT: Monitoring disabled by configuration" << std::endl;
+        astro_mount::logging::Logger::get("canopen")->warn("NMT: Monitoring disabled by configuration");
         while (nmt_running_) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
@@ -1442,9 +1441,19 @@ void CanOpenHAL::nmtMonitoringThread() {
         NMTState target_state{NMTState::OPERATIONAL};
     };
     
-    // Liczba węzłów CANopen = osie + derotator + ewentualne dodatkowe
-    const int NUM_NODES = 3; // RA/Azm, Dec/Alt, Derotator
-    std::array<NodeState, NUM_NODES> nodes;
+    // Maksymalna liczba obsługiwanych węzłów CANopen
+    constexpr int MAX_NODES = 3; // RA/Azm, Dec/Alt, Derotator
+    // Rzeczywista liczba węzłów = liczba skonfigurowanych osi (bez derotatora jeśli nie skonfigurowany)
+    const int NUM_NODES = std::min(static_cast<int>(config_.axes.size()), MAX_NODES);
+    // Helper: pobiera CAN node ID dla osi o indeksie i, z fallbackiem do i+1
+    auto getNodeId = [this](int axis_index) -> uint8_t {
+        if (axis_index < static_cast<int>(config_.axes.size()) && config_.axes[axis_index].can_node_id > 0) {
+            return config_.axes[axis_index].can_node_id;
+        }
+        return static_cast<uint8_t>(axis_index + 1);
+    };
+    
+    std::array<NodeState, MAX_NODES> nodes;
     
     // Inicjalizacja wszystkich węzłów
     auto thread_start = std::chrono::steady_clock::now();
@@ -1470,13 +1479,15 @@ void CanOpenHAL::nmtMonitoringThread() {
     const bool enable_node_guarding = nmt_cfg.enable_node_guarding;
     const auto node_guarding_period = std::chrono::milliseconds(nmt_cfg.node_guarding_period_ms);
     
-    std::cout << "NMT: Starting NMT monitoring for " << NUM_NODES 
-              << " nodes (HB period=" << nmt_cfg.heartbeat_period_ms 
-              << "ms, timeout=" << nmt_cfg.heartbeat_timeout_ms 
-              << "ms, max_missed=" << MAX_MISSED_HB 
-              << ", bootup=" << (enable_bootup ? "yes" : "no")
-              << ", recovery=" << (enable_auto_recovery ? "yes" : "no")
-              << ")" << std::endl;
+    astro_mount::logging::Logger::get("canopen")->info(
+        "NMT: Starting NMT monitoring for {} nodes (HB period={}ms, timeout={}ms, max_missed={}, bootup={}, recovery={})",
+        NUM_NODES, nmt_cfg.heartbeat_period_ms, nmt_cfg.heartbeat_timeout_ms,
+        MAX_MISSED_HB, (enable_bootup ? "yes" : "no"), (enable_auto_recovery ? "yes" : "no"));
+    
+    // Wypisz mapowanie osi → CAN node ID
+    for (int i = 0; i < NUM_NODES; ++i) {
+        astro_mount::logging::Logger::get("canopen")->info("NMT:   Axis {} -> CAN node {}", i, (int)getNodeId(i));
+    }
     
     uint64_t nmt_cycle = 0;
     static constexpr int NMT_CYCLE_MS = 10;
@@ -1489,7 +1500,7 @@ void CanOpenHAL::nmtMonitoringThread() {
         
         for (int i = 0; i < NUM_NODES; ++i) {
             auto& node = nodes[i];
-            uint8_t node_id = static_cast<uint8_t>(i + 1);
+            uint8_t node_id = getNodeId(i);
             
             // ================================================================
             // === FAZA 1: Bootup – oczekiwanie na komunikat bootup od węzła ===
@@ -1508,9 +1519,8 @@ void CanOpenHAL::nmtMonitoringThread() {
                             node.state = NMTState::PRE_OPERATIONAL;
                             node.last_heartbeat = now;
                             
-                            std::cout << "NMT: Node " << (int)node_id 
-                                      << " - bootup received (elapsed=" << bootup_elapsed << "ms)"
-                                      << std::endl;
+                            astro_mount::logging::Logger::get("canopen")->info(
+                                "NMT: Node {} - bootup received (elapsed={}ms)", (int)node_id, bootup_elapsed);
                             
                             // Bootup odebrany – prześlij sekwencję NMT: PRE-OPERATIONAL → OPERATIONAL
                             sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
@@ -1520,9 +1530,8 @@ void CanOpenHAL::nmtMonitoringThread() {
                     } catch (const std::exception& e) {
                         // Węzeł jeszcze nie odpowiada
                         if (nmt_cycle % 100 == 0) { // Loguj co 1s
-                            std::cout << "NMT: Node " << (int)node_id 
-                                      << " - waiting for bootup (" << bootup_elapsed << "ms): "
-                                      << e.what() << std::endl;
+                            astro_mount::logging::Logger::get("canopen")->warn(
+                                "NMT: Node {} - waiting for bootup ({}ms): {}", (int)node_id, bootup_elapsed, e.what());
                         }
                     }
                     
@@ -1531,9 +1540,8 @@ void CanOpenHAL::nmtMonitoringThread() {
                         node.state == NMTState::UNKNOWN &&
                         !node.bootup_received) {
                         
-                        std::cerr << "NMT: Node " << (int)node_id 
-                                  << " - bootup timeout (" << bootup_elapsed << "ms)!" 
-                                  << std::endl;
+                        astro_mount::logging::Logger::get("canopen")->error(
+                            "NMT: Node {} - bootup timeout ({}ms)!", (int)node_id, bootup_elapsed);
                         
                         // Bootup timeout – reset węzła przez NMT Reset
                         sendNMT(node_id, NMT_CMD_RESET_NODE);
@@ -1548,9 +1556,8 @@ void CanOpenHAL::nmtMonitoringThread() {
                     node.last_heartbeat = now;
                     
                     if (nmt_cycle == 1) {
-                        std::cout << "NMT: Node " << (int)node_id 
-                                  << " - bootup check disabled, assuming PRE-OPERATIONAL"
-                                  << std::endl;
+                        astro_mount::logging::Logger::get("canopen")->info(
+                            "NMT: Node {} - bootup check disabled, assuming PRE-OPERATIONAL", (int)node_id);
                     }
                 }
             }
@@ -1598,11 +1605,10 @@ void CanOpenHAL::nmtMonitoringThread() {
                         } else {
                             node.missed_heartbeats++;
                             if (nmt_cycle % 50 == 0) {
-                                std::cerr << "NMT: Node " << (int)node_id 
-                                          << " - heartbeat missed (" << node.missed_heartbeats
-                                          << "/" << MAX_MISSED_HB << ")"
-                                          << (heartbeat_error ? " [ERROR]" : "")
-                                          << std::endl;
+                                astro_mount::logging::Logger::get("canopen")->warn(
+                                    "NMT: Node {} - heartbeat missed ({}/{}{})",
+                                    (int)node_id, node.missed_heartbeats, MAX_MISSED_HB,
+                                    (heartbeat_error ? " [ERROR]" : ""));
                             }
                         }
                     }
@@ -1634,10 +1640,9 @@ void CanOpenHAL::nmtMonitoringThread() {
                             node.guard_request_pending = false;
                             node.missed_heartbeats++;
                             
-                            std::cerr << "NMT: Node " << (int)node_id 
-                                      << " - Node Guarding timeout! (" 
-                                      << node.missed_heartbeats << "/" << MAX_MISSED_HB << ")"
-                                      << std::endl;
+                            astro_mount::logging::Logger::get("canopen")->error(
+                                "NMT: Node {} - Node Guarding timeout! ({}/{})",
+                                (int)node_id, node.missed_heartbeats, MAX_MISSED_HB);
                         }
                     }
                 }
@@ -1650,10 +1655,9 @@ void CanOpenHAL::nmtMonitoringThread() {
                 node.state == NMTState::OPERATIONAL &&
                 node.bootup_received) {
                 
-                std::cerr << "NMT: Node " << (int)node_id 
-                          << " - communication LOST (" << node.missed_heartbeats 
-                          << " missed heartbeats)! Transitioning to PRE-OPERATIONAL" 
-                          << std::endl;
+                astro_mount::logging::Logger::get("canopen")->error(
+                    "NMT: Node {} - communication LOST ({} missed heartbeats)! Transitioning to PRE-OPERATIONAL",
+                    (int)node_id, node.missed_heartbeats);
                 
                 node.state = NMTState::PRE_OPERATIONAL;
                 
@@ -1666,9 +1670,8 @@ void CanOpenHAL::nmtMonitoringThread() {
                 node.state == NMTState::PRE_OPERATIONAL &&
                 node.bootup_received) {
                 
-                std::cerr << "NMT: Node " << (int)node_id 
-                          << " - prolonged communication loss! Initiating NMT Reset" 
-                          << std::endl;
+                astro_mount::logging::Logger::get("canopen")->error(
+                    "NMT: Node {} - prolonged communication loss! Initiating NMT Reset", (int)node_id);
                 
                 // Prolonged loss – reset węzła przez NMT Reset
                 sendNMT(node_id, NMT_CMD_RESET_NODE);
@@ -1700,9 +1703,8 @@ void CanOpenHAL::nmtMonitoringThread() {
                     } catch (...) {}
                     
                     if (communication_ok && node.target_state == NMTState::OPERATIONAL) {
-                        std::cout << "NMT: Node " << (int)node_id 
-                                  << " - communication restored, transitioning to OPERATIONAL"
-                                  << std::endl;
+                        astro_mount::logging::Logger::get("canopen")->info(
+                            "NMT: Node {} - communication restored, transitioning to OPERATIONAL", (int)node_id);
                         
                         // Auto-recovery: pełna sekwencja NMT dla przywrócenia węzła do OPERATIONAL
                         sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
@@ -1736,13 +1738,11 @@ void CanOpenHAL::nmtMonitoringThread() {
                         sendNMT(node_id, NMT_CMD_START_REMOTE_NODE);
                         node.state = NMTState::OPERATIONAL;
                         
-                        std::cout << "NMT: Node " << (int)node_id 
-                                  << " - initial transition to OPERATIONAL" 
-                                  << std::endl;
+                        astro_mount::logging::Logger::get("canopen")->info(
+                            "NMT: Node {} - initial transition to OPERATIONAL", (int)node_id);
                     } catch (const std::exception& e) {
-                        std::cerr << "NMT: Node " << (int)node_id 
-                                  << " - initial start failed: " << e.what() 
-                                  << std::endl;
+                        astro_mount::logging::Logger::get("canopen")->error(
+                            "NMT: Node {} - initial start failed: {}", (int)node_id, e.what());
                     }
                 }
             }
@@ -1764,16 +1764,16 @@ void CanOpenHAL::nmtMonitoringThread() {
             }
             
             if (all_operational) {
-                std::cout << "NMT: All " << NUM_NODES 
-                          << " nodes OPERATIONAL (heartbeats: ";
+                std::string hb_str;
                 for (int i = 0; i < NUM_NODES; ++i) {
-                    std::cout << nodes[i].heartbeat_count;
-                    if (i < NUM_NODES - 1) std::cout << "/";
+                    if (i > 0) hb_str += "/";
+                    hb_str += std::to_string(nodes[i].heartbeat_count);
                 }
-                std::cout << ")" << std::endl;
+                astro_mount::logging::Logger::get("canopen")->info(
+                    "NMT: All {} nodes OPERATIONAL (heartbeats: {})", NUM_NODES, hb_str);
             } else if (!any_operational && nmt_cycle > 10) {
-                std::cout << "NMT: No nodes operational yet ("
-                          << elapsed_ms_since_start << "ms)" << std::endl;
+                astro_mount::logging::Logger::get("canopen")->warn(
+                    "NMT: No nodes operational yet ({}ms)", elapsed_ms_since_start);
             }
         }
         
@@ -1782,16 +1782,16 @@ void CanOpenHAL::nmtMonitoringThread() {
     }
     
     // === Shutdown: przełącz wszystkie węzły do Pre-Operational ===
-    std::cout << "NMT: Shutdown - transitioning all nodes to PRE-OPERATIONAL" << std::endl;
+    astro_mount::logging::Logger::get("canopen")->info("NMT: Shutdown - transitioning all nodes to PRE-OPERATIONAL");
     for (int i = 0; i < NUM_NODES; ++i) {
-        uint8_t node_id = static_cast<uint8_t>(i + 1);
+        uint8_t node_id = getNodeId(i);
         try {
             // Przełącz węzeł do PRE-OPERATIONAL przed zamknięciem
             sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         } catch (const std::exception& e) {
-            std::cerr << "NMT: Shutdown - node " << (int)node_id 
-                      << " transition failed: " << e.what() << std::endl;
+            astro_mount::logging::Logger::get("canopen")->error(
+                "NMT: Shutdown - node {} transition failed: {}", (int)node_id, e.what());
         }
     }
 }
@@ -1812,7 +1812,7 @@ std::unique_ptr<EncoderReader> CanOpenHAL::createDerotatorEncoder() {
 
 bool CanOpenHAL::configureDerotator(const struct DerotatorConfig& config) {
     if (!canopen_interface_) {
-        std::cerr << "CANopen interface not available for derotator" << std::endl;
+        astro_mount::logging::Logger::get("canopen")->error("CANopen interface not available for derotator");
         return false;
     }
     
@@ -1831,7 +1831,7 @@ bool CanOpenHAL::configureDerotator(const struct DerotatorConfig& config) {
     
     // Configure derotator drive via CANopen
     if (!canopen_interface_->configureDrive(DEROTATOR_AXIS_ID, config_str)) {
-        std::cerr << "Failed to configure derotator drive (axis_id=" << DEROTATOR_AXIS_ID << ")" << std::endl;
+        astro_mount::logging::Logger::get("canopen")->error("Failed to configure derotator drive (axis_id={})", DEROTATOR_AXIS_ID);
         return false;
     }
     

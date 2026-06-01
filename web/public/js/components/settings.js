@@ -416,6 +416,815 @@ const SettingsComponent = (() => {
     dec_stiffness:    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/><path d="M4 4l16 16M20 4L4 20"/></svg>',
   };
 
+  // ─── Group-Level Help Descriptions ────────────────────────────────────────
+
+  const GROUP_HELP = {
+    logging: 'Konfiguracja systemu logowania: poziom szczegó\u0142owo\u015bci, katalog docelowy, rotacja, rozmiar plików oraz wypisywanie na konsol\u0119.',
+    network: 'Konfiguracja serwera gRPC: adres nas\u0142uchiwania, port, maksymalna liczba po\u0142\u0105cze\u0144 oraz opcjonalne szyfrowanie TLS.',
+    canopen: 'Konfiguracja magistrali CANopen: interfejs SocketCAN, w\u0142asny Node ID sterownika, szybko\u015b\u0107 transmisji oraz parametry SYNC.',
+    mount_location: 'Wspó\u0142rz\u0119dne geograficzne obserwatorium: szeroko\u015b\u0107 i d\u0142ugo\u015b\u0107 geograficzna, wysoko\u015b\u0107 n.p.m. oraz wysoko\u015b\u0107 osi monta\u017cu.',
+    mount_general: 'Parametry globalne monta\u017cu: typ monta\u017cu (paralaktyczny/azymutalny), maksymalne pr\u0119dko\u015bci i przyspieszenia przewijania i trackingu.',
+    mount_environmental: 'Domy\u015blne parametry \u015brodowiskowe: temperatura, ci\u015bnienie i wilgotno\u015b\u0107 dla oblicze\u0144 refrakcji atmosferycznej.',
+    mount_encoders: 'Konfiguracja enkoderów: czy u\u017cywa\u0107 enkoderów, czy s\u0105 absolutne oraz ich rozdzielczo\u015b\u0107.',
+    mount_tolerances: 'Tolerancje pozycji i pr\u0119dko\u015bci dla uznania targetu za osi\u0105gni\u0119ty.',
+    mount_meridian_flip: 'Automatyczne przej\u015bcia przez po\u0142udnik (meridian flip): opó\u017anienie, histereza i timeout.',
+    mount_soft_limits: 'Mi\u0119kkie limity pozycji osi: zakresy ruchu, strefy ostrze\u017cenia i hamowania.',
+    mount_park: 'Pozycja parkowania monta\u017cu: k\u0105ty obu osi po zaparkowaniu.',
+    mount_atmosphere: 'Korekcja refrakcji atmosferycznej: czy w\u0142\u0105czy\u0107 automatyczn\u0105 korekcj\u0119.',
+    mount_orientation: 'Kwaternion orientacji monta\u017cu: definiuje przekszta\u0142cenie mi\u0119dzy uk\u0142adem monta\u017cu a uk\u0142adem niebieskim.',
+    ha_axis_params: 'Parametry fizyczne osi HA (Hour Angle / Godzinnej): silnik, enkoder, przek\u0142adnia, b\u0142\u0105d cykliczny, luz, sztywno\u015b\u0107.',
+    dec_axis_params: 'Parametry fizyczne osi Dec (Deklinacji): silnik, enkoder, przek\u0142adnia, b\u0142\u0105d cykliczny, luz, sztywno\u015b\u0107.',
+    telescope: 'Parametry teleskopu: ogniskowa, apertura, wymiary tubusa, model kamery i parametry matrycy.',
+    guider: 'Konfiguracja autoguidera: w\u0142\u0105czenie, parametry po\u0142\u0105czenia, korekcja, agresywno\u015b\u0107, ekspozycja.',
+    kalman: 'Filtr Kalmana do estymacji pozycji: szumy procesu i pomiaru, adaptacyjno\u015b\u0107, próg innowacji.',
+    tpoint: 'Model TPoint do korekcji b\u0142\u0119dów systematycznych monta\u017cu: aktywne terminy, pomiary, residua.',
+    derotator: 'Derotator pola obrazu: typ, prze\u0142o\u017cenie, pr\u0119dko\u015bci, enkoder, pozycja domowa.',
+    field_rotation: 'Obliczona rotacja pola: korekcja flexury, temperatura, parametry geometryczne.',
+    hal: 'Warstwa abstrakcji sprz\u0119towej (HAL): typ interfejsu, parametry CAN, heartbeat i mapowanie PDO.',
+    hal_gamepad: 'Konfiguracja gamepada: \u015bcie\u017cka urz\u0105dzenia, strefa martwa, czu\u0142o\u015b\u0107, cz\u0119stotliwo\u015b\u0107 odczytu.',
+    // Sub-group help
+    ha_motor: 'Konfiguracja silnika osi HA: liczba kroków, mikrokrokowanie, k\u0105t kroku.',
+    ha_encoder: 'Konfiguracja enkodera osi HA: rozdzielczo\u015b\u0107, liczba impulsów, b\u0142\u0105d kwantyzacji.',
+    ha_gear: 'Przek\u0142adnia mechaniczna osi HA: prze\u0142o\u017cenie ca\u0142kowite, \u015blimakowe, liczba z\u0119bów.',
+    ha_cyclic_error: 'B\u0142\u0105d cykliczny osi HA: amplituda, okres, harmoniczne.',
+    ha_backlash: 'Luz mechaniczny osi HA: warto\u015b\u0107 luzu i wspó\u0142czynnik temperaturowy.',
+    ha_stiffness: 'Sztywno\u015b\u0107 i w\u0142a\u015bciwo\u015bci termiczne osi HA: podatno\u015b\u0107 skr\u0119tna, rozszerzalno\u015b\u0107, temperatura kalibracji.',
+    dec_motor: 'Konfiguracja silnika osi Dec: liczba kroków, mikrokrokowanie, k\u0105t kroku.',
+    dec_encoder: 'Konfiguracja enkodera osi Dec: rozdzielczo\u015b\u0107, liczba impulsów, b\u0142\u0105d kwantyzacji.',
+    dec_gear: 'Przek\u0142adnia mechaniczna osi Dec: prze\u0142o\u017cenie ca\u0142kowite, \u015blimakowe, liczba z\u0119bów.',
+    dec_cyclic_error: 'B\u0142\u0105d cykliczny osi Dec: amplituda, okres, harmoniczne.',
+    dec_backlash: 'Luz mechaniczny osi Dec: warto\u015b\u0107 luzu i wspó\u0142czynnik temperaturowy.',
+    dec_stiffness: 'Sztywno\u015b\u0107 i w\u0142a\u015bciwo\u015bci termiczne osi Dec: podatno\u015b\u0107 skr\u0119tna, rozszerzalno\u015b\u0107, temperatura kalibracji.',
+  };
+
+  // ─── Per-Field Help Descriptions ──────────────────────────────────────────
+
+  const PARAM_HELP = {
+    // ── Logging ──
+    log_level: {
+      description: 'Poziom szczegó\u0142owo\u015bci logów systemowych. DEBUG – najbardziej szczegó\u0142owy (wszystkie komunikaty), INFO – informacje o normalnym dzia\u0142aniu, WARN – ostrze\u017cenia, ERROR – b\u0142\u0119dy, CRITICAL – krytyczne awarie.',
+      defaultValue: 'INFO',
+      type: 'string (wybór)',
+      range: 'DEBUG, INFO, WARN, ERROR, CRITICAL',
+    },
+    log_directory: {
+      description: 'Katalog docelowy plików logów. Podaj pe\u0142n\u0105 \u015bcie\u017ck\u0119 bezwzgl\u0119dn\u0105 na serwerze. Katalog musi istnie\u0107 i mie\u0107 prawa zapisu dla procesu sterownika.',
+      defaultValue: '/var/log/astro-mount',
+      type: 'string (\u015bcie\u017cka)',
+      range: 'dowolna prawid\u0142owa \u015bcie\u017cka bezwzgl\u0119dna',
+    },
+    log_rotation_days: {
+      description: 'Rotacja (archiwizacja) logów po N dniach. Starsze pliki s\u0105 automatycznie usuwane. Warto\u015b\u0107 0 oznacza brak rotacji.',
+      defaultValue: '7',
+      type: 'integer',
+      range: '1 – 365',
+    },
+    log_max_file_size_mb: {
+      description: 'Maksymalny rozmiar pojedynczego pliku logu w megabajtach. Po przekroczeniu tworzony jest nowy plik, a stary jest archiwizowany.',
+      defaultValue: '100',
+      type: 'integer',
+      range: '1 – 1024',
+    },
+    log_console_output: {
+      description: 'Czy wypisywa\u0107 logi równie\u017c na konsol\u0119 (stdout/stderr). Przydatne przy uruchomieniu w terminalu, mo\u017cna wy\u0142\u0105czy\u0107 dla demona.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+
+    // ── Network ──
+    grpc_address: {
+      description: 'Adres IPv4, na którym serwer gRPC nas\u0142uchuje po\u0142\u0105cze\u0144. 0.0.0.0 oznacza wszystkie interfejsy sieciowe. Dla bezpiecze\u0144stwa ustaw 127.0.0.1, je\u015bli proxy dzia\u0142a lokalnie.',
+      defaultValue: '0.0.0.0',
+      type: 'string (adres IPv4)',
+      range: 'prawid\u0142owy adres IPv4',
+    },
+    grpc_port: {
+      description: 'Port serwera gRPC dla komunikacji zewn\u0119trznej (web UI, aplikacje klienckie). Upewnij si\u0119, \u017ce port nie jest blokowany przez zapor\u0119 sieciow\u0105.',
+      defaultValue: '50051',
+      type: 'integer',
+      range: '1 – 65535',
+    },
+    network_max_connections: {
+      description: 'Maksymalna liczba równoczesnych po\u0142\u0105cze\u0144 gRPC. Przy du\u017cej liczbie klientów zwi\u0119ksz t\u0119 warto\u015b\u0107. Wp\u0142ywa na zu\u017cycie pami\u0119ci.',
+      defaultValue: '10',
+      type: 'integer',
+      range: '1 – 1000',
+    },
+    network_enable_ssl: {
+      description: 'Czy w\u0142\u0105czy\u0107 szyfrowanie TLS dla po\u0142\u0105cze\u0144 gRPC. Wymaga prawid\u0142owo skonfigurowanych \u015bcie\u017cek certyfikatu i klucza SSL.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    network_ssl_cert_path: {
+      description: '\u015acie\u017cka do pliku certyfikatu SSL (.pem/.crt) na serwerze. Wymagane, gdy enable_ssl = true.',
+      defaultValue: '"" (pusty)',
+      type: 'string (\u015bcie\u017cka pliku)',
+      range: 'dowolna \u015bcie\u017cka do pliku .pem/.crt',
+    },
+    network_ssl_key_path: {
+      description: '\u015acie\u017cka do pliku klucza prywatnego SSL (.key) na serwerze. Wymagane, gdy enable_ssl = true. Przechowuj w bezpiecznym miejscu.',
+      defaultValue: '"" (pusty)',
+      type: 'string (\u015bcie\u017cka pliku)',
+      range: 'dowolna \u015bcie\u017cka do pliku .key',
+    },
+
+    // ── CANopen ──
+    canopen_interface: {
+      description: 'Nazwa interfejsu SocketCAN w systemie Linux. Standardowo can0, can1 dla fizycznych interfejsów CAN, vcan0 dla symulacji (testy).',
+      defaultValue: 'can0',
+      type: 'string',
+      range: 'nazwa interfejsu CAN (can0, can1, vcan0, ...)',
+    },
+    canopen_node_id: {
+      description: 'CANopen Node ID sterownika – w\u0142asny adres urz\u0105dzenia na magistrali CAN (CiA 301). To NIE jest adres serwonap\u0119dów – te konfiguruje si\u0119 w sekcji HAL > osie > can_node_id.',
+      defaultValue: '1',
+      type: 'integer',
+      range: '1 – 127',
+    },
+    canopen_baud_rate: {
+      description: 'Szybko\u015b\u0107 transmisji magistrali CAN w bodach. Wszystkie urz\u0105dzenia na magistrali musz\u0105 mie\u0107 t\u0119 sam\u0105 warto\u015b\u0107. Dla d\u0142ugich przewodów (ponad 100m) u\u017cyj ni\u017cszej warto\u015bci.',
+      defaultValue: '1000000 (1 Mbit/s)',
+      type: 'select',
+      range: '100000, 250000, 500000, 1000000',
+    },
+    canopen_enable_sync: {
+      description: 'Czy w\u0142\u0105czy\u0107 cykliczny SYNC (CiA 301 §7.2.4). SYNC synchronizuje wszystkie w\u0119z\u0142y CANopen, umo\u017cliwiaj\u0105c synchroniczne PDO.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    canopen_sync_interval_ms: {
+      description: 'Interwa\u0142 mi\u0119dzy kolejnymi komunikatami SYNC w milisekundach. Krótszy interwa\u0142 = wi\u0119ksza precyzja czasowa, ale wi\u0119ksze obci\u0105\u017cenie magistrali.',
+      defaultValue: '100',
+      type: 'integer',
+      range: '10 – 10000',
+    },
+
+    // ── Mount Location ──
+    latitude: {
+      description: 'Szeroko\u015b\u0107 geograficzna obserwatorium w stopniach. Dodatnia dla pó\u0142kuli pó\u0142nocnej (N), ujemna dla po\u0142udniowej (S).',
+      defaultValue: '52.0° N',
+      type: 'float',
+      range: '-90.0 do 90.0',
+    },
+    longitude: {
+      description: 'D\u0142ugo\u015b\u0107 geograficzna obserwatorium w stopniach. Dodatnia na wschód (E) od Greenwich, ujemna na zachód (W).',
+      defaultValue: '21.0° E',
+      type: 'float',
+      range: '-180.0 do 180.0',
+    },
+    altitude: {
+      description: 'Wysoko\u015b\u0107 n.p.m. obserwatorium w metrach. Wp\u0142ywa na obliczenia refrakcji atmosferycznej i ci\u015bnienia.',
+      defaultValue: '100.0',
+      type: 'float',
+      range: '-500 do 10000',
+    },
+    mount_height: {
+      description: 'Wysoko\u015b\u0107 osi monta\u017cu nad poziomem gruntu w metrach. Istotne przy precyzyjnych obliczeniach paralaksy.',
+      defaultValue: '1.5',
+      type: 'float',
+      range: '0.0 – 50.0',
+    },
+
+    // ── Mount General ──
+    mount_type: {
+      description: 'Typ monta\u017cu: EQUATORIAL (paralaktyczny, wymaga gwiazdowej pr\u0119dko\u015bci korekcyjnej tylko w jednej osi), ALT_AZ (azymutalny, wymaga korekcji w obu osiach), CASUAL (niestandardowy).',
+      defaultValue: 'EQUATORIAL',
+      type: 'select',
+      range: 'EQUATORIAL, ALT_AZ, CASUAL, UNKNOWN',
+    },
+    max_slew_rate: {
+      description: 'Maksymalna pr\u0119dko\u015b\u0107 przewijania monta\u017cu w stopniach na sekund\u0119. Wy\u017csze warto\u015bci = szybsze przemieszczanie, ale wi\u0119ksze obci\u0105\u017cenie mechaniki.',
+      defaultValue: '5.0',
+      type: 'float',
+      range: '0.1 – 50.0',
+    },
+    max_tracking_rate: {
+      description: 'Maksymalna pr\u0119dko\u015b\u0107 trackingu w stopniach na sekund\u0119. Standardowo ~0.004178°/s (1× pr\u0119dko\u015b\u0107 gwiazdowa). Wy\u017csze warto\u015bci dla korekcji ksi\u0119\u017cycowej/s\u0142onecznej.',
+      defaultValue: '0.004178',
+      type: 'float',
+      range: '0.0001 – 0.1',
+    },
+    slew_acceleration: {
+      description: 'Przyspieszenie przewijania w stopniach na sekund\u0119 kwadrat. Wy\u017csze warto\u015bci = szybsze osi\u0105ganie pr\u0119dko\u015bci, ale wi\u0119ksze obci\u0105\u017cenie mechaniki i silników.',
+      defaultValue: '1.0',
+      type: 'float',
+      range: '0.01 – 20.0',
+    },
+    tracking_acceleration: {
+      description: 'Przyspieszenie trackingu w stopniach na sekund\u0119 kwadrat. Niska warto\u015b\u0107 zapewnia p\u0142ynne zmiany pr\u0119dko\u015bci bez szarpni\u0119\u0107.',
+      defaultValue: '0.001',
+      type: 'float',
+      range: '0.0001 – 1.0',
+    },
+
+    // ── Mount Environmental ──
+    default_temperature: {
+      description: 'Domy\u015blna temperatura otoczenia w stopniach Celsjusza (°C). U\u017cywana do oblicze\u0144 refrakcji atmosferycznej oraz modeli termicznych osi.',
+      defaultValue: '15.0',
+      type: 'float',
+      range: '-50.0 do 60.0',
+    },
+    default_pressure: {
+      description: 'Domy\u015blne ci\u015bnienie atmosferyczne w hektopaskalach (hPa). U\u017cywane do oblicze\u0144 refrakcji atmosferycznej. Standardowe ci\u015bnienie na poziomie morza: 1013.25 hPa.',
+      defaultValue: '1013.25',
+      type: 'float',
+      range: '500.0 – 1100.0',
+    },
+    default_humidity: {
+      description: 'Domy\u015blna wilgotno\u015b\u0107 wzgl\u0119dna (0.0 = 0%, 1.0 = 100%). U\u017cywana w zaawansowanych modelach refrakcji atmosferycznej.',
+      defaultValue: '0.5 (50%)',
+      type: 'float',
+      range: '0.0 – 1.0',
+    },
+
+    // ── Mount Encoders ──
+    use_encoders: {
+      description: 'Czy u\u017cywa\u0107 enkoderów do sprz\u0119\u017cenia zwrotnego pozycji. Je\u015bli wy\u0142\u0105czone, system polega na estymacji pozycji z silników (przyrostowo).',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    encoders_absolute: {
+      description: 'Czy enkodery s\u0105 absolutne (true) czy inkrementalne (false). Enkodery absolutne pami\u0119taj\u0105 pozycj\u0119 po w\u0142\u0105czeniu zasilania, inkrementalne wymagaj\u0105 referencji (homing).',
+      defaultValue: 'true (absolutne)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    encoder_resolution_config: {
+      description: 'Rozdzielczo\u015b\u0107 enkoderów w liczbie impulsów na pe\u0142ny obrót (counts per revolution). Wy\u017csza warto\u015b\u0107 = wi\u0119ksza precyzja, ale wi\u0119ksze obci\u0105\u017cenie obliczeniowe.',
+      defaultValue: '16384',
+      type: 'integer',
+      range: '1 – 10000000',
+    },
+
+    // ── Mount Tolerances ──
+    position_tolerance: {
+      description: 'Tolerancja pozycji w stopniach. Gdy ró\u017cnica mi\u0119dzy pozycj\u0105 docelow\u0105 a aktualn\u0105 jest mniejsza od tej warto\u015bci, target jest uznawany za osi\u0105gni\u0119ty.',
+      defaultValue: '0.1',
+      type: 'float',
+      range: '0.001 – 10.0',
+    },
+    rate_tolerance: {
+      description: 'Tolerancja pr\u0119dko\u015bci w stopniach na sekund\u0119. Gdy pr\u0119dko\u015b\u0107 osi\u0105gnie docelow\u0105 warto\u015b\u0107 z dok\u0142adno\u015bci\u0105 do tego zakresu, uznaje si\u0119 j\u0105 za stabiln\u0105.',
+      defaultValue: '0.01',
+      type: 'float',
+      range: '0.0001 – 1.0',
+    },
+
+    // ── Meridian Flip ──
+    meridian_flip_enabled: {
+      description: 'Czy w\u0142\u0105czy\u0107 automatyczne przej\u015bcie przez po\u0142udnik (meridian flip). Dla monta\u017cu paralaktycznego – zmiana strony rury po przekroczeniu po\u0142udnika.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    meridian_flip_delay_minutes: {
+      description: 'Opó\u017anienie w minutach po osi\u0105gni\u0119ciu po\u0142udnika przed rozpocz\u0119ciem flipa. Pozwala na doko\u0144czenie ekspozycji bez przerywania.',
+      defaultValue: '5.0',
+      type: 'float',
+      range: '0.0 – 60.0',
+    },
+    meridian_flip_hysteresis_degrees: {
+      description: 'Histereza flipa w stopniach – zapobiega oscylacjom (wielokrotnym flipom) wokó\u0142 granicy po\u0142udnika przy wietrznej pogodzie.',
+      defaultValue: '0.5',
+      type: 'float',
+      range: '0.0 – 10.0',
+    },
+    meridian_flip_timeout_seconds: {
+      description: 'Maksymalny czas trwania manewru meridian flip w sekundach. Po przekroczeniu tego czasu operacja jest przerywana i zg\u0142aszany jest b\u0142\u0105d.',
+      defaultValue: '120.0',
+      type: 'float',
+      range: '10 – 600',
+    },
+
+    // ── Soft Limits ──
+    soft_limits_enabled: {
+      description: 'Czy w\u0142\u0105czy\u0107 mi\u0119kkie limity pozycji osi. Limity zapobiegaj\u0105 ruchowi poza dozwolony zakres, chroni\u0105c sprz\u0119t przed uszkodzeniem.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    soft_limit_axis1_min: {
+      description: 'Minimalna dozwolona pozycja osi 1 (HA/Azm) w stopniach. Ruch poni\u017cej tej warto\u015bci jest blokowany.',
+      defaultValue: '-270.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+    soft_limit_axis1_max: {
+      description: 'Maksymalna dozwolona pozycja osi 1 (HA/Azm) w stopniach. Ruch powy\u017cej tej warto\u015bci jest blokowany.',
+      defaultValue: '270.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+    soft_limit_axis2_min: {
+      description: 'Minimalna dozwolona pozycja osi 2 (Dec/Alt) w stopniach. Ruch poni\u017cej tej warto\u015bci jest blokowany.',
+      defaultValue: '-5.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+    soft_limit_axis2_max: {
+      description: 'Maksymalna dozwolona pozycja osi 2 (Dec/Alt) w stopniach. Ruch powy\u017cej tej warto\u015bci jest blokowany.',
+      defaultValue: '185.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+    soft_limit_warning_degrees: {
+      description: 'Strefa ostrze\u017cenia przed osi\u0105gni\u0119ciem limitu w stopniach. W tej strefie pr\u0119dko\u015b\u0107 jest redukowana zgodnie z tracking_rate_factor.',
+      defaultValue: '10.0',
+      type: 'float',
+      range: '0.0 – 90.0',
+    },
+    soft_limit_deceleration_degrees: {
+      description: 'Strefa hamowania przed limitem w stopniach. W tej strefie monta\u017c delikatnie zwalnia do ca\u0142kowitego zatrzymania na granicy limitu.',
+      defaultValue: '5.0',
+      type: 'float',
+      range: '0.0 – 90.0',
+    },
+    soft_limit_tracking_rate_factor: {
+      description: 'Wspó\u0142czynnik redukcji pr\u0119dko\u015bci w strefie ostrze\u017cenia (0.0 = zatrzymanie, 1.0 = pe\u0142na pr\u0119dko\u015b\u0107). Ni\u017csza warto\u015b\u0107 = wi\u0119ksze spowolnienie.',
+      defaultValue: '0.1',
+      type: 'float',
+      range: '0.0 – 1.0',
+    },
+
+    // ── Park Position ──
+    park_position_axis1: {
+      description: 'Pozycja parkowania osi 1 (HA/Azm) w stopniach. Po zaparkowaniu monta\u017c ustawia si\u0119 w tej pozycji i wy\u0142\u0105cza nap\u0119dy.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+    park_position_axis2: {
+      description: 'Pozycja parkowania osi 2 (Dec/Alt) w stopniach. Dla monta\u017cu paralaktycznego typowo 90° (skierowanie na polarn\u0105).',
+      defaultValue: '90.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+
+    // ── Atmospheric Correction ──
+    enable_refraction_correction: {
+      description: 'Czy w\u0142\u0105czy\u0107 automatyczn\u0105 korekcj\u0119 refrakcji atmosferycznej. Refrakcja powoduje pozorne podniesienie obiektów nad horyzontem – korekcja poprawia celowanie przy niskich wysoko\u015bciach.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+
+    // ── Mount Orientation (Quaternion) ──
+    mount_orientation: {
+      description: 'Kwaternion orientacji monta\u017cu (qx, qy, qz, qw). Definiuje przekszta\u0142cenie mi\u0119dzy uk\u0142adem wspó\u0142rz\u0119dnych monta\u017cu a uk\u0142adem niebieskim. Warto\u015bci jako lista oddzielona przecinkami.',
+      defaultValue: '1.0, 0.0, 0.0, 0.0',
+      type: 'float[4] (kwaternion)',
+      range: 'kwaternion jednostkowy (|q| = 1)',
+    },
+
+    // ── Telescope ──
+    focal_length: {
+      description: 'Ogniskowa teleskopu w milimetrach (mm). Wp\u0142ywa na skal\u0119 obrazu (arcsec/pixel) oraz obliczenia trackingu i rotacji pola.',
+      defaultValue: '2000.0',
+      type: 'float',
+      range: '1.0 – 50000.0',
+    },
+    aperture: {
+      description: '\u015arednica / apertura teleskopu w milimetrach (mm). Wp\u0142ywa na zdolno\u015b\u0107 zbierania \u015bwiat\u0142a i rozdzielczo\u015b\u0107 teoretyczn\u0105.',
+      defaultValue: '200.0',
+      type: 'float',
+      range: '1.0 – 50000.0',
+    },
+    tube_length: {
+      description: 'D\u0142ugo\u015b\u0107 tubusa teleskopu w milimetrach (mm). U\u017cywana w obliczeniach flexury i momentów bezw\u0142adno\u015bci.',
+      defaultValue: '1800.0',
+      type: 'float',
+      range: '1.0 – 50000.0',
+    },
+    camera_model: {
+      description: 'Model kamery astronomicznej (ci\u0105g znaków). S\u0142u\u017cy wy\u0142\u0105cznie do celów informacyjnych i logowania.',
+      defaultValue: 'ASI1600',
+      type: 'string (tekst)',
+      range: 'dowolny ci\u0105g znaków',
+    },
+    pixel_size: {
+      description: 'Rozmiar pojedynczego piksela matrycy w mikrometrach (µm). Wp\u0142ywa na skal\u0119 obrazu (arcsec/pixel) przy danej ogniskowej.',
+      defaultValue: '3.8',
+      type: 'float',
+      range: '0.1 – 100.0',
+    },
+    sensor_width: {
+      description: 'Szeroko\u015b\u0107 matrycy kamery w pikselach. U\u017cywana do oblicze\u0144 pola widzenia i rotacji.',
+      defaultValue: '4656',
+      type: 'integer',
+      range: '1 – 50000',
+    },
+    sensor_height: {
+      description: 'Wysoko\u015b\u0107 matrycy kamery w pikselach. U\u017cywana do oblicze\u0144 pola widzenia i rotacji.',
+      defaultValue: '3520',
+      type: 'integer',
+      range: '1 – 50000',
+    },
+
+    // ── Guider ──
+    guider_enabled: {
+      description: 'Czy w\u0142\u0105czy\u0107 autoguider. Autoguider koryguje pozycj\u0119 monta\u017cu na podstawie obrazu z kamery prowadz\u0105cej, kompensuj\u0105c b\u0142\u0119dy trackingu.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    guider_connection_string: {
+      description: 'Ci\u0105g po\u0142\u0105czenia do kamery guidowej. Format zale\u017cny od u\u017cywanego protoko\u0142u (np. INDI: "indi://localhost:7624/my_ccd").',
+      defaultValue: '"" (pusty)',
+      type: 'string',
+      range: 'dowolny ci\u0105g znaków',
+    },
+    guider_max_correction: {
+      description: 'Maksymalna korekcja pozycji przez autoguider w sekundach k\u0105towych (arcsec). Zapobiega zbyt agresywnym korektom.',
+      defaultValue: '10.0',
+      type: 'float',
+      range: '0.1 – 100.0',
+    },
+    guider_aggression: {
+      description: 'Agresywno\u015b\u0107 korekcji autoguidera (0.0 = brak korekcji, 1.0 = pe\u0142na korekcja). Ni\u017csze warto\u015bci = bardziej stabilny, ale wolniejszy tracking.',
+      defaultValue: '0.5',
+      type: 'float',
+      range: '0.0 – 1.0',
+    },
+    guider_exposure_time_ms: {
+      description: 'Czas ekspozycji klatki guidowej w milisekundach (ms). D\u0142u\u017cszy czas = wi\u0119cej gwiazd do prowadzenia, ale wolniejsza reakcja na zmiany.',
+      defaultValue: '2000',
+      type: 'integer',
+      range: '10 – 60000',
+    },
+    guider_binning: {
+      description: 'Binning kamery guidowej (1 = brak, 2 = 2×2, 3 = 3×3, 4 = 4×4). Wy\u017cszy binning = wi\u0119ksza czu\u0142o\u015b\u0107, ale mniejsza rozdzielczo\u015b\u0107.',
+      defaultValue: '2',
+      type: 'select',
+      range: '1, 2, 3, 4',
+    },
+
+    // ── Kalman Filter ──
+    process_noise: {
+      description: 'Szum procesu (Q) filtru Kalmana. Wy\u017csza warto\u015b\u0107 = szybsza adaptacja do zmian, ale wi\u0119ksze wahania estymaty. Ni\u017csza = g\u0142adsza, ale wolniejsza odpowied\u017a.',
+      defaultValue: '0.01',
+      type: 'float',
+      range: '0.0001 – 100.0',
+    },
+    measurement_noise: {
+      description: 'Szum pomiaru (R) filtru Kalmana. Wy\u017csza warto\u015b\u0107 = wi\u0119ksze wyg\u0142adzenie (ufasz modelowi bardziej ni\u017c pomiarom). Ni\u017csza = szybsza reakcja na pomiary.',
+      defaultValue: '1.0',
+      type: 'float',
+      range: '0.0001 – 100.0',
+    },
+    kalman_adaptive_q: {
+      description: 'Adaptacyjne Q – filtr automatycznie dostosowuje szum procesu do aktualnych warunków. Zalecane w\u0142\u0105czenie dla zmiennych warunków.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    kalman_adaptive_r: {
+      description: 'Adaptacyjne R – filtr automatycznie dostosowuje szum pomiaru. W\u0142\u0105czenie poprawia dzia\u0142anie przy zmiennej jako\u015bci pomiarów.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    kalman_innovation_threshold: {
+      description: 'Próg innowacji w sigma – warto\u015bci odstaj\u0105ce powy\u017cej tego progu s\u0105 odrzucane jako outliery. Chroni przed gwa\u0142townymi skokami spowodowanymi b\u0142\u0119dami pomiaru.',
+      defaultValue: '3.0',
+      type: 'float',
+      range: '0.1 – 100.0',
+    },
+    kalman_max_iterations: {
+      description: 'Maksymalna liczba iteracji korekcji filtru Kalmana. Wi\u0119cej iteracji = dok\u0142adniejsza estymacja kosztem wi\u0119kszego obci\u0105\u017cenia CPU.',
+      defaultValue: '10',
+      type: 'integer',
+      range: '1 – 1000',
+    },
+
+    // ── TPOINT ──
+    tpoint_enabled_terms: {
+      description: 'Maska bitowa w\u0142\u0105czonych wyrazów modelu TPoint. Ka\u017cdy bit odpowiada jednemu terminowi korekcji (np. IH, ID, CH, ME, MA, ...). 65535 = wszystkie dost\u0119pne terminy.',
+      defaultValue: '65535',
+      type: 'integer (bitmask)',
+      range: '0 – 65535',
+    },
+    tpoint_min_measurements: {
+      description: 'Minimalna liczba pomiarów wymagana do przeprowadzenia kalibracji TPoint. Wi\u0119cej pomiarów = dok\u0142adniejszy model, ale d\u0142u\u017cszy czas zbierania.',
+      defaultValue: '10',
+      type: 'integer',
+      range: '1 – 1000',
+    },
+    tpoint_max_residual: {
+      description: 'Maksymalny dopuszczalny residuum pomiaru TPoint w sekundach k\u0105towych (arcsec). Pomiar przekraczaj\u0105cy ten próg jest odrzucany jako outlier.',
+      defaultValue: '30.0',
+      type: 'float',
+      range: '0.1 – 1000.0',
+    },
+    tpoint_auto_calibrate: {
+      description: 'Automatyczna kalibracja TPoint – po zebraniu minimalnej liczby pomiarów model jest automatycznie obliczany i stosowany.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+
+    // ── Derotator ──
+    derotator_type: {
+      description: 'Typ derotatora: CANOPEN (przez magistral\u0119 CANopen), STEPPER (silnik krokowy), SERVO (serwonap\u0119d), CUSTOM (w\u0142asna implementacja).',
+      defaultValue: 'CANOPEN',
+      type: 'select',
+      range: 'CANOPEN, STEPPER, SERVO, CUSTOM',
+    },
+    derotator_enabled: {
+      description: 'Czy w\u0142\u0105czy\u0107 derotator. Derotator kompensuje rotacj\u0119 pola obrazu spowodowan\u0105 ruchem monta\u017cu.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    derotator_connection_string: {
+      description: 'Ci\u0105g po\u0142\u0105czenia derotatora (je\u015bli dotyczy). Format zale\u017cny od typu i protoko\u0142u.',
+      defaultValue: '"" (pusty)',
+      type: 'string',
+      range: 'dowolny ci\u0105g znaków',
+    },
+    derotator_gear_ratio: {
+      description: 'Prze\u0142o\u017cenie mechaniczne derotatora. Stosunek obrotów silnika do obrotów derotatora.',
+      defaultValue: '10.0',
+      type: 'float',
+      range: '0.1 – 10000.0',
+    },
+    derotator_max_speed: {
+      description: 'Maksymalna pr\u0119dko\u015b\u0107 obrotowa derotatora w stopniach na sekund\u0119 (°/s).',
+      defaultValue: '5.0',
+      type: 'float',
+      range: '0.1 – 180.0',
+    },
+    derotator_max_acceleration: {
+      description: 'Maksymalne przyspieszenie derotatora w stopniach na sekund\u0119 kwadrat (°/s²).',
+      defaultValue: '2.0',
+      type: 'float',
+      range: '0.1 – 180.0',
+    },
+    derotator_backlash: {
+      description: 'Luz mechaniczny derotatora w sekundach k\u0105towych (arcsec). Kompensowany przez system sterowania.',
+      defaultValue: '2.0',
+      type: 'float',
+      range: '0.0 – 1000.0',
+    },
+    derotator_absolute_encoder: {
+      description: 'Czy derotator ma enkoder absolutny. Enkoder absolutny zna swoj\u0105 pozycj\u0119 po w\u0142\u0105czeniu zasilania, nie wymaga homingu.',
+      defaultValue: 'true (absolutny)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    derotator_encoder_resolution: {
+      description: 'Rozdzielczo\u015b\u0107 enkodera derotatora w liczbie impulsów na obrót.',
+      defaultValue: '16384',
+      type: 'integer',
+      range: '1 – 10000000',
+    },
+    derotator_homing_offset: {
+      description: 'Offset (przesuni\u0119cie) pozycji domowej derotatora w stopniach (°). Umo\u017cliwia kalibracj\u0119 punktu zerowego.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+
+    // ── Field Rotation ──
+    field_rotation_enabled: {
+      description: 'Czy w\u0142\u0105czy\u0107 korekcj\u0119 rotacji pola. Oblicza i kompensuje rotacj\u0119 pola obrazu spowodowan\u0105 ruchem monta\u017cu.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    field_rotation_latitude: {
+      description: 'Szeroko\u015b\u0107 geograficzna dla oblicze\u0144 rotacji pola. Zazwyczaj taka sama jak szeroko\u015b\u0107 obserwatorium.',
+      defaultValue: '52.0',
+      type: 'float',
+      range: '-90.0 do 90.0',
+    },
+    field_rotation_altitude: {
+      description: 'Wysoko\u015b\u0107 (altitude) celu nad horyzontem w stopniach dla obliczenia rotacji pola.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '-90.0 do 90.0',
+    },
+    field_rotation_azimuth: {
+      description: 'Azymut celu w stopniach dla obliczenia rotacji pola. 0° = pó\u0142noc, 90° = wschód.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '0.0 – 360.0',
+    },
+    field_rotation_computed_rate: {
+      description: 'Obliczona pr\u0119dko\u015b\u0107 rotacji pola w stopniach na sekund\u0119. Warto\u015b\u0107 wyliczana automatycznie na podstawie pozycji i ruchu monta\u017cu.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '-10.0 do 10.0',
+    },
+    field_rotation_applied_correction: {
+      description: 'Zastosowana korekcja rotacji pola w stopniach. Aktualna warto\u015b\u0107 korekcji na\u0142o\u017cona na derotator.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '-360.0 do 360.0',
+    },
+    field_rotation_temperature: {
+      description: 'Temperatura dla korekcji rotacji pola w stopniach Celsjusza. Wp\u0142ywa na obliczenia termiczne derotatora.',
+      defaultValue: '15.0',
+      type: 'float',
+      range: '-50.0 do 60.0',
+    },
+    field_rotation_flexure_correction: {
+      description: 'Korekcja flexury (ugina\u0107) dla rotacji pola. Kompensuje odkszta\u0142cenia mechaniczne wp\u0142ywaj\u0105ce na rotacj\u0119.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '-10.0 do 10.0',
+    },
+
+    // ── HAL ──
+    hal_interface_type: {
+      description: 'Typ backendu warstwy abstrakcji sprz\u0119towej (HAL). CANopen – fizyczna magistrala CAN, Serial – port szeregowy, Ethernet – sie\u0107 Ethernet, Simulated – symulacja (testy), Custom – w\u0142asna implementacja.',
+      defaultValue: 'CANopen',
+      type: 'select',
+      range: 'CANopen, Serial, Ethernet, Simulated, Custom',
+    },
+    hal_can_interface: {
+      description: 'Nazwa interfejsu SocketCAN dla warstwy HAL. Mo\u017ce si\u0119 ró\u017cni\u0107 od interfejsu w sekcji CANopen.',
+      defaultValue: 'can0',
+      type: 'string',
+      range: 'nazwa interfejsu CAN (can0, can1, vcan0)',
+    },
+    hal_can_node_id: {
+      description: 'Lokalny CANopen Node ID sterownika w warstwie HAL. Adres w\u0142asny urz\u0105dzenia na magistrali CAN.',
+      defaultValue: '1',
+      type: 'integer',
+      range: '1 – 127',
+    },
+    hal_can_baud_rate: {
+      description: 'Szybko\u015b\u0107 transmisji CAN w warstwie HAL w bodach.',
+      defaultValue: '1000000',
+      type: 'integer',
+      range: '10000 – 10000000',
+    },
+    hal_heartbeat_interval_ms: {
+      description: 'Interwa\u0142 wysy\u0142ania Heartbeat NMT w milisekundach (CiA 301). Okre\u015bla jak cz\u0119sto sterownik informuje sie\u0107 o swoim stanie.',
+      defaultValue: '100',
+      type: 'integer',
+      range: '10 – 60000',
+    },
+    hal_pdo_mapping_mode: {
+      description: 'Tryb mapowania PDO (Process Data Object). Okre\u015bla, które obiekty s\u0105 mapowane do PDO dla szybkiej komunikacji cyklicznej.',
+      defaultValue: '"" (domy\u015blny)',
+      type: 'string',
+      range: 'dowolny ci\u0105g znaków (zale\u017cny od biblioteki CANopen)',
+    },
+
+    // ── HAL Gamepad ──
+    hal_gamepad_device_path: {
+      description: '\u015acie\u017fka urz\u0105dzenia wej\u015bciowego gamepada w systemie Linux (np. /dev/input/js0, /dev/input/event3). U\u017cyj `ls /dev/input/` aby znale\u017a\u0107 w\u0142a\u015bciwe urz\u0105dzenie.',
+      defaultValue: '"" (pusty)',
+      type: 'string (\u015bcie\u017fka)',
+      range: '/dev/input/*',
+    },
+    hal_gamepad_deadzone: {
+      description: 'Strefa martwa analogowych osi gamepada (0.0–1.0). Warto\u015bci w tej strefie s\u0105 ignorowane, zapobiegaj\u0105c dryftowi osi.',
+      defaultValue: '0.15',
+      type: 'float',
+      range: '0.0 – 1.0',
+    },
+    hal_gamepad_sensitivity: {
+      description: 'Czu\u0142o\u015b\u0107 osi analogowych gamepada. Wy\u017csza warto\u015b\u0107 = wi\u0119kszy ruch przy tym samym wychyleniu.',
+      defaultValue: '1.0',
+      type: 'float',
+      range: '0.1 – 10.0',
+    },
+    hal_gamepad_poll_interval_ms: {
+      description: 'Cz\u0119stotliwo\u015b\u0107 odczytu stanu gamepada w milisekundach. Ni\u017csza warto\u015b\u0107 = szybsza reakcja, ale wi\u0119ksze obci\u0105\u017cenie CPU.',
+      defaultValue: '50',
+      type: 'integer',
+      range: '5 – 1000',
+    },
+
+    // ── Axis Physical Parameters (shared between HA and Dec) ──
+    motor_steps_per_rev: {
+      description: 'Liczba kroków silnika na pe\u0142ny obrót wa\u0142u silnika. Dla silników krokowych typowo 200 (1.8°/step) lub 400 (0.9°/step). Wy\u017csza warto\u015b\u0107 = wi\u0119ksza precyzja przy danym mikrokrokowaniu.',
+      defaultValue: '200',
+      type: 'integer',
+      range: '1 – 10000',
+    },
+    motor_microstepping: {
+      description: 'Mikrokrokowanie silnika (1 = pe\u0142ny krok, 64 = 1/64 kroku). Wy\u017csza warto\u015b\u0107 = p\u0142ynniejszy ruch i wi\u0119ksza precyzja, ale mniejszy moment obrotowy.',
+      defaultValue: '64',
+      type: 'integer',
+      range: '1 – 256',
+    },
+    motor_step_angle: {
+      description: 'K\u0105t pojedynczego kroku silnika po mikrokrokowaniu w sekundach k\u0105towych (arcsec). Obliczany jako (360° × 3600) / (kroki/obrót × mikrokroki).',
+      defaultValue: '101.25',
+      type: 'float',
+      range: '0.1 – 360.0',
+    },
+    encoder_resolution: {
+      description: 'Rozdzielczo\u015b\u0107 enkodera w liczbie impulsów na pe\u0142ny obrót (counts per revolution). Wy\u017csza warto\u015b\u0107 = wy\u017csza precyzja (ale wolniejszy maksymalny odczyt).',
+      defaultValue: '16384',
+      type: 'integer',
+      range: '1 – 10000000',
+    },
+    encoder_counts_per_arcsec: {
+      description: 'Liczba impulsów enkodera na sekund\u0119 k\u0105tow\u0105 (arcsec). Stosunek rozdzielczo\u015bci enkodera do rzeczywistego przesuni\u0119cia k\u0105towego osi.',
+      defaultValue: '0.0126',
+      type: 'float',
+      range: '0.0001 – 100.0',
+    },
+    encoder_quantization_error: {
+      description: 'B\u0142\u0105d kwantyzacji enkodera w milisekundach k\u0105towych (mas). Minimalny b\u0142\u0105d wynikaj\u0105cy z dyskretnej natury pomiaru enkoderem.',
+      defaultValue: '39.6',
+      type: 'float',
+      range: '0.0 – 1000.0',
+    },
+    gear_ratio: {
+      description: 'Ca\u0142kowite prze\u0142o\u017cenie przek\u0142adni mi\u0119dzy wa\u0142em silnika a osi\u0105 monta\u017cu. Stosunek obrotów silnika do obrotów osi.',
+      defaultValue: '360.0',
+      type: 'float',
+      range: '1.0 – 10000.0',
+    },
+    worm_ratio: {
+      description: 'Prze\u0142o\u017cenie przek\u0142adni \u015blimakowej. Liczba obrotów \u015blimaka potrzebna do jednego obrotu ko\u0142a \u015blimacznicy.',
+      defaultValue: '180.0',
+      type: 'float',
+      range: '1.0 – 10000.0',
+    },
+    worm_teeth: {
+      description: 'Liczba z\u0119bów \u015blimaka (zazwyczaj 1 – pojedynczy start). Dla \u015blimaków wielokrotnych (multi-start) podaj liczb\u0119 startów.',
+      defaultValue: '1',
+      type: 'integer',
+      range: '1 – 1000',
+    },
+    worm_wheel_teeth: {
+      description: 'Liczba z\u0119bów ko\u0142a \u015blimacznicy. Okre\u015bla prze\u0142o\u017cenie wraz z liczb\u0105 z\u0119bów \u015blimaka.',
+      defaultValue: '180',
+      type: 'integer',
+      range: '1 – 10000',
+    },
+    cyclic_error_amplitude: {
+      description: 'Amplituda b\u0142\u0119du cyklicznego w sekundach k\u0105towych (arcsec). B\u0142\u0105d okresowy zwi\u0105zany z przek\u0142adni\u0105 \u015blimakow\u0105, powtarzaj\u0105cy si\u0119 co obrót ko\u0142a \u015blimacznicy.',
+      defaultValue: '15.2 (HA) / 12.8 (Dec)',
+      type: 'float',
+      range: '0.0 – 100.0',
+    },
+    cyclic_error_period: {
+      description: 'Okres b\u0142\u0119du cyklicznego w stopniach (°). Zazwyczaj 360° (jeden pe\u0142ny obrót ko\u0142a \u015blimacznicy).',
+      defaultValue: '360.0',
+      type: 'float',
+      range: '0.1 – 3600.0',
+    },
+    cyclic_harmonics: {
+      description: 'Wspó\u0142czynniki harmonicznych b\u0142\u0119du cyklicznego jako lista oddzielona przecinkami. Pozwala na modelowanie z\u0142o\u017conych przebiegów okresowych.',
+      defaultValue: 'zale\u017cne od osi',
+      type: 'string (lista)',
+      range: 'dowolne warto\u015bci liczbowe',
+    },
+    backlash: {
+      description: 'Luz mechaniczny w sekundach k\u0105towych (arcsec). Kompensowany przez system sterowania podczas zmiany kierunku ruchu.',
+      defaultValue: '8.5 (HA) / 6.3 (Dec)',
+      type: 'float',
+      range: '0.0 – 1000.0',
+    },
+    backlash_temp_coeff: {
+      description: 'Wspó\u0142czynnik temperaturowy luzu w sekundach k\u0105towych na stopie\u0144 Celsjusza (arcsec/°C). Okre\u015bla zmian\u0119 luzu wraz z temperatur\u0105.',
+      defaultValue: '0.02 (HA) / 0.015 (Dec)',
+      type: 'float',
+      range: '0.0 – 10.0',
+    },
+    axis_stiffness: {
+      description: 'Sztywno\u015b\u0107 osi w sekundach k\u0105towych na niutonometr (arcsec/Nm). Okre\u015bla odkszta\u0142cenie osi pod wp\u0142ywem obci\u0105\u017cenia.',
+      defaultValue: '0.5 (HA) / 0.6 (Dec)',
+      type: 'float',
+      range: '0.0 – 100.0',
+    },
+    torsional_compliance: {
+      description: 'Podatno\u015b\u0107 skr\u0119tna w radianach na niutonometr (rad/Nm). Odwrotno\u015b\u0107 sztywno\u015bci skr\u0119tnej – okre\u015bla zdolno\u015b\u0107 osi do odkszta\u0142ce\u0144 skr\u0119tnych.',
+      defaultValue: '1.0×10⁻⁶ (HA) / 1.2×10⁻⁶ (Dec)',
+      type: 'float',
+      range: '0.0 – (bez ogranicze\u0144)',
+    },
+    expansion_coeff: {
+      description: 'Wspó\u0142czynnik rozszerzalno\u015bci cieplnej materia\u0142ów osi w 1/°C. Okre\u015bla zmian\u0119 wymiarów geometrycznych pod wp\u0142ywem temperatury.',
+      defaultValue: '11.0×10⁻⁶ (1/°C)',
+      type: 'float',
+      range: '0.0 – (bez ogranicze\u0144)',
+    },
+    temp_gear_error_coeff: {
+      description: 'Wspó\u0142czynnik b\u0142\u0119du przek\u0142adni zale\u017cnego od temperatury w arcsec/°C. Okre\u015bla wp\u0142yw temperatury na dok\u0142adno\u015b\u0107 przek\u0142adni.',
+      defaultValue: '0.05 (HA) / 0.04 (Dec)',
+      type: 'float',
+      range: '0.0 – 10.0',
+    },
+    calibration_temp: {
+      description: 'Temperatura kalibracji osi w stopniach Celsjusza (°C). Temperatura, w której przeprowadzono kalibracj\u0119 mechaniczn\u0105.',
+      defaultValue: '20.0',
+      type: 'float',
+      range: '-50.0 do 60.0',
+    },
+  };
+
   // ─── Internal State ───────────────────────────────────────────────────────
 
   let currentConfig = null;
@@ -474,7 +1283,8 @@ const SettingsComponent = (() => {
 
     const summary = document.createElement('summary');
     const icon = GROUP_ICONS[group.id] || '';
-    summary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${icon}<span>${group.label}</span></span>`;
+    const groupHelpAttr = GROUP_HELP[group.id] ? ` data-help-group="${group.id}"` : '';
+    summary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${icon}<span>${group.label}</span><button class="help-icon"${groupHelpAttr} aria-label="Poka\u017c opis grupy: ${group.label}">i</button></span>`;
 
     // Update arrow direction when group toggles
     details.addEventListener('toggle', () => {
@@ -501,7 +1311,8 @@ const SettingsComponent = (() => {
 
         const subSummary = document.createElement('summary');
         const subIcon = GROUP_ICONS[sub.id] || '';
-        subSummary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${subIcon}<span>${sub.label}</span></span>`;
+        const subHelpAttr = GROUP_HELP[sub.id] ? ` data-help-group="${sub.id}"` : '';
+        subSummary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${subIcon}<span>${sub.label}</span><button class="help-icon"${subHelpAttr} aria-label="Poka\u017c opis grupy: ${sub.label}">i</button></span>`;
 
         // Update arrow direction when sub-group toggles
         subDetails.addEventListener('toggle', () => {
@@ -585,7 +1396,9 @@ const SettingsComponent = (() => {
     // Quaternion type
     if (field.type === 'quaternion') {
       wrapper.innerHTML = `
-        <label class="config-field-label">${field.label}</label>
+        <label class="config-field-label">${field.label}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+        </label>
         <input type="text" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="quaternion"
           value="${escapeHtml(String(value || ''))}" />
       `;
@@ -600,6 +1413,7 @@ const SettingsComponent = (() => {
           <input type="checkbox" class="config-input" data-group="${groupId}" data-key="${field.key}" data-type="checkbox"
             ${value ? 'checked' : ''} />
           ${field.label}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
         </label>
       `;
       return wrapper;
@@ -611,7 +1425,9 @@ const SettingsComponent = (() => {
         <option value="${escapeHtml(opt)}" ${String(value) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>
       `).join('');
       wrapper.innerHTML = `
-        <label class="config-field-label">${field.label}</label>
+        <label class="config-field-label">${field.label}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+        </label>
         <select class="form-input form-select config-input" data-group="${groupId}" data-key="${field.key}" data-type="select">
           ${options}
         </select>
@@ -625,7 +1441,9 @@ const SettingsComponent = (() => {
       const max = field.max !== undefined ? `max="${field.max}"` : '';
       const step = field.step !== undefined ? `step="${field.step}"` : 'step="any"';
       wrapper.innerHTML = `
-        <label class="config-field-label">${field.label}</label>
+        <label class="config-field-label">${field.label}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+        </label>
         <input type="number" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="number"
           ${min} ${max} ${step} value="${value !== undefined ? escapeHtml(String(value)) : ''}" />
       `;
@@ -634,7 +1452,9 @@ const SettingsComponent = (() => {
 
     // Text (default)
     wrapper.innerHTML = `
-      <label class="config-field-label">${field.label}</label>
+      <label class="config-field-label">${field.label}
+        <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+      </label>
       <input type="text" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="text"
         value="${escapeHtml(String(value || ''))}" />
     `;
@@ -962,6 +1782,21 @@ const SettingsComponent = (() => {
         handleImportConfig();
         return;
       }
+
+      const helpIcon = e.target.closest('.help-icon');
+      if (helpIcon) {
+        const key = helpIcon.dataset.helpKey;
+        const group = helpIcon.dataset.helpGroup;
+        const subgroup = helpIcon.dataset.helpSubgroup;
+        if (key) {
+          showHelpPopup(key, 'param', helpIcon);
+        } else if (group) {
+          showHelpPopup(group, 'group', helpIcon);
+        } else if (subgroup) {
+          showHelpPopup(subgroup, 'group', helpIcon);
+        }
+        return;
+      }
     });
   }
 
@@ -975,6 +1810,146 @@ const SettingsComponent = (() => {
       .replace(/>/g, '>')
       .replace(/"/g, '"')
       .replace(/'/g, '&#039;');
+  }
+
+  // ─── Help Tooltip ────────────────────────────────────────────────────────
+
+  /**
+   * Show a help tooltip ("dymek") near the clicked help icon.
+   * @param {string} key - The parameter key or group/subgroup ID
+   * @param {'param'|'group'} type - Whether this is a parameter or group help
+   * @param {HTMLElement} anchor - The clicked help icon element
+   */
+  function showHelpPopup(key, type, anchor) {
+    // Remove any existing tooltip first
+    const existing = document.querySelector('.help-tooltip');
+    if (existing) existing.remove();
+
+    const isParam = type === 'param';
+    const helpData = isParam ? PARAM_HELP[key] : GROUP_HELP[key];
+    if (!helpData) {
+      console.warn('HelpPopup: no data for', key, type);
+      return;
+    }
+
+    // Build content
+    let bodyHtml;
+    if (isParam) {
+      const desc = helpData.description || 'Brak opisu.';
+      const defVal = helpData.defaultValue !== undefined ? String(helpData.defaultValue) : '—';
+      const typeVal = helpData.type || '—';
+      const rangeVal = helpData.range || '—';
+
+      bodyHtml = `
+        <div class="help-tip-header">
+          <span class="help-tip-title">${escapeHtml(key)}</span>
+          <button class="help-tip-close" aria-label="Zamknij">&times;</button>
+        </div>
+        <div class="help-tip-body">
+          <p class="help-tip-desc">${escapeHtml(desc)}</p>
+          <table class="help-tip-table">
+            <tr><th>Typ</th><td>${escapeHtml(typeVal)}</td></tr>
+            <tr><th>Zakres</th><td>${escapeHtml(rangeVal)}</td></tr>
+            <tr><th>Domyślnie</th><td><code>${escapeHtml(defVal)}</code></td></tr>
+          </table>
+        </div>
+      `;
+    } else {
+      bodyHtml = `
+        <div class="help-tip-header">
+          <span class="help-tip-title">${escapeHtml(key)}</span>
+          <button class="help-tip-close" aria-label="Zamknij">&times;</button>
+        </div>
+        <div class="help-tip-body">
+          <p class="help-tip-desc">${escapeHtml(helpData)}</p>
+        </div>
+      `;
+    }
+
+    // Create tooltip element
+    const tooltip = document.createElement('div');
+    tooltip.className = 'help-tooltip';
+    tooltip.innerHTML = bodyHtml;
+    document.body.appendChild(tooltip);
+
+    // Position tooltip near the anchor
+    positionTooltip(tooltip, anchor);
+
+    // Close handlers
+    const closeTooltip = () => {
+      tooltip.remove();
+    };
+
+    const closeBtn = tooltip.querySelector('.help-tip-close');
+    if (closeBtn) closeBtn.addEventListener('click', closeTooltip);
+
+    // Close on Escape
+    const escHandler = function(e) {
+      if (e.key === 'Escape') {
+        closeTooltip();
+        document.removeEventListener('keydown', escHandler);
+      }
+    };
+    document.addEventListener('keydown', escHandler);
+
+    // Close on click outside tooltip (delayed to avoid immediate trigger from the help-icon click)
+    setTimeout(() => {
+      document.addEventListener('click', function outsideHandler(e) {
+        if (!tooltip.contains(e.target)) {
+          closeTooltip();
+          document.removeEventListener('click', outsideHandler);
+        }
+      });
+    }, 0);
+  }
+
+  /**
+   * Position a tooltip element near an anchor, with smart viewport-aware placement.
+   * @param {HTMLElement} tooltip
+   * @param {HTMLElement} anchor
+   */
+  function positionTooltip(tooltip, anchor) {
+    const anchorRect = anchor.getBoundingClientRect();
+    const tipWidth = 320;
+    const tipMaxHeight = 360;
+    const gap = 6; // gap between anchor and tooltip
+
+    // Determine placement: prefer below, then above
+    const spaceBelow = window.innerHeight - anchorRect.bottom;
+    const spaceAbove = anchorRect.top;
+    const placeBelow = spaceBelow >= tipMaxHeight + gap || spaceBelow >= spaceAbove;
+
+    let top, left;
+
+    if (placeBelow) {
+      top = anchorRect.bottom + gap;
+    } else {
+      top = anchorRect.top - gap - tipMaxHeight;
+      // cap so it's not above viewport
+      if (top < 4) top = 4;
+    }
+
+    // Horizontal: center on anchor, but keep within viewport
+    left = anchorRect.left + anchorRect.width / 2 - tipWidth / 2;
+    if (left < 8) left = 8;
+    if (left + tipWidth > window.innerWidth - 8) {
+      left = window.innerWidth - tipWidth - 8;
+    }
+
+    // Store which side the arrow should be on
+    tooltip.dataset.placement = placeBelow ? 'bottom' : 'top';
+
+    // Apply position
+    tooltip.style.position = 'fixed';
+    tooltip.style.left = left + 'px';
+    tooltip.style.top = top + 'px';
+    tooltip.style.width = tipWidth + 'px';
+    tooltip.style.maxHeight = tipMaxHeight + 'px';
+
+    // Adjust arrow horizontal position to point at the anchor center
+    const anchorCenterX = anchorRect.left + anchorRect.width / 2;
+    const arrowOffset = anchorCenterX - left;
+    tooltip.style.setProperty('--tip-arrow-offset', arrowOffset + 'px');
   }
 
   // ─── Address Configuration (unchanged) ──────────────────────────────────

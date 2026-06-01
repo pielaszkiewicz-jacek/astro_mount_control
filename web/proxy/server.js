@@ -44,6 +44,10 @@ const config = {
     certPath: process.env.SSL_CERT_PATH || '',
     keyPath: process.env.SSL_KEY_PATH || '',
   },
+  logging: {
+    directory: process.env.LOG_DIRECTORY || '/var/log/astro-mount',
+    fileName: process.env.LOG_FILE_NAME || 'astro-mount.log',
+  },
 };
 
 // ─── gRPC Client Setup (Mount Controller) ────────────────────────────────────
@@ -1835,6 +1839,239 @@ function formatState(state) {
     tracking_performance: state.tracking_performance,
   };
 }
+
+// ─── Log Streaming (SSE) ─────────────────────────────────────────────────────
+
+const LOG_DIR = config.logging.directory;
+const LOG_FILE = path.join(LOG_DIR, config.logging.fileName);
+let sseClients = [];
+let logWatchInterval = null;
+let lastKnownSize = 0;
+let logReadPosition = 0;
+
+/**
+ * Get the full path to the current log file.
+ * If the configured file doesn't exist, try to find any .log file.
+ */
+function getLogFilePath() {
+  if (fs.existsSync(LOG_FILE)) return LOG_FILE;
+  try {
+    if (fs.existsSync(LOG_DIR)) {
+      const files = fs.readdirSync(LOG_DIR)
+        .filter(f => f.endsWith('.log'))
+        .sort();
+      if (files.length > 0) return path.join(LOG_DIR, files[files.length - 1]);
+    }
+  } catch (_) { /* ignore */ }
+  return LOG_FILE;
+}
+
+/**
+ * Read new log entries since the last read position.
+ * Returns an array of { timestamp, level, message } objects.
+ */
+function readNewLogEntries() {
+  const filePath = getLogFilePath();
+  if (!fs.existsSync(filePath)) return [];
+
+  try {
+    const stats = fs.statSync(filePath);
+    if (stats.size <= logReadPosition) {
+      // File may have been rotated — reset position
+      if (stats.size < logReadPosition) {
+        logReadPosition = 0;
+      }
+      return [];
+    }
+
+    const fd = fs.openSync(filePath, 'r');
+    const buffer = Buffer.alloc(stats.size - logReadPosition);
+    fs.readSync(fd, buffer, 0, buffer.length, logReadPosition);
+    fs.closeSync(fd);
+
+    logReadPosition = stats.size;
+    const text = buffer.toString('utf-8');
+    return parseLogLines(text);
+  } catch (err) {
+    console.error('[LogStream] Error reading log file:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Parse raw log lines into structured entries.
+ * Handles spdlog default format: [2024-01-01 12:34:56.789] [level] message
+ */
+function parseLogLines(text) {
+  const entries = [];
+  const lines = text.split('\n');
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    // Try to parse spdlog format: [timestamp] [level] [name] message
+    // The pattern is: [%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] %v
+    const match = trimmed.match(/^\[(.+?)\]\s+\[(.+?)\]\s+\[(.+?)\]\s+(.*)/);
+    if (match) {
+      entries.push({
+        timestamp: match[1],
+        level: match[2].toLowerCase(),
+        message: match[4],
+      });
+    } else {
+      // Fallback: treat entire line as message
+      entries.push({
+        timestamp: new Date().toISOString(),
+        level: 'info',
+        message: trimmed,
+      });
+    }
+  }
+  return entries;
+}
+
+/**
+ * Broadcast an event to all connected SSE clients.
+ */
+function broadcastSSE(event, data) {
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  sseClients = sseClients.filter(client => {
+    try {
+      client.write(payload);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  });
+}
+
+/**
+ * Poll log file for changes and broadcast new entries.
+ */
+function pollLogFile() {
+  try {
+    const filePath = getLogFilePath();
+    if (!fs.existsSync(filePath)) return;
+
+    const stats = fs.statSync(filePath);
+    if (stats.size === lastKnownSize) return;
+    lastKnownSize = stats.size;
+
+    const entries = readNewLogEntries();
+    if (entries.length > 0) {
+      broadcastSSE('log', entries);
+    }
+  } catch (err) {
+    console.error('[LogStream] Poll error:', err.message);
+  }
+}
+
+/**
+ * Start polling the log file for changes.
+ */
+function startLogPolling(initialPosition) {
+  if (logWatchInterval) return;
+  // Only initialize positions if not already set by the SSE init handler
+  if (initialPosition !== undefined) {
+    logReadPosition = initialPosition;
+    lastKnownSize = initialPosition;
+  } else if (logReadPosition === 0 && lastKnownSize === 0) {
+    const filePath = getLogFilePath();
+    if (fs.existsSync(filePath)) {
+      logReadPosition = fs.statSync(filePath).size;
+      lastKnownSize = logReadPosition;
+    }
+  }
+  logWatchInterval = setInterval(pollLogFile, 500);
+}
+
+/**
+ * Stop polling the log file.
+ */
+function stopLogPolling() {
+  if (logWatchInterval) {
+    clearInterval(logWatchInterval);
+    logWatchInterval = null;
+  }
+}
+
+/**
+ * GET /api/logs
+ * Returns recent log entries (last N lines from the log file).
+ */
+app.get('/api/logs', (req, res) => {
+  try {
+    const maxLines = parseInt(req.query.lines, 10) || 200;
+    const filePath = getLogFilePath();
+
+    if (!fs.existsSync(filePath)) {
+      return res.json({ logs: [], file: filePath });
+    }
+
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const allEntries = parseLogLines(content);
+    const recent = allEntries.slice(-maxLines);
+
+    res.json({ logs: recent, file: filePath });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read log file', details: err.message });
+  }
+});
+
+/**
+ * GET /api/logs/stream
+ * Server-Sent Events endpoint for real-time log streaming.
+ */
+app.get('/api/logs/stream', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+
+  // Send initial keepalive
+  res.write(':ok\n\n');
+
+  // Send recent logs on connect
+  try {
+    const filePath = getLogFilePath();
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const allEntries = parseLogLines(content);
+      const recent = allEntries.slice(-100);
+      res.write(`event: init\ndata: ${JSON.stringify({ logs: recent })}\n\n`);
+      // Record file position AFTER reading init data, BEFORE starting polling
+      // to prevent missing entries written between init read and poll start
+      const stats = fs.statSync(filePath);
+      logReadPosition = stats.size;
+      lastKnownSize = stats.size;
+    }
+  } catch (_) { /* ignore */ }
+
+  sseClients.push(res);
+
+  // Start polling if not already running
+  startLogPolling();
+
+  // Send periodic keepalive to prevent proxy timeouts
+  const keepAlive = setInterval(() => {
+    try {
+      res.write(':keepalive\n\n');
+    } catch (_) {
+      clearInterval(keepAlive);
+    }
+  }, 15000);
+
+  req.on('close', () => {
+    clearInterval(keepAlive);
+    sseClients = sseClients.filter(c => c !== res);
+    if (sseClients.length === 0) {
+      stopLogPolling();
+    }
+  });
+});
 
 // ─── Error Handling ──────────────────────────────────────────────────────────
 

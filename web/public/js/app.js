@@ -40,7 +40,6 @@ const App = (() => {
     initTabs();
     initRedThemeToggle();
     initMobileModeToggle();
-    initLogPanel();
     MountControlComponent.init();
     console.log('[App] MountControlComponent.init() done');
     DatabaseComponent.init();
@@ -49,6 +48,8 @@ const App = (() => {
     console.log('[App] CalibrationComponent.init() done');
     TrackingComponent.init();
     console.log('[App] TrackingComponent.init() done');
+    LoggingComponent.init();
+    console.log('[App] LoggingComponent.init() done');
     SettingsComponent.initAddressForm();
     startPolling();
   }
@@ -115,58 +116,16 @@ const App = (() => {
           TrackingComponent.stopPolling();
         }
 
+        // Start/stop log streaming when tab is shown/hidden
+        if (tabName === 'logging') {
+          LoggingComponent.startStreaming();
+          LoggingComponent.renderBrowserLogs();
+        } else {
+          LoggingComponent.stopStreaming();
+        }
+
       });
     });
-  }
-
-  // ─── Log Panel ────────────────────────────────────────────────────────
-
-  /**
-   * Initialize the collapsible log panel in the footer.
-   */
-  function initLogPanel() {
-    const toggleBtn = $('#btn-toggle-log');
-    const closeBtn = $('#btn-close-log');
-    const clearBtn = $('#btn-clear-log');
-    const panel = $('#log-panel');
-    if (!toggleBtn || !panel) return;
-
-    // Toggle log panel visibility
-    toggleBtn.addEventListener('click', () => {
-      const isHidden = panel.style.display === 'none' || !panel.style.display;
-      panel.style.display = isHidden ? 'flex' : 'none';
-      toggleBtn.textContent = isHidden ? '📋 Hide Logs' : '📋 Logs';
-      if (isHidden) {
-        renderLogContent();
-      }
-    });
-
-    // Close button
-    if (closeBtn) {
-      closeBtn.addEventListener('click', () => {
-        panel.style.display = 'none';
-        toggleBtn.textContent = '📋 Logs';
-      });
-    }
-
-    // Clear button
-    if (clearBtn) {
-      clearBtn.addEventListener('click', () => {
-        Logger.clearLogs();
-        renderLogContent();
-      });
-    }
-  }
-
-  /**
-   * Render the current log entries into the log panel content area.
-   */
-  function renderLogContent() {
-    const content = $('#log-content');
-    if (!content) return;
-    content.innerHTML = Logger.getLogHtml();
-    // Auto-scroll to bottom
-    content.scrollTop = content.scrollHeight;
   }
 
   // ─── Red/Night-Vision Theme Toggle ─────────────────────────────────────
@@ -264,12 +223,6 @@ const App = (() => {
     } catch {
       dbConnected = false;
       updateDbConnectionBadge(false);
-    }
-
-    // Refresh log panel content if visible
-    const logPanel = $('#log-panel');
-    if (logPanel && logPanel.style.display === 'flex') {
-      renderLogContent();
     }
   }
 
