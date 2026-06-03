@@ -292,6 +292,36 @@ Wyświetla: Nazwa/ID obiektu, bieżące RA/Dec, docelowe RA/Dec, błąd pozycji 
 #### Karta metryk
 Wyświetla: Nazwa obiektu, typ, całkowity czas śledzenia, średni/maksymalny błąd pozycji, średni błąd szybkości, liczba predykcji, dokładność predykcji, zastosowana rotacja Ziemi.
 
+### Zakładka Logowanie
+
+Przeglądarka logów w czasie rzeczywistym z dwoma panelami do monitorowania logów kontrolera montażu oraz aplikacji przeglądarkowej.
+
+#### Logi kontrolera (strumień SSE)
+
+Wyświetla wpisy logów przesyłane strumieniowo w czasie rzeczywistym z procesu kontrolera montażu poprzez **Server-Sent Events (SSE)**.
+
+**Funkcje:**
+- **Strumieniowanie w czasie rzeczywistym** — Nowe wpisy pojawiają się automatycznie przez endpoint SSE `/api/logs/stream`
+- **Ładowanie historii przy połączeniu** — Ostatnie 100 wpisów logów jest wysyłane natychmiast jako `event: init` przy pierwszym połączeniu
+- **Filtr poziomu** — Filtrowanie według ALL, DEBUG, INFO, WARN, ERROR
+- **Wyszukiwanie tekstu** — Dowolne wyszukiwanie w polach znacznika czasu i wiadomości
+- **Auto-scroll** — Włącz/wyłącz automatyczne przewijanie do najnowszego wpisu
+- **Przeładowanie** — Ręczne przeładowanie ostatnich 500 wpisów przez `GET /api/logs?lines=500`
+- **Wyczyść** — Usuń wszystkie wyświetlane wpisy logów kontrolera
+- **Licznik wpisów** — Pokazuje całkowitą liczbę załadowanych wpisów (maks. bufor 5000)
+
+Każdy wpis logu wyświetla:
+- `timestamp` — Znacznik czasu w formacie ISO z dokładnością do milisekund
+- `level` — Poziom ważności kodowany kolorem (debug, info, warn, error)
+- `message` — Treść komunikatu logu (escape'owany HTML)
+
+#### Logi aplikacji
+
+Przechwytuje całe wyjście `console.log/warn/error/info/debug` z przeglądarki do wewnętrznego bufora cyklicznego (maks. 1000 wpisów).
+
+- **Wyczyść** — Odrzuć wszystkie przechowywane wpisy logów przeglądarki
+- Wpisy wyświetlają czas (HH:MM:SS), poziom i treść komunikatu
+
 ---
 
 ## Referencja API HTTP/JSON

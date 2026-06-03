@@ -7,15 +7,15 @@ The Web Interface provides browser-based remote control of the astronomical moun
 ### Architecture
 
 ```
-┌──────────────┐    HTTP/JSON     ┌────────────────────┐    gRPC     ┌─────────────────────┐
-│   Browser    │ ◄──────────────► │  Express Proxy     │ ◄────────► │  Mount Controller   │
+┌──────────────┐    HTTP/JSON     ┌─────────────────────┐    gRPC    ┌─────────────────────┐
+│   Browser    │ ◄──────────────► │  Express Proxy      │ ◄────────► │  Mount Controller   │
 │  (SPA)       │   port 8080      │  web/proxy/server.js│  port 50051│  (C++ gRPC server)  │
 │              │                  │                     │            │                     │
 │  index.html  │                  │  Static files:      │            │  Slew, Track,       │
 │  app.js      │                  │  ./public/          │            │  Park, Calibrate... │
 │  api.js      │                  │                     │            └─────────────────────┘
-│  components/ │                  │  CORS                │
-│              │                  │  .env config         │            ┌─────────────────────┐
+│  components/ │                  │  CORS               │
+│              │                  │  .env config        │            ┌─────────────────────┐
 └──────────────┘                  │                     │    gRPC    │  Object Database    │
                                   │                     │ ◄────────► │  (C++ gRPC server)  │
                                   │                     │  port 50052│                     │
@@ -291,6 +291,36 @@ Displays: Object name/ID, current RA/Dec, target RA/Dec, position error (arcsec)
 
 #### Metrics Card
 Displays: Object name, type, total track time, average/max position error, average rate error, prediction count, prediction accuracy, earth rotation applied.
+
+### Logging Tab
+
+Real-time log viewer with two panels for monitoring mount controller and browser-side application logs.
+
+#### Controller Logs (SSE Stream)
+
+Displays log entries streamed in real-time from the mount controller process via **Server-Sent Events (SSE)**.
+
+**Features:**
+- **Real-time streaming** — New log entries appear automatically via the `/api/logs/stream` SSE endpoint
+- **Historical load on connect** — The last 100 log entries are sent immediately as an `event: init` on first connection
+- **Level filter** — Filter by ALL, DEBUG, INFO, WARN, ERROR
+- **Text search** — Free-text search across timestamp and message fields
+- **Auto-scroll toggle** — Enable/disable automatic scrolling to the latest entry
+- **Reload** — Manual reload of the last 500 log entries via `GET /api/logs?lines=500`
+- **Clear** — Clear all displayed controller log entries
+- **Entry counter** — Shows the total number of loaded entries (max 5000 buffer)
+
+Each log entry displays:
+- `timestamp` — ISO-formatted timestamp with millisecond precision
+- `level` — Color-coded severity level (debug, info, warn, error)
+- `message` — Log message text (HTML-escaped)
+
+#### Application Logs
+
+Captures all browser-side `console.log/warn/error/info/debug` output into an internal ring buffer (max 1000 entries).
+
+- **Clear** — Discard all stored browser log entries
+- Entries display with time (HH:MM:SS), level, and message
 
 ---
 
