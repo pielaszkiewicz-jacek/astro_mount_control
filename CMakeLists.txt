@@ -198,6 +198,7 @@ set(CONTROLLER_SOURCES
     src/controllers/mount_controller.cpp
     src/controllers/canopen_interface.cpp
     src/controllers/canopen_factory.cpp
+    src/controllers/derotator_controller.cpp
 )
 
 set(API_SOURCES

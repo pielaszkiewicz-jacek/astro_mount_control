@@ -502,6 +502,24 @@
               <span id="bootstrap-status-badge" class="status-badge idle">NOT CALIBRATED</span>
             </div>
             <div class="card-body">
+              <!-- Bootstrap Mode Selector -->
+              <div class="control-form" style="margin-bottom:12px;">
+                <div class="form-row" style="align-items:center; gap:10px;">
+                  <div class="form-group" style="flex:0 0 auto; min-width:0;">
+                    <label for="bootstrap-mode-select" class="calibration-stat-label" style="margin-bottom:2px;">Bootstrap Mode</label>
+                    <select id="bootstrap-mode-select" class="form-input form-select" style="font-size:0.85rem; padding:5px 24px 5px 8px;">
+                      <option value="0">Manual</option>
+                      <option value="1">Hybrid</option>
+                      <option value="2">Automatic</option>
+                    </select>
+                  </div>
+                  <div class="form-group" style="flex:0 0 auto;">
+                    <label style="display:block; margin-bottom:2px;">&nbsp;</label>
+                    <button id="btn-set-bootstrap-mode" class="btn btn-sm btn-secondary">Set Mode</button>
+                  </div>
+                </div>
+              </div>
+
               <!-- Status -->
               <div id="bootstrap-status-content">
                 <div class="calibration-status-grid">
@@ -522,6 +540,18 @@
                     <span id="bootstrap-residual-rms" class="calibration-stat-value">—</span>
                   </div>
                   <div class="calibration-stat">
+                    <span class="calibration-stat-label">Encoder Type</span>
+                    <span id="bootstrap-encoder-type" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Ref Position Known</span>
+                    <span id="bootstrap-ref-position-known" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
+                    <span class="calibration-stat-label">Man. Meas. Needed</span>
+                    <span id="bootstrap-manual-meas-needed" class="calibration-stat-value">—</span>
+                  </div>
+                  <div class="calibration-stat">
                     <span class="calibration-stat-label">TPOINT Ready</span>
                     <span id="bootstrap-tpoint-ready" class="calibration-stat-value">—</span>
                   </div>
@@ -539,6 +569,59 @@
                 <button id="btn-refresh-bootstrap" class="btn btn-sm btn-secondary">Refresh Status</button>
               </div>
               <div id="bootstrap-result" class="calibration-result" style="display:none;"></div>
+
+              <!-- Automatic Bootstrap Section -->
+              <details class="calibration-measurement-section" id="auto-bootstrap-section" style="margin-top:12px;">
+                <summary class="calibration-measurement-summary">
+                  <span class="calibration-measurement-icon">⚙</span>
+                  Automatic Bootstrap
+                </summary>
+                <div class="calibration-measurement-body">
+                  <div class="control-form">
+                    <div class="form-row">
+                      <div class="form-group" style="flex:1;">
+                        <label for="auto-bs-min-measurements">Min Measurements</label>
+                        <input type="number" id="auto-bs-min-measurements" class="form-input" value="5" min="3" max="20" style="width:100px;" />
+                      </div>
+                      <div class="form-group" style="flex:1;">
+                        <label for="auto-bs-max-error">Max Error (arcsec)</label>
+                        <input type="number" id="auto-bs-max-error" class="form-input" value="30" min="1" max="3600" style="width:100px;" />
+                      </div>
+                      <div class="form-group" style="flex:1;">
+                        <label for="auto-bs-target-stars">Target Stars (comma separated)</label>
+                        <input type="text" id="auto-bs-target-stars" class="form-input" placeholder="e.g. Polaris, Sirius, Vega" style="width:220px;" />
+                      </div>
+                    </div>
+                    <div style="display:flex; gap:8px; align-items:center; margin-top:8px; flex-wrap:wrap;">
+                      <button id="btn-run-auto-bootstrap" class="btn btn-primary">Start Auto Bootstrap</button>
+                      <label class="checkbox-label" style="gap:6px; font-size:0.85rem;">
+                        <input type="checkbox" id="auto-bs-proceed-tpoint" /> Proceed to TPOINT
+                      </label>
+                    </div>
+                  </div>
+
+                  <!-- Auto-bootstrap progress -->
+                  <div id="auto-bootstrap-progress" style="display:none; margin-top:12px;">
+                    <div class="calibration-stat" style="margin-bottom:6px;">
+                      <span class="calibration-stat-label">Auto-Bootstrap Status</span>
+                      <span id="auto-bs-state" class="calibration-stat-value">—</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:4px;">
+                      <span style="font-size:0.82rem; color:var(--color-text-secondary);">Progress:</span>
+                      <span id="auto-bs-progress-text" style="font-size:0.85rem; font-weight:600;">0%</span>
+                    </div>
+                    <div style="background:var(--color-bg-secondary); border-radius:4px; height:10px; overflow:hidden; position:relative;">
+                      <div id="auto-bs-progress-bar" style="width:0%; height:100%; background:var(--color-primary); transition:width 0.5s ease; border-radius:4px;"></div>
+                    </div>
+                    <div style="display:flex; gap:16px; margin-top:6px; font-size:0.82rem; color:var(--color-text-secondary);">
+                      <span>Measurements: <strong id="auto-bs-meas-collected">0</strong> / <strong id="auto-bs-meas-target">0</strong></span>
+                      <span>Target: <strong id="auto-bs-current-star">—</strong></span>
+                    </div>
+                    <div id="auto-bs-state-message" style="margin-top:4px; font-size:0.82rem; color:var(--color-text-secondary);"></div>
+                    <div id="auto-bs-error" style="margin-top:4px; font-size:0.82rem; color:var(--color-danger); display:none;"></div>
+                  </div>
+                </div>
+              </details>
 
               <!-- Add Bootstrap Measurement with Object Search -->
               <details class="calibration-measurement-section" id="bs-measurement-section">

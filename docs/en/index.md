@@ -11,6 +11,7 @@
 7. [Installation and Building](#installation-and-building)
 8. [Testing](#testing)
 9. [Axis Physical Parameters](#axis-physical-parameters)
+10. [ASCOM and INDI Drivers](#ascom-and-indi-drivers)
 
 ## Introduction
 
@@ -118,36 +119,45 @@ Main component integrating all modules:
 - Mount state management
 - Encoder and guider integration
 - TPOINT calibration
+- Delegates derotator operations to [`DerotatorController`](include/controllers/derotator_controller.h)
 
-#### 2. **AstronomicalCalculations**
+#### 2. **DerotatorController**
+Standalone derotator controller extracted from MountController (Phase 1 refactoring):
+- Own work thread and shared mutex for thread-safe operation
+- Field rotation compensation for alt-az and CASUAL mounts
+- Derotator homing (AUTO, LIMIT_SWITCH, ENCODER_ZERO, MANUAL)
+- Direct position/rate control via [`controlFieldRotation()`](src/controllers/derotator_controller.cpp)
+- Encapsulates all derotator HAL dependencies (motor, encoder)
+
+#### 3. **AstronomicalCalculations**
 Astronomical calculations based on SOFA library:
 - Coordinate system transformations (equatorial ↔ horizontal)
 - Atmospheric refraction correction
 - Precession, nutation, aberration
 - Sidereal time, ephemerides
 
-#### 3. **TPointModel**
+#### 4. **TPointModel**
 Full TPOINT model for geometric error correction:
 - 21 TPOINT parameters (IA, IE, NPAE, AN, AW, etc.)
 - Least squares fitting method
 - Atmospheric refraction correction
 - Star proper motion handling
 
-#### 4. **KalmanFilter**
+#### 5. **KalmanFilter**
 Extended Kalman filter for continuous calibration:
 - Mount orientation estimation (quaternion)
 - TPOINT parameter updates
 - Thermal drift compensation
 - Encoder and optical measurement data fusion
 
-#### 5. **CanOpenInterface**
+#### 6. **CanOpenInterface**
 CANopen protocol implementation (CiA 301, CiA 402):
 - Servo drive control
 - Absolute encoder reading
 - Motion trajectory generation
 - Drive status monitoring
 
-#### 6. **Web Proxy (HTTP/JSON → gRPC)**
+#### 7. **Web Proxy (HTTP/JSON → gRPC)**
 Node.js Express proxy server bridging browser to gRPC backends:
 - HTTP/JSON REST API (~40 endpoints) for mount control, calibration, tracking, config, database
 - Static file serving for the SPA
@@ -155,7 +165,7 @@ Node.js Express proxy server bridging browser to gRPC backends:
 - Mount state file upload and management
 - CORS support, SSL/TLS, configurable gRPC addresses
 
-#### 7. **Web Interface (Browser SPA)**
+#### 8. **Web Interface (Browser SPA)**
 Single-page application with 6 tabs:
 - **Status** — real-time mount state, position, environment, tracked object
 - **Control** — slew to coordinates, axis control pad (velocity/step mode), state save/load
@@ -164,18 +174,52 @@ Single-page application with 6 tabs:
 - **Database** — object CRUD, search/filter, favorites, catalog import (presets/file/URL)
 - **Tracking** — ephemeris tracking for moving objects (satellites, comets, asteroids)
 
-#### 8. **Object Database Service**
+#### 9. **Object Database Service**
 SQLite-backed astronomical object catalog:
 - Full CRUD with pagination and search
 - Multiple catalog support (Messier, NGC, IC, Caldwell, HYG, SAO)
 - Favorite objects, categories, import/export
 - gRPC API on port 50052
 
-#### 9. **Configuration System**
+#### 10. **Configuration System**
 Configuration management system:
 - Loading/saving JSON configuration
 - Parameter validation
 - Default configuration values
+
+#### 11. **ASCOM Telescope Driver** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
+C# ASCOM Alpaca-compatible telescope driver implementing `ITelescopeV3`:
+- SlewToCoordinates, SlewToTarget, SlewToAltAz
+- PulseGuide for autoguider integration
+- MoveAxis with velocity control (VELOCITY_CONTROL via gRPC [`ControlAxis`](proto/mount_controller.proto))
+- Park/Unpark, SyncToCoordinates
+- Action() queries: `tpoint_status`, `temperature`, `pressure`, `humidity`, `tracking_rate_ra`, `tracking_rate_dec`, `guider_status`, `derotator_status`
+- State cache for low-latency property reads
+
+#### 12. **ASCOM Rotator Driver** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs))
+C# ASCOM Rotator driver implementing `IRotatorV3`:
+- MoveAbsolute(position) → `FIXED_ANGLE` mode via gRPC [`ControlFieldRotation`](proto/mount_controller.proto)
+- Move(rate) → `CUSTOM` mode rotation rate control
+- Halt() → `DISABLED` mode
+- Home() → `HomeDerotator(SEQUENTIAL)` homing sequence
+- Position/Moving/CanReverse properties
+
+#### 13. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
+C++ INDI-compatible telescope driver for Ekos/KStars:
+- Full `INDI::Telescope` interface: Slew, Track, Park, Sync, Abort
+- MoveNS/MoveWE velocity control (axis_id=0 RA/WE, axis_id=1 Dec/NS)
+- `TPOINT_STATUS` text property (coefficients, chi-squared, calibration state)
+- `EnvironmentNP` number property (temperature, pressure, humidity)
+- SetCurrentPark from controller [`state.current_position()`](proto/mount_controller.proto)
+- MountGrpcClient for all gRPC communication
+
+#### 14. **INDI Rotator Driver** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp))
+C++ INDI Rotator driver implementing `INDI::Rotator`:
+- MoveRotator(angle) → `FIXED_ANGLE` mode via gRPC [`ControlFieldRotation`](proto/mount_controller.proto)
+- AbortRotator() → `DISABLED` mode emergency stop
+- HomeRotator() → `HomeDerotator(AUTO)` automatic homing
+- `CONNECTION_NONE` mode (gRPC-only, no serial/TCP)
+- Polling status updates via [`GetDerotatorStatus`](proto/mount_controller.proto)
 
 ## Mathematical Models
 
@@ -842,9 +886,22 @@ The accuracy of the Astronomical Mount Controller heavily depends on precise kno
 
 ---
 
+## ASCOM and INDI Drivers
+
+The project includes four astronomy-standard drivers for integration with popular astronomy software:
+
+| Driver | Language | Standard | Software | File |
+|--------|----------|----------|----------|------|
+| Telescope Driver | C# | ASCOM ITelescopeV3 | N.I.N.A., SGP, APT, etc. | [`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) |
+| Rotator Driver | C# | ASCOM IRotatorV3 | N.I.N.A., SGP, APT, etc. | [`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) |
+| Telescope Driver | C++ | INDI Telescope | Ekos/KStars | [`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) |
+| Rotator Driver | C++ | INDI Rotator | Ekos/KStars | [`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) |
+
+See [`docs/en/drivers.md`](drivers.md) for complete driver documentation including build instructions, registration, and usage examples.
+
 ## Web Interface
 
-See sections [**6. Web Proxy**](#6-web-proxy-httpjson--grpc) and [**7. Web Interface**](#7-web-interface-browser-spa) above for component descriptions. The complete WEB UI documentation is in [`web/README.md`](../web/README.md).
+See sections [**7. Web Proxy**](#7-web-proxy-httpjson--grpc) and [**8. Web Interface**](#8-web-interface-browser-spa) above for component descriptions. The complete WEB UI documentation is in [`web/README.md`](../web/README.md).
 
 ### Quick Start
 

@@ -39,6 +39,20 @@ public:
     };
 
     /**
+     * @brief Bootstrap calibration mode
+     *
+     * Determines how bootstrap measurements are collected:
+     * - MANUAL: User manually points at stars (gamepad), adds measurements
+     * - HYBRID: First 3 measurements manual, then automatic slews
+     * - AUTOMATIC: Fully automatic with plate solver orchestrator
+     */
+    enum class BootstrapMode {
+        BOOTSTRAP_MANUAL = 0,       ///< Fully manual pointing
+        BOOTSTRAP_HYBRID = 1,       ///< Manual + automatic after 3 measurements
+        BOOTSTRAP_AUTOMATIC = 2     ///< Fully automatic with plate solver
+    };
+
+    /**
      * @brief Mount orientation represented as a unit quaternion
      *
      * Describes the rotation from the local horizontal frame (ENU: East, North, Up)
@@ -240,6 +254,12 @@ public:
         double soft_limit_distance_axis2{0.0};    ///< Shortest distance to nearest soft limit on axis2 [degrees]
         std::string soft_limit_warning_message;   ///< Human-readable warning description
         
+        // === NEW: Bootstrap / encoder status fields ===
+        bool encoders_absolute{false};            ///< Encoder type from config
+        int bootstrap_mode{0};                    ///< Current bootstrap mode (BootstrapMode enum)
+        bool bootstrap_calibrated{false};         ///< Whether bootstrap calibration completed
+        int bootstrap_measurement_count{0};       ///< Number of bootstrap measurements stored
+        
         std::chrono::system_clock::time_point timestamp;
         std::string error_message;
     };
@@ -379,13 +399,34 @@ public:
     
     /**
      * @brief Run bootstrap calibration to get initial orientation
-     * 
-     * Uses simple linear model to determine initial rotation matrix
-     * and rough TPOINT parameters. Requires at least 3 measurements.
-     * 
+     *
+     * Uses Wahba's problem (SVD-based rotation estimation) to determine
+     * the optimal rotation quaternion from mount axis positions to the
+     * true horizontal frame. Absorbs encoder offset for incremental encoders.
+     * Now supports ALL mount types (CASUAL, EQUATORIAL, ALT_AZ).
+     *
      * @return True if bootstrap calibration successful
      */
     bool runBootstrapCalibration();
+
+    /**
+     * @brief Set bootstrap calibration mode
+     *
+     * Controls how measurements are collected:
+     * - MANUAL (0): User manually points via gamepad
+     * - HYBRID (1): 3 manual then automatic slews
+     * - AUTOMATIC (2): Fully automatic with plate solver
+     *
+     * @param mode Bootstrap mode to set
+     * @return True if mode accepted
+     */
+    bool setBootstrapMode(BootstrapMode mode);
+    
+    /**
+     * @brief Get current bootstrap calibration mode
+     * @return Current BootstrapMode enum value
+     */
+    BootstrapMode getBootstrapMode() const;
     
     /**
      * @brief Get bootstrap calibration status

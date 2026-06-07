@@ -92,7 +92,8 @@ sudo apt install -y \
     protobuf-compiler-grpc \
     libcanopen-dev \
     libsofa-dev \
-    libgtest-dev
+    libgtest-dev \
+    libindi-dev
 
 # CAN tools
 sudo apt install -y \
@@ -121,7 +122,8 @@ sudo yum install -y \
     protobuf-devel \
     protobuf-compiler \
     sofa-devel \
-    gtest-devel
+    gtest-devel \
+    libindi-devel
 
 # CAN tools
 sudo yum install -y \
@@ -534,6 +536,7 @@ sudo ./scripts/build_external_deps.sh /usr/local
 | Eigen3 | `eigen3-devel` | §3 (tylko nagłówki) |
 | fmt | `fmt-devel` | §4 |
 | spdlog | `spdlog-devel` | §4 |
+| INDI | `libindi-devel` | system |
 | GTest | `gtest-devel` | §5 |
 | SQLite3 | `sqlite3-devel` | §6 |
 | OpenSSL | `libopenssl-devel` | system |
@@ -553,7 +556,8 @@ sudo zypper install -y \
     fmt-devel \
     spdlog-devel \
     gtest-devel \
-    sqlite3-devel
+    sqlite3-devel \
+    libindi-devel
 ```
 
 Następnie zbuduj tylko brakujące (np. tylko gRPC, jeśli `grpc-devel` jest niedostępne dla Twojej wersji openSUSE).
@@ -858,14 +862,96 @@ protoc -I proto \
 
 ## Cele budowania
 
-Projekt produkuje następujące pliki wykonywalne:
+### Główna aplikacja
 
 | Cel | Opis | Ścieżka binarna |
 |-----|------|-----------------|
 | `astro_mount_controller` | Główny kontroler montażu z serwerem gRPC | `build/bin/astro_mount_controller` |
 | `astro_object_database_server` | Serwer bazy danych obiektów astronomicznych (SQLite + gRPC) | `build/bin/astro_object_database_server` |
+
+### Sterowniki INDI
+
+| Cel | Opis | Ścieżka binarna |
+|-----|------|-----------------|
+| `astro_mount_driver` | Sterownik teleskopu INDI (interfejs Telescope) | `build/bin/astro_mount_driver` |
+| `astro_mount_rotator_driver` | Sterownik rotatora INDI (interfejs Rotator) | `build/bin/astro_mount_rotator_driver` |
+
+Sterowniki INDI wymagają `libindi-dev` (lub `libindi-devel`) oraz opcji CMake `-DENABLE_INDI=ON`.
+
+### Pliki binarne testów
+
+| Cel | Opis | Ścieżka binarna |
+|-----|------|-----------------|
 | `test_astronomical_calculations` | Testy jednostkowe obliczeń astronomicznych | `build/bin/test_astronomical_calculations` |
 | `test_tpoint_model` | Testy jednostkowe modelu TPOINT | `build/bin/test_tpoint_model` |
+| `test_mount_controller` | Testy jednostkowe kontrolera montażu (25+ grup testowych) | `build/bin/test_mount_controller` |
+| `test_configuration` | Testy walidacji konfiguracji | `build/bin/test_configuration` |
+| `test_kalman_filter` | Testy jednostkowe filtru Kalmana | `build/bin/test_kalman_filter` |
+| `test_ephemeris_tracker` | Testy jednostkowe śledzenia efemeryd | `build/bin/test_ephemeris_tracker` |
+| `test_hal_integration` | Testy integracyjne HAL | `build/bin/test_hal_integration` |
+| `test_grpc_integration` | Testy integracyjne serwera gRPC | `build/bin/test_grpc_integration` |
+| `test_subarcsecond_accuracy` | Weryfikacja dokładności poniżej sekundy kątowej | `build/bin/test_subarcsecond_accuracy` |
+| `test_canopen_factory` | Testy jednostkowe fabryki CANopen HAL | `build/bin/test_canopen_factory` |
+| `test_canopen_hal` | Testy komunikacji CANopen HAL | `build/bin/test_canopen_hal` |
+| `test_config_monitor` | Testy monitorowania konfiguracji | `build/bin/test_config_monitor` |
+| `test_ethernet_hal` | Testy jednostkowe Ethernet HAL | `build/bin/test_ethernet_hal` |
+| `test_gamepad_hal` | Testy jednostkowe Gamepad HAL | `build/bin/test_gamepad_hal` |
+| `test_logger` | Testy jednostkowe loggera | `build/bin/test_logger` |
+| `test_serial_hal` | Testy jednostkowe Serial HAL | `build/bin/test_serial_hal` |
+| `test_canopen_wrapper` | Testy jednostkowe wrappera CANopen | `build/bin/test_canopen_wrapper` |
+
+### Budowanie sterowników INDI
+
+Sterowniki teleskopu i rotatora INDI można zbudować z samodzielnych katalogów `indi/` i `indi_rotator/`:
+
+```bash
+# Budowanie sterownika teleskopu INDI
+cd indi
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+cd ../..
+
+# Budowanie sterownika rotatora INDI
+cd indi_rotator
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+Alternatywnie, zbuduj wszystkie sterowniki INDI jako część głównego projektu:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTS=ON \
+    -DENABLE_INDI=ON
+cmake --build build -j$(nproc)
+```
+
+### Budowanie sterowników ASCOM (Windows/Cross-Platform)
+
+Sterowniki ASCOM to projekty C# wymagające .NET SDK lub Mono:
+
+```bash
+# Korzystając z .NET SDK
+cd ascom
+dotnet build -c Release
+cd ..
+
+# Sterownik rotatora ASCOM
+cd ascom_rotator
+dotnet build -c Release
+cd ..
+```
+
+Każdy sterownik ASCOM musi być zarejestrowany przez COM (po zbudowaniu na Windows):
+```bash
+C:\Windows\Microsoft.NET\Framework\v4.0.30319\regasm.exe ascom\bin\Release\AstroMountTelescope.dll /codebase
+C:\Windows\Microsoft.NET\Framework\v4.0.30319\regasm.exe ascom_rotator\bin\Release\AstroMountRotator.dll /codebase
+```
 
 ## Serwer bazy danych obiektów astronomicznych
 

@@ -1,13 +1,15 @@
 # Astronomical Mount Controller
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](.)
-[![Tests](https://img.shields.io/badge/tests-9%2F9%20passing-brightgreen.svg)](build_verify/)
+[![Tests](https://img.shields.io/badge/tests-17%2F17%20passing-brightgreen.svg)](build_verify/)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org/)
+[![C#](https://img.shields.io/badge/C%23-ASCOM%20Driver-green.svg)](https://ascom-standards.org/)
+[![INDI](https://img.shields.io/badge/INDI-2.0%2B-orange.svg)](https://indilib.org/)
 [![gRPC](https://img.shields.io/badge/gRPC-1.60%2B-blue.svg)](https://grpc.io/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20ARM-lightgrey.svg)](docs/en/installation.md)
 
-A high-precision astronomical mount controller with sub-arcsecond tracking accuracy, TPOINT model calibration, extended Kalman filter, CANopen/CiA 402 hardware interface, and complete gRPC API for remote operation.
+A high-precision astronomical mount controller with sub-arcsecond tracking accuracy, TPOINT model calibration, extended Kalman filter, CANopen/CiA 402 hardware interface, and complete gRPC API for remote operation. Includes native **ASCOM** (C#) and **INDI** (C++) drivers for seamless integration with astronomy software ecosystems.
 
 ---
 
@@ -39,6 +41,10 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
 - **Object database** (SQLite + gRPC) for astronomical catalog management
 - **Ephemeris tracking** for comets, asteroids, and satellites
 - **Autoguider integration** (PHD2, Ekos, ASCOM-compatible)
+- **ASCOM Telescope Driver** (C#, ITelescopeV3) — MoveAxis, PulseGuide, Park, TPOINT status, environmental queries
+- **ASCOM Rotator Driver** (C#, IRotatorV3) — absolute/rate positioning, homing, halt
+- **INDI Telescope Driver** (C++) — full Ekos/KStars integration with TPOINT_STATUS, environment, MoveNS/MoveWE
+- **INDI Rotator Driver** (C++) — angle control, homing via gRPC rotator service
 
 ### 🛡️ Safety & Reliability
 - **11 NaN/Inf propagation guards** in tracking loop
@@ -114,6 +120,7 @@ print(f"Status: {state.status}, Position: axis1={state.current_position.axis1:.4
 | [`docs/en/hal_layer.md`](docs/en/hal_layer.md) | Hardware Abstraction Layer documentation |
 | [`docs/en/data_flow.md`](docs/en/data_flow.md) | Data flow diagrams for all subsystems |
 | [`docs/en/developer_onboarding.md`](docs/en/developer_onboarding.md) | Developer onboarding guide |
+| [`docs/en/drivers.md`](docs/en/drivers.md) | ASCOM and INDI driver documentation |
 | [`web/README.md`](web/README.md) | Web dashboard documentation (HTTP/JSON proxy + SPA) |
 | [`docs/pl/`](docs/pl/) | Polish language documentation |
 
@@ -195,6 +202,15 @@ flowchart TB
 ## Project Structure
 
 ```
+├── ascom/            # ASCOM Telescope driver (C#, ITelescopeV3)
+│   ├── AstroMountTelescope.cs  # Main telescope driver
+│   ├── GrpcClient.cs           # gRPC client wrapper for ASCOM
+│   ├── StateCache.cs           # Cached controller state
+│   ├── ConversionHelper.cs     # Coordinate conversion utilities
+│   ├── MountController.cs      # Generated gRPC stubs
+│   └── MountControllerGrpc.cs
+├── ascom_rotator/    # ASCOM Rotator driver (C#, IRotatorV3)
+│   └── AstroMountRotator.cs
 ├── config/           # JSON configuration files
 │   └── default.json
 ├── docs/             # Documentation (en + pl)
@@ -207,6 +223,14 @@ flowchart TB
 │   ├── hal/
 │   ├── logging/
 │   └── models/
+├── indi/             # INDI Telescope driver (C++, Ekos/KStars)
+│   ├── astro_mount_driver.{h,cpp}  # Main INDI telescope driver
+│   ├── MountGrpcClient.{h,cpp}     # gRPC client wrapper for INDI
+│   ├── IndiPropertyMapper.{h,cpp}  # INDI <-> gRPC property mapping
+│   └── CMakeLists.txt
+├── indi_rotator/     # INDI Rotator driver (C++)
+│   ├── astro_mount_rotator_driver.{h,cpp}
+│   └── CMakeLists.txt
 ├── proto/            # gRPC protobuf definitions
 │   ├── mount_controller.proto
 │   └── canopen_service.proto
@@ -218,7 +242,7 @@ flowchart TB
 │   ├── hal/
 │   ├── logging/
 │   └── models/
-├── tests/            # Test suites (9 test binaries)
+├── tests/            # Test suites (17 test binaries)
 ├── examples/         # Python and C++ examples
 ├── sofa/             # SOFA library
 ├── scripts/          # Build and utility scripts
@@ -229,6 +253,8 @@ flowchart TB
 ---
 
 ## Test Status
+
+All **17/17 tests pass** with full NaN/Inf guard coverage.
 
 | Test Suite | Status |
 |------------|--------|
@@ -241,8 +267,14 @@ flowchart TB
 | `test_hal_integration` | ✅ HAL interface tests |
 | `test_grpc_integration` | ✅ API server tests |
 | `test_subarcsecond_accuracy` | ✅ Accuracy verification |
-
-All **9/9 tests pass** in 18.34s with full NaN/Inf guard coverage.
+| `test_canopen_factory` | ✅ CANopen factory tests |
+| `test_canopen_hal` | ✅ CANopen HAL tests |
+| `test_config_monitor` | ✅ Config monitoring tests |
+| `test_ethernet_hal` | ✅ Ethernet HAL tests |
+| `test_gamepad_hal` | ✅ Gamepad HAL tests |
+| `test_logger` | ✅ Logger tests |
+| `test_serial_hal` | ✅ Serial HAL tests |
+| `test_canopen_wrapper` | ✅ CANopen wrapper tests |
 
 ---
 

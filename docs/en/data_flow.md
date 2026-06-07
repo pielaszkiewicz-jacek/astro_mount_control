@@ -608,6 +608,275 @@ flowchart LR
     style MockLayer fill:#9E9E9E,color:#fff
 ```
 
+## 12. Derotator Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Client as gRPC Client
+    participant API as gRPC API Server
+    participant MC as MountController
+    participant DC as DerotatorController
+    participant HAL as HAL Motor/Encoder
+    participant HW as Derotator Hardware
+
+    Client->>API: ConfigureDerotator(config)
+    API->>MC: configureDerotator()
+    MC->>DC: configure(type, gear_ratio, max_speed, ...)
+    DC-->>MC: ok
+    MC-->>API: success
+    API-->>Client: response
+
+    Client->>API: EnableFieldRotation(params)
+    API->>MC: enableFieldRotation()
+    MC->>DC: enableFieldRotation(params)
+    Note over DC: Sets field rotation mode<br/>(ALT_AZ, EQUATORIAL, CUSTOM, etc.)
+    DC-->>MC: ok
+    MC-->>API: success
+
+    loop Tracking Loop (every 100ms)
+        MC->>MC: computeFieldRotationRate()
+        MC->>DC: setFieldRotationRate(rate)
+        DC->>DC: updateCurrentAngle(rate, dt)
+        
+        alt FIXED_ANGLE mode
+            DC->>DC: compute position error
+            DC->>HAL: setPositionTarget(target_angle, speed)
+        else CUSTOM mode (velocity)
+            DC->>DC: compute rate command
+            DC->>HAL: setVelocityTarget(custom_rate)
+        else ALT_AZ / EQUATORIAL mode
+            DC->>DC: tracking rate from MountController
+            DC->>HAL: setVelocityTarget(computed_rate)
+        end
+        
+        HAL-->>DC: actual_position, actual_velocity
+        DC-->>MC: derotator status (angle, rate, moving)
+    end
+
+    Client->>API: HomeDerotator(method)
+    API->>MC: homeDerotator()
+    MC->>DC: home(method)
+    Note over DC: Async homing thread started
+
+    par Async Homing
+        alt AUTO method
+            DC->>DC: rotate towards limit switch
+            HAL-->>DC: limit switch triggered
+            DC->>DC: reverse to home offset
+            DC->>DC: set homed flag
+        else LIMIT_SWITCH method
+            DC->>DC: rotate until limit switch
+            HAL-->>DC: limit switch triggered
+            DC->>DC: set current as home
+        else ENCODER_ZERO method
+            DC->>DC: rotate until encoder zero index
+            HAL-->>DC: zero index detected
+            DC->>DC: set current as home
+        else MANUAL method
+            DC->>DC: wait for manual position confirmation
+            Client->>API: GetDerotatorStatus()
+            API-->>Client: homing_in_progress
+            Client->>API: Set current as home
+        end
+        DC-->>MC: homing complete
+        MC-->>API: home status
+    end
+
+    Client->>API: ControlFieldRotation(mode, param)
+    API->>MC: controlFieldRotation()
+    MC->>DC: controlFieldRotation(mode, param)
+    alt DISABLED
+        DC->>HAL: stop motor, disable drive
+    else FIXED_ANGLE
+        DC->>DC: move to absolute angle
+    else CUSTOM
+        DC->>DC: rotate at custom rate
+    end
+    DC-->>MC: ok
+    MC-->>API: success
+    API-->>Client: response
+
+    Client->>API: GetDerotatorStatus()
+    API->>MC: getDerotatorStatus()
+    MC->>DC: getStatus()
+    DC-->>MC: status (angle, rate, homed, moving, mode)
+    MC-->>API: DerotatorStatus
+    API-->>Client: response
+```
+
+## 13. ASCOM Driver Data Flow
+
+```mermaid
+sequenceDiagram
+    participant App as Astronomy App<br/>(N.I.N.A., SGP, APT)
+    participant Alpaca as ASCOM Alpaca<br/>REST API
+    participant Driver as ASCOM Driver<br/>(C#)
+    participant gRPC as gRPC Wrapper<br/>GrpcClient.cs
+    participant Server as Mount Controller<br/>gRPC Server
+
+    rect rgb(200, 230, 255)
+        Note over App,Driver: ASCOM Telescope Driver (ITelescopeV3)
+    end
+
+    App->>Alpaca: PUT /api/v1/telescope/0/connected
+    Alpaca->>Driver: set_Connected(true)
+    Driver->>gRPC: Connect(address)
+    gRPC->>Server: gRPC connect
+    Server-->>gRPC: channel established
+    gRPC-->>Driver: connected
+    Driver-->>Alpaca: success
+    Alpaca-->>App: connected
+
+    App->>Alpaca: PUT /api/v1/telescope/0/moveaxis<br/>Axis=TelescopeAxes.axisPrimary, Rate=2.0
+    Alpaca->>Driver: MoveAxis(axisPrimary, 2.0)
+    Driver->>gRPC: ControlAxis(AXIS_1, VELOCITY_CONTROL, 2.0)
+    gRPC->>Server: ControlAxis
+    Server-->>gRPC: acknowledged
+    gRPC-->>Driver: ok
+    Driver-->>Alpaca: success
+    Alpaca-->>App: moving
+
+    loop Every 2 seconds (StateCache polling)
+        Driver->>gRPC: GetState()
+        gRPC->>Server: GetState
+        Server-->>gRPC: ControllerState
+        gRPC-->>Driver: state
+        Driver->>Driver: update StateCache
+    end
+
+    App->>Alpaca: GET /api/v1/telescope/0/rightascension
+    Alpaca->>Driver: get_RightAscension()
+    Driver->>Driver: read from StateCache
+    Driver-->>Alpaca: 12.345 hours
+    Alpaca-->>App: RA value
+
+    App->>Alpaca: PUT /api/v1/telescope/0/pulseguide<br/>Direction=guideNorth, Duration=500
+    Alpaca->>Driver: PulseGuide(guideNorth, 500)
+    Driver->>gRPC: ControlAxis(AXIS_2, VELOCITY_CONTROL, rate)
+    Note over Driver: rate = derived from duration
+    gRPC->>Server: ControlAxis
+    Server-->>gRPC: ok
+    gRPC-->>Driver: ok
+    Driver-->>Alpaca: success
+
+    App->>Alpaca: PUT /api/v1/telescope/0/action<br/>Action=ClearTPointMeasurements
+    Alpaca->>Driver: Action("ClearTPointMeasurements", "")
+    Driver->>gRPC: ClearTPointMeasurements()
+    gRPC->>Server: ClearTPointMeasurements
+    Server-->>gRPC: ok
+    gRPC-->>Driver: ok
+    Driver-->>Alpaca: success
+
+    rect rgb(255, 230, 200)
+        Note over App,Driver: ASCOM Rotator Driver (IRotatorV3)
+    end
+
+    App->>Alpaca: PUT /api/v1/rotator/0/moveabsolute<br/>Position=90.0
+    Alpaca->>Driver: MoveAbsolute(90.0)
+    Driver->>gRPC: ControlFieldRotation(FIXED_ANGLE, 90.0)
+    gRPC->>Server: ControlFieldRotation
+    Server-->>gRPC: acknowledged
+    gRPC-->>Driver: ok
+    Driver-->>Alpaca: moving
+
+    App->>Alpaca: PUT /api/v1/rotator/0/halt
+    Alpaca->>Driver: Halt()
+    Driver->>gRPC: ControlFieldRotation(DISABLED, 0)
+    gRPC->>Server: ControlFieldRotation
+    Server-->>gRPC: derotator stopped
+    gRPC-->>Driver: ok
+    Driver-->>Alpaca: stopped
+
+    App->>Alpaca: PUT /api/v1/rotator/0/home
+    Alpaca->>Driver: Home()
+    Driver->>gRPC: HomeDerotator(SEQUENTIAL)
+    gRPC->>Server: HomeDerotator
+    Server-->>gRPC: homing started
+    gRPC-->>Driver: ok
+    Driver-->>Alpaca: homing
+```
+
+## 14. INDI Driver Data Flow
+
+```mermaid
+sequenceDiagram
+    participant Ekos as Ekos/KStars
+    participant INDI as INDI Protocol
+    participant Driver as INDI Driver<br/>(C++)
+    participant gRPC as gRPC Client<br/>MountGrpcClient.h
+    participant Server as Mount Controller<br/>gRPC Server
+
+    rect rgb(200, 255, 230)
+        Note over Ekos,Driver: INDI Telescope Driver
+    end
+
+    Ekos->>INDI: defineProperty CONNECTION
+    INDI->>Driver: ISNewSwitch(CONNECTION)
+    Driver->>gRPC: connect(server, port)
+    gRPC->>Server: gRPC connect
+    Server-->>gRPC: channel ready
+    gRPC-->>Driver: connected
+    Driver-->>INDI: set CONNECTION_ON
+    INDI-->>Ekos: Telescope connected
+
+    Ekos->>INDI: newSwitch EQUATORIAL_EOD_COORD<br/>RA=12.345, DEC=15.0
+    INDI->>Driver: ISNewNumber(EQUATORIAL_EOD_COORD)
+    Driver->>gRPC: SlewToCoordinates(coords)
+    gRPC->>Server: SlewToCoordinates
+    Server-->>gRPC: accepted
+    gRPC-->>Driver: ok
+
+    loop ReadScopeStatus() — every 1 second
+        Driver->>gRPC: GetState()
+        gRPC->>Server: GetState
+        Server-->>gRPC: ControllerState
+        gRPC-->>Driver: state
+        Driver->>Driver: update INDI properties<br/>(RA, DEC, tracking state)
+        Driver->>INDI: setNumber EQUATORIAL_EOD_COORD
+        INDI-->>Ekos: updated coordinates
+    end
+
+    Ekos->>INDI: newSwitch TELESCOPE_ABORT_MOTION
+    INDI->>Driver: ISNewSwitch(ABORT)
+    Driver->>gRPC: Stop()
+    gRPC->>Server: Stop
+    Server-->>gRPC: stopped
+    gRPC-->>Driver: ok
+    Driver-->>INDI: set ABORT_ON
+
+    Ekos->>INDI: newSwitch PARK
+    INDI->>Driver: ISNewSwitch(PARK)
+    Driver->>gRPC: Park()
+    gRPC->>Server: Park
+    Server-->>gRPC: parking
+    Loop: ReadScopeStatus
+        Driver-->>INDI: set PARKING state
+    Server-->>gRPC: parked
+    gRPC-->>Driver: ok
+    Driver-->>INDI: set PARKED
+
+    rect rgb(255, 240, 200)
+        Note over Ekos,Driver: INDI Rotator Driver
+    end
+
+    Ekos->>INDI: newNumber ROTATOR_ANGLE<br/>Angle=180.0
+    INDI->>Driver: ISNewNumber(ROTATOR_ANGLE)
+    Driver->>gRPC: ControlFieldRotation(FIXED_ANGLE, 180.0)
+    gRPC->>Server: ControlFieldRotation
+    Server-->>gRPC: moving
+    gRPC-->>Driver: ok
+    Driver-->>INDI: set ROTATOR_ANGLE = 180.0
+
+    Ekos->>INDI: newSwitch ROTATOR_HOME
+    INDI->>Driver: ISNewSwitch(ROTATOR_HOME)
+    Driver->>gRPC: HomeDerotator(AUTO)
+    gRPC->>Server: HomeDerotator
+    Server-->>gRPC: homing started
+    gRPC-->>Driver: ok
+    Driver-->>INDI: set ROTATOR_HOME state
+    INDI-->>Ekos: Rotator homing
+```
+
 ## Legend
 
 ```mermaid

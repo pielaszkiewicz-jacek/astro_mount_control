@@ -630,3 +630,230 @@ flowchart LR
     classDef model fill:#795548,color:#fff
     classDef data fill:#9E9E9E,color:#fff
 ```
+
+## 12. Przepływ danych derotatora
+
+```mermaid
+sequenceDiagram
+    participant Client as Klient gRPC
+    participant MC as MountController
+    participant DC as DerotatorController
+    participant HAL as HAL (Silnik/Enkoder)
+
+    Note over Client,DC: Konfiguracja
+    Client->>MC: ConfigureDerotator(config)
+    MC->>DC: configure(derotator_config)
+    DC-->>MC: ok
+    MC-->>Client: sukces
+
+    Note over Client,DC: Włączenie rotacji pola
+    Client->>MC: EnableFieldRotation(params)
+    MC->>DC: enableFieldRotation(params)
+    DC-->>MC: ok
+    MC-->>Client: sukces
+
+    Note over MC,DC: Pętla śledzenia (100 Hz)
+    loop Co 100ms (wątek śledzenia MC)
+        MC->>MC: computeFieldRotationRate()
+        MC->>DC: setFieldRotationRate(rate_deg_per_sec)
+        DC->>DC: updateCurrentAngle(rate, dt)
+        DC->>HAL: motor.setVelocity(rate * gear_ratio)
+        HAL-->>DC: pozycja enkodera
+        DC->>DC: korekcja PID
+    end
+
+    Note over Client,DC: Sterowanie derotatorem
+    Client->>MC: ControlFieldRotation(FIXED_ANGLE, 90)
+    MC->>DC: controlFieldRotation(FIXED_ANGLE, 90)
+    DC->>DC: ustaw kąt docelowy = 90°
+    DC->>HAL: motor.setPosition(target)
+    loop Dopóki kąt ≠ 90°
+        HAL-->>DC: current_angle
+        DC->>HAL: motor.setVelocity(korekcja)
+    end
+    DC-->>MC: osiągnięto kąt
+    MC-->>Client: sukces
+
+    Note over Client,DC: Home derotatora
+    Client->>MC: HomeDerotator(AUTO)
+    MC->>DC: home(AUTO)
+    DC->>DC: rozpocznij sekwencję homingu
+    DC->>HAL: szukaj krańcówki/znaku zerowego
+    HAL-->>DC: znaleziono pozycję referencyjną
+    DC->>DC: ustaw pozycję home
+    DC-->>MC: homing zakończony
+    MC-->>Client: sukces
+
+    Note over Client,DC: Status derotatora
+    Client->>MC: GetDerotatorStatus()
+    MC->>DC: getStatus()
+    DC-->>MC: DerotatorStatus(kąt, prędkość, tryb, błędy)
+    MC-->>Client: DerotatorStatus
+```
+
+## 13. Przepływ danych sterownika ASCOM
+
+```mermaid
+sequenceDiagram
+    participant APP as Aplikacja astronomiczna
+    participant ALPACA as Alpaca REST API
+    participant DRV as Sterownik ASCOM C#
+    participant GC as GrpcClient.cs
+    participant GRPC as Serwer gRPC
+    participant MC as MountController
+
+    Note over APP,MC: Połączenie
+    APP->>ALPACA: PUT /api/v1/telescope/0/Connected
+    ALPACA->>DRV: set_Connected(true)
+    DRV->>GC: Connect()
+    GC->>GRPC: GetState()
+    GRPC-->>GC: ControllerState
+    GC-->>DRV: połączono
+    DRV-->>ALPACA: 200 OK
+    ALPACA-->>APP: Connected = true
+
+    Note over APP,MC: MoveAxis
+    APP->>ALPACA: PUT /api/v1/telescope/0/MoveAxis
+    ALPACA->>DRV: MoveAxis(axis, rate)
+    DRV->>GC: ControlAxis(AXIS_1, VELOCITY_CONTROL, rate)
+    GC->>GRPC: ControlAxis(request)
+    GRPC->>MC: controlAxis(axis_id, VELOCITY_CONTROL, rate)
+    MC-->>GRPC: ok
+    GRPC-->>GC: ok
+    GC-->>DRV: ok
+    DRV-->>ALPACA: 200 OK
+
+    Note over APP,MC: StateCache polling (co 2s)
+    loop Co 2 sekundy
+        DRV->>GC: GetState()
+        GC->>GRPC: GetState()
+        GRPC-->>GC: ControllerState
+        GC-->>DRV: ControllerState
+        DRV->>DRV: zaktualizuj cache (RA, DEC, ALT, AZ, itp.)
+    end
+
+    Note over APP,MC: SlewToCoordinatesAsync
+    APP->>ALPACA: PUT /api/v1/telescope/0/SlewToCoordinatesAsync
+    ALPACA->>DRV: SlewToCoordinatesAsync(ra, dec)
+    DRV->>GC: SlewToCoordinates(coords)
+    GC->>GRPC: SlewToCoordinates(request)
+    GRPC->>MC: slewToEquatorial(ra, dec)
+    MC-->>GRPC: ok
+    GRPC-->>GC: ok
+    DRV-->>ALPACA: 200 OK
+
+    Note over APP,MC: PulseGuide
+    APP->>ALPACA: PUT /api/v1/telescope/0/PulseGuide
+    ALPACA->>DRV: PulseGuide(direction, duration)
+    DRV->>DRV: oblicz rate z duration
+    DRV->>GC: ControlAxis(axis, VELOCITY_CONTROL, rate)
+    GC->>GRPC: ControlAxis(request)
+    GRPC->>MC: controlAxis(axis, VELOCITY_CONTROL, rate)
+
+    Note over APP,MC: Action (komendy niestandardowe)
+    APP->>ALPACA: PUT /api/v1/telescope/0/Action
+    ALPACA->>DRV: Action("ClearTPointMeasurements", "")
+    DRV->>GC: ClearErrors()
+    GC->>GRPC: ClearErrors()
+    GRPC-->>GC: ok
+    DRV-->>ALPACA: "OK"
+
+    Note over APP,MC: ASCOM Rotator — MoveAbsolute
+    APP->>ALPACA: PUT /api/v1/rotator/0/MoveAbsolute
+    ALPACA->>DRV: MoveAbsolute(90)
+    DRV->>GC: ControlFieldRotation(FIXED_ANGLE, 90)
+    GC->>GRPC: ControlFieldRotation(request)
+    GRPC->>MC: controlFieldRotation(FIXED_ANGLE, 90)
+    MC-->>GRPC: ok
+    GRPC-->>GC: ok
+    DRV-->>ALPACA: 200 OK
+
+    Note over APP,MC: Halt
+    APP->>ALPACA: PUT /api/v1/rotator/0/Halt
+    ALPACA->>DRV: Halt()
+    DRV->>GC: ControlFieldRotation(DISABLED, 0)
+    GC->>GRPC: ControlFieldRotation(DISABLED, 0)
+
+    Note over APP,MC: Home
+    APP->>ALPACA: PUT /api/v1/rotator/0/Home
+    ALPACA->>DRV: Home()
+    DRV->>GC: HomeDerotator(SEQUENTIAL)
+    GC->>GRPC: HomeDerotator(SEQUENTIAL)
+```
+
+## 14. Przepływ danych sterownika INDI
+
+```mermaid
+sequenceDiagram
+    participant EKOS as Ekos / KStars
+    participant INDI as INDI Protocol
+    participant DRV as Sterownik INDI C++
+    participant GC as MountGrpcClient
+    participant GRPC as Serwer gRPC
+    participant MC as MountController
+
+    Note over EKOS,MC: Połączenie
+    EKOS->>INDI: setINDIProperty(DEVICE_CONNECT)
+    INDI->>DRV: ISNewSwitch(CONNECTION, "CONNECT")
+    DRV->>GC: connect(host, port)
+    GC->>GRPC: GetState()
+    GRPC-->>GC: ControllerState
+    GC-->>DRV: połączono
+    DRV-->>INDI: setProperty(CONNECTION, OK)
+    INDI-->>EKOS: Connected
+
+    Note over EKOS,MC: Slew
+    EKOS->>INDI: setNumber(EQUATORIAL_EOD_COORD)
+    INDI->>DRV: ISNewNumber(EQUATORIAL_EOD_COORD)
+    DRV->>GC: SlewToCoordinates(ra, dec)
+    GC->>GRPC: SlewToCoordinates(request)
+    GRPC->>MC: slewToEquatorial(ra, dec)
+    MC-->>GRPC: ok
+    GRPC-->>GC: ok
+    DRV-->>INDI: setProperty(SLEW, ACTIVE)
+    INDI-->>EKOS: Slew in progress
+
+    Note over EKOS,MC: ReadScopeStatus polling (co 1s)
+    loop Co 1 sekundę
+        DRV->>DRV: ReadScopeStatus()
+        DRV->>GC: GetState()
+        GC->>GRPC: GetState()
+        GRPC-->>GC: ControllerState
+        GC-->>DRV: ControllerState
+        DRV->>DRV: updateINDIProperties()
+        DRV-->>INDI: setNumber(RA, DEC)
+        DRV-->>INDI: setNumber(SNR)
+    end
+
+    Note over EKOS,MC: MoveNS / MoveWE (prędkość)
+    EKOS->>INDI: setNumber( TELESCOPE_NS_MOTION )
+    INDI->>DRV: ISNewNumber(TELESCOPE_NS_MOTION)
+    DRV->>DRV: axis_id = 0 (WE=RA, NS=Dec)
+    DRV->>GC: ControlAxis(axis_id, VELOCITY_CONTROL, ±1.0)
+    GC->>GRPC: ControlAxis(request)
+    GRPC->>MC: controlAxis(axis, VELOCITY_CONTROL, rate)
+
+    Note over EKOS,MC: Abort
+    EKOS->>INDI: setSwitch(ABORT)
+    INDI->>DRV: ISNewSwitch(ABORT, "ABORT")
+    DRV->>GC: Stop()
+    GC->>GRPC: Stop()
+
+    Note over EKOS,MC: Park
+    EKOS->>INDI: setSwitch(PARK)
+    INDI->>DRV: ISNewSwitch(PARK, "PARK")
+    DRV->>GC: Park()
+    GC->>GRPC: Park()
+
+    Note over EKOS,MC: INDI Rotator
+    EKOS->>INDI: setNumber(ROTATOR_ANGLE, 180)
+    INDI->>DRV: ISNewNumber(ROTATOR_ANGLE)
+    DRV->>GC: ControlFieldRotation(FIXED_ANGLE, 180)
+    GC->>GRPC: ControlFieldRotation(request)
+
+    Note over EKOS,MC: HomeRotator
+    EKOS->>INDI: setSwitch(ROTATOR_HOME)
+    INDI->>DRV: ISNewSwitch(ROTATOR_HOME, "HOME")
+    DRV->>GC: HomeDerotator(AUTO)
+    GC->>GRPC: HomeDerotator(AUTO)
+```

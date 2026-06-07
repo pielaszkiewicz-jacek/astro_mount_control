@@ -35,13 +35,15 @@ The Astronomical Mount Controller is a C++17 application that provides sub-arcse
 
 | Metric | Value |
 |--------|-------|
-| Lines of C++ | ~15,000+ |
-| Test binaries | 9 |
+| Lines of C++ | ~20,000+ |
+| Lines of C# | ~1,300+ |
+| Test binaries | 17 |
 | gRPC RPCs | 50+ |
 | Config validation checks | 25+ |
 | NaN/Inf protection points | 11 |
 | Supported hardware types | 2 (CANopen, Simulated) + 3 planned |
-| Build time | ~2-3 minutes (Release, 4 cores) |
+| Supported driver protocols | 2 (ASCOM, INDI) |
+| Build time | ~3-4 minutes (Release, 4 cores) |
 
 ---
 
@@ -150,6 +152,10 @@ flowchart TD
     Root --> Web["📁 web"]
     Root --> Db["📁 db"]
     Root --> Scripts["📁 scripts"]
+    Root --> Ascom["📁 ascom"]
+    Root --> AscomRot["📁 ascom_rotator"]
+    Root --> Indi["📁 indi"]
+    Root --> IndiRot["📁 indi_rotator"]
 
     Config --> DefJson["📄 default.json<br/><i>177 lines — defaults</i>"]
 
@@ -161,7 +167,8 @@ flowchart TD
     Include --> IncModels["📁 models"]
 
     IncConfig --> ConfigH["📄 configuration.h<br/><i>428 lines — structs</i>"]
-    IncControllers --> MCH["📄 mount_controller.h<br/><i>841 lines — API</i>"]
+    IncControllers --> MCH["📄 mount_controller.h<br/><i>930 lines — API</i>"]
+    IncControllers --> DCH["📄 derotator_controller.h<br/><i>224 lines — derotator</i>"]
     IncControllers --> ICAN["📄 icanopen_interface.h<br/><i>CANopen abstraction</i>"]
     IncCore --> AstroH["📄 astronomical_calculations.h"]
     IncHal --> HALI["📄 hal_interface.h<br/><i>Abstract base</i>"]
@@ -190,7 +197,8 @@ flowchart TD
 
     SrcAPI --> GRPCCPP["📄 grpc_server.cpp"]
     SrcConfig --> ConfigCPP["📄 configuration.cpp<br/><i>1185 lines — validator</i>"]
-    SrcControllers --> MCCPP["📄 mount_controller.cpp<br/><i>5195 lines — core logic</i>"]
+    SrcControllers --> MCCPP["📄 mount_controller.cpp<br/><i>5547 lines — core logic</i>"]
+    SrcControllers --> DCCPP["📄 derotator_controller.cpp<br/><i>858 lines — derotator</i>"]
     SrcCore --> AstroCPP["📄 astronomical_calculations.cpp"]
     SrcHal --> HALFactoryCPP["📄 hal_factory.cpp"]
     SrcHal --> CANopenHAL["📁 canopen_hal"]
@@ -202,6 +210,25 @@ flowchart TD
     SrcModels --> KFCPP["📄 kalman_filter.cpp"]
     SrcModels --> EphCPP["📄 ephemeris_tracker.cpp"]
 
+    Ascom --> AstroTel["📄 AstroMountTelescope.cs<br/><i>892 lines — ITelescopeV3</i>"]
+    Ascom --> GrpcClient["📄 GrpcClient.cs<br/><i>378 lines — gRPC wrapper</i>"]
+    Ascom --> StateCache["📄 StateCache.cs<br/><i>State caching</i>"]
+    Ascom --> ConversionHelper["📄 ConversionHelper.cs<br/><i>Coordinate conversion</i>"]
+    Ascom --> MountController["📄 MountController.cs"]
+    Ascom --> MountControllerGrpc["📄 MountControllerGrpc.cs"]
+
+    AscomRot --> RotDriver["📄 AstroMountRotator.cs<br/><i>IRotatorV3</i>"]
+
+    Indi --> IndiDriver["📄 astro_mount_driver.cpp<br/><i>715 lines — Telescope driver</i>"]
+    Indi --> IndiDriverH["📄 astro_mount_driver.h<br/><i>126 lines</i>"]
+    Indi --> IndiPropMapper["📄 IndiPropertyMapper.cpp/h<br/><i>INDI property mapping</i>"]
+    Indi --> MountGrpcClient["📄 MountGrpcClient.cpp/h<br/><i>221 lines — gRPC client</i>"]
+    Indi --> IndiCMake["📄 CMakeLists.txt"]
+
+    IndiRot --> RotIndiDriver["📄 astro_mount_rotator_driver.cpp<br/><i>Rotator driver</i>"]
+    IndiRot --> RotIndiDriverH["📄 astro_mount_rotator_driver.h"]
+    IndiRot --> RotIndiCMake["📄 CMakeLists.txt"]
+
     Tests --> TMC["📄 test_mount_controller.cpp<br/><i>919 lines, 25 groups</i>"]
     Tests --> TTP["📄 test_tpoint_model.cpp<br/><i>184 lines, 17 cases</i>"]
     Tests --> TAC["📄 test_astronomical_calculations.cpp"]
@@ -211,6 +238,14 @@ flowchart TD
     Tests --> THAL["📄 test_hal_integration.cpp"]
     Tests --> TGRPC["📄 test_grpc_integration.cpp"]
     Tests --> TSAC["📄 test_subarcsecond_accuracy.cpp"]
+    Tests --> TCF["📄 test_canopen_factory.cpp"]
+    Tests --> TCH["📄 test_canopen_hal.cpp"]
+    Tests --> TCM["📄 test_config_monitor.cpp"]
+    Tests --> TEH["📄 test_ethernet_hal.cpp"]
+    Tests --> TGH["📄 test_gamepad_hal.cpp"]
+    Tests --> TLog["📄 test_logger.cpp"]
+    Tests --> TSH["📄 test_serial_hal.cpp"]
+    Tests --> TCW["📄 test_canopen_wrapper.cpp"]
 
     classDef root fill:#1a1a2e,stroke:#16213e,color:#e0e0e0,stroke-width:2px
     classDef dir fill:#2d3436,stroke:#636e72,color:#dfe6e9,stroke-width:1px
@@ -219,28 +254,38 @@ flowchart TD
     classDef proto fill:#f3e5f5,stroke:#7b1fa2,stroke-width:1px,color:#4a148c
     classDef source fill:#fff3e0,stroke:#e65100,stroke-width:1px,color:#bf360c
     classDef test fill:#fce4ec,stroke:#c62828,stroke-width:1px,color:#b71c1c
+    classDef cs fill:#d4edda,stroke:#155724,stroke-width:1px,color:#155724
     classDef misc fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,color:#616161
 
     class Root root
-    class Config,Include,Proto,Src,Tests,Sofa,Examples,Web,Db,Scripts,IncConfig,IncControllers,IncCore,IncHal,IncLogging,IncModels,SrcAPI,SrcConfig,SrcControllers,SrcCore,SrcHal,SrcLogging,SrcModels,CANopenHAL,SimHAL dir
+    class Config,Include,Proto,Src,Tests,Sofa,Examples,Web,Db,Scripts,Ascom,AscomRot,Indi,IndiRot,IncConfig,IncControllers,IncCore,IncHal,IncLogging,IncModels,SrcAPI,SrcConfig,SrcControllers,SrcCore,SrcHal,SrcLogging,SrcModels,CANopenHAL,SimHAL dir
     class DefJson json
-    class ConfigH,MCH,ICAN,AstroH,HALI,HALConfig,HALFactoryH,MotorCtrl,EncoderReader,SafetyMon,SensorI,LoggerH,TPointH,KFH,EphH header
+    class ConfigH,MCH,DCH,ICAN,AstroH,HALI,HALConfig,HALFactoryH,MotorCtrl,EncoderReader,SafetyMon,SensorI,LoggerH,TPointH,KFH,EphH header
     class MCPI,CANProto proto
-    class GRPCCPP,ConfigCPP,MCCPP,AstroCPP,HALFactoryCPP,CANCPP,SimCPP,LoggerCPP,TPointCPP,KFCPP,EphCPP,MainCPP source
-    class TMC,TTP,TAC,TConfig,TKF,TET,THAL,TGRPC,TSAC test
+    class GRPCCPP,ConfigCPP,MCCPP,DCCPP,AstroCPP,HALFactoryCPP,CANCPP,SimCPP,LoggerCPP,TPointCPP,KFCPP,EphCPP,MainCPP source
+    class AstroTel,GrpcClient,StateCache,ConversionHelper,MountController,MountControllerGrpc,RotDriver cs
+    class IndiDriver,IndiDriverH,IndiPropMapper,MountGrpcClient,RotIndiDriver,RotIndiDriverH cs
+    class TMC,TTP,TAC,TConfig,TKF,TET,THAL,TGRPC,TSAC,TCF,TCH,TCM,TEH,TGH,TLog,TSH,TCW test
 ```
 
 ### Key Files to Know
 
 | File | Lines | Purpose | Why It Matters |
 |------|-------|---------|----------------|
-| [`mount_controller.cpp`](src/controllers/mount_controller.cpp) | 5195 | Core controller | Contains ALL mount logic: state machine, tracking, meridian flip, soft limits, NaN guards |
-| [`mount_controller.h`](include/controllers/mount_controller.h) | 841 | Public API | Interface for all public methods and RPC implementations |
+| [`mount_controller.cpp`](src/controllers/mount_controller.cpp) | 5547 | Core controller | Contains ALL mount logic: state machine, tracking, meridian flip, soft limits, NaN guards |
+| [`mount_controller.h`](include/controllers/mount_controller.h) | 930 | Public API | Interface for all public methods and RPC implementations |
+| [`derotator_controller.cpp`](src/controllers/derotator_controller.cpp) | 858 | Derotator control | Standalone derotator controller with own thread, homing, field rotation |
+| [`derotator_controller.h`](include/controllers/derotator_controller.h) | 224 | Derotator API | DerotatorController interface, HomingMethod, RotationMode enums |
 | [`configuration.cpp`](src/config/configuration.cpp) | 1185 | Config system | JSON loading, validation (25+ checks), default initialization |
 | [`configuration.h`](include/config/configuration.h) | 428 | Config structs | All configuration data structures |
 | [`mount_controller.proto`](proto/mount_controller.proto) | 1115 | gRPC API | Service definition for all RPCs |
 | [`main.cpp`](src/main.cpp) | 304 | Entry point | Application bootstrap, signal handling, main loop |
 | [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp) | 1845 | Hardware driver | CiA 402 state machine, PDO communication, PID control |
+| [`AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) | 892 | ASCOM telescope driver | ITelescopeV3 implementation via gRPC proxy |
+| [`GrpcClient.cs`](ascom/GrpcClient.cs) | 378 | ASCOM gRPC client | C# gRPC client wrapper for all RPCs |
+| [`AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) | — | ASCOM rotator driver | IRotatorV3 implementation |
+| [`astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) | 715 | INDI telescope driver | INDI Telescope driver with gRPC backend |
+| [`astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) | — | INDI rotator driver | INDI Rotator driver with gRPC backend |
 
 ---
 
@@ -299,7 +344,8 @@ flowchart TD
 | Component | File(s) | Responsibility |
 |-----------|---------|----------------|
 | `MountController` | [`mount_controller.cpp`](src/controllers/mount_controller.cpp) | Main controller — state machine, tracking, meridian flip, soft limits |
-| `PositionKalmanFilter` | [`mount_controller.cpp`](src/controllers/mount_controller.cpp:38) | Inline KF in MountController (position estimation) |
+| `DerotatorController` | [`derotator_controller.cpp`](src/controllers/derotator_controller.cpp) | Standalone derotator control — homing, field rotation, own work thread |
+| `PositionKalmanFilter` | [`mount_controller.cpp:38`](src/controllers/mount_controller.cpp:38) | Inline KF in MountController (position estimation) |
 | `AstronomicalCalculations` | [`astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp) | Coordinate transforms, refraction, field rotation |
 | `TPointModel` | [`tpoint_model.cpp`](src/models/tpoint_model.cpp) | Mount geometry error correction, QR solver |
 | `KalmanFilter` | [`kalman_filter.cpp`](src/models/kalman_filter.cpp) | Extended KF with Joseph form, adaptive noise |
@@ -308,6 +354,10 @@ flowchart TD
 | `Configuration::Impl` | [`configuration.cpp:12`](src/config/configuration.cpp:12) | Pimpl pattern — implementation details |
 | `HALInterface` | [`hal_interface.h`](include/hal/hal_interface.h) | Abstract HAL contract |
 | `HALFactory` | [`hal_factory.cpp`](src/hal/hal_factory.cpp) | Creates HAL implementations |
+| `AstroMountTelescope` (C#) | [`AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) | ASCOM ITelescopeV3 driver — gRPC proxy |
+| `AstroMountRotator` (C#) | [`AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) | ASCOM IRotatorV3 driver — gRPC proxy |
+| `AstroMountIndiDriver` (C++) | [`astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) | INDI Telescope driver — gRPC backend |
+| `AstroMountRotatorIndi` (C++) | [`astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) | INDI Rotator driver — gRPC backend |
 
 ### State Machine
 
@@ -421,10 +471,31 @@ The project uses **CMake** with the following key options:
 
 ### Build Targets
 
+#### Application Binaries
+
 | Target | Description |
 |--------|-------------|
 | `astro_mount_controller` | Main application binary |
 | `astro_object_database_server` | Astronomical database server |
+
+#### INDI Driver Binaries
+
+| Target | Description |
+|--------|-------------|
+| `astro_mount_driver` | INDI Telescope driver |
+| `astro_mount_rotator_driver` | INDI Rotator driver |
+
+#### ASCOM Driver Builds (C#)
+
+| Target | Description |
+|--------|-------------|
+| `ascom/AstroMountTelescope.cs` | ASCOM ITelescopeV3 driver (build via `dotnet build ascom/`) |
+| `ascom_rotator/AstroMountRotator.cs` | ASCOM IRotatorV3 driver (build via `dotnet build ascom_rotator/`) |
+
+#### Test Binaries
+
+| Target | Description |
+|--------|-------------|
 | `test_mount_controller` | Controller tests (25 groups) |
 | `test_tpoint_model` | TPOINT model tests (17 cases) |
 | `test_configuration` | Configuration validation tests |
@@ -434,6 +505,14 @@ The project uses **CMake** with the following key options:
 | `test_grpc_integration` | gRPC server tests |
 | `test_subarcsecond_accuracy` | Accuracy verification tests |
 | `test_astronomical_calculations` | Astronomical calculation tests |
+| `test_canopen_factory` | CANopen HAL factory tests |
+| `test_canopen_hal` | CANopen HAL communication tests |
+| `test_config_monitor` | Configuration monitoring tests |
+| `test_ethernet_hal` | Ethernet HAL tests |
+| `test_gamepad_hal` | Gamepad HAL tests |
+| `test_logger` | Logger tests |
+| `test_serial_hal` | Serial HAL tests |
+| `test_canopen_wrapper` | CANopen wrapper tests |
 
 ### Common Build Commands
 
@@ -745,24 +824,30 @@ journalctl -u astro-mount-controller -f
 | Header | What It Contains |
 |--------|-----------------|
 | [`mount_controller.h`](include/controllers/mount_controller.h) | `MountController` class, `ControllerConfig`, `MountStatus` |
+| [`derotator_controller.h`](include/controllers/derotator_controller.h) | `DerotatorController` class, `HomingMethod`, `RotationMode`, `DerotatorStatus` |
 | [`configuration.h`](include/config/configuration.h) | All config structs: `MountConfig`, `GuiderConfig`, `KalmanConfig`, `TPointConfig`, `DerotatorConfig`, `FieldRotationParams` |
 | [`hal_interface.h`](include/hal/hal_interface.h) | `HALInterface` abstract class |
 | [`hal_config.h`](include/hal/hal_config.h) | `HALConfig` struct with all hardware parameters |
 | [`hal_factory.h`](include/hal/hal_factory.h) | `HALFactory` for creating HAL instances |
 | [`tpoint_model.h`](include/models/tpoint_model.h) | `TPointModel` class |
 | [`kalman_filter.h`](include/models/kalman_filter.h) | `KalmanFilter` class |
+| [`MountGrpcClient.h`](indi/MountGrpcClient.h) | C++ gRPC client wrapper for INDI drivers |
 
 ### Key Source Files
 
 | File | Lines | Purpose |
 |------|-------|---------|
-| [`mount_controller.cpp`](src/controllers/mount_controller.cpp) | 5195 | All controller logic |
+| [`mount_controller.cpp`](src/controllers/mount_controller.cpp) | 5547 | All controller logic |
+| [`derotator_controller.cpp`](src/controllers/derotator_controller.cpp) | 858 | Standalone derotator controller |
 | [`configuration.cpp`](src/config/configuration.cpp) | 1185 | Config loading, validation, defaults |
 | [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp) | 1845 | CANopen hardware driver |
 | [`main.cpp`](src/main.cpp) | 304 | Entry point, config wiring |
 | [`tpoint_model.cpp`](src/models/tpoint_model.cpp) | ~400 | TPOINT model |
 | [`kalman_filter.cpp`](src/models/kalman_filter.cpp) | ~300 | Kalman filter |
 | [`mount_controller.proto`](proto/mount_controller.proto) | 1115 | gRPC service definition |
+| [`AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) | 892 | ASCOM ITelescopeV3 driver |
+| [`GrpcClient.cs`](ascom/GrpcClient.cs) | 378 | C# gRPC client wrapper |
+| [`astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) | 715 | INDI Telescope driver (C++) |
 
 ### Key Protobuf Messages
 
@@ -772,10 +857,12 @@ journalctl -u astro-mount-controller -f
 | `Configuration` | [proto:530](proto/mount_controller.proto:530) | Full system configuration (49 fields) |
 | `ControllerState` | [proto:198](proto/mount_controller.proto:198) | Current mount state with tracking parameters |
 | `DerotatorConfig` | [proto:825](proto/mount_controller.proto:825) | Derotator hardware configuration |
+| `FieldRotationControlRequest` | [proto:787](proto/mount_controller.proto:787) | Field rotation mode and parameter control |
+| `DerotatorHomingRequest` | [proto:810](proto/mount_controller.proto:810) | Derotator homing method selection |
 | `HALConfig` | [proto:1063](proto/mount_controller.proto:1063) | Complete HAL configuration |
 | `TrajectoryParams` | [proto:116](proto/mount_controller.proto:116) | Trajectory generation parameters |
 | `EphemerisData` | [proto:689](proto/mount_controller.proto:689) | Ephemeris data for moving objects |
 
 ---
 
-*Last updated: May 2026*
+*Last updated: June 2026*

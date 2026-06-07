@@ -22,6 +22,13 @@ Astronomical Mount Controller is a modular architecture system designed to provi
 - Coordination of RA and Dec axis movement
 - Integration with autoguiding system
 - TPOINT calibration management
+- Delegates derotator hardware control to DerotatorController
+
+#### Derotator Integration:
+The MountController no longer manages derotator hardware directly. As of Phase 1 refactoring, all derotator-specific logic was extracted into the standalone [`DerotatorController`](include/controllers/derotator_controller.h) class. MountController retains:
+- Field rotation rate calculation (depends on mount axis positions)
+- Pimpl delegator methods for backward-compatible gRPC API
+- Injects computed field rotation rate via [`DerotatorController::setFieldRotationRate()`](src/controllers/derotator_controller.cpp)
 
 #### Internal State:
 ```cpp
@@ -65,7 +72,45 @@ struct MountStatus {
 ```
 ```
 
-### 2. AstronomicalCalculations
+### 2. DerotatorController
+
+A standalone controller extracted from [`MountController::Impl`](src/controllers/mount_controller.cpp) during Phase 1 refactoring. Reduces coupling by encapsulating all derotator-specific hardware and logic.
+
+#### Responsibilities:
+- Field rotation compensation for alt-az and CASUAL mounts
+- Derotator motor and encoder management via HAL
+- Derotator homing (multiple methods: AUTO, LIMIT_SWITCH, ENCODER_ZERO, MANUAL)
+- Position/rate control via `controlFieldRotation()` with modes:
+  - `DISABLED` — no rotation compensation
+  - `ALT_AZ` — automatic field rotation for alt-az mounts
+  - `EQUATORIAL` — field rotation for equatorial mounts
+  - `CUSTOM` — user-defined rotation rate
+  - `FIXED_ANGLE` — absolute position control
+  - `TRACKING` — tracking-based compensation
+
+#### Architecture:
+```cpp
+class DerotatorController {
+    // Own shared_mutex and work thread (thread-safe, async homing)
+    ICanOpenInterface* canopen_;          // Non-owning pointer
+    std::unique_ptr<hal::MotorControl> motor_;   // HAL motor
+    std::unique_ptr<hal::EncoderReader> encoder_; // HAL encoder
+    
+    // MountController injects the computed field rotation rate
+    void setFieldRotationRate(double rate_deg_s);
+    
+    // Public API called by MountController pimpl delegators
+    bool home(const DerotatorHomingRequest& request);
+    bool controlFieldRotation(const FieldRotationControlRequest& request);
+    ::astro_mount::DerotatorStatus getStatus() const;
+};
+```
+
+#### Key Files:
+- [`include/controllers/derotator_controller.h`](include/controllers/derotator_controller.h) — Class declaration (~224 lines)
+- [`src/controllers/derotator_controller.cpp`](src/controllers/derotator_controller.cpp) — Implementation (~858 lines)
+
+### 3. AstronomicalCalculations
 
 #### Libraries Used:
 - **SOFA** (Standards of Fundamental Astronomy) - astronomical calculations
@@ -384,6 +429,7 @@ sequenceDiagram
 2. **CANopen Thread**: Drive communication, encoder reading
 3. **Computational Thread**: Astronomical calculations, Kalman filter
 4. **Guider Thread**: Autoguiding system communication
+5. **Derotator Thread**: Async derotator homing and calibration (managed by [`DerotatorController`](include/controllers/derotator_controller.h))
 
 ### Synchronization:
 
@@ -474,6 +520,82 @@ flowchart TB
 3. **Fallback**: Transition to safe mode (sidereal tracking)
 4. **Reinitialization**: Component reinitialization
 5. **Shutdown**: Safe system shutdown
+
+## External Driver Architecture
+
+The system includes four astronomy-standard drivers that connect to the gRPC API as external clients:
+
+### 7. ASCOM Telescope Driver ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
+
+```mermaid
+flowchart LR
+    ASCOM["ASCOM Client<br/>(N.I.N.A., SGP, APT)"] -->|"Alpaca REST"| AST["AstroMountTelescope<br/>ITelescopeV3"]
+    AST -->|"gRPC :50051"| GRPC["MountControllerService"]
+    AST --> SC["StateCache<br/>(polled every 2s)"]
+    SC -->|"cache hit"| AST
+```
+
+**Key integration points:**
+- `SlewToCoordinates()` → gRPC [`SlewToCoordinates`](proto/mount_controller.proto)
+- `PulseGuide()` → gRPC [`SendGuiderCorrection`](proto/mount_controller.proto)
+- `MoveAxis(axis, rate)` → gRPC [`ControlAxis(AxisControlRequest { VELOCITY_CONTROL })`](proto/mount_controller.proto)
+- `Action("tpoint_status")` → reads `ControllerState.tpoint_params` from gRPC [`GetState`](proto/mount_controller.proto)
+- `SetPark()` → reads state, updates controller config park position
+- `SupportedActions`: `tpoint_status`, `temperature`, `pressure`, `humidity`, `tracking_rate_ra`, `tracking_rate_dec`, `guider_status`, `derotator_status`
+
+**State caching:** [`StateCache.cs`](ascom/StateCache.cs) polls `GetState()` every 2 seconds on a background timer to provide low-latency property reads without blocking on gRPC calls.
+
+### 8. ASCOM Rotator Driver ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs))
+
+```mermaid
+flowchart LR
+    ASCOMR["ASCOM Client"] -->|"Alpaca REST"| AROT["AstroMountRotator<br/>IRotatorV3"]
+    AROT -->|"gRPC :50051"| GRPCR["MountControllerService"]
+    AROT --> RC["StatusCache<br/>(DerotatorStatus)"]
+```
+
+**Key integration points:**
+- `MoveAbsolute(position)` → gRPC [`ControlFieldRotation(FIXED_ANGLE, target_angle)`](proto/mount_controller.proto)
+- `Move(rate)` → gRPC [`ControlFieldRotation(CUSTOM, rotation_rate)`](proto/mount_controller.proto)
+- `Halt()` → gRPC [`ControlFieldRotation(DISABLED)`](proto/mount_controller.proto)
+- `Home()` → gRPC [`HomeDerotator(SEQUENTIAL)`](proto/mount_controller.proto)
+- `Position` → cached from gRPC [`GetDerotatorStatus`](proto/mount_controller.proto)
+
+### 9. INDI Telescope Driver ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
+
+```mermaid
+flowchart LR
+    EKOS["Ekos/KStars"] -->|"INDI Protocol"| TEL["AstroMountINDI<br/>INDI::Telescope"]
+    TEL -->|"gRPC :50051"| GRPC2["MountControllerService"]
+    TEL --> GRPC_CLIENT["MountGrpcClient<br/>indi/MountGrpcClient.cpp"]
+```
+
+**Key integration points:**
+- `MoveNS(NS_NORTH/NS_SOUTH, rate)` → gRPC [`ControlAxis(axis_id=1, VELOCITY_CONTROL, ±1.0 deg/s)`](proto/mount_controller.proto)
+- `MoveWE(WE_WEST/WE_EAST, rate)` → gRPC [`ControlAxis(axis_id=0, VELOCITY_CONTROL, ±1.0 deg/s)`](proto/mount_controller.proto)
+- `SetCurrentPark()` → reads `ControllerState.current_position()` → calls `SetParkData()` → updates config
+- `TPOINT_STATUS` → `ITextVectorProperty` with 3 fields: COEFFICIENTS, CHI2, CALIBRATED (from [`state.tpoint_params()`](proto/mount_controller.proto))
+- `EnvironmentNP` → `INumberVectorProperty` with 3 fields: TEMPERATURE, PRESSURE, HUMIDITY (from state)
+
+**gRPC client wrapper:** [`MountGrpcClient`](indi/MountGrpcClient.h) encapsulates all gRPC communication with `ensureConnected()` → stub pattern, throwing `std::runtime_error` on failure.
+
+### 10. INDI Rotator Driver ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp))
+
+```mermaid
+flowchart LR
+    EKOS2["Ekos/KStars"] -->|"INDI Protocol"| ROT["AstroMountRotatorINDI<br/>INDI::Rotator"]
+    ROT -->|"gRPC :50051"| GRPC3["MountControllerService"]
+```
+
+**Key integration points:**
+- `MoveRotator(angle)` → gRPC [`ControlFieldRotation(FIXED_ANGLE)`](proto/mount_controller.proto)
+- `AbortRotator()` → gRPC [`ControlFieldRotation(DISABLED)`](proto/mount_controller.proto)
+- `HomeRotator()` → gRPC [`HomeDerotator(AUTO)`](proto/mount_controller.proto)
+- `CONNECTION_NONE` mode — no serial/TCP connection, gRPC only
+- Capabilities: `ROTATOR_CAN_ABORT | ROTATOR_CAN_HOME`
+- `pollStatus()` calls [`GetDerotatorStatus`](proto/mount_controller.proto) every cycle to update INDI properties
+
+---
 
 ## Performance
 

@@ -236,6 +236,9 @@ message ControllerState {
     double tracking_performance = 22; // Tracking performance [%]
     double guiding_performance = 23;  // Guiding performance [%]
     double mount_vibration = 24;     // Mount vibration [arcsec RMS]
+
+    // === NEW: Bootstrap status (plan §5.3) ===
+    BootstrapStatus bootstrap_status = 25;  // Current bootstrap calibration status
 }
 
 // Pole position
@@ -334,6 +337,11 @@ service MountControllerService {
     rpc RunBootstrapCalibration(google.protobuf.Empty) returns (BootstrapCalibrationResult);
     rpc GetBootstrapStatus(google.protobuf.Empty) returns (BootstrapStatus);
     rpc ClearBootstrapMeasurements(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // === NEW: Bootstrap mode and auto-bootstrap (plan §5.4) ===
+    rpc SetBootstrapMode(BootstrapModeRequest) returns (google.protobuf.Empty);
+    rpc RunAutomaticBootstrap(AutoBootstrapRequest) returns (google.protobuf.Empty);
+    rpc GetAutoBootstrapStatus(google.protobuf.Empty) returns (AutoBootstrapStatus);
     
     // TPOINT calibration API (for precise calibration after bootstrap)
     rpc AddTPointMeasurement(Measurement) returns (google.protobuf.Empty);
@@ -784,6 +792,18 @@ message EphemerisMetrics {
 // Bootstrap calibration messages
 // ============================================
 
+// Bootstrap mode — how bootstrap measurements are collected (plan §5.1)
+enum BootstrapMode {
+    BOOTSTRAP_MANUAL = 0;       // Fully manual (gamepad / manual pointing)
+    BOOTSTRAP_HYBRID = 1;       // Manual + automatic (≥3 manual, then auto)
+    BOOTSTRAP_AUTOMATIC = 2;    // Fully automatic (requires absolute encoders or reference)
+}
+
+// Wrapper message for SetBootstrapMode RPC (proto3 requires message types for RPC parameters)
+message BootstrapModeRequest {
+    BootstrapMode mode = 1;
+}
+
 // Bootstrap measurement (simplified for initial alignment)
 message BootstrapMeasurement {
     Coordinates observed = 1;           // Observed coordinates (approximate)
@@ -841,6 +861,43 @@ message BootstrapStatus {
     string state_message = 7;
     double min_measurements_required = 8;   // Minimum measurements needed
     double min_measurements_for_tpoint = 9; // Minimum for TPOINT
+
+    // === NEW: Bootstrap / encoder status fields (plan §5.2) ===
+    BootstrapMode bootstrap_mode = 10;       // Current bootstrap mode
+    bool encoder_type_absolute = 11;          // Encoder type (true=absolute, false=incremental)
+    bool reference_position_known = 12;       // Whether reference position is known
+    double estimated_encoder_offset_deg = 13; // Estimated encoder offset [deg]
+    int32 manual_measurements_needed = 14;    // Manual measurements still needed (for hybrid)
+}
+
+// Auto-bootstrap request (plan §5.5)
+message AutoBootstrapRequest {
+    repeated string target_star_names = 1;  // Optional: specific stars to use
+    int32 min_measurements = 2;              // Minimum measurements (default: 3)
+    double max_alignment_error_arcsec = 3;   // Maximum alignment error (default: 60")
+    bool proceed_to_tpoint = 4;             // Automatically proceed to TPOINT after bootstrap
+}
+
+// Auto-bootstrap status (plan §5.5)
+message AutoBootstrapStatus {
+    enum AutoBootstrapState {
+        IDLE = 0;
+        SELECTING_STARS = 1;
+        SLEWING = 2;
+        PLATE_SOLVING = 3;
+        ADDING_MEASUREMENT = 4;
+        CALIBRATING = 5;
+        COMPLETED = 6;
+        ERROR = 7;
+    }
+
+    AutoBootstrapState state = 1;
+    string state_message = 2;
+    int32 measurements_collected = 3;
+    int32 measurements_target = 4;
+    string current_target_star = 5;
+    double progress_percent = 6;
+    string error_message = 7;
 }
 
 // ============================================

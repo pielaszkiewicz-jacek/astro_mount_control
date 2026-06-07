@@ -536,6 +536,51 @@ const Api = (() => {
   }
 
   /**
+   * Get the current bootstrap mode.
+   * GET /api/calibration/bootstrap/mode
+   * @returns {Promise<{mode: number, encoder_type_absolute: boolean}>}
+   */
+  async function getBootstrapMode() {
+    return request('/calibration/bootstrap/mode');
+  }
+
+  /**
+   * Set the bootstrap mode.
+   * POST /api/calibration/bootstrap/mode
+   * @param {number} mode - 0=MANUAL, 1=HYBRID, 2=AUTOMATIC
+   * @returns {Promise<{success: boolean, mode: number}>}
+   */
+  async function setBootstrapMode(mode) {
+    return request('/calibration/bootstrap/mode', {
+      method: 'POST',
+      body: JSON.stringify({ mode }),
+    });
+  }
+
+  /**
+   * Start automatic bootstrap procedure.
+   * POST /api/calibration/bootstrap/auto-run
+   * @param {object} [options] - { target_star_names?, min_measurements?,
+   *                               max_alignment_error_arcsec?, proceed_to_tpoint? }
+   * @returns {Promise<{success: boolean, message: string}>}
+   */
+  async function runAutomaticBootstrap(options = {}) {
+    return request('/calibration/bootstrap/auto-run', {
+      method: 'POST',
+      body: JSON.stringify(options),
+    });
+  }
+
+  /**
+   * Get automatic bootstrap status and progress.
+   * GET /api/calibration/bootstrap/auto-status
+   * @returns {Promise<object>} AutoBootstrapStatus
+   */
+  async function getAutoBootstrapStatus() {
+    return request('/calibration/bootstrap/auto-status');
+  }
+
+  /**
    * Get TPOINT calibration parameters and status.
    * GET /api/calibration/tpoint/parameters
    * @returns {Promise<object>}

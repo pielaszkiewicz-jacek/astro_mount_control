@@ -15,6 +15,8 @@
 11. [Instalacja i budowanie](#instalacja-i-budowanie)
 12. [Testowanie](#testowanie)
 13. [Parametry fizyczne osi](#parametry-fizyczne-osi)
+14. [Sterowniki ASCOM i INDI](#ascom-i-indi-drivers)
+15. [Interfejs Web](#interfejs-web)
 
 ## Wprowadzenie
 
@@ -48,6 +50,7 @@ flowchart TB
     classDef comm fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
     classDef hw fill:#efebe9,stroke:#4e342e,stroke-width:2px,color:#3e2723
     classDef cfg fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#004d40
+    classDef driver fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
 
     subgraph WEBUI["🌐 Interfejs Web"]
         SPA["SPA w przeglądarce<br/>web/public/index.html<br/>Vanilla JS · 6 zakładek"]
@@ -66,6 +69,7 @@ flowchart TB
 
     subgraph CORE["⚙️ Rdzeń kontrolera"]
         MC["MountController<br/>src/controllers/mount_controller.cpp<br/>Maszyna stanów · Pętla śledzenia · Meridian flip"]
+        DC["DerotatorController<br/>src/controllers/derotator_controller.cpp<br/>Niezależny wątek · Sterowanie polem"]
     end
 
     subgraph MODELS["🧮 Modele matematyczne"]
@@ -83,10 +87,18 @@ flowchart TB
         DB_SERVICE["ObjectDatabaseService<br/>db/src/object_database_service.cpp<br/>SQLite · CRUD katalogów · Wyszukiwanie · Import"]
     end
 
+    subgraph EXTERNAL["🌍 Sterowniki zewnętrzne"]
+        ASCOM_TEL["ASCOM Telescope Driver<br/>ascom/AstroMountTelescope.cs<br/>ITelescopeV3 · Alpaca REST → gRPC"]:::driver
+        ASCOM_ROT["ASCOM Rotator Driver<br/>ascom_rotator/AstroMountRotator.cs<br/>IRotatorV3 · Alpaca REST → gRPC"]:::driver
+        INDI_TEL["INDI Telescope Driver<br/>indi/astro_mount_driver.cpp<br/>INDI Protocol → gRPC"]:::driver
+        INDI_ROT["INDI Rotator Driver<br/>indi_rotator/astro_mount_rotator_driver.cpp<br/>INDI Rotator → gRPC"]:::driver
+    end
+
     subgraph HW["🔧 Sprzęt"]
         HW1["Napędy serwo"]
         HW2["Enkodery absolutne"]
         HW3["Czujniki<br/>Temperatura · Ciśnienie"]
+        DEROT_HW["Derotator<br/>Silnik · Enkoder"]
     end
 
     SPA -->|"HTTP/JSON"| PROXY
@@ -99,19 +111,26 @@ flowchart TB
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
+    MC -.->|"setFieldRotationRate()"| DC
     ASTRO --> KF
     TPOINT --> KF
     KF --> CAN
     CONFIG --> CAN
     CAN --> HW
+    DC --> DEROT_HW
+
+    ASCOM_TEL -.->|"gRPC (local/network)"| GRPC
+    ASCOM_ROT -.->|"gRPC (local/network)"| GRPC
+    INDI_TEL -.->|"gRPC (local/network)"| GRPC
+    INDI_ROT -.->|"gRPC (local/network)"| GRPC
 
     class SPA,PROXY client
     class PY,CPP client
     class GRPC,DB_GRPC api
-    class MC core
+    class MC,DC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
-    class HW1,HW2,HW3 hw
+    class HW1,HW2,HW3,DEROT_HW hw
 ```
 
 ### Komponenty systemu
@@ -122,36 +141,58 @@ Główny komponent integrujący wszystkie moduły:
 - Zarządzanie stanem montażu
 - Integracja z enkoderami i guiderem
 - Kalibracja TPOINT
+- Integracja z DerotatorController poprzez wstrzykiwanie prędkości rotacji pola
 
-#### 2. **AstronomicalCalculations**
+#### 2. **DerotatorController**
+Samodzielny kontroler derotatora, wydzielony z MountController:
+
+- **Niezależny wątek**: Własny wątek roboczy do homingu i kalibracji
+- **Własny muteks**: Ochrona dostępu do stanu (`shared_mutex`)
+- **Wskaźniki HAL**: Silnik i enkoder derotatora przekazywane przez `DerotatorConfig`
+- **Tryby rotacji pola**:
+  - `DISABLED` — rotacja wyłączona
+  - `ALT_AZ` — kompensacja dla montażu ALT-AZ
+  - `EQUATORIAL` — kompensacja dla montażu EQ (szybkość pola)
+  - `CUSTOM` — ręczna prędkość kątowa
+  - `FIXED_ANGLE` — utrzymanie stałego kąta
+  - `TRACKING` — śledzenie prędkością gwiazdową (sidereal)
+- **Metody homingu**:
+  - `AUTO` — automatyczna sekwencja
+  - `LIMIT_SWITCH` — wyłącznik krańcowy
+  - `ENCODER_ZERO` — pozycja zerowa enkodera
+  - `MANUAL` — ręczne ustawienie pozycji
+- **Metody publiczne**: `home()`, `controlFieldRotation()`, `getStatus()`, `enableFieldRotation()`, `configure()`
+- Synchronizacja z MountController przez `setFieldRotationRate()` wywoływane w pętli śledzenia
+
+#### 3. **AstronomicalCalculations**
 Obliczenia astronomiczne oparte na bibliotece SOFA:
 - Transformacje układów współrzędnych (równikowe ↔ horyzontalne)
 - Korekcja refrakcji atmosferycznej
 - Precesja, nutacja, aberracja
 - Czas gwiazdowy, efemerydy
 
-#### 3. **TPointModel**
+#### 4. **TPointModel**
 Pełny model TPOINT do korekcji błędów geometrycznych:
 - 21 parametrów TPOINT (IA, IE, NPAE, AN, AW, itp.)
 - Dopasowanie metodą najmniejszych kwadratów
 - Korekcja refrakcji atmosferycznej
 - Obsługa ruchu własnego gwiazd
 
-#### 4. **KalmanFilter**
+#### 5. **KalmanFilter**
 Rozszerzony filtr Kalmana do ciągłej kalibracji:
 - Estymacja orientacji montażu (kwaternion)
 - Aktualizacja parametrów TPOINT
 - Kompensacja dryfu termicznego
 - Fuzja danych z enkoderów i pomiarów optycznych
 
-#### 5. **CanOpenInterface**
+#### 6. **CanOpenInterface**
 Implementacja protokołu CANopen (CiA 301, CiA 402):
 - Sterowanie napędami serwo
 - Odczyt enkoderów absolutnych
 - Generacja trajektorii ruchu
 - Monitorowanie statusu napędów
 
-#### 6. **Web Proxy (HTTP/JSON → gRPC)**
+#### 7. **Web Proxy (HTTP/JSON → gRPC)**
 Serwer proxy Node.js Express łączący przeglądarkę z backendami gRPC:
 - REST API HTTP/JSON (~40 endpointów) do sterowania montażem, kalibracji, śledzenia, konfiguracji, bazy danych
 - Serwowanie plików statycznych dla SPA
@@ -159,7 +200,7 @@ Serwer proxy Node.js Express łączący przeglądarkę z backendami gRPC:
 - Przesyłanie i zarządzanie plikami stanu montażu
 - Obsługa CORS, SSL/TLS, konfigurowalne adresy gRPC
 
-#### 7. **Web Interface (SPA w przeglądarce)**
+#### 8. **Web Interface (SPA w przeglądarce)**
 Aplikacja jednostronicowa z 6 zakładkami:
 - **Status** — stan montażu w czasie rzeczywistym, pozycja, środowisko, śledzony obiekt
 - **Sterowanie** — slew do współrzędnych, panel osi (tryb prędkości/krokowy), zapis/odczyt stanu
@@ -168,18 +209,54 @@ Aplikacja jednostronicowa z 6 zakładkami:
 - **Baza danych** — CRUD obiektów, wyszukiwanie/filtrowanie, ulubione, import katalogów (presety/plik/URL)
 - **Śledzenie** — śledzenie efemeryd obiektów ruchomych (satelity, komety, asteroidy)
 
-#### 8. **Object Database Service**
+#### 9. **Object Database Service**
 Katalog obiektów astronomicznych oparty na SQLite:
 - Pełny CRUD z paginacją i wyszukiwaniem
 - Obsługa wielu katalogów (Messier, NGC, IC, Caldwell, HYG, SAO)
 - Ulubione obiekty, kategorie, import/eksport
 - API gRPC na porcie 50052
 
-#### 9. **System konfiguracji**
+#### 10. **System konfiguracji**
 System zarządzania konfiguracją:
 - Ładowanie/zapisywanie konfiguracji JSON
 - Walidacja parametrów
 - Domyślne wartości konfiguracyjne
+
+#### 11. **ASCOM Telescope Driver** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
+Sterownik teleskopu ASCOM zgodny z interfejsem `ITelescopeV3`:
+- Komunikacja przez Alpaca REST API (HTTP/JSON) → tłumaczenie na gRPC
+- Wspiera: `SlewToCoordinatesAsync`, `MoveAxis`, `PulseGuide`, `Park`, `SyncToCoordinates`
+- `MoveAxis()` → `ControlAxis()` z trybem `VELOCITY_CONTROL`
+- `Action()` — dyspozytor string dla komend niestandardowych (np. `ClearTPointMeasurements`)
+- `StateCache` — odświeżanie stanu co 2 sekundy
+- Obsługa `SideOfPier`, współrzędne `SiteLatitude`/`SiteLongitude`/`SiteElevation`
+- Klient gRPC ([`ascom/GrpcClient.cs`](ascom/GrpcClient.cs)) — uniwersalna klasa opakowująca
+
+#### 12. **ASCOM Rotator Driver** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs))
+Sterownik rotatora ASCOM zgodny z interfejsem `IRotatorV3`:
+- `MoveAbsolute(angle)` → `ControlFieldRotation(FIXED_ANGLE, angle)`
+- `Move(rate)` → `ControlFieldRotation(CUSTOM, rate)`
+- `Halt()` → `ControlFieldRotation(DISABLED, 0)`
+- `Home()` → `HomeDerotator(SEQUENTIAL)`
+- Wykorzystuje ten sam [`GrpcClient.cs`](ascom/GrpcClient.cs) do komunikacji gRPC
+
+#### 13. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
+Sterownik teleskopu INDI (C++):
+- Komunikacja przez protokół INDI (XML/TCP) → tłumaczenie na gRPC
+- `MoveNS`/`MoveWE` z mapowaniem axis_id (0=RA/WE, 1=Dec/NS) i prędkością ±1.0 deg/s (`VELOCITY_CONTROL`)
+- `ReadScopeStatus()` — odpytywanie co 1 sekundę
+- `TPOINT_STATUS` — właściwość tekstowa do odczytu parametrów TPOINT
+- `EnvironmentNP` — właściwość numeryczna dla temperatury, ciśnienia, wilgotności
+- `SetCurrentPark()` — ustawienie pozycji parkowania z bieżącego stanu
+- Klient gRPC C++ ([`indi/MountGrpcClient.h`](indi/MountGrpcClient.h))
+
+#### 14. **INDI Rotator Driver** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp))
+Sterownik rotatora INDI (C++):
+- Dziedziczy po `INDI::Rotator` z trybem `CONNECTION_NONE` (tylko gRPC)
+- `MoveRotator(angle)` → `ControlFieldRotation(FIXED_ANGLE, angle)`
+- `HomeRotator()` → `HomeDerotator(AUTO)`
+- Możliwości: `ROTATOR_CAN_ABORT | ROTATOR_CAN_HOME`
+- Komunikacja przez ten sam [`MountGrpcClient.h`](indi/MountGrpcClient.h)
 
 ## Modele matematyczne
 
@@ -785,9 +862,24 @@ Dokładność sterownika montażu astronomicznego w dużym stopniu zależy od pr
 
 ---
 
+## Sterowniki ASCOM i INDI
+
+Poniższa tabela podsumowuje cztery sterowniki zewnętrzne:
+
+| Sterownik | Język | Protokół zewnętrzny | Interfejs | Kluczowy plik |
+|-----------|-------|---------------------|-----------|---------------|
+| ASCOM Telescope | C# | Alpaca REST (HTTP/JSON) | `ITelescopeV3` | [`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) |
+| ASCOM Rotator | C# | Alpaca REST (HTTP/JSON) | `IRotatorV3` | [`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) |
+| INDI Telescope | C++ | INDI Protocol (XML/TCP) | `INDI::Telescope` | [`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) |
+| INDI Rotator | C++ | INDI Protocol (XML/TCP) | `INDI::Rotator` | [`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) |
+
+Wszystkie sterowniki używają warstwy klienta gRPC do komunikacji z `MountControllerService`:
+- **C#**: [`ascom/GrpcClient.cs`](ascom/GrpcClient.cs) (378 linii)
+- **C++**: [`indi/MountGrpcClient.h`](indi/MountGrpcClient.h) (221 linii)
+
 ## Interfejs Web
 
-Patrz sekcje [**6. Web Proxy**](#6-web-proxy-httpjson--grpc) i [**7. Web Interface**](#7-web-interface-browser-spa) powyżej. Pełna dokumentacja Web UI znajduje się w [`web/README.md`](../web/README.md).
+Patrz sekcje [**7. Web Proxy**](#7-web-proxy-httpjson--grpc) i [**8. Web Interface**](#8-web-interface-browser-spa) powyżej. Pełna dokumentacja Web UI znajduje się w [`web/README.md`](../web/README.md).
 
 ### Szybki start
 

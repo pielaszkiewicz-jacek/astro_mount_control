@@ -735,12 +735,81 @@ app.delete('/api/calibration/bootstrap/measurements', async (req, res) => {
     await grpcCall('ClearBootstrapMeasurements', {});
     res.json({ success: true, message: 'Bootstrap measurements cleared' });
   } catch (err) {
-    res.status(502).json({ error: 'Failed to clear bootstrap measurements', details: err.message });
+      res.status(502).json({ error: 'Failed to clear bootstrap measurements', details: err.message });
+  }
+});
+
+// ─── Bootstrap Mode & Auto-Bootstrap (plan §6.1) ──────────────────────────
+
+/**
+* GET /api/calibration/bootstrap/mode
+* Get the current bootstrap mode and encoder type.
+* Maps to gRPC: GetBootstrapStatus()
+*/
+app.get('/api/calibration/bootstrap/mode', async (req, res) => {
+  try {
+      const status = await grpcCall('GetBootstrapStatus', {});
+      res.json({
+          mode: status.bootstrap_mode,
+          encoder_type_absolute: status.encoder_type_absolute,
+      });
+  } catch (err) {
+      res.status(502).json({ error: 'Failed to get bootstrap mode', details: err.message });
   }
 });
 
 /**
- * GET /api/calibration/tpoint/parameters
+* POST /api/calibration/bootstrap/mode
+* Set the bootstrap mode (MANUAL=0, HYBRID=1, AUTOMATIC=2).
+* Maps to gRPC: SetBootstrapMode()
+* Body: { mode: number }
+*/
+app.post('/api/calibration/bootstrap/mode', async (req, res) => {
+  try {
+      const { mode } = req.body;
+      if (mode === undefined || ![0, 1, 2].includes(mode)) {
+          return res.status(400).json({ error: 'mode must be 0 (MANUAL), 1 (HYBRID), or 2 (AUTOMATIC)' });
+      }
+      await grpcCall('SetBootstrapMode', { mode });
+      res.json({ success: true, mode });
+  } catch (err) {
+      res.status(502).json({ error: 'Failed to set bootstrap mode', details: err.message });
+  }
+});
+
+/**
+* POST /api/calibration/bootstrap/auto-run
+* Start automatic bootstrap procedure.
+* Maps to gRPC: RunAutomaticBootstrap()
+* Body (optional): { target_star_names?: string[], min_measurements?: number,
+*                    max_alignment_error_arcsec?: number, proceed_to_tpoint?: boolean }
+*/
+app.post('/api/calibration/bootstrap/auto-run', async (req, res) => {
+  try {
+      const request = req.body || {};
+      await grpcCall('RunAutomaticBootstrap', request);
+      res.json({ success: true, message: 'Automatic bootstrap started' });
+  } catch (err) {
+      res.status(502).json({ error: 'Failed to start automatic bootstrap', details: err.message });
+  }
+});
+
+/**
+* GET /api/calibration/bootstrap/auto-status
+* Get automatic bootstrap status and progress.
+* Maps to gRPC: GetAutoBootstrapStatus()
+*/
+app.get('/api/calibration/bootstrap/auto-status', async (req, res) => {
+  try {
+      const status = await grpcCall('GetAutoBootstrapStatus', {});
+      res.json(status);
+  } catch (err) {
+      res.status(502).json({ error: 'Failed to get auto-bootstrap status', details: err.message });
+  }
+});
+
+/**
+* GET /api/calibration/tpoint/parameters
  * Get TPOINT calibration parameters and status.
  * Maps to gRPC: GetTPointParameters()
  */
@@ -1837,6 +1906,16 @@ function formatState(state) {
     humidity: state.humidity,
     pointing_error: state.pointing_error,
     tracking_performance: state.tracking_performance,
+    bootstrap_status: state.bootstrap_status
+      ? {
+          calibrated: state.bootstrap_status.calibrated,
+          measurement_count: state.bootstrap_status.measurement_count,
+          bootstrap_mode: state.bootstrap_status.bootstrap_mode,
+          encoder_type_absolute: state.bootstrap_status.encoder_type_absolute,
+          reference_position_known: state.bootstrap_status.reference_position_known,
+          state: state.bootstrap_status.state,
+        }
+      : null,
   };
 }
 

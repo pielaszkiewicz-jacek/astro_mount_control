@@ -5,6 +5,10 @@
 #include <thread>
 #include <chrono>
 #include <cmath>
+#include <spdlog/sinks/callback_sink.h>
+#include <vector>
+#include <algorithm>
+#include <sstream>
 
 namespace astro_mount {
 namespace controllers {
@@ -509,10 +513,11 @@ TEST_F(MountControllerTest, BootstrapCalibrationWithOneMeasurement) {
     EXPECT_FALSE(controller_->runBootstrapCalibration());  // Need at least 2
 }
 
-TEST_F(MountControllerTest, BootstrapCalibrationWithTwoMeasurements) {
+TEST_F(MountControllerTest, BootstrapCalibrationWithThreeMeasurements) {
     controller_->initialize(config_);
     controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1);
     controller_->addBootstrapMeasurement(10.0, 30.0, 10.05, 30.05);
+    controller_->addBootstrapMeasurement(8.0, 60.0, 8.05, 60.05);
     EXPECT_TRUE(controller_->runBootstrapCalibration());
     EXPECT_TRUE(controller_->isBootstrapCalibrated());
 }
@@ -524,10 +529,229 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
     controller_->clearBootstrapMeasurements();
     EXPECT_FALSE(controller_->isBootstrapCalibrated());
     EXPECT_FALSE(controller_->runBootstrapCalibration());
-}
+  }
+  
+  // ============================================
+  // 8b. BOOTSTRAP MODE & ENCODER TESTS
+  // ============================================
+  
+  TEST_F(MountControllerTest, BootstrapModeDefaultIsManual) {
+    controller_->initialize(config_);
+    EXPECT_EQ(controller_->getBootstrapMode(),
+              MountController::BootstrapMode::BOOTSTRAP_MANUAL);
+  }
+  
+  TEST_F(MountControllerTest, BootstrapModeSetGet) {
+    controller_->initialize(config_);
+  
+    // Set HYBRID
+    EXPECT_TRUE(controller_->setBootstrapMode(
+        MountController::BootstrapMode::BOOTSTRAP_HYBRID));
+    EXPECT_EQ(controller_->getBootstrapMode(),
+              MountController::BootstrapMode::BOOTSTRAP_HYBRID);
+  
+    // Set AUTOMATIC
+    EXPECT_TRUE(controller_->setBootstrapMode(
+        MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC));
+    EXPECT_EQ(controller_->getBootstrapMode(),
+              MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC);
+  
+    // Set back to MANUAL
+    EXPECT_TRUE(controller_->setBootstrapMode(
+        MountController::BootstrapMode::BOOTSTRAP_MANUAL));
+    EXPECT_EQ(controller_->getBootstrapMode(),
+              MountController::BootstrapMode::BOOTSTRAP_MANUAL);
+  }
+  
+  TEST_F(MountControllerTest, BootstrapModeInStatus) {
+    controller_->initialize(config_);
+    auto status = controller_->getStatus();
+  
+    // Default mode in status should be MANUAL
+    EXPECT_EQ(status.bootstrap_mode,
+              static_cast<int>(MountController::BootstrapMode::BOOTSTRAP_MANUAL));
+  
+    // Set HYBRID and verify status reflects it
+    controller_->setBootstrapMode(
+        MountController::BootstrapMode::BOOTSTRAP_HYBRID);
+    status = controller_->getStatus();
+    EXPECT_EQ(status.bootstrap_mode,
+              static_cast<int>(MountController::BootstrapMode::BOOTSTRAP_HYBRID));
+  }
+  
+  TEST_F(MountControllerTest, EncodersAbsoluteStatusField) {
+    // Test with absolute encoders
+    config_.encoders_absolute = true;
+    controller_->initialize(config_);
+    auto status = controller_->getStatus();
+    EXPECT_TRUE(status.encoders_absolute);
+    controller_->shutdown();
+  
+    // Test with incremental encoders
+    config_.encoders_absolute = false;
+    controller_->initialize(config_);
+    status = controller_->getStatus();
+    EXPECT_FALSE(status.encoders_absolute);
+  }
+  
+  TEST_F(MountControllerTest, BootstrapCalibrationWithEncoderOffset) {
+    // Test bootstrap calibration with explicit mount_ha/mount_dec
+    // to verify encoder offset absorption via Wahba/SVD
+    controller_->initialize(config_);
 
-// ============================================
-// 9. TPOINT CALIBRATION
+    // Add measurements with known encoder offsets
+    // The mount_ha/mount_dec simulate encoder readout, expected_ra/dec
+    // are the true catalog coordinates.
+    // Wahba/SVD requires at least 3 measurements for the 3-DOF rotation.
+    controller_->addBootstrapMeasurement(
+        12.0, 45.0,    // observed_ra, observed_dec
+        12.0, 45.0,    // expected_ra, expected_dec (perfect alignment)
+        2.0, 45.0);    // mount_ha, mount_dec (encoder readout matches expected)
+
+    controller_->addBootstrapMeasurement(
+        10.0, 30.0,
+        10.0, 30.0,
+        0.0, 30.0);    // mount_ha = expected_ha - 10h offset, mount_dec = expected
+
+    controller_->addBootstrapMeasurement(
+        8.0, 60.0,
+        8.0, 60.0,
+        -2.0, 60.0);   // mount_ha with offset, mount_dec = expected
+
+    EXPECT_TRUE(controller_->runBootstrapCalibration());
+    EXPECT_TRUE(controller_->isBootstrapCalibrated());
+  }
+
+  TEST_F(MountControllerTest, BootstrapCalibrationAltAz) {
+    // Verify Wahba/SVD bootstrap calibration works for ALT_AZ mount type
+    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.enable_refraction_correction = false;
+    controller_->initialize(config_);
+
+    // Add 3 well-separated measurements (Wahba/SVD requires >= 3)
+    // For ALT_AZ, the bootstrap still uses mount_ha/mount_dec → unit vector
+    // conversion, but since there's no hour angle, mount_ha is treated as
+    // the altitude-like axis position (degrees from NCP/SCP)
+    controller_->addBootstrapMeasurement(
+        12.0, 45.0, 12.1, 45.1,
+        0.0, 45.0);
+    controller_->addBootstrapMeasurement(
+        5.0, 20.0, 5.05, 20.05,
+        -7.0, 20.0);
+    controller_->addBootstrapMeasurement(
+        18.0, 70.0, 18.05, 70.05,
+        6.0, 70.0);
+
+    EXPECT_TRUE(controller_->runBootstrapCalibration());
+    EXPECT_TRUE(controller_->isBootstrapCalibrated());
+  }
+
+  TEST_F(MountControllerTest, BootstrapCalibrationCasualUniversal) {
+    // Verify Wahba/SVD works for CASUAL mount type (universal code path)
+    config_.mount_type = MountController::MountType::CASUAL;
+    config_.enable_refraction_correction = false;
+
+    // Identity quaternion orientation (Alt-Az-like)
+    config_.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
+    controller_->initialize(config_);
+
+    // Add measurements; the universal Wahba/SVD code path should handle CASUAL.
+    // Wahba/SVD requires at least 3 measurements for the 3-DOF rotation.
+    controller_->addBootstrapMeasurement(
+        12.0, 45.0, 12.1, 45.1,
+        0.0, 45.0);
+    controller_->addBootstrapMeasurement(
+        5.0, 20.0, 5.05, 20.05,
+        -7.0, 20.0);
+    controller_->addBootstrapMeasurement(
+        18.0, 70.0, 18.05, 70.05,
+        6.0, 70.0);
+
+    EXPECT_TRUE(controller_->runBootstrapCalibration());
+    EXPECT_TRUE(controller_->isBootstrapCalibrated());
+  }
+  
+  TEST_F(MountControllerTest, BootstrapBootstrapMeasurementCount) {
+    controller_->initialize(config_);
+    EXPECT_EQ(controller_->getBootstrapMeasurementCount(), 0u);
+  
+    controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1);
+    EXPECT_EQ(controller_->getBootstrapMeasurementCount(), 1u);
+  
+    controller_->addBootstrapMeasurement(10.0, 30.0, 10.05, 30.05);
+    EXPECT_EQ(controller_->getBootstrapMeasurementCount(), 2u);
+  
+    controller_->clearBootstrapMeasurements();
+    EXPECT_EQ(controller_->getBootstrapMeasurementCount(), 0u);
+  }
+  
+  TEST_F(MountControllerTest, BootstrapMeasurementCountInStatus) {
+    controller_->initialize(config_);
+    auto status = controller_->getStatus();
+    EXPECT_EQ(status.bootstrap_measurement_count, 0);
+  
+    controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1);
+    status = controller_->getStatus();
+    EXPECT_EQ(status.bootstrap_measurement_count, 1);
+  
+    controller_->addBootstrapMeasurement(10.0, 30.0, 10.05, 30.05);
+    status = controller_->getStatus();
+    EXPECT_EQ(status.bootstrap_measurement_count, 2);
+  }
+
+  TEST_F(MountControllerTest, IncrementalEncoderStartPosition) {
+    // With encoders_absolute=false (default in SetUp), the encoder
+    // start position should be (0,0) — the reference origin for
+    // incremental encoders (plan §8.1).
+    controller_->initialize(config_);
+    auto status = controller_->getStatus();
+    EXPECT_DOUBLE_EQ(status.axis1_position, 0.0);
+    EXPECT_DOUBLE_EQ(status.axis2_position, 0.0);
+  }
+
+  TEST_F(MountControllerTest, AltAzCaveatLogging) {
+    // Verify that the ALT_AZ caveat log message is emitted when
+    // runBootstrapCalibration() succeeds on an ALT_AZ mount (plan §8.6).
+    // The caveat explains that altitude encoder offset is a spherical
+    // translation, not a pure 3D rotation.
+    std::vector<std::string> captured_logs;
+    auto sink = std::make_shared<spdlog::sinks::callback_sink_mt>(
+        [&captured_logs](const spdlog::details::log_msg& msg) {
+            captured_logs.emplace_back(msg.payload.data(), msg.payload.size());
+        });
+    auto mount_logger = logging::Logger::mount();
+    mount_logger->sinks().push_back(sink);
+
+    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.enable_refraction_correction = false;
+    controller_->initialize(config_);
+
+    // Wahba/SVD requires at least 3 measurements
+    controller_->addBootstrapMeasurement(
+        12.0, 45.0, 12.1, 45.1, 0.0, 45.0);
+    controller_->addBootstrapMeasurement(
+        5.0, 20.0, 5.05, 20.05, -7.0, 20.0);
+    controller_->addBootstrapMeasurement(
+        18.0, 70.0, 18.05, 70.05, 6.0, 70.0);
+
+    EXPECT_TRUE(controller_->runBootstrapCalibration());
+    EXPECT_TRUE(controller_->isBootstrapCalibrated());
+
+    // Remove the capturing sink to avoid interfering with other tests
+    auto& sinks = mount_logger->sinks();
+    sinks.erase(std::remove(sinks.begin(), sinks.end(), sink), sinks.end());
+
+    // Verify the ALT_AZ caveat message was logged
+    bool found_caveat = std::any_of(
+        captured_logs.begin(), captured_logs.end(),
+        [](const std::string& log) {
+            return log.find("ALT_AZ bootstrap") != std::string::npos;
+        });
+    EXPECT_TRUE(found_caveat) << "ALT_AZ caveat log message was not emitted";
+  }
+
+  // ============================================
+  // 9. TPOINT CALIBRATION
 // ============================================
 
 TEST_F(MountControllerTest, TPointCalibrationWithNoMeasurements) {

@@ -93,6 +93,19 @@ public:
                                             const google::protobuf::Empty* request,
                                             google::protobuf::Empty* response) override;
     
+    // === NEW: Bootstrap mode and auto-bootstrap (plan §5.4) ===
+    grpc::Status SetBootstrapMode(grpc::ServerContext* context,
+                                  const astro_mount::BootstrapModeRequest* request,
+                                  google::protobuf::Empty* response) override;
+    
+    grpc::Status RunAutomaticBootstrap(grpc::ServerContext* context,
+                                       const astro_mount::AutoBootstrapRequest* request,
+                                       google::protobuf::Empty* response) override;
+    
+    grpc::Status GetAutoBootstrapStatus(grpc::ServerContext* context,
+                                        const google::protobuf::Empty* request,
+                                        astro_mount::AutoBootstrapStatus* response) override;
+    
     // TPOINT calibration API (full precision)
     grpc::Status AddTPointMeasurement(grpc::ServerContext* context,
                                       const astro_mount::Measurement* request,

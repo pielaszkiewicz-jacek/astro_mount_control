@@ -23,6 +23,13 @@ Astronomical Mount Controller to system o architekturze modularnej, zaprojektowa
 - Integracja z systemem autoguiding
 - Zarządzanie kalibracją TPOINT
 
+#### Integracja z DerotatorController:
+`MountController` deleguje całe sterowanie derotatorem do `DerotatorController`:
+- Wstrzykuje prędkość rotacji pola przez `setFieldRotationRate()` w pętli śledzenia
+- `computeFieldRotationRate()` oblicza wymaganą prędkość na podstawie pozycji montażu i trybu śledzenia
+- `DerotatorController` działa w niezależnym wątku z własnym `shared_mutex`
+- Koordynacja stanu: MountController przekazuje aktualną pozycję montażu przez callback `state_provider`
+
 #### Stan wewnętrzny:
 ```cpp
 struct MountStatus {
@@ -60,7 +67,60 @@ struct MountStatus {
 };
 ```
 
-### 2. AstronomicalCalculations
+### 2. DerotatorController
+
+Samodzielny kontroler derotatora, wydzielony z `MountController::Impl` podczas refaktoryzacji.
+
+#### Odpowiedzialności:
+- Sterowanie silnikiem derotatora przez HAL (wskaźniki `MotorControl` i `EncoderReader`)
+- Obliczanie i utrzymywanie docelowego kąta derotatora
+- Wykonywanie sekwencji homingu (AUTO, LIMIT_SWITCH, ENCODER_ZERO, MANUAL)
+- Kompensacja rotacji pola w czasie rzeczywistym
+
+#### Architektura:
+
+```cpp
+class DerotatorController {
+public:
+    enum class RotationMode {
+        DISABLED,      // Rotacja wyłączona
+        ALT_AZ,        // Kompensacja ALT-AZ
+        EQUATORIAL,    // Kompensacja EQ (szybkość pola)
+        CUSTOM,        // Ręczna prędkość kątowa
+        FIXED_ANGLE,   // Utrzymanie stałego kąta
+        TRACKING       // Śledzenie prędkością gwiazdową
+    };
+
+    enum class HomingMethod {
+        AUTO,           // Automatyczna sekwencja
+        LIMIT_SWITCH,   // Wyłącznik krańcowy
+        ENCODER_ZERO,   // Pozycja zerowa enkodera
+        MANUAL          // Ręczne ustawienie pozycji
+    };
+
+    // Publiczne metody
+    bool configure(const DerotatorConfig& config);
+    bool enableFieldRotation(const FieldRotationParams& params);
+    bool home(HomingMethod method);
+    bool controlFieldRotation(RotationMode mode, double param);
+    DerotatorStatus getStatus() const;
+    void setFieldRotationRate(double rate_deg_per_sec);
+};
+```
+
+#### Kluczowe pliki:
+- [`include/controllers/derotator_controller.h`](../../include/controllers/derotator_controller.h) (~224 linie)
+- [`src/controllers/derotator_controller.cpp`](../../src/controllers/derotator_controller.cpp) (~858 linii)
+
+#### Tryby rotacji pola:
+- `DISABLED` — rotacja wyłączona, derotator w trybie bezczynności
+- `ALT_AZ` — pełna kompensacja obrotu pola dla montażu ALT-AZ
+- `EQUATORIAL` — kompensacja szybkości pola dla montażu EQ
+- `CUSTOM` — ręczne ustawienie prędkości kątowej (stopnie/sekundę)
+- `FIXED_ANGLE` — utrzymanie określonego kąta derotatora
+- `TRACKING` — śledzenie z prędkością gwiazdową (sidereal)
+
+### 3. AstronomicalCalculations
 
 #### Biblioteki wykorzystywane:
 - **SOFA** (Standards of Fundamental Astronomy) - obliczenia astronomiczne
@@ -81,7 +141,7 @@ struct MountStatus {
   - Julian Date, Modified Julian Date
   - Efemerydy
 
-### 3. TPointModel
+### 4. TPointModel
 
 #### Model matematyczny:
 
@@ -102,7 +162,7 @@ Pełny model TPOINT opisany równaniami:
 3. **Walidacja**: Test χ², odrzucanie outlierów
 4. **Aktualizacja**: Ciągła aktualizacja przez filtr Kalmana
 
-### 4. KalmanFilter
+### 5. KalmanFilter
 
 #### Model stanu:
 
@@ -137,7 +197,7 @@ x̂ₖ = x̂ₖ₋ + Kₖ(zₖ - h(x̂ₖ₋))
 Pₖ = (I - KₖHₖ)Pₖ₋
 ```
 
-### 5. CanOpenInterface
+### 6. CanOpenInterface
 
 #### Implementacja protokołu CANopen:
 
@@ -172,7 +232,7 @@ struct TrajectoryParams {
 };
 ```
 
-### 6. Configuration System
+### 7. Configuration System
 
 #### Hierarchia konfiguracji:
 
@@ -372,6 +432,7 @@ sequenceDiagram
 2. **Wątek CANopen**: Komunikacja z napędami, odczyt enkoderów
 3. **Wątek obliczeniowy**: Obliczenia astronomiczne, filtr Kalmana
 4. **Wątek guidera**: Komunikacja z systemem autoguiding
+5. **Wątek derotatora**: Asynchroniczny homing i kalibracja derotatora (zarządzany przez DerotatorController)
 
 ### Synchronizacja:
 
@@ -531,3 +592,197 @@ bool MountController::slewToEquatorial(double ra, double dec) {
     // Proceed with slew
     return startSlew(ra, dec);
 }
+
+## Architektura sterowników zewnętrznych
+
+### 8. ASCOM Telescope Driver ([`ascom/AstroMountTelescope.cs`](../../ascom/AstroMountTelescope.cs))
+
+Sterownik ASCOM napisany w C#, implementujący interfejs `ITelescopeV3`:
+
+```mermaid
+flowchart LR
+    subgraph Client["🖥️ Aplikacja astronomiczna"]
+        APP["N.I.N.A. / Cartes du Ciel / ASCOM Dome Control"]
+    end
+
+    subgraph Alpaca["🌐 Alpaca REST API"]
+        REST["HTTP/JSON<br/>localhost:11111"]
+    end
+
+    subgraph Driver["📦 Sterownik ASCOM C#"]
+        TEL["AstroMountTelescope.cs<br/>ITelescopeV3"]
+        GC["GrpcClient.cs<br/>Wrapper gRPC"]
+    end
+
+    subgraph Backend["⚙️ Aplikacja główna"]
+        GRPC_SRV["MountControllerService<br/>gRPC port 50051"]
+        MC["MountController"]
+    end
+
+    APP -->|"ASCOM Client → Alpaca"| Alpaca
+    Alpaca -->|"HTTP/JSON → Set_Connected"| TEL
+    TEL -->|"gRPC → SlewToCoordinates"| GC
+    GC -->|"gRPC protobuf"| GRPC_SRV
+    GRPC_SRV --> MC
+
+    classDef client fill:#e1f5fe,stroke:#0288d1
+    classDef driver fill:#e8f5e9,stroke:#388e3c
+    classDef backend fill:#fff3e0,stroke:#f57c00
+
+    class APP,Alpaca client
+    class TEL,GC driver
+    class GRPC_SRV,MC backend
+```
+
+Kluczowe metody:
+- `MoveAxis(TelescopeAxes axis, double rate)` → `ControlAxis(axis_id, VELOCITY_CONTROL, rate)`
+- `SlewToCoordinatesAsync(ra, dec)` → `SlewToCoordinates(ra, dec)`
+- `PulseGuide(direction, duration)` → `ControlAxis(axis, VELOCITY_CONTROL, rate_from_duration)`
+- `Action("ClearTPointMeasurements", "")` → dyspozytor string → czyszczenie pomiarów TPOINT
+- `Connected` setter → `grpcClient.Connect()` / `Disconnect()`
+- `StateCache` — buforowanie stanu z odświeżaniem co 2 sekundy
+
+### 9. ASCOM Rotator Driver ([`ascom_rotator/AstroMountRotator.cs`](../../ascom_rotator/AstroMountRotator.cs))
+
+Sterownik rotatora ASCOM, implementujący interfejs `IRotatorV3`:
+
+```mermaid
+flowchart LR
+    subgraph Client["🖥️ Aplikacja"]
+        APP["N.I.N.A. / inne"]
+    end
+
+    subgraph Alpaca["🌐 Alpaca REST"]
+        REST["HTTP/JSON"]
+    end
+
+    subgraph Driver["📦 Sterownik ASCOM C#"]
+        ROT["AstroMountRotator.cs<br/>IRotatorV3"]
+        GC["GrpcClient.cs"]
+    end
+
+    subgraph Backend["⚙️ Backend"]
+        GRPC_SRV["gRPC port 50051"]
+        DC["DerotatorController"]
+    end
+
+    APP --> Alpaca
+    Alpaca --> ROT
+    ROT --> GC
+    GC --> GRPC_SRV
+    GRPC_SRV --> DC
+
+    classDef client fill:#e1f5fe,stroke:#0288d1
+    classDef driver fill:#e8f5e9,stroke:#388e3c
+    classDef backend fill:#fff3e0,stroke:#f57c00
+
+    class APP,Alpaca client
+    class ROT,GC driver
+    class GRPC_SRV,DC backend
+```
+
+Kluczowe mapowanie:
+- `MoveAbsolute(angle)` → `ControlFieldRotation(FIXED_ANGLE, angle)`
+- `Move(rate)` → `ControlFieldRotation(CUSTOM, rate)`
+- `Halt()` → `ControlFieldRotation(DISABLED, 0)`
+- `Home()` → `HomeDerotator(SEQUENTIAL)`
+- `Position` → `GetDerotatorStatus().current_angle`
+- `IsMoving` → `GetDerotatorStatus().state != IDLE`
+
+### 10. INDI Telescope Driver ([`indi/astro_mount_driver.cpp`](../../indi/astro_mount_driver.cpp))
+
+Sterownik INDI napisany w C++, dziedziczący po `INDI::Telescope`:
+
+```mermaid
+flowchart LR
+    subgraph Client["🖥️ Ekos / KStars"]
+        EKOS["Ekos<br/>INDI Client"]
+    end
+
+    subgraph INDI_PROTO["🌐 INDI Protocol"]
+        XML["XML/TCP<br/>localhost:7624"]
+    end
+
+    subgraph Driver["📦 Sterownik INDI C++"]
+        INDIDRV["astro_mount_driver.cpp<br/>INDI::Telescope"]
+        MAPPER["IndiPropertyMapper<br/>Property → gRPC"]
+        GRPC_CLI["MountGrpcClient.h<br/>Wrapper gRPC"]
+    end
+
+    subgraph Backend["⚙️ Backend"]
+        GRPC_SRV["gRPC port 50051"]
+        MC["MountController"]
+    end
+
+    EKOS -->|"INDI Protocol"| INDI_PROTO
+    INDI_PROTO -->|"ISNewNumber/Switch/Text"| INDIDRV
+    INDIDRV --> MAPPER
+    MAPPER --> GRPC_CLI
+    GRPC_CLI -->|"gRPC protobuf"| GRPC_SRV
+    GRPC_SRV --> MC
+
+    classDef client fill:#e1f5fe,stroke:#0288d1
+    classDef driver fill:#e8f5e9,stroke:#388e3c
+    classDef backend fill:#fff3e0,stroke:#f57c00
+
+    class EKOS,INDI_PROTO client
+    class INDIDRV,MAPPER,GRPC_CLI driver
+    class GRPC_SRV,MC backend
+```
+
+Kluczowe elementy:
+- `ISNewSwitch(CONNECTION, "CONNECT")` → `MountGrpcClient.connect()`
+- `ISNewNumber(EQUATORIAL_EOD_COORD, ...)` → `GrpcClient.SlewToCoordinates()`
+- `ReadScopeStatus()` — pętla co 1 sekundę: `GetState()` → aktualizacja `RA`/`DEC`/`SNR` properties
+- `MoveNS()`/`MoveWE()` — mapowanie axis_id (0=RA/WE, 1=Dec/NS), prędkość ±1.0 deg/s
+- `ISNewSwitch(ABORT, ...)` → `Stop()`
+- `ISNewSwitch(PARK, ...)` → `Park()` / `Unpark()`
+- `TPOINT_STATUS` — tekstowa właściwość INDI do odczytu parametrów TPOINT
+- `EnvironmentNP` — właściwość numeryczna dla temperatury, ciśnienia, wilgotności
+
+### 11. INDI Rotator Driver ([`indi_rotator/astro_mount_rotator_driver.cpp`](../../indi_rotator/astro_mount_rotator_driver.cpp))
+
+Sterownik rotatora INDI, dziedziczący po `INDI::Rotator`:
+
+```mermaid
+flowchart LR
+    subgraph Client["🖥️ Ekos"]
+        EKOS["Ekos"]
+    end
+
+    subgraph INDI_PROTO["🌐 INDI Protocol"]
+        XML["XML/TCP"]
+    end
+
+    subgraph Driver["📦 Sterownik INDI C++"]
+        ROT_DRV["astro_mount_rotator_driver.cpp<br/>INDI::Rotator"]
+        GRPC_CLI["MountGrpcClient.h"]
+    end
+
+    subgraph Backend["⚙️ Backend"]
+        GRPC_SRV["gRPC port 50051"]
+        DC["DerotatorController"]
+    end
+
+    EKOS --> INDI_PROTO
+    INDI_PROTO --> ROT_DRV
+    ROT_DRV --> GRPC_CLI
+    GRPC_CLI --> GRPC_SRV
+    GRPC_SRV --> DC
+
+    classDef client fill:#e1f5fe,stroke:#0288d1
+    classDef driver fill:#e8f5e9,stroke:#388e3c
+    classDef backend fill:#fff3e0,stroke:#f57c00
+
+    class EKOS,INDI_PROTO client
+    class ROT_DRV,GRPC_CLI driver
+    class GRPC_SRV,DC backend
+```
+
+Kluczowe cechy:
+- `CONNECTION_NONE` — tryb bez fizycznego połączenia INDI (komunikacja tylko przez gRPC)
+- `MoveRotator(angle)` → `ControlFieldRotation(FIXED_ANGLE, angle)`
+- `HomeRotator()` → `HomeDerotator(AUTO)`
+- `AbortRotator()` → `ControlFieldRotation(DISABLED, 0)`
+- Możliwości: `ROTATOR_CAN_ABORT | ROTATOR_CAN_HOME`
+- Status odświeżany przez `GetDerotatorStatus()` z `MountGrpcClient`

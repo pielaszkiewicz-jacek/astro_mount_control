@@ -96,6 +96,27 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         // Set timestamp
         *response->mutable_state_time() = TimeUtil::GetCurrentTime();
         
+        // === NEW: Bootstrap status in GetState (plan §5.6) ===
+        auto* bs = response->mutable_bootstrap_status();
+        bs->set_calibrated(status.bootstrap_calibrated);
+        bs->set_measurement_count(status.bootstrap_measurement_count);
+        bs->set_bootstrap_mode(
+            static_cast<astro_mount::BootstrapMode>(status.bootstrap_mode));
+        bs->set_encoder_type_absolute(status.encoders_absolute);
+        bs->set_reference_position_known(status.encoders_absolute || status.bootstrap_calibrated);
+        if (status.bootstrap_calibrated) {
+            bs->set_state(astro_mount::BootstrapStatus_CalibrationState_CALIBRATED);
+            bs->set_state_message("Bootstrap calibration complete");
+        } else if (status.bootstrap_measurement_count >= 2) {
+            bs->set_state(astro_mount::BootstrapStatus_CalibrationState_MEASUREMENTS_COLLECTING);
+            bs->set_state_message("Collecting bootstrap measurements");
+        } else {
+            bs->set_state(astro_mount::BootstrapStatus_CalibrationState_NEEDS_MORE_MEASUREMENTS);
+            bs->set_state_message("Need at least 2 measurements for calibration");
+        }
+        bs->set_min_measurements_required(2.0);
+        bs->set_min_measurements_for_tpoint(3.0);
+        
         return grpc::Status::OK;
     } catch (const std::exception& e) {
         return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
@@ -380,6 +401,7 @@ grpc::Status MountControllerServiceImpl::GetBootstrapStatus(grpc::ServerContext*
                                                            const google::protobuf::Empty* request,
                                                            astro_mount::BootstrapStatus* response) {
     try {
+        auto status = controller_.getStatus();
         bool calibrated = controller_.isBootstrapCalibrated();
         int count = static_cast<int>(controller_.getBootstrapMeasurementCount());
         double ra_corr = controller_.getBootstrapRaCorrectionArcsec();
@@ -407,6 +429,15 @@ grpc::Status MountControllerServiceImpl::GetBootstrapStatus(grpc::ServerContext*
         response->set_min_measurements_required(2.0);
         response->set_min_measurements_for_tpoint(3.0);
         
+        // === NEW: Bootstrap mode and encoder type fields (plan §5.6) ===
+        response->set_bootstrap_mode(
+            static_cast<astro_mount::BootstrapMode>(status.bootstrap_mode));
+        response->set_encoder_type_absolute(status.encoders_absolute);
+        response->set_reference_position_known(status.encoders_absolute || calibrated);
+        response->set_estimated_encoder_offset_deg(0.0);  // Inferred from rotation Q
+        int manual_needed = (status.bootstrap_mode == 1) ? std::max(0, 3 - count) : 0;
+        response->set_manual_measurements_needed(manual_needed);
+        
         return grpc::Status::OK;
     } catch (const std::exception& e) {
         return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
@@ -418,6 +449,128 @@ grpc::Status MountControllerServiceImpl::ClearBootstrapMeasurements(grpc::Server
                                                                    google::protobuf::Empty* response) {
     try {
         controller_.clearBootstrapMeasurements();
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
+    }
+}
+
+// === NEW: Bootstrap mode and auto-bootstrap (plan §5.4, §5.6) ===
+
+grpc::Status MountControllerServiceImpl::SetBootstrapMode(
+    grpc::ServerContext* context,
+    const astro_mount::BootstrapModeRequest* request,
+    google::protobuf::Empty* response) {
+    try {
+        auto proto_mode = request->mode();
+        auto cpp_mode = static_cast<controllers::MountController::BootstrapMode>(
+            static_cast<int>(proto_mode));
+        
+        if (cpp_mode < controllers::MountController::BootstrapMode::BOOTSTRAP_MANUAL ||
+            cpp_mode > controllers::MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC) {
+            return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                              "Invalid bootstrap mode value");
+        }
+        
+        controller_.setBootstrapMode(cpp_mode);
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::RunAutomaticBootstrap(
+    grpc::ServerContext* context,
+    const astro_mount::AutoBootstrapRequest* request,
+    google::protobuf::Empty* response) {
+    try {
+        // Validate request parameters
+        int min_measurements = request->min_measurements();
+        if (min_measurements <= 0) min_measurements = 3;  // Default
+        
+        double max_error = request->max_alignment_error_arcsec();
+        if (max_error <= 0.0) max_error = 60.0;  // Default: 1 arcmin
+        
+        // Verify controller is in a valid state for auto-bootstrap
+        auto status = controller_.getStatus();
+        if (status.state == controllers::MountController::MountStatus::State::UNINITIALIZED ||
+            status.state == controllers::MountController::MountStatus::State::ERROR) {
+            return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                              "Mount is in UNINITIALIZED or ERROR state");
+        }
+        
+        // Verify bootstrap mode is set to automatic or hybrid
+        if (status.bootstrap_mode != static_cast<int>(
+                controllers::MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC) &&
+            status.bootstrap_mode != static_cast<int>(
+                controllers::MountController::BootstrapMode::BOOTSTRAP_HYBRID)) {
+            return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                              "Bootstrap mode must be HYBRID or AUTOMATIC for auto-bootstrap");
+        }
+        
+        // Verify absolute encoders or reference position for automatic mode
+        bool has_reference = status.encoders_absolute;
+        if (!has_reference && status.bootstrap_mode == static_cast<int>(
+                controllers::MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC)) {
+            return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                              "AUTOMATIC bootstrap requires absolute encoders or prior calibration");
+        }
+        
+        // Set the bootstrap mode on the controller
+        auto mode = static_cast<controllers::MountController::BootstrapMode>(status.bootstrap_mode);
+        controller_.setBootstrapMode(mode);
+        
+        // The actual orchestration (slewing, plate solving, measurement) is handled
+        // by the proxy orchestrator (server.js) per plan §7.1 Level 2.
+        // The C++ layer validates preconditions and sets the mode.
+        // Return OK — the proxy will call SlewToCoordinates, AddBootstrapMeasurement,
+        // and RunBootstrapCalibration iteratively through existing RPCs.
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::GetAutoBootstrapStatus(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    astro_mount::AutoBootstrapStatus* response) {
+    try {
+        // Auto-bootstrap state is tracked by the proxy orchestrator (server.js)
+        // per plan §7.1 Level 2. The C++ layer reports the underlying mount state.
+        auto status = controller_.getStatus();
+        
+        if (controller_.isBootstrapCalibrated()) {
+            response->set_state(astro_mount::AutoBootstrapStatus::COMPLETED);
+            response->set_state_message("Bootstrap calibration completed");
+            response->set_measurements_collected(
+                static_cast<int>(controller_.getBootstrapMeasurementCount()));
+            response->set_measurements_target(
+                static_cast<int>(controller_.getBootstrapMeasurementCount()));
+            response->set_progress_percent(100.0);
+        } else if (controller_.getBootstrapMeasurementCount() >= 2) {
+            response->set_state(astro_mount::AutoBootstrapStatus::ADDING_MEASUREMENT);
+            response->set_state_message("Measurements collected, ready for calibration");
+            response->set_measurements_collected(
+                static_cast<int>(controller_.getBootstrapMeasurementCount()));
+            response->set_measurements_target(
+                std::max(3, static_cast<int>(controller_.getBootstrapMeasurementCount()) + 1));
+            // Calculate progress: collecting phase (0-80%), then calibration (80-100%)
+            double measure_progress = std::min(80.0,
+                80.0 * controller_.getBootstrapMeasurementCount() / 5.0);
+            response->set_progress_percent(measure_progress);
+        } else {
+            response->set_state(astro_mount::AutoBootstrapStatus::IDLE);
+            response->set_state_message("Auto-bootstrap not started");
+            response->set_measurements_collected(
+                static_cast<int>(controller_.getBootstrapMeasurementCount()));
+            response->set_measurements_target(3);
+            response->set_progress_percent(0.0);
+        }
+        
+        response->set_current_target_star("");
+        response->set_error_message("");
+        
         return grpc::Status::OK;
     } catch (const std::exception& e) {
         return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());

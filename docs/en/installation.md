@@ -92,7 +92,8 @@ sudo apt install -y \
     protobuf-compiler-grpc \
     libcanopen-dev \
     libsofa-dev \
-    libgtest-dev
+    libgtest-dev \
+    libindi-dev
 
 # CAN tools
 sudo apt install -y \
@@ -121,7 +122,8 @@ sudo yum install -y \
     protobuf-devel \
     protobuf-compiler \
     sofa-devel \
-    gtest-devel
+    gtest-devel \
+    libindi-devel
 
 # CAN tools
 sudo yum install -y \
@@ -153,7 +155,8 @@ sudo zypper install -y \
     protobuf-compiler \
     libsofa-devel \
     gtest-devel \
-    patterns-devel-base-devel_basis
+    patterns-devel-base-devel_basis \
+    libindi-devel
 
 # Install CAN tools (for OpenSUSE Leap 15.4+ and Tumbleweed)
 sudo zypper install -y \
@@ -310,7 +313,8 @@ sudo apt install -y \
     protobuf-compiler-grpc \
     libcanopen-dev \
     libsofa-dev \
-    libgtest-dev
+    libgtest-dev \
+    libindi-dev
 
 # Install CAN tools for Raspberry Pi
 sudo apt install -y \
@@ -1205,12 +1209,43 @@ protoc -I proto \
 
 The project produces the following executables:
 
+### Main Application
+
 | Target | Description | Binary Path |
 |--------|-------------|-------------|
 | `astro_mount_controller` | Main mount controller with gRPC server | `build/bin/astro_mount_controller` |
 | `astro_object_database_server` | Astronomical object database server (SQLite + gRPC) | `build/bin/astro_object_database_server` |
+
+### INDI Drivers
+
+| Target | Description | Binary Path |
+|--------|-------------|-------------|
+| `astro_mount_driver` | INDI telescope driver (Telescope interface) | `build/bin/astro_mount_driver` |
+| `astro_mount_rotator_driver` | INDI rotator driver (Rotator interface) | `build/bin/astro_mount_rotator_driver` |
+
+The INDI drivers require `libindi-dev` (or `libindi-devel`) and `ENABLE_INDI=ON` CMake option.
+
+### Test Binaries
+
+| Target | Description | Binary Path |
+|--------|-------------|-------------|
 | `test_astronomical_calculations` | Astronomical calculations unit tests | `build/bin/test_astronomical_calculations` |
 | `test_tpoint_model` | TPOINT model unit tests | `build/bin/test_tpoint_model` |
+| `test_mount_controller` | Mount controller unit tests (25+ test groups) | `build/bin/test_mount_controller` |
+| `test_configuration` | Configuration validation tests | `build/bin/test_configuration` |
+| `test_kalman_filter` | Kalman filter unit tests | `build/bin/test_kalman_filter` |
+| `test_ephemeris_tracker` | Ephemeris tracker unit tests | `build/bin/test_ephemeris_tracker` |
+| `test_hal_integration` | HAL integration tests | `build/bin/test_hal_integration` |
+| `test_grpc_integration` | gRPC server integration tests | `build/bin/test_grpc_integration` |
+| `test_subarcsecond_accuracy` | Sub-arcsecond accuracy verification | `build/bin/test_subarcsecond_accuracy` |
+| `test_canopen_factory` | CANopen HAL factory unit tests | `build/bin/test_canopen_factory` |
+| `test_canopen_hal` | CANopen HAL communication tests | `build/bin/test_canopen_hal` |
+| `test_config_monitor` | Configuration monitoring tests | `build/bin/test_config_monitor` |
+| `test_ethernet_hal` | Ethernet HAL unit tests | `build/bin/test_ethernet_hal` |
+| `test_gamepad_hal` | Gamepad HAL unit tests | `build/bin/test_gamepad_hal` |
+| `test_logger` | Logger unit tests | `build/bin/test_logger` |
+| `test_serial_hal` | Serial HAL unit tests | `build/bin/test_serial_hal` |
+| `test_canopen_wrapper` | CANopen wrapper unit tests | `build/bin/test_canopen_wrapper` |
 
 ## Object Database Server
 
@@ -1231,12 +1266,73 @@ make astro_object_database_server -j$(nproc)
 
 ## Installation Testing
 
+### Building INDI Drivers
+
+The INDI telescope and rotator drivers can be built from the standalone `indi/` and `indi_rotator/` directories:
+
+```bash
+# Build INDI telescope driver
+cd indi
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+cd ../..
+
+# Build INDI rotator driver
+cd indi_rotator
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+sudo make install
+cd ../..
+```
+
+Alternatively, build all INDI drivers as part of the main project:
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release \
+    -DBUILD_TESTS=ON \
+    -DENABLE_INDI=ON
+cmake --build build -j$(nproc)
+```
+
+### Building ASCOM Drivers (Windows/Cross-Platform)
+
+The ASCOM drivers are C# projects requiring .NET SDK or Mono:
+
+```bash
+# Using .NET SDK
+cd ascom
+dotnet build -c Release
+cd ..
+
+# ASCOM Rotator driver
+cd ascom_rotator
+dotnet build -c Release
+cd ..
+```
+
+After building, register the drivers with ASCOM:
+
+```bash
+# Register with ASCOM (requires administrator privileges)
+# Each driver must be registered via COM:
+regasm /codebase ascom/bin/Release/AstroMountTelescope.dll
+regasm /codebase ascom_rotator/bin/Release/AstroMountRotator.dll
+```
+
+> **Note**: ASCOM drivers require Windows or Mono on Linux (COM registration is Windows-only).
+
+### Installation Testing
+
 ### Basic Test
 
 ```bash
 # Run unit tests
 ./build/bin/test_astronomical_calculations
 ./build/bin/test_tpoint_model
+./build/bin/test_mount_controller
 
 # Performance test
 ./build/bin/test_subarcsecond_accuracy

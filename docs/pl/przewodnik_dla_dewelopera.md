@@ -33,13 +33,17 @@
 
 | Metryka | Wartość |
 |---------|---------|
-| Linie kodu (C++) | ~12 000 (w tym testy) |
-| Pliki nagłówkowe | ~25 (`include/`) |
-| Pliki implementacyjne | ~15 (`src/`) |
-| Pliki testowe | 15 (`tests/`) |
+| Linie kodu (C++) | ~20 000+ |
+| Linie kodu (C#) | ~1 300+ |
+| Pliki binarne testów | 17 |
+| gRPC RPC | 50+ |
+| Sprawdzenia walidacji konfiguracji | 25+ |
+| Punkty ochrony NaN/Inf | 11 |
+| Obsługiwane typy sprzętu | 2 (CANopen, Symulowany) + 3 planowane |
+| Obsługiwane protokoły sterowników | 2 (ASCOM, INDI) |
+| Czas budowania | ~3-4 minuty (Release, 4 rdzenie) |
 | Definicje protobuf | ~1115 linii |
 | Modele obliczeniowe | TPOINT (40+ parametrów), Kalman (6D), Efemerydy |
-| Biblioteki | SOFA (IAU), gRPC, Protobuf, nlohmann/json |
 | Standard C++ | C++17 |
 
 ---
@@ -140,7 +144,7 @@ astro-mount-controller/
 │   └── pl/                 #   Dokumentacja w języku polskim
 ├── include/                # Pliki nagłówkowe
 │   ├── config/             #   System konfiguracji
-│   ├── controllers/        #   Sterowniki (MountController)
+│   ├── controllers/        #   Sterowniki (MountController, DerotatorController)
 │   ├── core/               #   Obliczenia astronomiczne
 │   ├── hal/                #   Interfejsy warstwy abstrakcji sprzętowej
 │   └── models/             #   Modele (TPOINT, Kalman, Efemerydy)
@@ -160,7 +164,11 @@ astro-mount-controller/
 │   │   └── simulated_hal/  #     Implementacja symulowana
 │   ├── logging/            #   System logowania
 │   └── models/             #   Implementacje modeli
-├── tests/                  # Testy jednostkowe
+├── ascom/                  # Sterownik teleskopu ASCOM (C#)
+├── ascom_rotator/          # Sterownik rotatora ASCOM (C#)
+├── indi/                   # Sterownik teleskopu INDI (C++)
+├── indi_rotator/           # Sterownik rotatora INDI (C++)
+├── tests/                  # Testy jednostkowe (17 binarek)
 ├── web/                    # Interfejs WWW (serwer proxy Express + SPA)
 └── CMakeLists.txt          # Główny plik CMake
 ```
@@ -169,16 +177,23 @@ astro-mount-controller/
 
 | Plik | Linie | Opis |
 |------|-------|------|
-| [`include/controllers/mount_controller.h`](../../include/controllers/mount_controller.h) | ~200 | Główna klasa kontrolera (interfejs publiczny) |
-| [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp) | 5195 | Logika kontrolera (najważniejszy plik) |
+| [`include/controllers/mount_controller.h`](../../include/controllers/mount_controller.h) | 930 | Główna klasa kontrolera (interfejs publiczny) |
+| [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp) | 5547 | Logika kontrolera (najważniejszy plik) |
+| [`include/controllers/derotator_controller.h`](../../include/controllers/derotator_controller.h) | 224 | Interfejs DerotatorController (HomingMethod, RotationMode) |
+| [`src/controllers/derotator_controller.cpp`](../../src/controllers/derotator_controller.cpp) | 858 | Samodzielny kontroler derotatora (homing, rotacja pola) |
 | [`include/controllers/icanopen_interface.h`](../../include/controllers/icanopen_interface.h) | ~150 | Interfejs komunikacji CANopen |
-| [`include/config/configuration.h`](../../include/config/configuration.h) | ~150 | Struktury konfiguracyjne |
+| [`include/config/configuration.h`](../../include/config/configuration.h) | 428 | Struktury konfiguracyjne |
 | [`include/models/tpoint_model.h`](../../include/models/tpoint_model.h) | ~100 | Model korekcji TPOINT |
 | [`include/models/kalman_filter.h`](../../include/models/kalman_filter.h) | ~80 | Filtr Kalmana |
 | [`include/models/ephemeris_tracker.h`](../../include/models/ephemeris_tracker.h) | ~120 | Śledzenie efemeryd |
 | [`proto/mount_controller.proto`](../../proto/mount_controller.proto) | 1115 | Definicja API gRPC |
 | [`include/hal/hal_interface.h`](../../include/hal/hal_interface.h) | ~60 | Główny interfejs HAL |
-| [`src/main.cpp`](../../src/main.cpp) | ~50 | Punkt wejścia aplikacji |
+| [`src/main.cpp`](../../src/main.cpp) | 304 | Punkt wejścia aplikacji |
+| [`ascom/AstroMountTelescope.cs`](../../ascom/AstroMountTelescope.cs) | 892 | Sterownik teleskopu ASCOM (ITelescopeV3) |
+| [`ascom/GrpcClient.cs`](../../ascom/GrpcClient.cs) | 378 | Klient gRPC dla ASCOM (C#) |
+| [`ascom_rotator/AstroMountRotator.cs`](../../ascom_rotator/AstroMountRotator.cs) | — | Sterownik rotatora ASCOM (IRotatorV3) |
+| [`indi/astro_mount_driver.cpp`](../../indi/astro_mount_driver.cpp) | 715 | Sterownik teleskopu INDI (C++) |
+| [`indi/astro_mount_rotator_driver.cpp`](../../indi_rotator/astro_mount_rotator_driver.cpp) | — | Sterownik rotatora INDI (C++) |
 
 ---
 
@@ -233,6 +248,7 @@ flowchart TB
 | Komponent | Odpowiedzialność |
 |-----------|-----------------|
 | `MountController` | Koordynacja wysokiego poziomu: stany, transformacje, kalibracja |
+| `DerotatorController` | Samodzielne sterowanie derotatorem — homing, rotacja pola, własny wątek |
 | `TPointModel` | Modelowanie błędów geometrycznych i korekcja (do 40+ parametrów) |
 | `KalmanFilter` | Estymacja stanu, redukcja szumów, fuzja czujników |
 | `EphemerisTracker` | Interpolacja efemeryd i śledzenie obiektów ruchomych |
@@ -240,6 +256,10 @@ flowchart TB
 | `HALInterface` | Abstrakcja sprzętu niskiego poziomu (silniki, enkodery, bezpieczeństwo) |
 | `Configuration` | Ładowanie, walidacja i udostępnianie konfiguracji |
 | `AstronomicalCalculations` | Transformacje współrzędnych przez SOFA |
+| `AstroMountTelescope` (C#) | Sterownik ASCOM ITelescopeV3 — proxy gRPC |
+| `AstroMountRotator` (C#) | Sterownik ASCOM IRotatorV3 — proxy gRPC |
+| `AstroMountIndiDriver` (C++) | Sterownik INDI Telescope — backend gRPC |
+| `AstroMountRotatorIndi` (C++) | Sterownik INDI Rotator — backend gRPC |
 
 ### Maszyna stanów
 
@@ -353,10 +373,48 @@ bool validateMountConfig(const MountConfig& config) {
 
 ### Cele budowania
 
+#### Główna aplikacja
+
 | Cel CMake | Opis |
 |-----------|------|
 | `astro_mount_controller` | Główny plik wykonywalny |
-| `test_*` | Cele testowe (jednostkowe) |
+| `astro_object_database_server` | Serwer bazy danych astronomicznych |
+
+#### Sterowniki INDI
+
+| Cel CMake | Opis |
+|-----------|------|
+| `astro_mount_driver` | Sterownik teleskopu INDI |
+| `astro_mount_rotator_driver` | Sterownik rotatora INDI |
+
+#### Sterowniki ASCOM (C#)
+
+| Cel | Opis |
+|-----|------|
+| `ascom/AstroMountTelescope.cs` | Sterownik ASCOM ITelescopeV3 (buduj przez `dotnet build ascom/`) |
+| `ascom_rotator/AstroMountRotator.cs` | Sterownik ASCOM IRotatorV3 (buduj przez `dotnet build ascom_rotator/`) |
+
+#### Pliki binarne testów
+
+| Cel CMake | Opis |
+|-----------|------|
+| `test_mount_controller` | Testy kontrolera (25 grup) |
+| `test_tpoint_model` | Testy modelu TPOINT (17 przypadków) |
+| `test_configuration` | Testy walidacji konfiguracji |
+| `test_kalman_filter` | Testy filtru Kalmana |
+| `test_ephemeris_tracker` | Testy śledzenia efemeryd |
+| `test_hal_integration` | Testy integracyjne HAL |
+| `test_grpc_integration` | Testy serwera gRPC |
+| `test_subarcsecond_accuracy` | Testy dokładności poniżej sekundy kątowej |
+| `test_astronomical_calculations` | Testy obliczeń astronomicznych |
+| `test_canopen_factory` | Testy fabryki CANopen |
+| `test_canopen_hal` | Testy komunikacji CANopen |
+| `test_config_monitor` | Testy monitorowania konfiguracji |
+| `test_ethernet_hal` | Testy Ethernet HAL |
+| `test_gamepad_hal` | Testy Gamepad HAL |
+| `test_logger` | Testy loggera |
+| `test_serial_hal` | Testy Serial HAL |
+| `test_canopen_wrapper` | Testy wrappera CANopen |
 | `grpc_generate` | Generowanie kodu gRPC/protobuf |
 
 ### Typowe komendy
@@ -718,9 +776,10 @@ tail -f /var/log/astro_mount_controller.log
 
 | Plik | Opis |
 |------|------|
-| [`include/controllers/mount_controller.h`](../../include/controllers/mount_controller.h) | Główna klasa kontrolera |
+| [`include/controllers/mount_controller.h`](../../include/controllers/mount_controller.h) | Główna klasa kontrolera, `ControllerConfig`, `MountStatus` |
+| [`include/controllers/derotator_controller.h`](../../include/controllers/derotator_controller.h) | `DerotatorController`, `HomingMethod`, `RotationMode`, `DerotatorStatus` |
 | [`include/controllers/icanopen_interface.h`](../../include/controllers/icanopen_interface.h) | Interfejs CANopen |
-| [`include/config/configuration.h`](../../include/config/configuration.h) | System konfiguracji |
+| [`include/config/configuration.h`](../../include/config/configuration.h) | Wszystkie struktury konfiguracji: `MountConfig`, `GuiderConfig`, `KalmanConfig`, `TPointConfig`, `DerotatorConfig`, `FieldRotationParams` |
 | [`include/core/astronomical_calculations.h`](../../include/core/astronomical_calculations.h) | Obliczenia astronomiczne |
 | [`include/models/tpoint_model.h`](../../include/models/tpoint_model.h) | Model TPOINT |
 | [`include/models/kalman_filter.h`](../../include/models/kalman_filter.h) | Filtr Kalmana |
@@ -732,16 +791,18 @@ tail -f /var/log/astro_mount_controller.log
 | [`include/hal/sensor_interface.h`](../../include/hal/sensor_interface.h) | Interfejs czujników |
 | [`include/hal/hal_factory.h`](../../include/hal/hal_factory.h) | Fabryka HAL |
 | [`include/hal/hal_config.h`](../../include/hal/hal_config.h) | Konfiguracja HAL |
+| [`indi/MountGrpcClient.h`](../../indi/MountGrpcClient.h) | Klient gRPC C++ dla sterowników INDI |
 
 ### Kluczowe pliki źródłowe
 
 | Plik | Linie | Opis |
 |------|-------|------|
-| [`src/main.cpp`](../../src/main.cpp) | ~50 | Punkt wejścia |
-| [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp) | 5195 | Logika kontrolera |
+| [`src/main.cpp`](../../src/main.cpp) | 304 | Punkt wejścia, konfiguracja, główna pętla |
+| [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp) | 5547 | Logika kontrolera (maszyna stanów, tracking, meridian flip, miękkie limity) |
+| [`src/controllers/derotator_controller.cpp`](../../src/controllers/derotator_controller.cpp) | 858 | Samodzielny kontroler derotatora |
 | [`src/controllers/canopen_interface.cpp`](../../src/controllers/canopen_interface.cpp) | ~800 | Komunikacja CANopen |
 | [`src/controllers/canopen_factory.cpp`](../../src/controllers/canopen_factory.cpp) | ~100 | Fabryka CANopen |
-| [`src/config/configuration.cpp`](../../src/config/configuration.cpp) | ~300 | Ładowanie konfiguracji |
+| [`src/config/configuration.cpp`](../../src/config/configuration.cpp) | 1185 | Ładowanie konfiguracji, walidacja, wartości domyślne |
 | [`src/core/astronomical_calculations.cpp`](../../src/core/astronomical_calculations.cpp) | ~500 | Obliczenia astronomiczne |
 | [`src/models/tpoint_model.cpp`](../../src/models/tpoint_model.cpp) | ~400 | Implementacja TPOINT |
 | [`src/models/kalman_filter.cpp`](../../src/models/kalman_filter.cpp) | ~300 | Implementacja filtru Kalmana |
@@ -749,15 +810,20 @@ tail -f /var/log/astro_mount_controller.log
 | [`src/api/service_impl.cpp`](../../src/api/service_impl.cpp) | ~800 | Implementacja usług gRPC |
 | [`src/api/grpc_server.cpp`](../../src/api/grpc_server.cpp) | ~100 | Serwer gRPC |
 | [`src/hal/hal_factory.cpp`](../../src/hal/hal_factory.cpp) | ~100 | Fabryka HAL |
-| [`src/hal/canopen_hal/canopen_hal.cpp`](../../src/hal/canopen_hal/canopen_hal.cpp) | ~600 | Implementacja CANopenHAL |
+| [`src/hal/canopen_hal/canopen_hal.cpp`](../../src/hal/canopen_hal/canopen_hal.cpp) | 1845 | Implementacja CANopenHAL (CiA 402, PDO, PID) |
 | [`src/hal/simulated_hal/simulated_hal.cpp`](../../src/hal/simulated_hal/simulated_hal.cpp) | ~400 | Implementacja SimulatedHAL |
+| [`ascom/AstroMountTelescope.cs`](../../ascom/AstroMountTelescope.cs) | 892 | Sterownik ASCOM ITelescopeV3 |
+| [`ascom/GrpcClient.cs`](../../ascom/GrpcClient.cs) | 378 | Klient gRPC C# |
+| [`indi/astro_mount_driver.cpp`](../../indi/astro_mount_driver.cpp) | 715 | Sterownik INDI Telescope (C++) |
 
 ### Kluczowe komunikaty protobuf
 
 | Komunikat | Linia w proto | Opis |
 |-----------|---------------|------|
+| `Coordinates` | 9 | Współrzędne astronomiczne z ruchem własnym, paralaksą, ID katalogów |
 | `MountPosition` | 88 | Pozycja montażu (RA/Dec, Alt/Az) |
 | `RotationMatrix` | 98 | Macierz rotacji (kwaternion) |
+| `TrajectoryParams` | 116 | Parametry generowania trajektorii |
 | `TPointParameters` | 107 | Parametry modelu TPOINT |
 | `MountStatus` | 122 | Stan montażu (SLEWING, TRACKING, etc.) |
 | `TrackedObject` | 141 | Śledzony obiekt |
@@ -771,6 +837,11 @@ tail -f /var/log/astro_mount_controller.log
 | `HALConfigRequest` | 416 | Żądanie konfiguracji HAL |
 | `PoleDeterminationRequest` | 447 | Żądanie wyznaczenia bieguna |
 | `AxisPhysicalParameters` | 479 | Parametry fizyczne osi |
-| `Configuration` | 520 | Konfiguracja |
+| `Configuration` | 520 | Pełna konfiguracja systemu (49 pól) |
 | `HealthCheckRequest` | 580 | Żądanie health check |
 | `SystemMetrics` | 600 | Metryki systemowe |
+| `EphemerisData` | 689 | Dane efemeryd dla obiektów ruchomych |
+| `FieldRotationControlRequest` | 787 | Sterowanie trybem rotacji pola i parametrami |
+| `DerotatorHomingRequest` | 810 | Wybór metody homingu derotatora |
+| `DerotatorConfig` | 825 | Konfiguracja sprzętowa derotatora |
+| `HALConfig` | 1063 | Pełna konfiguracja HAL |

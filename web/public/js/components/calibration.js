@@ -39,12 +39,28 @@ const CalibrationComponent = (() => {
     ERROR: 'error',
   };
 
+  const BOOTSTRAP_MODE_LABELS = {
+    0: 'Manual',
+    1: 'Hybrid',
+    2: 'Automatic',
+  };
+
+  const AUTO_BOOTSTRAP_STATE_LABELS = {
+    0: 'Idle',
+    1: 'Adding Measurement',
+    2: 'Calibrating...',
+    3: 'Completed',
+    4: 'Error',
+  };
+
   // ─── State ────────────────────────────────────────────────────────────────
 
   /** Bootstrap: currently selected reference object for measurement */
   let bsSelectedObject = null;
   /** TPOINT: currently selected reference object for measurement */
   let tpSelectedObject = null;
+  /** Current bootstrap mode value (0=MANUAL, 1=HYBRID, 2=AUTOMATIC) */
+  let currentBootstrapMode = 0;
 
   // ─── Polling ─────────────────────────────────────────────────────────────
 
@@ -101,6 +117,14 @@ const CalibrationComponent = (() => {
 
     const bsClearBtn = $('#btn-bs-clear-selection');
     if (bsClearBtn) bsClearBtn.addEventListener('click', () => clearSelection('bs'));
+
+    // Bootstrap Mode selector
+    const setModeBtn = $('#btn-set-bootstrap-mode');
+    if (setModeBtn) setModeBtn.addEventListener('click', handleSetBootstrapMode);
+
+    // Auto-bootstrap
+    const runAutoBsBtn = $('#btn-run-auto-bootstrap');
+    if (runAutoBsBtn) runAutoBsBtn.addEventListener('click', handleRunAutoBootstrap);
 
     // TPOINT buttons
     const runTpBtn = $('#btn-run-tpoint');
@@ -425,6 +449,15 @@ const CalibrationComponent = (() => {
     setText('#bootstrap-residual-rms', status.residual_rms_arcsec != null ? `${Number(status.residual_rms_arcsec).toFixed(2)}"` : '—');
     setText('#bootstrap-tpoint-ready', status.ready_for_tpoint ? 'Yes' : 'No');
     setText('#bootstrap-last-calibration', status.last_calibration ? formatTimestamp(status.last_calibration) : '—');
+
+    // New BootstrapStatus fields
+    const mode = status.bootstrap_mode;
+    currentBootstrapMode = mode != null ? mode : currentBootstrapMode;
+    const modeSelect = $('#bootstrap-mode-select');
+    if (modeSelect) modeSelect.value = String(currentBootstrapMode);
+    setText('#bootstrap-encoder-type', status.encoder_type_absolute ? 'Absolute' : 'Incremental');
+    setText('#bootstrap-ref-position-known', status.reference_position_known ? 'Yes' : 'No');
+    setText('#bootstrap-manual-meas-needed', status.manual_measurements_needed != null ? String(status.manual_measurements_needed) : '—');
   }
 
   async function handleRunBootstrap() {
@@ -482,6 +515,142 @@ const CalibrationComponent = (() => {
       resultDiv.style.display = 'block';
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  // ─── Bootstrap Mode ──────────────────────────────────────────────────────
+
+  async function handleSetBootstrapMode() {
+    const select = $('#bootstrap-mode-select');
+    const resultDiv = $('#bootstrap-result');
+    if (!select || !resultDiv) return;
+
+    const mode = parseInt(select.value, 10);
+    if (isNaN(mode) || mode < 0 || mode > 2) {
+      App.showToast('Invalid bootstrap mode value', 'error');
+      return;
+    }
+
+    try {
+      await Api.setBootstrapMode(mode);
+      currentBootstrapMode = mode;
+      App.showToast(`Bootstrap mode set to ${BOOTSTRAP_MODE_LABELS[mode] || mode}`, 'success');
+      await loadBootstrapStatus();
+    } catch (err) {
+      resultDiv.className = 'calibration-result error';
+      resultDiv.textContent = `Failed to set bootstrap mode: ${err.message}`;
+      resultDiv.style.display = 'block';
+      App.showToast(`Failed to set bootstrap mode: ${err.message}`, 'error');
+    }
+  }
+
+  // ─── Automatic Bootstrap ─────────────────────────────────────────────────
+
+  async function handleRunAutoBootstrap() {
+    const btn = $('#btn-run-auto-bootstrap');
+    const resultDiv = $('#bootstrap-result');
+    if (!btn || !resultDiv) return;
+
+    const minMeasInput = $('#auto-bs-min-measurements');
+    const maxErrorInput = $('#auto-bs-max-error');
+    const targetStarsInput = $('#auto-bs-target-stars');
+    const proceedCheckbox = $('#auto-bs-proceed-tpoint');
+
+    const options = {};
+    if (minMeasInput) {
+      const val = parseInt(minMeasInput.value, 10);
+      if (!isNaN(val) && val >= 3) options.min_measurements = val;
+    }
+    if (maxErrorInput) {
+      const val = parseInt(maxErrorInput.value, 10);
+      if (!isNaN(val) && val > 0) options.max_alignment_error_arcsec = val;
+    }
+    if (targetStarsInput) {
+      const stars = targetStarsInput.value.trim();
+      if (stars) {
+        options.target_star_names = stars.split(',').map(s => s.trim()).filter(Boolean);
+      }
+    }
+    if (proceedCheckbox && proceedCheckbox.checked) {
+      options.proceed_to_tpoint = true;
+    }
+
+    btn.disabled = true;
+    resultDiv.style.display = 'none';
+
+    try {
+      await Api.runAutomaticBootstrap(options);
+      App.showToast('Automatic bootstrap started', 'success');
+      // Show progress section and start polling
+      const progressDiv = $('#auto-bootstrap-progress');
+      if (progressDiv) progressDiv.style.display = 'block';
+      await loadAutoBootstrapStatus();
+    } catch (err) {
+      resultDiv.className = 'calibration-result error';
+      resultDiv.textContent = `Failed to start auto-bootstrap: ${err.message}`;
+      resultDiv.style.display = 'block';
+      App.showToast(`Auto-bootstrap failed: ${err.message}`, 'error');
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function loadAutoBootstrapStatus() {
+    try {
+      const status = await Api.getAutoBootstrapStatus();
+      updateAutoBootstrapUI(status);
+    } catch (err) {
+      // Silently ignore — auto-bootstrap may not be available yet
+    }
+  }
+
+  function updateAutoBootstrapUI(status) {
+    if (!status) return;
+
+    const progressDiv = $('#auto-bootstrap-progress');
+    if (!progressDiv) return;
+
+    // Show progress section when not idle
+    const stateVal = status.state;
+    if (stateVal !== undefined && stateVal !== 0) {
+      progressDiv.style.display = 'block';
+    }
+
+    const stateLabel = AUTO_BOOTSTRAP_STATE_LABELS[stateVal] || 'Unknown';
+    setText('#auto-bs-state', stateLabel);
+
+    // Progress bar
+    const pct = status.progress_percent != null ? Math.round(status.progress_percent) : 0;
+    setText('#auto-bs-progress-text', `${pct}%`);
+    const bar = $('#auto-bs-progress-bar');
+    if (bar) bar.style.width = `${pct}%`;
+
+    // Measurements
+    setText('#auto-bs-meas-collected', String(status.measurements_collected ?? 0));
+    setText('#auto-bs-meas-target', String(status.measurements_target ?? 0));
+
+    // Current target star
+    setText('#auto-bs-current-star', status.current_target_star || '—');
+
+    // State message
+    setText('#auto-bs-state-message', status.state_message || '');
+
+    // Error message
+    const errorDiv = $('#auto-bs-error');
+    if (errorDiv) {
+      if (status.error_message) {
+        errorDiv.textContent = status.error_message;
+        errorDiv.style.display = 'block';
+      } else {
+        errorDiv.style.display = 'none';
+      }
+    }
+
+    // Update badge if completed or in error
+    if (stateVal === 3) {
+      App.showToast('Automatic bootstrap completed successfully!', 'success');
+    } else if (stateVal === 4) {
+      App.showToast(`Auto-bootstrap error: ${status.error_message || 'Unknown error'}`, 'error');
     }
   }
 
@@ -577,11 +746,13 @@ const CalibrationComponent = (() => {
     // Initial load
     loadBootstrapStatus();
     loadTPointStatus();
+    loadAutoBootstrapStatus();
 
     // Periodic refresh
     pollInterval = setInterval(() => {
       loadBootstrapStatus();
       loadTPointStatus();
+      loadAutoBootstrapStatus();
     }, POLL_INTERVAL_MS);
   }
 

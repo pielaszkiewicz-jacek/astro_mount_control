@@ -1,4 +1,5 @@
 #include "controllers/mount_controller.h"
+#include "controllers/derotator_controller.h"
 #include "controllers/icanopen_interface.h"
 #include "controllers/canopen_factory.h"
 #include "core/astronomical_calculations.h"
@@ -243,19 +244,11 @@ public:
              env_mutex_(new std::mutex()),
              thread_mutex_(new std::mutex()),
              encoder_absolute_(false),
+             bootstrap_mode_{BootstrapMode::BOOTSTRAP_MANUAL},
              env_temperature_(15.0),
              env_pressure_(1013.25),
              env_humidity_(0.5),
              last_field_rotation_time_(0.0),
-             derotator_enabled_(false),
-             derotator_homed_(false),
-             derotator_moving_(false),
-             derotator_current_angle_(0.0),
-             derotator_target_angle_(0.0),
-             derotator_current_rate_(0.0),
-             derotator_target_rate_(0.0),
-             field_rotation_enabled_(false),
-             field_rotation_rate_(0.0),
              astro_calc_(std::make_unique<core::AstronomicalCalculations>()),
              tpoint_model_(std::make_unique<models::TPointModel>()),
              flip_start_time_{},
@@ -270,6 +263,35 @@ public:
         config_ = config;
         state_ = MountStatus::State::IDLE;
         notifyStatusChanged();  // UNINITIALIZED → IDLE
+
+        // --- Encoder type logic (plan §8.1) ---
+        // For absolute encoders, read the actual physical position at startup.
+        // For incremental encoders, start from (0,0) — the CANopen servo
+        // also initialises to zero on power-up.
+        if (config_.encoders_absolute) {
+            if (hal_axis1_encoder_ && hal_axis2_encoder_) {
+                auto enc1 = hal_axis1_encoder_->read();
+                auto enc2 = hal_axis2_encoder_->read();
+                axis1_position_ = enc1.position_deg;
+                axis2_position_ = enc2.position_deg;
+                encoder_absolute_ = true;
+                MOUNT_LOG_INFO("Absolute encoders: init pos=({:.4f}°, {:.4f}°)",
+                              axis1_position_, axis2_position_);
+            } else {
+                MOUNT_LOG_WARN("encoders_absolute=true but no encoder reader available; "
+                              "falling back to (0,0)");
+                axis1_position_ = 0.0;
+                axis2_position_ = 0.0;
+            }
+        } else {
+            // Incremental encoders — start from reference (0,0).
+            // The bootstrap calibration (Wahba/SVD) will later determine the
+            // rotation offset between the mount frame and the true horizontal frame,
+            // which implicitly absorbs the unknown encoder zero offset.
+            MOUNT_LOG_INFO("Incremental encoders: starting from reference (0,0)");
+            axis1_position_ = 0.0;
+            axis2_position_ = 0.0;
+        }
 
         // Initialize position Kalman filter with config noise parameters.
         // This filter smooths axis positions in the tracking loop by blending
@@ -304,25 +326,11 @@ public:
             hal_safety_monitor_ = hal_interface_->createSafetyMonitor();
             hal_sensor_interface_ = hal_interface_->createSensorInterface();
             
-            // Create HAL derotator components (axis_id = 2).
-            // These are optional — the derotator may not be present on all mounts.
-            // Dedicated factory methods on HALInterface create derotator-specific
-            // MotorControl and EncoderReader instances with appropriate configuration.
-            hal_derotator_motor_ = hal_interface_->createDerotatorMotor();
-            hal_derotator_encoder_ = hal_interface_->createDerotatorEncoder();
-            if (hal_derotator_motor_) {
-                MOUNT_LOG_DEBUG("HAL derotator motor created");
-            }
-            if (hal_derotator_encoder_) {
-                MOUNT_LOG_DEBUG("HAL derotator encoder created");
-            }
-            
-            MOUNT_LOG_DEBUG("HAL components created for axes 0, 1, and derotator");
+            MOUNT_LOG_DEBUG("HAL components created for axes 0 and 1");
             
             // Enable HAL motors on initialization
             if (hal_axis1_motor_) hal_axis1_motor_->enable();
             if (hal_axis2_motor_) hal_axis2_motor_->enable();
-            if (hal_derotator_motor_) hal_derotator_motor_->enable();
         }
         
         // Initialize CANopen interface using factory
@@ -389,6 +397,69 @@ public:
             astro_calc_->setObserverLocation(config_.latitude, config_.longitude, config_.altitude);
         }
         
+        // --- Create DerotatorController (internal module) ---
+        // The derotator gets its own HAL motor/encoder instances and a raw pointer
+        // to the shared CANopen interface. MountController retains field rotation
+        // rate calculation (depends on mount axis positions) and pushes the result
+        // to DerotatorController via setFieldRotationRate().
+        {
+            // Mount type conversion for DerotatorController
+            DerotatorController::MountType derotator_mount_type;
+            switch (config_.mount_type) {
+                case MountType::EQUATORIAL:
+                    derotator_mount_type = DerotatorController::MountType::EQUATORIAL;
+                    break;
+                case MountType::ALT_AZ:
+                    derotator_mount_type = DerotatorController::MountType::ALT_AZ;
+                    break;
+                case MountType::CASUAL:
+                    derotator_mount_type = DerotatorController::MountType::CASUAL;
+                    break;
+                default:
+                    derotator_mount_type = DerotatorController::MountType::UNKNOWN;
+                    break;
+            }
+            
+            DerotatorController::Config derotator_cfg;
+            // Keep default derotator config (may be updated later via configureDerotator)
+            derotator_cfg.mount_type = derotator_mount_type;
+            derotator_cfg.latitude_deg = config_.latitude;
+            
+            // MountStateProvider: provides current altitude from mount position
+            auto state_provider = [this]() -> DerotatorController::MountState {
+                std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+                DerotatorController::MountState s;
+                // For ALT_AZ: axis2 = altitude, For CASUAL: axis1 = altitude-like
+                if (config_.mount_type == MountType::CASUAL) {
+                    s.altitude_deg = axis1_position_;
+                } else {
+                    s.altitude_deg = axis2_position_;
+                }
+                return s;
+            };
+            
+            // Create HAL derotator components (optional — derotator may not be present)
+            auto derotator_motor = hal_interface_ ? hal_interface_->createDerotatorMotor() : nullptr;
+            auto derotator_encoder = hal_interface_ ? hal_interface_->createDerotatorEncoder() : nullptr;
+            
+            if (derotator_motor) {
+                MOUNT_LOG_DEBUG("HAL derotator motor created");
+            }
+            if (derotator_encoder) {
+                MOUNT_LOG_DEBUG("HAL derotator encoder created");
+            }
+            
+            derotator_ = std::make_unique<DerotatorController>(
+                canopen_interface_.get(),
+                std::move(derotator_motor),
+                std::move(derotator_encoder),
+                std::move(state_provider),
+                derotator_cfg
+            );
+            
+            MOUNT_LOG_DEBUG("DerotatorController created");
+        }
+        
         return true;
     }
     
@@ -415,11 +486,13 @@ public:
         // Shut down HAL components in reverse creation order.
         // Reset unique_ptrs to destroy component instances before shutting down
         // the HAL interface itself, ensuring clean teardown.
+        // Shut down DerotatorController first (it has its own thread and HAL components)
+        if (derotator_) {
+            derotator_->shutdown();
+        }
+        derotator_.reset();
         hal_sensor_interface_.reset();
         hal_safety_monitor_.reset();
-        hal_derotator_encoder_.reset();
-        if (hal_derotator_motor_) hal_derotator_motor_->disable();
-        hal_derotator_motor_.reset();
         hal_axis1_encoder_.reset();
         hal_axis2_encoder_.reset();
         if (hal_axis1_motor_) hal_axis1_motor_->disable();
@@ -430,6 +503,76 @@ public:
             hal_interface_->stop();
             hal_interface_->shutdown();
         }
+    }
+    
+    /**
+     * @brief Recreate the DerotatorController instance after HAL re-initialization.
+     *
+     * Called by setHALConfig() and reinitializeHAL() after the HAL interface has
+     * been re-created. Creates fresh derotator motor/encoder components from the
+     * new HAL interface and constructs a new DerotatorController with the current
+     * mount config.
+     *
+     * @return true if the DerotatorController was created successfully, false if
+     *         derotator HAL components are unavailable (non-fatal).
+     */
+    bool recreateDerotator() {
+        if (!hal_interface_) {
+            return false;
+        }
+        
+        // DerotatorController::MountType conversion
+        DerotatorController::MountType derotator_mount_type;
+        switch (config_.mount_type) {
+            case MountType::EQUATORIAL:
+                derotator_mount_type = DerotatorController::MountType::EQUATORIAL;
+                break;
+            case MountType::ALT_AZ:
+                derotator_mount_type = DerotatorController::MountType::ALT_AZ;
+                break;
+            case MountType::CASUAL:
+                derotator_mount_type = DerotatorController::MountType::CASUAL;
+                break;
+            default:
+                derotator_mount_type = DerotatorController::MountType::UNKNOWN;
+                break;
+        }
+        
+        DerotatorController::Config derotator_cfg;
+        derotator_cfg.mount_type = derotator_mount_type;
+        derotator_cfg.latitude_deg = config_.latitude;
+        
+        // MountStateProvider: provides current altitude from mount position
+        auto state_provider = [this]() -> DerotatorController::MountState {
+            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+            DerotatorController::MountState s;
+            if (config_.mount_type == MountType::CASUAL) {
+                s.altitude_deg = axis1_position_;
+            } else {
+                s.altitude_deg = axis2_position_;
+            }
+            return s;
+        };
+        
+        // Create HAL derotator components (optional — derotator may not be present)
+        auto derotator_motor = hal_interface_->createDerotatorMotor();
+        auto derotator_encoder = hal_interface_->createDerotatorEncoder();
+        
+        if (!derotator_motor) {
+            MOUNT_LOG_DEBUG("recreateDerotator: HAL derotator motor not available");
+            return false;
+        }
+        
+        derotator_ = std::make_unique<DerotatorController>(
+            canopen_interface_.get(),
+            std::move(derotator_motor),
+            std::move(derotator_encoder),
+            std::move(state_provider),
+            derotator_cfg
+        );
+        
+        MOUNT_LOG_DEBUG("DerotatorController recreated after HAL re-initialization");
+        return true;
     }
     
     bool slewToEquatorial(double ra, double dec) {
@@ -2532,7 +2675,11 @@ public:
             tracking_active_ = false;
             meridian_flip_pending_ = false;
             meridian_flip_in_progress_ = false;
-            derotator_moving_ = false;
+            
+            // Clear derotator errors
+            if (derotator_) {
+                derotator_->clearErrors();
+            }
             
             // Clear error state
             state_ = MountStatus::State::IDLE;
@@ -2590,7 +2737,13 @@ public:
         status.soft_limit_distance_axis1 = soft_limit_distance_axis1_;
         status.soft_limit_distance_axis2 = soft_limit_distance_axis2_;
         status.soft_limit_warning_message = soft_limit_warning_message_;
-        
+
+        // Bootstrap / encoder status fields (plan §8.4)
+        status.encoders_absolute = config_.encoders_absolute;
+        status.bootstrap_mode = static_cast<int>(bootstrap_mode_);
+        status.bootstrap_calibrated = bootstrap_calibrated_;
+        status.bootstrap_measurement_count = static_cast<int>(bootstrap_measurements_.size());
+
         return status;
     }
     
@@ -2624,261 +2777,244 @@ public:
             return false;  // Need at least 2 stars for initial alignment
         }
         
-        if (config_.mount_type == MountType::CASUAL) {
-            // --- CASUAL bootstrap calibration ---
-            // Estimate the mount orientation quaternion from at least 3 measurements
-            // using Wahba's problem (SVD-based rotation estimation).
-            //
-            // Each measurement provides:
-            //   - (observed_ra, observed_dec): star's true sky position
-            //   - (mount_ha, mount_dec): mount axis positions (axis1 = mount_ha, axis2 = mount_dec)
-            //
-            // Algorithm:
-            //   1. Convert (observed_ra, observed_dec) at measurement time to true horizontal (alt, az)
-            //   2. Convert (mount_ha, mount_dec) to unit vector in mount frame
-            //   3. Build cross-covariance matrix B = sum(mount_vec * horiz_vec^T)
-            //   4. SVD(B) = U * S * V^T  →  optimal rotation R = V * U^T
-            //   5. Convert R to quaternion Q
-            //   6. Q represents rotation: mount frame → true horizontal frame
+        // --- Universal Wahba/SVD for ALL mount types (plan §8.6) ---
+        // Previously the code branched on mount_type:
+        //   CASUAL      → Wahba/SVD (full 3-DOF rotation)
+        //   EQUATORIAL  → mean-offset (simple RA/Dec shift)
+        //   ALT_AZ      → mean-offset (simple RA/Dec shift)
+        //
+        // Now Wahba/SVD is used for EVERY mount type because:
+        //   - mount_vec = f(mount_ha, mount_dec) is computed identically
+        //     for CASUAL (HA, Dec), EQUATORIAL (HA, Dec), and ALT_AZ (Az, Alt).
+        //   - horiz_vec = f(observed_ra, observed_dec) is always the true
+        //     horizontal ENU vector at the measurement time/location.
+        //   - Wahba's problem finds the optimal rotation R: mount_frame → true_horizontal.
+        //   - For EQUATORIAL: R absorbs encoder offset as an additional rotation
+        //     around the (coincident) mount axes — mathematically exact for any offset.
+        //   - For ALT_AZ: R approximates the altitude encoder offset, which is a
+        //     translation on the sphere rather than a pure rotation (see caveat below).
+        //
+        // Algorithm:
+        //   1. Convert (observed_ra, observed_dec) at measurement time to true horizontal (alt, az)
+        //   2. Convert (mount_ha, mount_dec) to unit vector in mount frame
+        //   3. Build cross-covariance matrix B = sum(mount_vec * horiz_vec^T)
+        //   4. SVD(B) = U * S * V^T  →  optimal rotation R = V * U^T
+        //   5. Convert R to quaternion Q
+        //   6. Q represents rotation: mount frame → true horizontal frame
+        
+        if (bootstrap_measurements_.size() < 3) {
+            MOUNT_LOG_WARN("Bootstrap calibration requires at least 3 measurements (got {})",
+                     bootstrap_measurements_.size());
+            return false;
+        }
+        
+        try {
+            // Set environmental parameters for atmospheric refraction
+            astro_calc_->setEnvironmentalParams(
+                bootstrap_measurements_.front().temperature,
+                bootstrap_measurements_.front().pressure,
+                bootstrap_measurements_.front().humidity);
             
-            if (bootstrap_measurements_.size() < 3) {
-                MOUNT_LOG_WARN("CASUAL bootstrap calibration requires at least 3 measurements (got {})",
-                         bootstrap_measurements_.size());
-                return false;
+            // Build cross-covariance matrix B (3x3)
+            Eigen::Matrix3d B = Eigen::Matrix3d::Zero();
+            double total_weight = 0.0;
+            
+            for (const auto& m : bootstrap_measurements_) {
+                // Convert the measurement timestamp to Julian Date
+                auto ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    m.timestamp.time_since_epoch()).count();
+                double jd = 2440587.5 + ms_since_epoch / 86400000.0;
+                
+                // Step 1: Convert (observed_ra, observed_dec) → true horizontal (alt, az)
+                double ra_hours = m.observed_ra;
+                double dec_deg = m.observed_dec;
+                
+                auto [true_alt, true_az] = astro_calc_->equatorialToHorizontal(
+                    ra_hours, dec_deg, jd, true);
+                
+                // Convert alt/az to ENU unit vector in true horizontal frame
+                // ENU: x=East, y=North, z=Up
+                double alt_rad = true_alt * M_PI / 180.0;
+                double az_rad = true_az * M_PI / 180.0;
+                Eigen::Vector3d horiz_vec(
+                    std::sin(az_rad) * std::cos(alt_rad),   // East
+                    std::cos(az_rad) * std::cos(alt_rad),   // North
+                    std::sin(alt_rad)                        // Up
+                );
+                
+                // Step 2: Convert mount position (mount_ha = axis1, mount_dec = axis2)
+                // to a unit vector in mount frame.
+                // In mount frame: axis1 = altitude-like, axis2 = azimuth-like
+                double axis1_deg = m.mount_ha;
+                double axis2_deg = m.mount_dec;
+                double a1_rad = axis1_deg * M_PI / 180.0;
+                double a2_rad = axis2_deg * M_PI / 180.0;
+                Eigen::Vector3d mount_vec(
+                    std::sin(a2_rad) * std::cos(a1_rad),   // axis2 (longitude-like)
+                    std::cos(a2_rad) * std::cos(a1_rad),   // axis2 orthogonal
+                    std::sin(a1_rad)                        // axis1 (altitude-like)
+                );
+                
+                // Step 3: Accumulate B += mount_vec * horiz_vec^T
+                // Use equal weights for all measurements
+                B += mount_vec * horiz_vec.transpose();
+                total_weight += 1.0;
             }
             
-            try {
-                // Set environmental parameters for atmospheric refraction
-                astro_calc_->setEnvironmentalParams(
-                    bootstrap_measurements_.front().temperature,
-                    bootstrap_measurements_.front().pressure,
-                    bootstrap_measurements_.front().humidity);
-                
-                // Build cross-covariance matrix B (3x3)
-                Eigen::Matrix3d B = Eigen::Matrix3d::Zero();
-                double total_weight = 0.0;
-                
-                for (const auto& m : bootstrap_measurements_) {
-                    // Convert the measurement timestamp to Julian Date
-                    auto ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        m.timestamp.time_since_epoch()).count();
-                    double jd = 2440587.5 + ms_since_epoch / 86400000.0;
-                    
-                    // Step 1: Convert (observed_ra, observed_dec) → true horizontal (alt, az)
-                    double ra_hours = m.observed_ra;
-                    double dec_deg = m.observed_dec;
-                    
-                    auto [true_alt, true_az] = astro_calc_->equatorialToHorizontal(
-                        ra_hours, dec_deg, jd, true);
-                    
-                    // Convert alt/az to ENU unit vector in true horizontal frame
-                    // ENU: x=East, y=North, z=Up
-                    double alt_rad = true_alt * M_PI / 180.0;
-                    double az_rad = true_az * M_PI / 180.0;
-                    Eigen::Vector3d horiz_vec(
-                        std::sin(az_rad) * std::cos(alt_rad),   // East
-                        std::cos(az_rad) * std::cos(alt_rad),   // North
-                        std::sin(alt_rad)                        // Up
-                    );
-                    
-                    // Step 2: Convert mount position (mount_ha = axis1, mount_dec = axis2)
-                    // to a unit vector in mount frame.
-                    // In mount frame: axis1 = altitude-like, axis2 = azimuth-like
-                    double axis1_deg = m.mount_ha;
-                    double axis2_deg = m.mount_dec;
-                    double a1_rad = axis1_deg * M_PI / 180.0;
-                    double a2_rad = axis2_deg * M_PI / 180.0;
-                    Eigen::Vector3d mount_vec(
-                        std::sin(a2_rad) * std::cos(a1_rad),   // axis2 (longitude-like)
-                        std::cos(a2_rad) * std::cos(a1_rad),   // axis2 orthogonal
-                        std::sin(a1_rad)                        // axis1 (altitude-like)
-                    );
-                    
-                    // Step 3: Accumulate B += mount_vec * horiz_vec^T
-                    // Use equal weights for all measurements
-                    B += mount_vec * horiz_vec.transpose();
-                    total_weight += 1.0;
-                }
-                
-                // Step 4: SVD to find optimal rotation R = V * U^T
-                Eigen::JacobiSVD<Eigen::Matrix3d> svd(B, Eigen::ComputeFullU | Eigen::ComputeFullV);
-                
-                // Check condition number of the cross-covariance matrix B.
-                // If the ratio of smallest to largest singular value is too small,
-                // the measurements are nearly collinear (e.g. all stars on the same
-                // side of the sky) and the 3-DOF rotation cannot be uniquely resolved.
-                // A condition number < 1e-6 means B is rank-deficient or nearly so.
-                Eigen::Vector3d sv = svd.singularValues();
-                double max_sv = sv(0);
-                double min_sv = sv(2);
-                double cond = (max_sv > 0.0) ? (min_sv / max_sv) : 0.0;
-                const double MIN_COND = 1e-6;
-                if (cond < MIN_COND) {
-                    MOUNT_LOG_WARN("CASUAL bootstrap SVD ill-conditioned: "
-                             "cond={:.2e} < min={:.2e}, sv=[{:.2e}, {:.2e}, {:.2e}]. "
-                             "Star measurements may be nearly collinear — "
-                             "distribute calibration stars across the sky.",
-                             cond, MIN_COND, sv(0), sv(1), sv(2));
-                    // Continue with best-effort rotation; the residual check below
-                    // will detect poor alignment via large RMS error.
-                }
-                
-                Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();
-                
-                // Ensure proper rotation (det = +1)
-                if (R.determinant() < 0) {
-                    Eigen::Matrix3d V = svd.matrixV();
-                    V.col(2) = -V.col(2);
-                    R = V * svd.matrixU().transpose();
-                }
-                
-                // Step 5: Convert rotation matrix R to quaternion Q = [qx, qy, qz, qw]
-                double trace = R(0,0) + R(1,1) + R(2,2);
-                double qx, qy, qz, qw;
-                
-                if (trace > 0.0) {
-                    double S = std::sqrt(trace + 1.0) * 2.0;
-                    qw = 0.25 * S;
-                    qx = (R(2,1) - R(1,2)) / S;
-                    qy = (R(0,2) - R(2,0)) / S;
-                    qz = (R(1,0) - R(0,1)) / S;
-                } else if (R(0,0) > R(1,1) && R(0,0) > R(2,2)) {
-                    double S = std::sqrt(1.0 + R(0,0) - R(1,1) - R(2,2)) * 2.0;
-                    qw = (R(2,1) - R(1,2)) / S;
-                    qx = 0.25 * S;
-                    qy = (R(0,1) + R(1,0)) / S;
-                    qz = (R(0,2) + R(2,0)) / S;
-                } else if (R(1,1) > R(2,2)) {
-                    double S = std::sqrt(1.0 + R(1,1) - R(0,0) - R(2,2)) * 2.0;
-                    qw = (R(0,2) - R(2,0)) / S;
-                    qx = (R(0,1) + R(1,0)) / S;
-                    qy = 0.25 * S;
-                    qz = (R(1,2) + R(2,1)) / S;
-                } else {
-                    double S = std::sqrt(1.0 + R(2,2) - R(0,0) - R(1,1)) * 2.0;
-                    qw = (R(1,0) - R(0,1)) / S;
-                    qx = (R(0,2) + R(2,0)) / S;
-                    qy = (R(1,2) + R(2,1)) / S;
-                    qz = 0.25 * S;
-                }
-                
-                // Normalize quaternion
-                double q_norm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
-                if (q_norm > 0.0) {
-                    qx /= q_norm; qy /= q_norm; qz /= q_norm; qw /= q_norm;
-                }
-                
-                // Step 6: Store as estimated orientation
-                MountOrientation estimated_q;
-                estimated_q.quaternion = {{qx, qy, qz, qw}};
-                bootstrap_estimated_orientation_ = estimated_q;
-                
-                // Compute residual error: for each measurement, project the mount
-                // position through the estimated quaternion and compare with observed
-                double residual_sum_sq = 0.0;
-                for (const auto& m : bootstrap_measurements_) {
-                    auto ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        m.timestamp.time_since_epoch()).count();
-                    double jd = 2440587.5 + ms_since_epoch / 86400000.0;
-                    
-                    // Expected mount position from observed sky position using estimated Q
-                    auto [expected_axis1, expected_axis2] = astro_calc_->equatorialToMountOrientation(
-                        m.observed_ra, m.observed_dec, jd,
-                        estimated_q.quaternion);
-                    
-                    double d1 = expected_axis1 - m.mount_ha;
-                    double d2 = expected_axis2 - m.mount_dec;
-                    residual_sum_sq += d1*d1 + d2*d2;
-                }
-                double rms_error_deg = std::sqrt(residual_sum_sq / bootstrap_measurements_.size());
-                bootstrap_estimated_quaternion_error_arcsec_ = rms_error_deg * 3600.0;
-                
-                // Store RMS in the shared bootstrap fields for API compatibility
-                bootstrap_rms_ra_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
-                bootstrap_rms_dec_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
-                
-                // Apply estimated orientation to the mount
-                mount_orientation_ = estimated_q;
-                
-                MOUNT_LOG_INFO("CASUAL bootstrap calibration: Q=[{:.4f}, {:.4f}, {:.4f}, {:.4f}], "
-                         "RMS error={:.2f}\"",
-                         qx, qy, qz, qw, bootstrap_estimated_quaternion_error_arcsec_);
-                
-                bootstrap_calibrated_ = true;
-                return true;
-                
-            } catch (const std::exception& e) {
-                MOUNT_LOG_ERROR("CASUAL bootstrap calibration failed: {}", e.what());
-                return false;
+            // Step 4: SVD to find optimal rotation R = V * U^T
+            Eigen::JacobiSVD<Eigen::Matrix3d> svd(B, Eigen::ComputeFullU | Eigen::ComputeFullV);
+            
+            // Check condition number of the cross-covariance matrix B.
+            // If the ratio of smallest to largest singular value is too small,
+            // the measurements are nearly collinear (e.g. all stars on the same
+            // side of the sky) and the 3-DOF rotation cannot be uniquely resolved.
+            // A condition number < 1e-6 means B is rank-deficient or nearly so.
+            Eigen::Vector3d sv = svd.singularValues();
+            double max_sv = sv(0);
+            double min_sv = sv(2);
+            double cond = (max_sv > 0.0) ? (min_sv / max_sv) : 0.0;
+            const double MIN_COND = 1e-6;
+            if (cond < MIN_COND) {
+                MOUNT_LOG_WARN("Bootstrap SVD ill-conditioned: "
+                         "cond={:.2e} < min={:.2e}, sv=[{:.2e}, {:.2e}, {:.2e}]. "
+                         "Star measurements may be nearly collinear — "
+                         "distribute calibration stars across the sky.",
+                         cond, MIN_COND, sv(0), sv(1), sv(2));
+                // Continue with best-effort rotation; the residual check below
+                // will detect poor alignment via large RMS error.
             }
-        } else {
-            // --- EQUATORIAL / ALT_AZ bootstrap calibration ---
-            // Calculate initial rotation matrix from measurements
-            // Uses a simple linear least-squares approach to find
-            // the rotation between observed and expected coordinates
-            try {
-                // Compute mean offsets in RA and Dec
-                double ra_offset_sum = 0.0;
-                double dec_offset_sum = 0.0;
-                
-                for (const auto& m : bootstrap_measurements_) {
-                    double d_ra = m.expected_ra - m.observed_ra;
-                    double d_dec = m.expected_dec - m.observed_dec;
-                    
-                    // Normalize RA offset to reasonable range
-                    if (d_ra > 12.0) d_ra -= 24.0;
-                    if (d_ra < -12.0) d_ra += 24.0;
-                    
-                    ra_offset_sum += d_ra;
-                    dec_offset_sum += d_dec;
-                }
-                
-                // Average offsets give initial pointing correction
-                double ra_correction = ra_offset_sum / bootstrap_measurements_.size();
-                double dec_correction = dec_offset_sum / bootstrap_measurements_.size();
-                
-                MOUNT_LOG_INFO("Bootstrap calibration: RA offset={:.4f}h, Dec offset={:.4f}°",
-                         ra_correction, dec_correction);
-                
-                // Calculate RMS error as quality metric
-                double rms_ra = 0.0, rms_dec = 0.0;
-                for (const auto& m : bootstrap_measurements_) {
-                    double d_ra = m.expected_ra - m.observed_ra - ra_correction;
-                    double d_dec = m.expected_dec - m.observed_dec - dec_correction;
-                    if (d_ra > 12.0) d_ra -= 24.0;
-                    if (d_ra < -12.0) d_ra += 24.0;
-                    rms_ra += d_ra * d_ra;
-                    rms_dec += d_dec * d_dec;
-                }
-                rms_ra = std::sqrt(rms_ra / bootstrap_measurements_.size());
-                rms_dec = std::sqrt(rms_dec / bootstrap_measurements_.size());
-                
-                MOUNT_LOG_INFO("Bootstrap RMS: RA={:.4f}h, Dec={:.4f}°", rms_ra, rms_dec);
-                
-                // Store computed results for access via API
-                bootstrap_ra_correction_arcsec_ = ra_correction * 54000.0;  // hours -> arcsec
-                bootstrap_dec_correction_arcsec_ = dec_correction * 3600.0;  // degrees -> arcsec
-                bootstrap_rms_ra_arcsec_ = rms_ra * 54000.0;                 // hours -> arcsec
-                bootstrap_rms_dec_arcsec_ = rms_dec * 3600.0;                // degrees -> arcsec
-                
-                // Apply correction to current position as rough alignment
-                axis1_target_ += ra_correction * 15.0;  // Convert hours to degrees
-                axis2_target_ += dec_correction;
-                
-                bootstrap_calibrated_ = true;
-                return true;
-                
-            } catch (const std::exception& e) {
-                MOUNT_LOG_ERROR("Bootstrap calibration failed: {}", e.what());
-                return false;
+            
+            Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();
+            
+            // Ensure proper rotation (det = +1)
+            if (R.determinant() < 0) {
+                Eigen::Matrix3d V = svd.matrixV();
+                V.col(2) = -V.col(2);
+                R = V * svd.matrixU().transpose();
             }
+            
+            // Step 5: Convert rotation matrix R to quaternion Q = [qx, qy, qz, qw]
+            double trace = R(0,0) + R(1,1) + R(2,2);
+            double qx, qy, qz, qw;
+            
+            if (trace > 0.0) {
+                double S = std::sqrt(trace + 1.0) * 2.0;
+                qw = 0.25 * S;
+                qx = (R(2,1) - R(1,2)) / S;
+                qy = (R(0,2) - R(2,0)) / S;
+                qz = (R(1,0) - R(0,1)) / S;
+            } else if (R(0,0) > R(1,1) && R(0,0) > R(2,2)) {
+                double S = std::sqrt(1.0 + R(0,0) - R(1,1) - R(2,2)) * 2.0;
+                qw = (R(2,1) - R(1,2)) / S;
+                qx = 0.25 * S;
+                qy = (R(0,1) + R(1,0)) / S;
+                qz = (R(0,2) + R(2,0)) / S;
+            } else if (R(1,1) > R(2,2)) {
+                double S = std::sqrt(1.0 + R(1,1) - R(0,0) - R(2,2)) * 2.0;
+                qw = (R(0,2) - R(2,0)) / S;
+                qx = (R(0,1) + R(1,0)) / S;
+                qy = 0.25 * S;
+                qz = (R(1,2) + R(2,1)) / S;
+            } else {
+                double S = std::sqrt(1.0 + R(2,2) - R(0,0) - R(1,1)) * 2.0;
+                qw = (R(1,0) - R(0,1)) / S;
+                qx = (R(0,2) + R(2,0)) / S;
+                qy = (R(1,2) + R(2,1)) / S;
+                qz = 0.25 * S;
+            }
+            
+            // Normalize quaternion
+            double q_norm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+            if (q_norm > 0.0) {
+                qx /= q_norm; qy /= q_norm; qz /= q_norm; qw /= q_norm;
+            }
+            
+            // Step 6: Store as estimated orientation
+            MountOrientation estimated_q;
+            estimated_q.quaternion = {{qx, qy, qz, qw}};
+            bootstrap_estimated_orientation_ = estimated_q;
+            
+            // Compute residual error: for each measurement, project the mount
+            // position through the estimated quaternion and compare with observed
+            double residual_sum_sq = 0.0;
+            for (const auto& m : bootstrap_measurements_) {
+                auto ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    m.timestamp.time_since_epoch()).count();
+                double jd = 2440587.5 + ms_since_epoch / 86400000.0;
+                
+                // Expected mount position from observed sky position using estimated Q
+                auto [expected_axis1, expected_axis2] = astro_calc_->equatorialToMountOrientation(
+                    m.observed_ra, m.observed_dec, jd,
+                    estimated_q.quaternion);
+                
+                double d1 = expected_axis1 - m.mount_ha;
+                double d2 = expected_axis2 - m.mount_dec;
+                residual_sum_sq += d1*d1 + d2*d2;
+            }
+            double rms_error_deg = std::sqrt(residual_sum_sq / bootstrap_measurements_.size());
+            bootstrap_estimated_quaternion_error_arcsec_ = rms_error_deg * 3600.0;
+            
+            // Store RMS in the shared bootstrap fields for API compatibility
+            bootstrap_rms_ra_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
+            bootstrap_rms_dec_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
+            
+            // Apply estimated orientation to the mount
+            mount_orientation_ = estimated_q;
+            
+            // --- ALT_AZ caveat (plan §8.6) ---
+            // For ALT_AZ mounts, the encoder altitude offset is a translation on the
+            // celestial sphere (great-circle distance), not a pure 3D rotation about
+            // a fixed axis. Wahba/SVD finds the best rotation approximation, but the
+            // residual error will increase with the magnitude of the altitude offset.
+            // Empirical guidance:
+            //   - Offset < 5°   → post-calibration pointing error < 0.1°
+            //   - Offset 5-10°  → pointing error 0.1-1.0°
+            //   - Offset > 10°  → pointing error > 1.0° — consider TPOINT after bootstrap
+            if (config_.mount_type == MountType::ALT_AZ) {
+                MOUNT_LOG_INFO("ALT_AZ bootstrap: encoder altitude offset is a translation on the "
+                         "sphere, not a pure 3D rotation. Wahba/SVD finds the best rotation "
+                         "approximation. RMS error={:.2f}\". For offsets >10\u00b0 re-pointing "
+                         "error may exceed 1\u00b0. Consider TPoint after bootstrap for fine "
+                         "correction.", bootstrap_estimated_quaternion_error_arcsec_);
+            }
+            
+            std::string mount_type_str;
+            switch (config_.mount_type) {
+                case MountType::CASUAL:    mount_type_str = "CASUAL"; break;
+                case MountType::EQUATORIAL: mount_type_str = "EQUATORIAL"; break;
+                case MountType::ALT_AZ:    mount_type_str = "ALT_AZ"; break;
+                default:                   mount_type_str = "UNKNOWN"; break;
+            }
+            MOUNT_LOG_INFO("{} bootstrap calibration: Q=[{:.4f}, {:.4f}, {:.4f}, {:.4f}], "
+                     "RMS error={:.2f}\"",
+                     mount_type_str, qx, qy, qz, qw,
+                     bootstrap_estimated_quaternion_error_arcsec_);
+            
+            bootstrap_calibrated_ = true;
+            return true;
+            
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("Bootstrap calibration failed: {}", e.what());
+            return false;
         }
     }
     
     bool isBootstrapCalibrated() const {
         return bootstrap_calibrated_;
     }
-    
+
+    bool setBootstrapMode(BootstrapMode mode) {
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+        bootstrap_mode_ = mode;
+        MOUNT_LOG_INFO("Bootstrap mode set to {}", static_cast<int>(mode));
+        return true;
+    }
+
+    BootstrapMode getBootstrapMode() const {
+        std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+        return bootstrap_mode_;
+    }
+
     void clearBootstrapMeasurements() {
         bootstrap_measurements_.clear();
         bootstrap_calibrated_ = false;
@@ -4107,98 +4243,24 @@ public:
     // ============================================
     
     bool configureDerotator(const ::astro_mount::DerotatorConfig& config) {
-        derotator_config_ = config;
-        derotator_enabled_ = true;
-        
-        if (config.type() == ::astro_mount::DerotatorConfig::CANOPEN) {
-            if (!canopen_interface_) {
-                MOUNT_LOG_ERROR("CANopen interface not available for derotator");
-                return false;
-            }
-            
-            // Derotator uses axis_id = 2 (0=HA, 1=Dec, 2=Derotator)
-            const int DEROTATOR_AXIS_ID = 2;
-            
-            // Configure derotator drive
-            std::string config_str = "type=derotator";
-            config_str += ",gear_ratio=" + std::to_string(config.gear_ratio());
-            config_str += ",max_speed=" + std::to_string(config.max_speed());
-            config_str += ",max_acceleration=" + std::to_string(config.max_acceleration());
-            config_str += ",backlash=" + std::to_string(config.backlash());
-            
-            if (!canopen_interface_->configureDrive(DEROTATOR_AXIS_ID, config_str)) {
-                MOUNT_LOG_ERROR("Failed to configure derotator drive");
-                return false;
-            }
-            
-            // Set encoder configuration if absolute encoder is specified
-            if (config.absolute_encoder()) {
-                // Configure absolute encoder parameters via SDO writes
-                // Object dictionary entries for encoder configuration:
-                // 0x6005: Encoder resolution (subindex 1 = pulses per revolution)
-                uint32_t enc_resolution = static_cast<uint32_t>(config.encoder_resolution());
-                canopen_interface_->sendSDO(DEROTATOR_AXIS_ID, 0x6005, 1, &enc_resolution, sizeof(enc_resolution));
-                
-                // 0x6006: Encoder type (subindex 1 = absolute/incremental)
-                uint8_t enc_type = 1; // absolute
-                canopen_interface_->sendSDO(DEROTATOR_AXIS_ID, 0x6006, 1, &enc_type, sizeof(enc_type));
-                
-                MOUNT_LOG_INFO("Derotator configured with absolute encoder, resolution: {}", 
-                         config.encoder_resolution());
-            }
-            
-            derotator_homed_ = false;
-            derotator_current_angle_ = 0.0;
-            derotator_target_angle_ = 0.0;
-            derotator_current_rate_ = 0.0;
-            derotator_target_rate_ = 0.0;
-            derotator_moving_ = false;
-            
-            MOUNT_LOG_INFO("Derotator CANopen configuration successful (axis_id={})", DEROTATOR_AXIS_ID);
-            return true;
-        } 
-        else if (config.type() == ::astro_mount::DerotatorConfig::STEPPER ||
-                 config.type() == ::astro_mount::DerotatorConfig::SERVO ||
-                 config.type() == ::astro_mount::DerotatorConfig::CUSTOM) {
-            // For non-CANopen types, assume success
-            derotator_homed_ = false;
-            derotator_current_angle_ = 0.0;
-            derotator_target_angle_ = 0.0;
-            derotator_current_rate_ = 0.0;
-            derotator_target_rate_ = 0.0;
-            derotator_moving_ = false;
-            MOUNT_LOG_INFO("Derotator configured with type {}", 
-                     ::astro_mount::DerotatorConfig::DerotatorType_Name(config.type()));
-            return true;
-        }
-        
-        MOUNT_LOG_ERROR("Unsupported derotator type: {}", ::astro_mount::DerotatorConfig::DerotatorType_Name(config.type()));
-        return false;
+        return derotator_->configure(config);
     }
     
     bool enableFieldRotation(const ::astro_mount::FieldRotationParams& params) {
-        field_rotation_params_ = params;
-        field_rotation_enabled_ = params.enabled();
-        // Update field rotation rate based on mount type and position
-        if ((config_.mount_type == MountType::ALT_AZ || config_.mount_type == MountType::CASUAL) && field_rotation_enabled_) {
-            // Compute field rotation rate for Alt-Az and CASUAL mounts.
+        // Compute field rotation rate based on mount type and position.
+        // MountController retains this calculation because it depends on
+        // mount axis positions (axis1_position_, axis2_position_) which are
+        // owned by Impl. The result is pushed to DerotatorController via
+        // setFieldRotationRate(), which is then consumed by controlFieldRotation().
+        double rate_deg_s = 0.0;
+        if ((config_.mount_type == MountType::ALT_AZ || config_.mount_type == MountType::CASUAL) && params.enabled()) {
             // Formula: rate = -ω * cos(lat) / sin(alt)
             // where ω = sidereal rate, lat = latitude, alt = altitude.
             //
             // For ALT_AZ mounts, alt is the true altitude (axis2).
             // For CASUAL mounts, alt is the mount-frame altitude-like axis (axis1).
-            //
-            // Singularities:
-            //   sin(alt) → 0 when alt → 0° (horizon) or alt → 180° (nadir).
-            //   cos(lat) → 0 near the poles (lat ≈ ±90°), making the rate
-            //   approach zero there — which is physically correct, but the
-            //   intermediate value may overflow due to the sin(alt) division.
-            //   tan(lat) → ∞ at lat = ±90°, affecting parallactic angle
-            //   calculations that use latitude.
             
-            // NaN/Inf guard: latitude must be finite. If corrupted (e.g. config
-            // deserialization error), fall back to a safe mid-latitude default
-            // rather than propagating NaN through trig functions.
+            // NaN/Inf guard on latitude
             double lat_rad;
             if (std::isfinite(config_.latitude)) {
                 lat_rad = config_.latitude * M_PI / 180.0;
@@ -4208,19 +4270,16 @@ public:
                 lat_rad = 52.0 * M_PI / 180.0;
             }
             
-            // For CASUAL mounts, use the mount-frame altitude (axis1 position)
-            // instead of params.altitude(), since the mount orientation quaternion
-            // transforms true horizontal altitude to the mount-frame altitude-like axis.
+            // Get altitude from mount position (CASUAL uses axis1, ALT_AZ uses params)
             double altitude_deg;
             if (config_.mount_type == MountType::CASUAL) {
                 std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                altitude_deg = axis1_position_;  // axis1 is altitude-like in mount frame
+                altitude_deg = axis1_position_;
             } else {
                 altitude_deg = params.altitude();
             }
             
-            // NaN/Inf guard on altitude: non-finite altitude produces sin(alt) → NaN
-            // which bypasses the sin_alt clamp below (NaN < MIN_SIN_ALT is false).
+            // NaN/Inf guard on altitude
             if (!std::isfinite(altitude_deg)) {
                 MOUNT_LOG_WARN("enableFieldRotation: non-finite altitude {}, using 45° default",
                          altitude_deg);
@@ -4230,690 +4289,47 @@ public:
             double alt_rad = altitude_deg * M_PI / 180.0;
             double sin_alt = std::sin(alt_rad);
             
-            // Clamp sin(alt) away from zero to prevent division by zero / infinity.
-            // At alt < 1° the field rotation rate diverges (cos(lat)/sin(alt) → ∞),
-            // and field rotation compensation is physically meaningless near the
-            // horizon anyway (atmospheric dispersion dominates).
-            const double MIN_SIN_ALT = std::sin(1.0 * M_PI / 180.0); // ≈ 0.01745
+            // Clamp sin(alt) away from zero to prevent division by zero
+            const double MIN_SIN_ALT = std::sin(1.0 * M_PI / 180.0);
             if (std::abs(sin_alt) < MIN_SIN_ALT) {
                 sin_alt = std::copysign(MIN_SIN_ALT, sin_alt);
                 MOUNT_LOG_DEBUG("Field rotation alt clamp: altitude={:.2f}° clamped to sin(alt)={:.6f}",
                          altitude_deg, sin_alt);
             }
             
-            // Guard against extreme cos(lat) * sin(alt) product causing
-            // floating-point overflow even when each term is individually finite.
             double cos_lat = std::cos(lat_rad);
-            double sidereal_rate_rad = 2.0 * M_PI / 86164.0905; // rad/s
+            double sidereal_rate_rad = 2.0 * M_PI / 86164.0905;
             double field_rotation_rate = -sidereal_rate_rad * cos_lat / sin_alt;
             
-            // Clamp the final rate to a sane maximum (±20 deg/s is already
-            // far beyond any mechanical derotator's capability; 1000+ deg/s
-            // would indicate a singularity that wasn't fully caught above).
+            // Clamp final rate to ±20 deg/s
             const double MAX_RATE_DEG_S = 20.0;
-            field_rotation_rate_ = std::clamp(
+            rate_deg_s = std::clamp(
                 field_rotation_rate * 180.0 / M_PI,
                 -MAX_RATE_DEG_S, MAX_RATE_DEG_S);
             
             MOUNT_LOG_DEBUG("Field rotation rate computed: {:.4f} deg/s (lat={:.1f}°, alt={:.1f}°)",
-                     field_rotation_rate_, config_.latitude, altitude_deg);
-        } else {
-            field_rotation_rate_ = 0.0;
+                     rate_deg_s, config_.latitude, altitude_deg);
         }
-        return true;
+        
+        // Push computed rate to DerotatorController, then delegate enable/disable
+        derotator_->setFieldRotationRate(rate_deg_s);
+        return derotator_->enableFieldRotation(params);
     }
     
     bool controlFieldRotation(const ::astro_mount::FieldRotationControlRequest& request) {
-        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-        if (!derotator_enabled_) {
-            return false;
-        }
-        
-        switch (request.mode()) {
-            case ::astro_mount::FieldRotationControlRequest::DISABLED:
-                derotator_target_angle_ = derotator_current_angle_;
-                derotator_target_rate_ = 0.0;
-                break;
-                
-            case ::astro_mount::FieldRotationControlRequest::ALT_AZ:
-                if (field_rotation_enabled_) {
-                    // Follow computed field rotation rate
-                    derotator_target_rate_ = field_rotation_rate_;
-                }
-                break;
-                
-            case ::astro_mount::FieldRotationControlRequest::FIXED_ANGLE:
-                derotator_target_angle_ = request.target_angle();
-                derotator_target_rate_ = 0.0;
-                if (request.relative()) {
-                    derotator_target_angle_ += derotator_current_angle_;
-                }
-                break;
-                
-            case ::astro_mount::FieldRotationControlRequest::CUSTOM:
-                derotator_target_rate_ = request.rotation_rate();
-                break;
-                
-            case ::astro_mount::FieldRotationControlRequest::TRACKING:
-                // Track moving object rotation
-                if (state_ == MountStatus::State::TRACKING) {
-                    // Use computed field rotation rate for tracking
-                    derotator_target_rate_ = field_rotation_rate_;
-                    MOUNT_LOG_DEBUG("Using computed field rotation rate for tracking: {:.3f} deg/s", field_rotation_rate_);
-                } else {
-                    // Not in tracking state, no field rotation
-                    derotator_target_rate_ = 0.0;
-                }
-                break;
-                
-            case ::astro_mount::FieldRotationControlRequest::EQUATORIAL:
-                // No field rotation for equatorial mounts
-                derotator_target_rate_ = 0.0;
-                break;
-        }
-        
-        derotator_moving_ = true;
-        return true;
+        return derotator_->controlFieldRotation(request);
     }
     
     ::astro_mount::DerotatorStatus getDerotatorStatus() const {
-        ::astro_mount::DerotatorStatus status;
-        status.set_enabled(derotator_enabled_);
-        status.set_moving(derotator_moving_);
-        status.set_homed(derotator_homed_);
-        status.set_current_angle(derotator_current_angle_);
-        status.set_target_angle(derotator_target_angle_);
-        status.set_rotation_rate(derotator_current_rate_);
-        status.set_field_rotation_rate(field_rotation_rate_);
-        if (derotator_enabled_) {
-            status.mutable_derotator_config()->CopyFrom(derotator_config_);
-        }
-        *status.mutable_timestamp() = TimeUtil::GetCurrentTime();
-        return status;
+        return derotator_->getStatus();
     }
     
     bool homeDerotator(const ::astro_mount::DerotatorHomingRequest& request) {
-        if (!derotator_enabled_) {
-            return false;
-        }
-        
-        // Quick non-blocking check: reject immediately if homing is already
-        // in progress or the mount is moving, rather than blocking the caller
-        // on joinWorkThreadLocked() for potentially 10+ seconds.
-        {
-            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-            if (derotator_moving_) {
-                MOUNT_LOG_WARN("Derotator homing already in progress");
-                return false;
-            }
-            if (state_ == MountStatus::State::SLEWING ||
-                state_ == MountStatus::State::TRACKING ||
-                state_ == MountStatus::State::PARKING) {
-                MOUNT_LOG_WARN("Cannot home derotator while mount is moving");
-                return false;
-            }
-        }
-        
-        // Lock thread_mutex_ for the work thread join + create sequence
-        {
-            std::lock_guard<std::mutex> tlock(*thread_mutex_);
-            
-            // Join any previous work thread before launching new async homing.
-            // By this point we've already confirmed derotator_moving_ is false
-            // and the mount is stationary, so the join will be brief.
-            joinWorkThreadLocked();
-            
-            {
-                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                // Re-check state after join (race: another thread may have started a move)
-                if (derotator_moving_) {
-                    MOUNT_LOG_WARN("Derotator homing started between check and join");
-                    return false;
-                }
-                if (state_ == MountStatus::State::SLEWING ||
-                    state_ == MountStatus::State::TRACKING ||
-                    state_ == MountStatus::State::PARKING) {
-                    MOUNT_LOG_WARN("Cannot home derotator while mount is moving");
-                    return false;
-                }
-            }
-            
-            derotator_moving_ = true;
-            derotator_target_angle_ = request.offset();
-            
-            // Move derotator to home position asynchronously on work_thread_
-            work_thread_ = std::thread([this, offset = request.offset(), calibrate_after = request.calibrate_after()]() {
-            const double HOME_VELOCITY = 3.0;    // deg/s
-            const double HOME_ACCELERATION = 5.0; // deg/s²
-            
-            if (canopen_interface_) {
-                const int DEROTATOR_AXIS_ID = 2;
-                
-                // Enable drive for homing
-                canopen_interface_->enableDrive(DEROTATOR_AXIS_ID);
-                
-                // Execute homing move
-                bool homing_ok = canopen_interface_->setPositionTarget(
-                    DEROTATOR_AXIS_ID, offset, HOME_VELOCITY, HOME_ACCELERATION);
-                
-                if (!homing_ok) {
-                    MOUNT_LOG_ERROR("Failed to move derotator to home position via CANopen");
-                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                    derotator_moving_ = false;
-                    return;
-                }
-                
-                // Wait for movement to complete (non-blocking to caller)
-                const int POLL_MS = 50;
-                const double TOLERANCE = 0.1; // degrees
-                int timeout_ms = 10000; // 10 second timeout
-                int elapsed_ms = 0;
-                
-                while (elapsed_ms < timeout_ms) {
-                    // Allow cancellation
-                    {
-                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                        if (!derotator_moving_) return;
-                    }
-                    
-                    auto status = canopen_interface_->getDriveStatus(DEROTATOR_AXIS_ID);
-                    auto pos = canopen_interface_->getPositionData(DEROTATOR_AXIS_ID);
-                    
-                    if (status.target_reached &&
-                        std::abs(pos.actual_position - offset) < TOLERANCE) {
-                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                        derotator_current_angle_ = pos.actual_position;
-                        break;
-                    }
-                    
-                    std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
-                    elapsed_ms += POLL_MS;
-                }
-                
-                if (elapsed_ms >= timeout_ms) {
-                    MOUNT_LOG_WARN("Derotator homing timed out");
-                }
-                
-            } else {
-                // Without CANopen, simulate homing
-                // Simulate by polling for cancellation, then setting position
-                const int POLL_MS = 100;
-                int elapsed_ms = 0;
-                const int SIM_TIMEOUT_MS = 2000;
-                
-                while (elapsed_ms < SIM_TIMEOUT_MS) {
-                    {
-                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                        if (!derotator_moving_) return;
-                    }
-                    std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
-                    elapsed_ms += POLL_MS;
-                }
-                
-                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                derotator_current_angle_ = offset;
-            }
-            
-            {
-                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                derotator_moving_ = false;
-                derotator_homed_ = true;
-            }
-            
-            MOUNT_LOG_INFO("Derotator homed to {:.1f}°", derotator_current_angle_);
-            
-            if (calibrate_after) {
-                if (!runDerotatorCalibration()) {
-                    MOUNT_LOG_WARN("Derotator calibration failed after homing");
-                } else {
-                    MOUNT_LOG_INFO("Derotator calibration completed successfully");
-                }
-            }
-        });
-        }  // end thread_mutex_ scope
-        
-        return true;
-    }
-
-    bool runDerotatorCalibration() {
-        if (!derotator_enabled_ || !derotator_homed_) {
-            MOUNT_LOG_ERROR("Derotator not enabled or not homed for calibration");
-            return false;
-        }
-
-        MOUNT_LOG_INFO("Starting derotator calibration...");
-
-        if (derotator_config_.type() == ::astro_mount::DerotatorConfig::CANOPEN) {
-            return runCANopenDerotatorCalibration();
-        } else {
-            // For non-CANopen derotators, perform basic calibration
-            return runBasicDerotatorCalibration();
-        }
-    }
-
-    bool runCANopenDerotatorCalibration() {
-        const int DEROTATOR_AXIS_ID = 2;
-        
-        if (!canopen_interface_) {
-            MOUNT_LOG_ERROR("CANopen interface not available for derotator calibration");
-            return false;
-        }
-
-        try {
-            // Enable drive for calibration
-            if (!canopen_interface_->enableDrive(DEROTATOR_AXIS_ID)) {
-                MOUNT_LOG_ERROR("Failed to enable derotator drive for calibration");
-                return false;
-            }
-
-            // Clear any existing errors
-            canopen_interface_->clearErrors(DEROTATOR_AXIS_ID);
-
-            // Check drive status
-            auto status = canopen_interface_->getDriveStatus(DEROTATOR_AXIS_ID);
-            if (!status.operational) {
-                MOUNT_LOG_ERROR("Derotator drive not operational for calibration");
-                return false;
-            }
-
-            // Calibration steps for CANopen derotator:
-            // 1. Backlash measurement
-            // 2. Encoder calibration (if absolute)
-            // 3. Stiffness/backlash compensation table generation
-
-            MOUNT_LOG_INFO("Step 1: Backlash measurement");
-            double backlash_measured = measureBacklash(DEROTATOR_AXIS_ID);
-            MOUNT_LOG_INFO("Measured backlash: {:.3f} degrees", backlash_measured);
-
-            // Update derotator config with measured backlash
-            derotator_config_.set_backlash(backlash_measured);
-
-            MOUNT_LOG_INFO("Step 2: Encoder calibration");
-            if (derotator_config_.absolute_encoder()) {
-                if (!calibrateAbsoluteEncoder(DEROTATOR_AXIS_ID)) {
-                    MOUNT_LOG_WARN("Absolute encoder calibration failed");
-                }
-            }
-
-            MOUNT_LOG_INFO("Step 3: Generating calibration table");
-            std::vector<double> calibration_table;
-            if (generateCalibrationTable(DEROTATOR_AXIS_ID, calibration_table)) {
-                // Clear existing calibration table
-                derotator_config_.clear_calibration_table();
-                // Add new calibration points
-                for (double value : calibration_table) {
-                    derotator_config_.add_calibration_table(value);
-                }
-                MOUNT_LOG_INFO("Calibration table generated with {} points", calibration_table.size());
-            }
-
-            MOUNT_LOG_INFO("CANopen derotator calibration completed successfully");
-            return true;
-
-        } catch (const std::exception& e) {
-            MOUNT_LOG_ERROR("Exception during CANopen derotator calibration: {}", e.what());
-            return false;
-        }
-    }
-
-    /// Helper: poll for target reached via HAL or CANopen with a timeout.
-    /// Returns the settled position (HAL or CANopen), or target on timeout.
-    /// This replaces fragile sleep_for() waits with proper polling.
-    double waitForSettle(int axis_id, double target, double tolerance, int timeout_ms) {
-        const int POLL_MS = 50;
-        int elapsed_ms = 0;
-        while (elapsed_ms < timeout_ms) {
-            // HAL path: poll derotator motor targetReached + encoder readback
-            if (hal_derotator_motor_ && hal_derotator_encoder_) {
-                try {
-                    if (hal_derotator_motor_->targetReached()) {
-                        auto reading = hal_derotator_encoder_->read();
-                        if (reading.data_valid &&
-                            std::abs(reading.position_deg - target) < tolerance) {
-                            return reading.position_deg;
-                        }
-                    }
-                } catch (const std::exception& e) {
-                    MOUNT_LOG_DEBUG("HAL settle poll exception: {}", e.what());
-                }
-            }
-            // CANopen path: poll drive status + position data
-            if (canopen_interface_) {
-                try {
-                    auto status = canopen_interface_->getDriveStatus(axis_id);
-                    auto pos = canopen_interface_->getPositionData(axis_id);
-                    if (status.target_reached &&
-                        std::abs(pos.actual_position - target) < tolerance) {
-                        return pos.actual_position;
-                    }
-                } catch (const std::exception& e) {
-                    MOUNT_LOG_DEBUG("CANopen settle poll exception: {}", e.what());
-                }
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
-            elapsed_ms += POLL_MS;
-        }
-        MOUNT_LOG_WARN("waitForSettle timed out (axis={}, target={:.1f}°, timeout={}ms)",
-                  axis_id, target, timeout_ms);
-        return target; // return target as best estimate on timeout
-    }
-
-    bool runBasicDerotatorCalibration() {
-        MOUNT_LOG_INFO("Running basic derotator calibration for non-CANopen type");
-
-        // Perform actual motion-based calibration:
-        // Move derotator to 5 reference positions and measure actual position
-        // via HAL or CANopen, computing position-dependent errors.
-        const double CAL_ANGLES[] = {0.0, 90.0, 180.0, 270.0, 360.0};
-        const double VEL = 5.0;   // deg/s
-        const double ACC = 10.0;  // deg/s²
-        const double TOL = 0.1;   // degrees
-        const int SETTLE_TIMEOUT = 5000; // 5s per point
-
-        std::vector<double> calibration_table;
-
-        // First move to home (0°) position
-        if (hal_derotator_motor_) {
-            hal_derotator_motor_->setPosition(CAL_ANGLES[0], VEL, ACC);
-        } else if (canopen_interface_) {
-            canopen_interface_->setPositionTarget(2, CAL_ANGLES[0], VEL, ACC);
-        }
-
-        for (int i = 0; i < 5; i++) {
-            double target = CAL_ANGLES[i];
-
-            // Move to calibration position
-            bool move_ok = false;
-            if (hal_derotator_motor_) {
-                move_ok = hal_derotator_motor_->setPosition(target, VEL, ACC);
-            } else if (canopen_interface_) {
-                move_ok = canopen_interface_->setPositionTarget(2, target, VEL, ACC);
-            } else {
-                // No hardware — fall back to simulation
-                std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                calibration_table.push_back(target);
-                calibration_table.push_back(0.0);
-                continue;
-            }
-
-            if (!move_ok) {
-                MOUNT_LOG_WARN("Failed to move derotator to calibration position {:.1f}°", target);
-                calibration_table.push_back(target);
-                calibration_table.push_back(0.0);
-                continue;
-            }
-
-            // Poll for target reached with timeout (replaces fragile sleep_for)
-            double actual = waitForSettle(2, target, TOL, SETTLE_TIMEOUT);
-
-            double error = actual - target;
-            calibration_table.push_back(target);
-            calibration_table.push_back(error);
-
-            MOUNT_LOG_DEBUG("Basic calibration point {:.1f}°: actual={:.3f}°, error={:.3f}°",
-                      target, actual, error);
-        }
-
-        // Store calibration table
-        derotator_config_.clear_calibration_table();
-        for (double value : calibration_table) {
-            derotator_config_.add_calibration_table(value);
-        }
-
-        MOUNT_LOG_INFO("Basic derotator calibration completed with {} points",
-                  calibration_table.size() / 2);
-        return true;
-    }
-
-    double measureBacklash(int axis_id) {
-        // Backlash measurement procedure with polling-based position settling:
-        // 1. Record starting position (via HAL encoder or CANopen)
-        // 2. Move in positive direction by TEST_ANGLE
-        // 3. Wait for target reached via polling (replaces fragile sleep_for)
-        // 4. Record position after positive move
-        // 5. Move negative back to start
-        // 6. Wait for target reached via polling
-        // 7. Record position after negative move
-        // 8. Backlash = |end_position - start_position|
-
-        const double TEST_ANGLE = 10.0; // degrees
-        const double TEST_VELOCITY = 5.0; // deg/s
-        const double TEST_ACCELERATION = 10.0; // deg/s²
-        const double TOLERANCE = 0.1;    // degrees
-        const int SETTLE_TIMEOUT = 5000; // 5s per move
-
-        try {
-            // --- Step 1: Get current (start) position ---
-            double start_pos = 0.0;
-            bool have_start = false;
-            if (hal_derotator_encoder_) {
-                auto reading = hal_derotator_encoder_->read();
-                if (reading.data_valid) {
-                    start_pos = reading.position_deg;
-                    have_start = true;
-                }
-            }
-            if (!have_start && canopen_interface_) {
-                start_pos = canopen_interface_->getPositionData(axis_id).actual_position;
-                have_start = true;
-            }
-            if (!have_start) {
-                MOUNT_LOG_WARN("Cannot get starting position for backlash measurement");
-                return derotator_config_.backlash();
-            }
-
-            // --- Step 2: Move positive ---
-            bool move_ok = false;
-            if (hal_derotator_motor_) {
-                move_ok = hal_derotator_motor_->setPosition(start_pos + TEST_ANGLE,
-                                                            TEST_VELOCITY, TEST_ACCELERATION);
-            } else if (canopen_interface_) {
-                move_ok = canopen_interface_->setPositionTarget(axis_id,
-                                                                start_pos + TEST_ANGLE,
-                                                                TEST_VELOCITY, TEST_ACCELERATION);
-            }
-            if (!move_ok) {
-                MOUNT_LOG_ERROR("Failed to move positive for backlash measurement");
-                return derotator_config_.backlash();
-            }
-
-            // --- Step 3: Wait for settle (replaces sleep_for(500ms)) ---
-            double pos_positive = waitForSettle(axis_id, start_pos + TEST_ANGLE,
-                                                TOLERANCE, SETTLE_TIMEOUT);
-
-            // --- Step 4: Move negative back to start ---
-            if (hal_derotator_motor_) {
-                move_ok = hal_derotator_motor_->setPosition(start_pos,
-                                                            TEST_VELOCITY, TEST_ACCELERATION);
-            } else if (canopen_interface_) {
-                move_ok = canopen_interface_->setPositionTarget(axis_id, start_pos,
-                                                                TEST_VELOCITY, TEST_ACCELERATION);
-            }
-            if (!move_ok) {
-                MOUNT_LOG_ERROR("Failed to move negative for backlash measurement");
-                return derotator_config_.backlash();
-            }
-
-            // --- Step 5: Wait for settle ---
-            double pos_negative = waitForSettle(axis_id, start_pos,
-                                                TOLERANCE, SETTLE_TIMEOUT);
-
-            // --- Step 6: Calculate backlash ---
-            double backlash = std::abs(pos_negative - start_pos);
-
-            MOUNT_LOG_DEBUG("Backlash measurement: start={:.3f}, after_positive={:.3f}, "
-                      "after_negative={:.3f}, backlash={:.3f}",
-                      start_pos, pos_positive, pos_negative, backlash);
-
-            return std::max(backlash, 0.001); // Minimum 0.001 degrees
-
-        } catch (const std::exception& e) {
-            MOUNT_LOG_ERROR("Exception during backlash measurement: {}", e.what());
-            return derotator_config_.backlash();
-        }
-    }
-
-    bool calibrateAbsoluteEncoder(int axis_id) {
-        // Verify encoder readings match commanded positions at multiple calibration
-        // points. Uses polling-based settling (replaces fragile sleep_for) and
-        // supports both HAL and CANopen encoder readback.
-        MOUNT_LOG_INFO("Calibrating absolute encoder for derotator");
-
-        const int CALIBRATION_POINTS = 4;
-        const double CALIBRATION_ANGLES[] = {0.0, 90.0, 180.0, 270.0};
-        const double TOLERANCE = 0.1; // degrees
-        const double VEL = 5.0;
-        const double ACC = 10.0;
-        const int SETTLE_TIMEOUT = 5000; // 5s per point
-
-        int points_ok = 0;
-
-        try {
-            for (int i = 0; i < CALIBRATION_POINTS; i++) {
-                double target_angle = CALIBRATION_ANGLES[i];
-
-                // --- Move to calibration position ---
-                bool move_ok = false;
-                if (hal_derotator_motor_) {
-                    move_ok = hal_derotator_motor_->setPosition(target_angle, VEL, ACC);
-                } else if (canopen_interface_) {
-                    move_ok = canopen_interface_->setPositionTarget(axis_id, target_angle, VEL, ACC);
-                }
-                if (!move_ok) {
-                    MOUNT_LOG_WARN("Failed to move to calibration position {:.1f}°", target_angle);
-                    continue;
-                }
-
-                // --- Wait for movement via polling (replaces sleep_for(300ms)) ---
-                waitForSettle(axis_id, target_angle, TOLERANCE, SETTLE_TIMEOUT);
-
-                // --- Get encoder reading ---
-                double encoder_angle = 0.0;
-                bool have_encoder = false;
-                if (hal_derotator_encoder_) {
-                    auto reading = hal_derotator_encoder_->read();
-                    if (reading.data_valid) {
-                        encoder_angle = reading.position_deg;
-                        have_encoder = true;
-                    }
-                }
-                if (!have_encoder && canopen_interface_) {
-                    auto encoder_data = canopen_interface_->getEncoderData(axis_id);
-                    double resolution = derotator_config_.encoder_resolution();
-                    if (resolution > 0.0) {
-                        encoder_angle = encoder_data.raw_position / resolution * 360.0;
-                        have_encoder = true;
-                    }
-                }
-
-                // --- Get drive position ---
-                double drive_angle = 0.0;
-                bool have_drive = false;
-                if (canopen_interface_) {
-                    auto position_data = canopen_interface_->getPositionData(axis_id);
-                    drive_angle = position_data.actual_position;
-                    have_drive = true;
-                } else if (hal_derotator_encoder_) {
-                    // Without CANopen, use encoder as drive position proxy
-                    drive_angle = encoder_angle;
-                    have_drive = true;
-                }
-
-                if (!have_encoder || !have_drive) {
-                    MOUNT_LOG_WARN("Cannot read encoder or drive at {:.1f}°", target_angle);
-                    continue;
-                }
-
-                // --- Check consistency ---
-                double error = std::abs(encoder_angle - drive_angle);
-                if (error > TOLERANCE) {
-                    MOUNT_LOG_WARN("Encoder-drive mismatch at {:.1f}°: encoder={:.3f}°, "
-                              "drive={:.3f}°, error={:.3f}°",
-                              target_angle, encoder_angle, drive_angle, error);
-                } else {
-                    MOUNT_LOG_DEBUG("Encoder calibration point {:.1f}° OK: encoder={:.3f}°, "
-                              "drive={:.3f}°", target_angle, encoder_angle, drive_angle);
-                }
-                points_ok++;
-            }
-
-            MOUNT_LOG_INFO("Absolute encoder calibration completed ({} of {} points OK)",
-                      points_ok, CALIBRATION_POINTS);
-            return points_ok > 0;
-
-        } catch (const std::exception& e) {
-            MOUNT_LOG_ERROR("Exception during absolute encoder calibration: {}", e.what());
-            return false;
-        }
-    }
-
-    bool generateCalibrationTable(int axis_id, std::vector<double>& table) {
-        // Generate calibration table with position-error pairs by moving to
-        // reference points and measuring actual position. Uses polling-based
-        // settling (replaces fragile sleep_for) and supports both HAL and
-        // CANopen motor control + position readback.
-
-        const int TABLE_POINTS = 8; // 0°, 45°, 90°, ..., 315°
-        const double VEL = 5.0;
-        const double ACC = 10.0;
-        const double TOL = 0.1;         // degrees
-        const int SETTLE_TIMEOUT = 5000; // 5s per point
-
-        table.clear();
-
-        try {
-            // --- Home to 0° ---
-            if (hal_derotator_motor_) {
-                hal_derotator_motor_->setPosition(0.0, VEL, ACC);
-            } else if (canopen_interface_) {
-                canopen_interface_->setPositionTarget(axis_id, 0.0, VEL, ACC);
-            }
-            waitForSettle(axis_id, 0.0, TOL, SETTLE_TIMEOUT);
-
-            for (int i = 0; i < TABLE_POINTS; i++) {
-                double target_angle = i * 45.0; // 0°, 45°, 90°, ..., 315°
-
-                // --- Move to target ---
-                bool move_ok = false;
-                if (hal_derotator_motor_) {
-                    move_ok = hal_derotator_motor_->setPosition(target_angle, VEL, ACC);
-                } else if (canopen_interface_) {
-                    move_ok = canopen_interface_->setPositionTarget(axis_id, target_angle, VEL, ACC);
-                }
-                if (!move_ok) {
-                    MOUNT_LOG_WARN("Failed to move to calibration point {:.1f}°", target_angle);
-                    table.push_back(target_angle);
-                    table.push_back(0.0);
-                    continue;
-                }
-
-                // --- Poll for settle (replaces sleep_for(300ms)) ---
-                double actual_angle = waitForSettle(axis_id, target_angle, TOL, SETTLE_TIMEOUT);
-
-                // --- Calculate error ---
-                double error = actual_angle - target_angle;
-
-                // Add to table: position, error
-                table.push_back(target_angle);
-                table.push_back(error);
-
-                MOUNT_LOG_DEBUG("Calibration point {:.1f}°: actual={:.3f}°, error={:.3f}°",
-                          target_angle, actual_angle, error);
-            }
-
-            MOUNT_LOG_INFO("Generated calibration table with {} points ({} entries)",
-                      TABLE_POINTS, table.size());
-            return true;
-
-        } catch (const std::exception& e) {
-            MOUNT_LOG_ERROR("Exception generating calibration table: {}", e.what());
-            table.clear();
-            return false;
-        }
+        return derotator_->home(request);
     }
     
     ::astro_mount::FieldRotationParams getFieldRotationParams() const {
-        return field_rotation_params_;
+        return derotator_->getFieldRotationParams();
     }
     
     ICanOpenInterface* getCanOpenInterfacePtr() {
@@ -5106,14 +4522,17 @@ public:
         
         // Shutdown current HAL and re-initialize with new config
         // First disable and reset component instances
-        if (hal_derotator_motor_) hal_derotator_motor_->disable();
         if (hal_axis1_motor_) hal_axis1_motor_->disable();
         if (hal_axis2_motor_) hal_axis2_motor_->disable();
         
         hal_sensor_interface_.reset();
         hal_safety_monitor_.reset();
-        hal_derotator_encoder_.reset();
-        hal_derotator_motor_.reset();
+        // DerotatorController manages its own HAL components; reset it so it gets
+        // recreated with new HAL components after the HAL re-initialization.
+        if (derotator_) {
+            derotator_->shutdown();
+        }
+        derotator_.reset();
         hal_axis1_encoder_.reset();
         hal_axis2_encoder_.reset();
         hal_axis1_motor_.reset();
@@ -5136,16 +4555,17 @@ public:
         hal_axis2_encoder_ = hal_interface_->createEncoderReader(1);
         hal_safety_monitor_ = hal_interface_->createSafetyMonitor();
         hal_sensor_interface_ = hal_interface_->createSensorInterface();
-        hal_derotator_motor_ = hal_interface_->createDerotatorMotor();
-        hal_derotator_encoder_ = hal_interface_->createDerotatorEncoder();
         
         // Re-enable motors
         if (hal_axis1_motor_) hal_axis1_motor_->enable();
         if (hal_axis2_motor_) hal_axis2_motor_->enable();
-        if (hal_derotator_motor_) hal_derotator_motor_->enable();
         
         if (hal_interface_->start()) {
             hal_config_ = new_config;
+            // Recreate DerotatorController with new HAL components
+            if (!recreateDerotator()) {
+                MOUNT_LOG_WARN("setHALConfig: failed to recreate DerotatorController, continuing without derotator");
+            }
             return true;
         }
         
@@ -5233,14 +4653,17 @@ public:
         }
         
         // Shut down current HAL
-        if (hal_derotator_motor_) hal_derotator_motor_->disable();
         if (hal_axis1_motor_) hal_axis1_motor_->disable();
         if (hal_axis2_motor_) hal_axis2_motor_->disable();
         
         hal_sensor_interface_.reset();
         hal_safety_monitor_.reset();
-        hal_derotator_encoder_.reset();
-        hal_derotator_motor_.reset();
+        // DerotatorController manages its own HAL components; reset it so it gets
+        // recreated with new HAL components after re-initialization.
+        if (derotator_) {
+            derotator_->shutdown();
+        }
+        derotator_.reset();
         hal_axis1_encoder_.reset();
         hal_axis2_encoder_.reset();
         hal_axis1_motor_.reset();
@@ -5261,13 +4684,10 @@ public:
         hal_axis2_encoder_ = hal_interface_->createEncoderReader(1);
         hal_safety_monitor_ = hal_interface_->createSafetyMonitor();
         hal_sensor_interface_ = hal_interface_->createSensorInterface();
-        hal_derotator_motor_ = hal_interface_->createDerotatorMotor();
-        hal_derotator_encoder_ = hal_interface_->createDerotatorEncoder();
         
         // Re-enable motors
         if (hal_axis1_motor_) hal_axis1_motor_->enable();
         if (hal_axis2_motor_) hal_axis2_motor_->enable();
-        if (hal_derotator_motor_) hal_derotator_motor_->enable();
         
         if (request.force_restart()) {
             if (!hal_interface_->start()) {
@@ -5277,6 +4697,11 @@ public:
             if (!hal_interface_->start()) {
                 return false;
             }
+        }
+        
+        // Recreate DerotatorController with new HAL components
+        if (!recreateDerotator()) {
+            MOUNT_LOG_WARN("reinitializeHAL: failed to recreate DerotatorController, continuing without derotator");
         }
         
         return true;
@@ -5572,6 +4997,7 @@ private:
     bool guider_active_;
     bool tpoint_calibrated_;
     bool bootstrap_calibrated_;
+    BootstrapMode bootstrap_mode_{BootstrapMode::BOOTSTRAP_MANUAL};
 
     // Guider delta corrections — stored as POSITION OFFSETS in degrees.
     // Written by applyGuiderCorrection() under rate_mutex_ as arcsec→deg
@@ -5625,19 +5051,6 @@ private:
     
     double tracking_error_ra_;
     double tracking_error_dec_;
-    
-    // Derotator and field rotation members
-    ::astro_mount::DerotatorConfig derotator_config_;
-    ::astro_mount::FieldRotationParams field_rotation_params_;
-    bool derotator_enabled_;
-    bool derotator_homed_;
-    bool derotator_moving_;
-    double derotator_current_angle_;
-    double derotator_target_angle_;
-    double derotator_current_rate_;
-    double derotator_target_rate_;
-    bool field_rotation_enabled_;
-    double field_rotation_rate_;
     
     std::atomic<bool> tracking_active_{false};
     
@@ -5694,10 +5107,8 @@ private:
     std::unique_ptr<hal::SafetyMonitor> hal_safety_monitor_;
     std::unique_ptr<hal::SensorInterface> hal_sensor_interface_;
     
-    // HAL derotator components (axis_id = 2)
-    // Created via dedicated factory methods on HALInterface.
-    std::unique_ptr<hal::MotorControl> hal_derotator_motor_;
-    std::unique_ptr<hal::EncoderReader> hal_derotator_encoder_;
+    // DerotatorController instance (internal module with own mutex and thread)
+    std::unique_ptr<DerotatorController> derotator_;
     
     // Encoder type storage
     bool encoder_absolute_;
@@ -5846,6 +5257,14 @@ double MountController::getBootstrapRaCorrectionArcsec() const {
 
 double MountController::getBootstrapDecCorrectionArcsec() const {
     return pimpl->getBootstrapDecCorrectionArcsec();
+}
+
+bool MountController::setBootstrapMode(BootstrapMode mode) {
+    return pimpl->setBootstrapMode(mode);
+}
+
+MountController::BootstrapMode MountController::getBootstrapMode() const {
+    return pimpl->getBootstrapMode();
 }
 
 // Metrics and counters accessors
