@@ -168,12 +168,109 @@
     "flexure_correction": 0.0
   },
   "hal": {
-    "interface_type": "CANopen",
-    "can_interface": "can0",
-    "can_node_id": 1,
-    "can_baud_rate": 1000000,
-    "heartbeat_interval_ms": 1000,
-    "pdo_mapping_mode": "default",
+    "type": "canopen",
+    "canopen": {
+      "library": "canopensocket",
+      "interface_name": "can0",
+      "bitrate": 1000000,
+      "node_id": 1,
+      "use_sync": true,
+      "sync_period_ms": 100,
+      "sdo_timeout_ms": 1000,
+      "pdo_update_rate": 100,
+      "nmt": {
+        "enable_nmt": true,
+        "heartbeat_period_ms": 100,
+        "heartbeat_timeout_ms": 500,
+        "max_missed_heartbeats": 3,
+        "enable_bootup_check": true,
+        "bootup_timeout_ms": 5000,
+        "enable_auto_recovery": true,
+        "recovery_interval_s": 5,
+        "enable_node_guarding": false,
+        "node_guarding_period_ms": 1000
+      }
+    },
+    "axes": [
+      {
+        "id": 0,
+        "name": "HA_Axis",
+        "can_node_id": 1,
+        "motor_config": {
+          "type": "CANOPEN_SERVO",
+          "default_mode": "POSITION",
+          "max_velocity": 5.0,
+          "max_acceleration": 1.0,
+          "max_torque": 100.0,
+          "encoder_counts_per_degree": 10000.0,
+          "gear_ratio": 360.0,
+          "enable_current_limit": true,
+          "current_limit": 5.0,
+          "enable_temperature_protection": true,
+          "max_temperature": 80.0
+        },
+        "encoder_config": {
+          "type": "ABSOLUTE",
+          "interface": "CANOPEN",
+          "resolution": 16384,
+          "counts_per_degree": 10000.0,
+          "use_index_pulse": true,
+          "use_direction_signal": true,
+          "max_velocity": 1000.0,
+          "update_rate_hz": 100,
+          "enable_error_detection": true,
+          "error_threshold": 10,
+          "calibration_offset": 0.0
+        },
+        "safety_limits": {
+          "min_position": -270.0,
+          "max_position": 270.0,
+          "max_velocity": 5.0,
+          "max_acceleration": 2.0,
+          "max_current": 10.0,
+          "max_temperature": 80.0
+        }
+      },
+      {
+        "id": 1,
+        "name": "Dec_Axis",
+        "can_node_id": 2,
+        "motor_config": {
+          "type": "CANOPEN_SERVO",
+          "default_mode": "POSITION",
+          "max_velocity": 5.0,
+          "max_acceleration": 1.0,
+          "max_torque": 100.0,
+          "encoder_counts_per_degree": 10000.0,
+          "gear_ratio": 360.0,
+          "enable_current_limit": true,
+          "current_limit": 5.0,
+          "enable_temperature_protection": true,
+          "max_temperature": 80.0
+        },
+        "encoder_config": {
+          "type": "ABSOLUTE",
+          "interface": "CANOPEN",
+          "resolution": 16384,
+          "counts_per_degree": 10000.0,
+          "use_index_pulse": true,
+          "use_direction_signal": true,
+          "max_velocity": 1000.0,
+          "update_rate_hz": 100,
+          "enable_error_detection": true,
+          "error_threshold": 10,
+          "calibration_offset": 0.0
+        },
+        "safety_limits": {
+          "min_position": -5.0,
+          "max_position": 185.0,
+          "max_velocity": 5.0,
+          "max_acceleration": 2.0,
+          "max_current": 10.0,
+          "max_temperature": 80.0
+        }
+      }
+    ],
     "gamepad": {
       "device_path": "",
       "deadzone": 0.15,

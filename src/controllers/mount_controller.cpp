@@ -336,9 +336,13 @@ public:
         // Initialize CANopen interface using factory
         ICanOpenInterface::Config canopen_config;
         if (!config_.canopen_interface.empty()) {
-            // Create interface based on configuration
-            canopen_config.library = config_.canopen_interface;
-            canopen_config.interface_name = "can0"; // default
+            // Create real CANopen interface
+#ifdef HAVE_CANOPEN
+            canopen_config.library = "canopensocket";
+#else
+            canopen_config.library = "mock";
+#endif
+            canopen_config.interface_name = config_.canopen_interface; // "can0" from config
             canopen_config.bitrate = 1000000; // 1 Mbps
             canopen_config.node_id = config_.canopen_node_id;
             canopen_config.use_sync = true;
@@ -586,6 +590,12 @@ public:
         // The work thread never touches thread_mutex_, so no deadlock risk.
         {
             std::lock_guard<std::mutex> tlock(*thread_mutex_);
+            
+            // Signal any running work thread (e.g. tracking loop) to stop before joining.
+            // If a tracking loop is running (tracking_active_ = true), joinWorkThreadLocked()
+            // would block forever because the tracking loop only exits when tracking_active_
+            // becomes false. Setting it here ensures the work thread terminates promptly.
+            tracking_active_ = false;
             
             // Join any previous work thread (thread_mutex_ held, state_mutex_ NOT held)
             joinWorkThreadLocked();
@@ -877,7 +887,13 @@ public:
         {
             std::lock_guard<std::mutex> tlock(*thread_mutex_);
             
-            // Join any previous work thread
+            // Signal any running work thread (e.g. tracking loop) to stop before joining.
+            // If a tracking loop is running (tracking_active_ = true), joinWorkThreadLocked()
+            // would block forever because the tracking loop only exits when tracking_active_
+            // becomes false. Setting it here ensures the work thread terminates promptly.
+            tracking_active_ = false;
+            
+            // Join any previous work thread (thread_mutex_ held, state_mutex_ NOT held)
             joinWorkThreadLocked();
             
             {
@@ -2448,6 +2464,10 @@ public:
         // with a running work thread that may hold state_mutex_.
         {
             std::lock_guard<std::mutex> tlock(*thread_mutex_);
+            
+            // Signal any running work thread (e.g. tracking loop) to stop before joining.
+            // See slewToEquatorial() for detailed explanation.
+            tracking_active_ = false;
             
             // Join any previous work thread first
             joinWorkThreadLocked();

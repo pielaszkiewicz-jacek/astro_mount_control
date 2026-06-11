@@ -80,7 +80,10 @@ typedef struct {
 #define OD_INDEX_MODES_OF_OP             0x6060
 #define OD_INDEX_MODES_OF_OP_DISPLAY     0x6061
 #define OD_INDEX_TARGET_POSITION         0x607A
+/* 0x6042 is vl_target_velocity for Velocity mode (mode 2) */
 #define OD_INDEX_TARGET_VELOCITY         0x6042
+/* 0x60FF is target_velocity for Profile Velocity mode (mode 3) */
+#define OD_INDEX_TARGET_VELOCITY_PROFILE 0x60FF
 #define OD_INDEX_PROFILE_VELOCITY        0x6081
 #define OD_INDEX_PROFILE_ACCEL           0x6083
 #define OD_INDEX_PROFILE_DECEL           0x6084
