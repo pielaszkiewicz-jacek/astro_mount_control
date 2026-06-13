@@ -345,6 +345,8 @@ const MountControlComponent = (() => {
     const speedSlider = $('#axis-speed');
     if (speedSlider) {
       speedSlider.addEventListener('input', updateSpeedLabel);
+      // Sync slider max with the backend max_slew_rate config
+      syncSpeedSliderMax(speedSlider);
     }
 
     const estopBtn = $('#btn-emergency-stop');
@@ -386,6 +388,28 @@ const MountControlComponent = (() => {
       stopAxisMovement(axisId);
     }, { passive: false });
     btn.addEventListener('touchcancel', () => stopAxisMovement(axisId));
+  }
+
+  /**
+   * Fetch max_slew_rate from backend config and update the speed slider's max.
+   * If the current slider value exceeds the new max, clamp it.
+   * @param {HTMLInputElement} slider - The speed range input
+   */
+  async function syncSpeedSliderMax(slider) {
+    try {
+      const config = await Api.getConfig();
+      const maxSpeed = config.max_slew_rate;
+      if (maxSpeed && typeof maxSpeed === 'number' && maxSpeed > 0) {
+        slider.max = maxSpeed;
+        if (parseFloat(slider.value) > maxSpeed) {
+          slider.value = maxSpeed;
+        }
+        updateSpeedLabel();
+        console.log('[AxisCtrl] Speed slider max synced to config.max_slew_rate = %f', maxSpeed);
+      }
+    } catch (err) {
+      console.warn('[AxisCtrl] Could not sync speed slider max: %s', err.message);
+    }
   }
 
   /**
@@ -645,31 +669,22 @@ const MountControlComponent = (() => {
       await performCalibratedNudge(axisId, direction, stepSize);
       App.showToast(`Step ${stepSize.toFixed(1)}° on axis ${axisId}`, 'success', 1500);
     } else {
-      // Uncalibrated: send ControlAxis, then StopAxis after duration = stepSize / speed
-      const velocity = direction * speed;
-      const durationMs = Math.max(100, (stepSize / Math.max(speed, 0.01)) * 1000);
-      console.log('[AxisCtrl] performStepMove uncalibrated: velocity=%f, durationMs=%d', velocity, durationMs);
+      // Uncalibrated: use POSITION_CONTROL with relative offset.
+      // The drive handles the CiA 402 profile position move — acceleration,
+      // deceleration, and automatic stop at the target.  No timer needed.
+      const offset = direction * stepSize;
+      console.log('[AxisCtrl] performStepMove uncalibrated: offset=%f°', offset);
 
       try {
-        await Api.moveAxis(axisId, velocity);
-        console.log('[AxisCtrl] performStepMove: moveAxis SUCCESS');
+        await Api.moveAxisRelative(axisId, offset);
+        console.log('[AxisCtrl] performStepMove: POSITION_CONTROL SUCCESS');
+        App.showToast(`Step ${stepSize.toFixed(1)}° on axis ${axisId}`, 'success', 1500);
       } catch (err) {
-        console.error('[AxisCtrl] performStepMove: moveAxis FAILED: %s', err.message);
+        console.error('[AxisCtrl] performStepMove: FAILED: %s', err.message);
         App.showToast(`Step move failed: ${err.message}`, 'error');
-        activeAxisId = -1;
-        activeDirection = 0;
-        return;
       }
-
-      // Schedule stop after the calculated duration
-      if (activeAxisTimer) clearTimeout(activeAxisTimer);
-      activeAxisTimer = setTimeout(() => {
-        activeAxisTimer = null;
-        console.log('[AxisCtrl] performStepMove: auto-stop after %dms', durationMs);
-        Api.stopAxis(axisId).catch(() => {});
-        activeAxisId = -1;
-        activeDirection = 0;
-      }, durationMs);
+      activeAxisId = -1;
+      activeDirection = 0;
     }
   }
 

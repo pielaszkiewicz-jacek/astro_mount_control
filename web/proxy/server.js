@@ -25,11 +25,15 @@ const protoLoader = require('@grpc/proto-loader');
 
 const config = {
   grpc: {
-    host: process.env.GRPC_HOST || 'localhost',
+    // Use 127.0.0.1 (IPv4) instead of 'localhost' to avoid IPv4/IPv6
+    // dual-stack mismatch.  The C++ gRPC server binds to 0.0.0.0 (IPv4),
+    // but Node.js may resolve 'localhost' to ::1 (IPv6) first and get
+    // ECONNREFUSED.
+    host: process.env.GRPC_HOST || '127.0.0.1',
     port: parseInt(process.env.GRPC_PORT, 10) || 50051,
   },
   db: {
-    host: process.env.DB_GRPC_HOST || 'localhost',
+    host: process.env.DB_GRPC_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_GRPC_PORT, 10) || 50052,
   },
   proxy: {
@@ -609,6 +613,38 @@ app.post('/api/axis/stop', async (req, res) => {
     res.json({ success: true, message: `Axis ${axis_id} stopping` });
   } catch (err) {
     res.status(502).json({ error: 'Axis stop failed', details: err.message });
+  }
+});
+
+/**
+ * POST /api/axis/move-relative
+ * Move an axis by a relative offset using position control.
+ * Maps to gRPC: ControlAxis() with POSITION_CONTROL, relative=true
+ * Body: { axis_id: number, offset_deg: number }
+ */
+app.post('/api/axis/move-relative', async (req, res) => {
+  try {
+    const { axis_id, offset_deg } = req.body;
+
+    if (axis_id === undefined || offset_deg === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: axis_id, offset_deg' });
+    }
+    if (![0, 1].includes(axis_id)) {
+      return res.status(400).json({ error: 'axis_id must be 0 or 1' });
+    }
+    if (typeof offset_deg !== 'number' || isNaN(offset_deg)) {
+      return res.status(400).json({ error: 'offset_deg must be a valid number' });
+    }
+
+    await grpcCall('ControlAxis', {
+      axis_id,
+      mode: 'POSITION_CONTROL',
+      target_position: offset_deg,
+      relative: true,
+    });
+    res.json({ success: true, message: `Axis ${axis_id} moving by ${offset_deg}°` });
+  } catch (err) {
+    res.status(502).json({ error: 'Axis relative move failed', details: err.message });
   }
 });
 

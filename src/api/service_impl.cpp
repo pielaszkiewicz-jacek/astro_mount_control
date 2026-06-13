@@ -1866,9 +1866,11 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
     google::protobuf::Empty* response) {
     
     try {
-        API_LOG_INFO("ControlAxis called: axis_id={}, mode={}", 
-                     request->axis_id(), 
-                     request->mode() == astro_mount::AxisControlMode::POSITION_CONTROL ? "POSITION" : "VELOCITY");
+        API_LOG_INFO("ControlAxis called: axis_id={}, mode={} target_pos={:.4f} relative={}",
+                     request->axis_id(),
+                     request->mode() == astro_mount::AxisControlMode::POSITION_CONTROL ? "POSITION" : "VELOCITY",
+                     request->target_position(),
+                     (int)request->relative());
         
         // Get CANopen interface
         auto& canopen = controller_.getCanOpenInterface();
@@ -1891,11 +1893,16 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
             double max_velocity = request->max_velocity() > 0 ? request->max_velocity() : default_velocity;
             double acceleration = request->acceleration() > 0 ? request->acceleration() : default_acceleration;
             
-            // If relative mode, get current position and add offset
+            // If relative mode, get current position and add offset.
+            // The REST proxy always sets relative=true explicitly for relative moves;
+            // proto3 binary serialization preserves this correctly.
             double final_position = target_position;
-            if (request->relative()) {
+            bool use_relative = request->relative();
+            if (use_relative) {
                 auto current_pos = canopen.getPositionData(axis_id);
                 final_position = current_pos.actual_position + target_position;
+                API_LOG_INFO("Relative mode: current={:.4f}° + offset={:.4f}° = target={:.4f}°",
+                            current_pos.actual_position, target_position, final_position);
             }
             
             API_LOG_INFO("Setting position target: axis={}, position={}°, velocity={}°/s, acceleration={}°/s²",
@@ -1909,6 +1916,13 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
             // Velocity control mode
             double target_velocity = request->target_velocity();
             double acceleration = request->acceleration() > 0 ? request->acceleration() : default_acceleration;
+            
+            // Clamp velocity to configured maximum
+            if (std::abs(target_velocity) > default_velocity) {
+                API_LOG_WARN("Velocity {:.2f}°/s exceeds max {:.2f}°/s, clamping",
+                            target_velocity, default_velocity);
+                target_velocity = std::copysign(default_velocity, target_velocity);
+            }
             
             // If relative mode, get current velocity and add offset
             double final_velocity = target_velocity;

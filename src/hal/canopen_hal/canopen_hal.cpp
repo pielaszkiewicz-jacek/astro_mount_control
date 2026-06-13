@@ -90,20 +90,47 @@ bool CanOpenHAL::CanOpenMotor::enable() {
     std::lock_guard<std::mutex> lock(mutex_);
     
     try {
-        // Send control word to enable drive (CiA 402 state machine)
-        if (!sendControlWord(0x0006)) { // Switch on disabled -> Ready to switch on
-            return false;
+        // CiA 301 §9.2.1: Send NMT Start Remote Node to ensure the node is
+        // in Operational state before attempting CiA 402 enable sequence.
+        // Some drives reject control word writes when in NMT Pre-Operational state.
+        if (!canopen_.sendNMT(axis_id_, 0x01)) {
+            astro_mount::logging::Logger::get("canopen")->warn(
+                "Motor {}: NMT Start command failed (node may already be operational)", axis_id_);
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        
+        // Read current status word to determine CiA 402 state
+        uint16_t status_word = 0;
+        int ret = canopen_.receiveSDO(axis_id_, 0x6041, 0x00, &status_word, sizeof(status_word));
+        bool in_fault = (ret == sizeof(status_word)) && (status_word & 0x0008) != 0;
+        
+        // CiA 402 §6.4: From Fault state, must do Fault Reset first
+        if (in_fault) {
+            astro_mount::logging::Logger::get("canopen")->warn(
+                "Motor {}: in Fault state (status=0x{:04X}), performing fault reset",
+                axis_id_, status_word);
+            
+            // Fault Reset: write 0x0080, then 0x0000
+            if (!sendControlWord(0x0080)) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            if (!sendControlWord(0x0000)) return false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
         
-        if (!sendControlWord(0x0007)) { // Ready to switch on -> Switched on
-            return false;
-        }
+        // CiA 402 enable sequence from Switch On Disabled:
+        //   0x0006 (Shutdown)       → Ready to Switch On
+        //   0x0007 (Switch On)      → Switched On
+        //   0x000F (Enable Op.)     → Operation Enabled
+        if (!sendControlWord(0x0006)) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         
-        if (!sendControlWord(0x000F)) { // Switched on -> Operation enabled
-            return false;
-        }
+        if (!sendControlWord(0x0007)) return false;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        
+        if (!sendControlWord(0x000F)) return false;
         
         enabled_ = true;
+        last_statusword_ = 0x000F; // Operation Enabled status word value
         return true;
     } catch (const std::exception& e) {
         error_state_ = true;
@@ -176,23 +203,28 @@ bool CanOpenHAL::CanOpenMotor::setVelocity(double velocity_deg_s,
     }
     
     try {
-        // Przełącz w tryb Velocity Mode (CiA 402: Modes of Operation = 0x6060)
-        int8_t velocity_mode = 2; // Velocity mode (vl)
+        // Switch to Profile Velocity Mode (CiA 402: Modes of Operation = 0x6060, pv=3)
+        // This is consistent with canopen_interface.cpp which also uses mode 3 (pv).
+        // Mode 3 provides profile acceleration/deceleration via separate OD entries.
+        int8_t velocity_mode = 3; // Profile Velocity mode (pv)
         canopen_.sendSDO(axis_id_, 0x6060, 0x00, &velocity_mode, sizeof(velocity_mode));
         
-        // Konwertuj °/s na jednostki napędu (counts/s)
+        // Convert °/s to drive units (counts/s)
         double counts_per_degree = config_.encoder_counts_per_degree;
         int32_t velocity_counts = static_cast<int32_t>(velocity_deg_s * counts_per_degree);
         
-        // Ustaw target velocity przez SDO (0x6042: vl_target_velocity)
-        if (!canopen_.sendSDO(axis_id_, 0x6042, 0x00, &velocity_counts, sizeof(velocity_counts))) {
+        // Set target velocity via SDO (0x60FF: Target Velocity for Profile Velocity mode)
+        if (!canopen_.sendSDO(axis_id_, 0x60FF, 0x00, &velocity_counts, sizeof(velocity_counts))) {
             error_message_ = "Failed to set velocity target";
             return false;
         }
         
-        // Ustaw przyspieszenie (0x6048: vl_max_acceleration)
+        // Set profile acceleration (0x6083: Profile Acceleration)
         int32_t accel_counts = static_cast<int32_t>(acceleration_deg_s2 * counts_per_degree);
-        canopen_.sendSDO(axis_id_, 0x6048, 0x01, &accel_counts, sizeof(accel_counts));
+        canopen_.sendSDO(axis_id_, 0x6083, 0x00, &accel_counts, sizeof(accel_counts));
+        
+        // Set profile deceleration (0x6084: Profile Deceleration)
+        canopen_.sendSDO(axis_id_, 0x6084, 0x00, &accel_counts, sizeof(accel_counts));
         
         target_position_ = velocity_deg_s; // store velocity as pseudo-target
         moving_ = true;
@@ -439,10 +471,15 @@ bool CanOpenHAL::CanOpenMotor::readStatusWord() {
         uint16_t status_word = 0;
         int ret = canopen_.receiveSDO(axis_id_, 0x6041, 0x00, &status_word, sizeof(status_word));
         if (ret == sizeof(status_word)) {
-            // Aktualizuj stan silnika na podstawie status word
-            enabled_ = (status_word & 0x000F) == 0x000F; // Operation enabled
-            moving_  = (status_word & 0x0400) != 0;       // Target reached
-            error_state_ = (status_word & 0x0008) != 0;   // Fault
+            last_statusword_ = status_word;
+
+            // Update motor state from CiA 402 status word bits
+            // Bit 0-2: 0x0007 = Operation enabled state
+            enabled_ = (status_word & 0x000F) == 0x000F;   // Operation enabled
+            // Bit 10: 0x0400 = Target reached (0 = still moving toward target)
+            moving_  = (status_word & 0x0400) == 0;         // NOT target reached → still moving
+            // Bit 3: 0x0008 = Fault
+            error_state_ = (status_word & 0x0008) != 0;     // Fault
             return true;
         }
     } catch (const std::exception& e) {
@@ -1109,12 +1146,6 @@ std::string CanOpenHAL::CanOpenSensorInterface::getDiagnostics() const {
 
 CanOpenHAL::CanOpenHAL(std::unique_ptr<controllers::ICanOpenInterface> canopen_interface)
     : canopen_interface_(std::move(canopen_interface)) {
-    
-    // Initialize arrays
-    for (int i = 0; i < 3; ++i) {
-        motors_[i] = nullptr;
-        encoders_[i] = nullptr;
-    }
 }
 
 CanOpenHAL::~CanOpenHAL() {
@@ -1165,28 +1196,16 @@ void CanOpenHAL::shutdown() {
         return;
     }
     
-    // Stop monitoring threads
+    // Stop NMT monitoring thread
     nmt_running_ = false;
     if (nmt_thread_.joinable()) {
         nmt_thread_.join();
     }
     
-    // Stop motors and encoders
-    for (auto& motor : motors_) {
-        if (motor) {
-            // Send disable command
-        }
-    }
-    
-    for (auto& encoder : encoders_) {
-        if (encoder) {
-            encoder->shutdown();
-        }
-    }
-    
-    // Shutdown CANopen interface
+    // Shutdown and disconnect CANopen interface (CiA 301 network management)
     if (canopen_interface_) {
-        // Proper shutdown would be here
+        canopen_interface_->shutdown();
+        canopen_interface_->disconnect();
     }
     
     initialized_ = false;
@@ -1204,17 +1223,13 @@ std::unique_ptr<MotorControl> CanOpenHAL::createMotorControl(int axis_id) {
     
     std::lock_guard<std::mutex> lock(mutex_);
     
-    if (!motors_[axis_id]) {
-        motors_[axis_id] = std::make_unique<CanOpenMotor>(axis_id, *canopen_interface_);
-        
-        // Configure with axis-specific config
-        if (!config_.axes.empty() && axis_id < config_.axes.size()) {
-            motors_[axis_id]->configure(config_.axes[axis_id].motor_config);
-        }
+    // Create and configure a new motor control instance.
+    // The caller (MountController) takes ownership and manages lifecycle.
+    auto motor = std::make_unique<CanOpenMotor>(axis_id, *canopen_interface_);
+    if (!config_.axes.empty() && axis_id < config_.axes.size()) {
+        motor->configure(config_.axes[axis_id].motor_config);
     }
-    
-    // Return a copy (shared ownership) - this is simplified
-    return std::make_unique<CanOpenMotor>(axis_id, *canopen_interface_);
+    return motor;
 }
 
 std::unique_ptr<EncoderReader> CanOpenHAL::createEncoderReader(int axis_id) {
@@ -1224,61 +1239,39 @@ std::unique_ptr<EncoderReader> CanOpenHAL::createEncoderReader(int axis_id) {
     
     std::lock_guard<std::mutex> lock(mutex_);
     
-    if (!encoders_[axis_id]) {
-        encoders_[axis_id] = std::make_unique<CanOpenEncoder>(axis_id, *canopen_interface_);
-        
-        // Configure with axis-specific config
-        if (!config_.axes.empty() && axis_id < config_.axes.size()) {
-            encoders_[axis_id]->initialize(config_.axes[axis_id].encoder_config);
-        }
+    // Create and configure a new encoder reader instance.
+    // The caller takes ownership and manages lifecycle.
+    auto encoder = std::make_unique<CanOpenEncoder>(axis_id, *canopen_interface_);
+    if (!config_.axes.empty() && axis_id < config_.axes.size()) {
+        encoder->initialize(config_.axes[axis_id].encoder_config);
     }
-    
-    // Return a copy (shared ownership) - this is simplified
-    return std::make_unique<CanOpenEncoder>(axis_id, *canopen_interface_);
+    return encoder;
 }
 
 std::unique_ptr<SafetyMonitor> CanOpenHAL::createSafetyMonitor() {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    if (!safety_monitor_) {
-        safety_monitor_ = std::make_unique<CanOpenSafetyMonitor>(*canopen_interface_);
-        
-        // Konwersja HALConfig::safety (anonimowa struct) na SafetyConfig
-        SafetyConfig safety_cfg;
-        safety_cfg.monitoring_rate_hz = config_.safety.monitoring_rate;
-        safety_cfg.emergency_stop_delay_ms = config_.safety.emergency_stop_timeout_ms;
-        // Limity dla każdej osi
-        for (int i = 0; i < 3 && i < config_.axes.size(); ++i) {
-            safety_cfg.axes_limits[i].min_position_deg = config_.axes[i].safety_limits.min_position;
-            safety_cfg.axes_limits[i].max_position_deg = config_.axes[i].safety_limits.max_position;
-            safety_cfg.axes_limits[i].max_velocity_deg_s = config_.axes[i].safety_limits.max_velocity;
-            safety_cfg.axes_limits[i].max_acceleration_deg_s2 = config_.axes[i].safety_limits.max_acceleration;
-            safety_cfg.axes_limits[i].max_current_a = config_.axes[i].safety_limits.max_current;
-            safety_cfg.axes_limits[i].max_temperature_c = config_.axes[i].safety_limits.max_temperature;
-        }
-        safety_monitor_->initialize(safety_cfg);
-    }
-    
-    // Return a copy (shared ownership)
+    // Create and return a new safety monitor instance.
+    // The caller takes ownership and is responsible for calling initialize().
+    // NOTE: Unlike createMotorControl/createEncoderReader, safety monitor
+    // initialization requires explicit SafetyConfig from the caller, so we
+    // do NOT pre-initialize it here.
     return std::make_unique<CanOpenSafetyMonitor>(*canopen_interface_);
 }
 
 std::unique_ptr<SensorInterface> CanOpenHAL::createSensorInterface() {
     std::lock_guard<std::mutex> lock(mutex_);
     
-    if (!sensor_interface_) {
-        sensor_interface_ = std::make_unique<CanOpenSensorInterface>(*canopen_interface_);
-        
-        // Create sensor config based on HAL config
-        SensorConfig sensor_config;
-        // Add default sensors (temperature, current, voltage)
-        // ...
-        
-        sensor_interface_->initialize(sensor_config);
-    }
+    // Create and configure a new sensor interface instance.
+    // The caller takes ownership and manages lifecycle.
+    auto sensor = std::make_unique<CanOpenSensorInterface>(*canopen_interface_);
     
-    // Return a copy (shared ownership)
-    return std::make_unique<CanOpenSensorInterface>(*canopen_interface_);
+    SensorConfig sensor_config;
+    // Add default sensors (temperature, current, voltage)
+    // ...
+    
+    sensor->initialize(sensor_config);
+    return sensor;
 }
 
 std::string CanOpenHAL::getPlatformName() const {
@@ -1510,29 +1503,29 @@ void CanOpenHAL::nmtMonitoringThread() {
                     auto bootup_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                         now - node.bootup_start).count();
                     
-                    // Sprawdź przez getDriveStatus() czy węzeł jest dostępny
-                    try {
-                        auto status = canopen_interface_->getDriveStatus(i);
-                        if (status.operational || status.enabled) {
-                            // Węzeł odpowiada – bootup odebrany
-                            node.bootup_received = true;
-                            node.state = NMTState::PRE_OPERATIONAL;
-                            node.last_heartbeat = now;
-                            
-                            astro_mount::logging::Logger::get("canopen")->info(
-                                "NMT: Node {} - bootup received (elapsed={}ms)", (int)node_id, bootup_elapsed);
-                            
-                            // Bootup odebrany – prześlij sekwencję NMT: PRE-OPERATIONAL → OPERATIONAL
-                            sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
-                            std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                            sendNMT(node_id, NMT_CMD_START_REMOTE_NODE);
-                        }
-                    } catch (const std::exception& e) {
-                        // Węzeł jeszcze nie odpowiada
-                        if (nmt_cycle % 100 == 0) { // Loguj co 1s
-                            astro_mount::logging::Logger::get("canopen")->warn(
-                                "NMT: Node {} - waiting for bootup ({}ms): {}", (int)node_id, bootup_elapsed, e.what());
-                        }
+                    // Check if the node has sent a heartbeat (COB-ID 0x700+node)
+                    // via the reader thread callback. This uses zero CAN bus
+                    // traffic — the heartbeat is received passively.
+                    bool heartbeat_seen = canopen_interface_->isHeartbeatRecent(
+                        i, static_cast<int>(nmt_cfg.heartbeat_timeout_ms));
+                    
+                    if (heartbeat_seen) {
+                        // Node is alive — bootup received
+                        node.bootup_received = true;
+                        node.state = NMTState::PRE_OPERATIONAL;
+                        node.last_heartbeat = now;
+                        
+                        astro_mount::logging::Logger::get("canopen")->info(
+                            "NMT: Node {} - bootup received (elapsed={}ms)", (int)node_id, bootup_elapsed);
+                        
+                        // Bootup received — send NMT sequence: PRE-OPERATIONAL → OPERATIONAL
+                        sendNMT(node_id, NMT_CMD_ENTER_PRE_OPERATIONAL);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        sendNMT(node_id, NMT_CMD_START_REMOTE_NODE);
+                    } else if (nmt_cycle % 100 == 0) {
+                        // Log periodically while waiting
+                        astro_mount::logging::Logger::get("canopen")->warn(
+                            "NMT: Node {} - waiting for bootup ({}ms)", (int)node_id, bootup_elapsed);
                     }
                     
                     // Timeout bootup – reset węzła przez NMT Reset
@@ -1569,46 +1562,62 @@ void CanOpenHAL::nmtMonitoringThread() {
                 
                 if (!enable_node_guarding) {
                     // ----- Heartbeat monitoring (CiA 301 §7.2.6.1) -----
+                    // Uses the real NMT heartbeat callback from the C library
+                    // reader thread (zero CAN bus traffic for monitoring).
+                    // The callback updates a cached state that we query here.
                     auto hb_elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                         now - node.last_heartbeat).count();
                     
                     if (hb_elapsed >= heartbeat_period.count()) {
-                        // Sprawdź stan węzła przez getDriveStatus() – symuluje odbiór heartbeat
-                        bool heartbeat_received = false;
-                        bool heartbeat_error = false;
+                        // Check if a real heartbeat (COB-ID 0x700+node) was
+                        // received recently via the reader thread callback.
+                        bool heartbeat_received = canopen_interface_->isHeartbeatRecent(
+                            i, static_cast<int>(heartbeat_period.count() * 2));
                         
-                        try {
-                            auto status = canopen_interface_->getDriveStatus(i);
-                            // Jeśli getDriveStatus rzuci wyjątkiem, heartbeat nie jest odebrany
-                            heartbeat_received = true;
-                            
-                            // Odczytaj status word z CANopen, aby sprawdzić stan NMT
-                            // W rzeczywistym CANopen heartbeat to osobny COB-ID (0x700 + node_id)
-                            // Tutaj symulujemy to przez getDriveStatus()
-                            
+                        if (heartbeat_received) {
+                            uint8_t nmt_state = canopen_interface_->getNodeNMTState(i);
                             node.last_heartbeat = now;
                             node.heartbeat_count++;
                             
-                            // Sprawdź czy węzeł jest w spodziewanym stanie
-                            if (status.error) {
-                                // Stan błędu – węzeł może być w Pre-Operational lub Stopped
-                                heartbeat_error = true;
+                            // Update logical state from real NMT heartbeat
+                            // NMT state values (CiA 301): 0x00=Bootup, 0x04=Stopped,
+                            // 0x05=Operational, 0x7F=Pre-Operational
+                            if (nmt_state == 0x05) {
+                                node.state = NMTState::OPERATIONAL;
+                            } else if (nmt_state == 0x7F) {
+                                node.state = NMTState::PRE_OPERATIONAL;
+                            } else if (nmt_state == 0x04) {
+                                node.state = NMTState::STOPPED;
                             }
-                            
-                        } catch (const std::exception& e) {
-                            heartbeat_received = false;
                         }
                         
-                        if (heartbeat_received && !heartbeat_error) {
+                        if (heartbeat_received) {
                             node.missed_heartbeats = 0;
                             node.successful_heartbeats++;
                         } else {
                             node.missed_heartbeats++;
                             if (nmt_cycle % 50 == 0) {
                                 astro_mount::logging::Logger::get("canopen")->warn(
-                                    "NMT: Node {} - heartbeat missed ({}/{}{})",
-                                    (int)node_id, node.missed_heartbeats, MAX_MISSED_HB,
-                                    (heartbeat_error ? " [ERROR]" : ""));
+                                    "NMT: Node {} - heartbeat missed ({}/{})",
+                                    (int)node_id, node.missed_heartbeats, MAX_MISSED_HB);
+                            }
+                        }
+                        
+                        // Periodically check drive error status via SDO.
+                        // This is separate from heartbeat monitoring — it reads
+                        // the CiA 402 status word for fault/warning conditions.
+                        // Run at 1/5th the heartbeat rate to reduce bus load.
+                        if (nmt_cycle % 50 == 0) {
+                            try {
+                                auto status = canopen_interface_->getDriveStatus(i);
+                                if (status.error && node.missed_heartbeats == 0) {
+                                    astro_mount::logging::Logger::get("canopen")->warn(
+                                        "NMT: Node {} - drive error detected (status_word=0x{:04X})",
+                                        (int)node_id, status.status_word);
+                                }
+                            } catch (const std::exception&) {
+                                // getDriveStatus may fail if the node is not
+                                // responding — already tracked by heartbeat.
                             }
                         }
                     }
@@ -1618,28 +1627,19 @@ void CanOpenHAL::nmtMonitoringThread() {
                         now - node.last_node_guard_rq).count();
                     
                     if (guard_elapsed >= node_guarding_period.count()) {
-                        // Wyślij RTR (Remote Transmit Request) do węzła
-                        // W rzeczywistym CANopen: żądanie COB-ID 0x700 + node_id
-                        // Symulacja: getDriveStatus z timeoutem
+                        // Use real heartbeat as guarding check (no SDO needed)
                         node.guard_request_pending = true;
+                        node.last_node_guard_rq = now;
                         
-                        try {
-                            auto status = canopen_interface_->getDriveStatus(i);
-                            // Node Guarding response odebrana
-                            node.guard_request_pending = false;
-                            node.last_node_guard_rq = now;
-                            
-                            // Interpretacja toggle bita i statusu (CiA 301)
-                            if (!status.error) {
-                                node.missed_heartbeats = 0;
-                            } else {
-                                node.missed_heartbeats++;
-                            }
-                        } catch (const std::exception& e) {
-                            // Life Guarding event – węzeł nie odpowiedział
-                            node.guard_request_pending = false;
+                        bool heartbeat_ok = canopen_interface_->isHeartbeatRecent(
+                            i, static_cast<int>(node_guarding_period.count() * 2));
+                        
+                        node.guard_request_pending = false;
+                        
+                        if (heartbeat_ok) {
+                            node.missed_heartbeats = 0;
+                        } else {
                             node.missed_heartbeats++;
-                            
                             astro_mount::logging::Logger::get("canopen")->error(
                                 "NMT: Node {} - Node Guarding timeout! ({}/{})",
                                 (int)node_id, node.missed_heartbeats, MAX_MISSED_HB);
@@ -1695,12 +1695,9 @@ void CanOpenHAL::nmtMonitoringThread() {
                 
                 if (recovery_elapsed >= recovery_interval.count()) {
                     
-                    // Sprawdź czy komunikacja faktycznie wróciła
-                    bool communication_ok = false;
-                    try {
-                        auto status = canopen_interface_->getDriveStatus(i);
-                        communication_ok = !status.error;
-                    } catch (...) {}
+                    // Check if communication is restored via real heartbeat
+                    bool communication_ok = canopen_interface_->isHeartbeatRecent(
+                        i, static_cast<int>(nmt_cfg.heartbeat_timeout_ms));
                     
                     if (communication_ok && node.target_state == NMTState::OPERATIONAL) {
                         astro_mount::logging::Logger::get("canopen")->info(

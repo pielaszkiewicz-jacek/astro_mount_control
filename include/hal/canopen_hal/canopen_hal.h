@@ -285,10 +285,7 @@ private:
     
     void nmtMonitoringThread();
     
-    // Component factories
-    std::array<std::unique_ptr<CanOpenMotor>, 3> motors_;
-    std::array<std::unique_ptr<CanOpenEncoder>, 3> encoders_;
-    std::unique_ptr<CanOpenSafetyMonitor> safety_monitor_;
+    // Sensor interface (lazily created, caller owns the returned instance)
     std::unique_ptr<CanOpenSensorInterface> sensor_interface_;
 };
 

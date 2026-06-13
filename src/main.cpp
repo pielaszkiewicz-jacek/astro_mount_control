@@ -3,6 +3,7 @@
 #include <chrono>
 #include <thread>
 #include <signal.h>
+#include <atomic>
 
 #include "config/configuration.h"
 #include "logging/logger.h"
@@ -15,7 +16,7 @@ using namespace astro_mount;
 // Global variables for signal handling
 std::unique_ptr<controllers::MountController> mount_controller;
 std::unique_ptr<api::GrpcServer> grpc_server_instance;
-bool running = true;
+std::atomic<bool> running{true};
 
 void signal_handler(int signal) {
     auto logger = logging::Logger::get("main");
@@ -111,6 +112,8 @@ int main(int argc, char* argv[]) {
         auto canopen_config = config.getCanOpenConfig();
         controller_config.canopen_interface = canopen_config.interface;
         controller_config.canopen_node_id = canopen_config.node_id;
+        controller_config.canopen_position_counts_per_degree = canopen_config.position_counts_per_degree;
+        controller_config.canopen_velocity_counts_per_deg_s = canopen_config.velocity_counts_per_deg_s;
         
         // Set network configuration
         auto network_config = config.getNetworkConfig();
@@ -201,27 +204,31 @@ int main(int argc, char* argv[]) {
         
         logger->info("Mount controller initialized successfully");
         
-        // Configure derotator from config file (if derotator section exists)
+        // Configure derotator from config file (if derotator section exists and is enabled)
         {
             auto derotator_cfg = config.getDerotatorConfig();
-            ::astro_mount::DerotatorConfig proto_config;
-            proto_config.set_type(static_cast<::astro_mount::DerotatorConfig::DerotatorType>(
-                derotator_cfg.type));
-            proto_config.set_connection_string(derotator_cfg.connection_string);
-            proto_config.set_gear_ratio(derotator_cfg.gear_ratio);
-            proto_config.set_max_speed(derotator_cfg.max_speed);
-            proto_config.set_max_acceleration(derotator_cfg.max_acceleration);
-            proto_config.set_backlash(derotator_cfg.backlash);
-            proto_config.set_absolute_encoder(derotator_cfg.absolute_encoder);
-            proto_config.set_encoder_resolution(derotator_cfg.encoder_resolution);
-            proto_config.set_homing_offset(derotator_cfg.homing_offset);
-            for (const auto& val : derotator_cfg.calibration_table) {
-                proto_config.add_calibration_table(val);
-            }
-            if (!mount_controller->configureDerotator(proto_config)) {
-                logger->warn("Failed to configure derotator from config");
+            if (derotator_cfg.enabled) {
+                ::astro_mount::DerotatorConfig proto_config;
+                proto_config.set_type(static_cast<::astro_mount::DerotatorConfig::DerotatorType>(
+                    derotator_cfg.type));
+                proto_config.set_connection_string(derotator_cfg.connection_string);
+                proto_config.set_gear_ratio(derotator_cfg.gear_ratio);
+                proto_config.set_max_speed(derotator_cfg.max_speed);
+                proto_config.set_max_acceleration(derotator_cfg.max_acceleration);
+                proto_config.set_backlash(derotator_cfg.backlash);
+                proto_config.set_absolute_encoder(derotator_cfg.absolute_encoder);
+                proto_config.set_encoder_resolution(derotator_cfg.encoder_resolution);
+                proto_config.set_homing_offset(derotator_cfg.homing_offset);
+                for (const auto& val : derotator_cfg.calibration_table) {
+                    proto_config.add_calibration_table(val);
+                }
+                if (!mount_controller->configureDerotator(proto_config)) {
+                    logger->warn("Failed to configure derotator from config");
+                } else {
+                    logger->info("Derotator configured from config file");
+                }
             } else {
-                logger->info("Derotator configured from config file");
+                logger->info("Derotator disabled in config");
             }
         }
         
@@ -263,6 +270,11 @@ int main(int argc, char* argv[]) {
         logger->info("Entering main loop");
         
         while (running) {
+            // Refresh live axis positions from CANopen drives before
+            // reporting status.  Without this, positions would only be
+            // updated during active slew/track operations.
+            mount_controller->refreshPositions();
+
             // Get current status
             auto status = mount_controller->getStatus();
             
@@ -291,7 +303,10 @@ int main(int argc, char* argv[]) {
         logger->info("Shutting down...");
         
         grpc_server_instance->stop();
+        grpc_server_instance.reset();  // Release before global destruction to prevent double-free
+        
         mount_controller->shutdown();
+        mount_controller.reset();      // Release before global destruction to prevent double-free
         
         logger->info("Shutdown complete");
         

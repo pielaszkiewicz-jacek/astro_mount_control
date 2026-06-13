@@ -26,6 +26,8 @@ public:
         int sync_period_ms;              // SYNC period in milliseconds
         int pdo_mapping[4];              // PDO mapping configuration
         int sdo_timeout_ms;              // SDO timeout in milliseconds
+        double position_counts_per_degree = 1000.0 / 360.0;  // counts per degree for 0x6064
+        double velocity_counts_per_deg_s = 4000.0 / 360.0;  // counts per °/s for 0x606C
     };
 
     struct DriveStatus {
@@ -339,6 +341,31 @@ public:
      */
     bool executeTrajectory(int axis_id, const std::vector<TrajectoryPoint>& trajectory,
                           std::function<void(const TrajectoryPoint&)> callback = nullptr);
+
+    /**
+     * @brief Get cached NMT state from real heartbeat (no SDO traffic).
+     * @param axis_id Axis identifier (0=RA/Azimuth, 1=Dec/Altitude)
+     * @return CiA 301 NMT state: 0x00=Bootup, 0x04=Stopped, 0x05=Operational, 0x7F=Pre-Op
+     */
+    uint8_t getNodeNMTState(int axis_id) const;
+
+    /**
+     * @brief Check if a drive is currently enabled (cached, no SDO traffic).
+     *
+     * Returns the last known enabled state set by enableDrive() /
+     * disableDrive() / emergencyStop().  Use this for fast checks
+     * before attempting SDO operations that would time out if the
+     * drive is stopped.
+     */
+    bool isDriveEnabled(int axis_id) const;
+
+    /**
+     * @brief Check if the last heartbeat for this axis is recent.
+     * @param axis_id Axis identifier
+     * @param max_age_ms Maximum acceptable age of the last heartbeat in ms
+     * @return True if a heartbeat was received within max_age_ms
+     */
+    bool isHeartbeatRecent(int axis_id, int max_age_ms) const;
 
 private:
     class Impl;

@@ -19,7 +19,9 @@
     "node_id": 1,
     "baud_rate": 1000000,
     "enable_sync": true,
-    "sync_interval_ms": 100
+    "sync_interval_ms": 100,
+    "position_counts_per_degree": 2.7777778,
+    "velocity_counts_per_deg_s": 2.7777778
   },
   "mount": {
     "type": "equatorial",
@@ -34,9 +36,9 @@
     "default_humidity": 0.5,
     "use_encoders": true,
     "encoders_absolute": true,
-    "encoder_resolution": 16384,
+    "encoder_resolution": 1000,
     
-    "max_slew_rate": 5.0,
+    "max_slew_rate": 60.0,
     "max_tracking_rate": 0.004178,
     "slew_acceleration": 1.0,
     "tracking_acceleration": 0.001,
@@ -69,7 +71,7 @@
         "motor_steps_per_rev": 200,
         "motor_microstepping": 64,
         "motor_step_angle": 101.25,
-        "encoder_resolution": 16384,
+        "encoder_resolution": 1000,
         "encoder_counts_per_arcsec": 0.0126,
         "encoder_quantization_error": 39.6,
         "gear_ratio": 360.0,
@@ -92,7 +94,7 @@
         "motor_steps_per_rev": 200,
         "motor_microstepping": 64,
         "motor_step_angle": 101.25,
-        "encoder_resolution": 16384,
+        "encoder_resolution": 1000,
         "encoder_counts_per_arcsec": 0.0126,
         "encoder_quantization_error": 39.6,
         "gear_ratio": 360.0,
@@ -153,7 +155,7 @@
     "max_acceleration": 2.0,
     "backlash": 2.0,
     "absolute_encoder": true,
-    "encoder_resolution": 16384,
+    "encoder_resolution": 1000,
     "homing_offset": 0.0,
     "calibration_table": []
   },

@@ -308,6 +308,8 @@ public:
         config.baud_rate = canopen.value("baud_rate", 1000000);
         config.enable_sync = canopen.value("enable_sync", true);
         config.sync_interval_ms = canopen.value("sync_interval_ms", 100);
+        config.position_counts_per_degree = canopen.value("position_counts_per_degree", 4000.0 / 360.0);
+        config.velocity_counts_per_deg_s = canopen.value("velocity_counts_per_deg_s", 4000.0 / 360.0);
         
         return config;
     }

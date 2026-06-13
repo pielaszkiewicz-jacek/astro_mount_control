@@ -1,0 +1,174 @@
+{
+  "logging": {
+    "level": "debug",
+    "file": "mount_controller.log",
+    "console": true
+  },
+  "network": {
+    "grpc_port": 50051,
+    "bind_address": "0.0.0.0"
+  },
+  "canopen": {
+    "interface": "",
+    "node_id": 1,
+    "baud_rate": 1000000,
+    "enable_sync": true,
+    "sync_interval_ms": 100
+  },
+  "mount": {
+    "type": "equatorial",
+    "latitude": 52.0,
+    "longitude": 21.0,
+    "altitude": 100,
+    "mount_height": 1.5,
+    "pier_west": 0.0,
+    "pier_east": 0.0,
+    "focal_length": 1000,
+    "aperture": 200,
+    "ha_axis_ratio": 1.0,
+    "dec_axis_ratio": 1.0,
+    "ha_axis_backlash": 0.0,
+    "dec_axis_backlash": 0.0,
+    "min_altitude": 15.0,
+    "max_altitude": 85.0,
+    "slew_speed": 3.0,
+    "guide_speed": 0.5,
+    "tracking_speed": 1.0,
+    "park_position_ha": 0.0,
+    "park_position_dec": 90.0,
+    "home_position_ha": 0.0,
+    "home_position_dec": 0.0,
+    "axis_physical_parameters": {
+      "ha_axis": {
+        "max_velocity": 10.0,
+        "max_acceleration": 5.0,
+        "max_deceleration": 5.0,
+        "soft_limit_min": -180.0,
+        "soft_limit_max": 180.0,
+        "steps_per_degree": 10000
+      },
+      "dec_axis": {
+        "max_velocity": 10.0,
+        "max_acceleration": 5.0,
+        "max_deceleration": 5.0,
+        "soft_limit_min": -90.0,
+        "soft_limit_max": 90.0,
+        "steps_per_degree": 10000
+      }
+    }
+  },
+  "telescope": {
+    "aperture": 200,
+    "focal_length": 1000,
+    "obstruction": 0.0,
+    "limiting_magnitude": 14.0
+  },
+  "guider": {
+    "enabled": false,
+    "connection_string": "",
+    "guide_algorithm": "moving_average",
+    "guide_window": 5,
+    "max_correction_arcsec": 5.0
+  },
+  "kalman": {
+    "process_noise": 0.001,
+    "measurement_noise": 0.1,
+    "update_interval_ms": 100
+  },
+  "tpoint": {
+    "enabled_terms": 0,
+    "min_measurements": 10,
+    "max_measurements": 50
+  },
+  "derotator": {
+    "enabled": false,
+    "model": "none",
+    "max_velocity": 5.0,
+    "max_acceleration": 2.0
+  },
+  "field_rotation": {
+    "enabled": false,
+    "correction_mode": "continuous",
+    "max_correction_rate": 1.0
+  },
+  "hal": {
+    "canopen": {
+      "interface": "",
+      "bitrate": 1000000,
+      "node_id": 1,
+      "nmt": {
+        "startup_delay_ms": 100,
+        "heartbeat_producer_ms": 1000,
+        "enable_heartbeat_consumer": false
+      }
+    },
+    "axes": [
+      {
+        "name": "ha_axis",
+        "axis_id": 0,
+        "motor_config": {
+          "type": "stepper",
+          "steps_per_revolution": 200,
+          "microsteps": 16,
+          "gear_ratio": 1.0,
+          "max_current_ma": 1000,
+          "holding_current_ma": 500,
+          "invert_direction": false
+        },
+        "encoder_config": {
+          "type": "none",
+          "resolution": 0,
+          "invert_direction": false
+        },
+        "safety_limits": {
+          "max_velocity": 10.0,
+          "max_acceleration": 5.0,
+          "soft_limit_min": -180.0,
+          "soft_limit_max": 180.0,
+          "emergency_stop_on_error": true
+        }
+      },
+      {
+        "name": "dec_axis",
+        "axis_id": 1,
+        "motor_config": {
+          "type": "stepper",
+          "steps_per_revolution": 200,
+          "microsteps": 16,
+          "gear_ratio": 1.0,
+          "max_current_ma": 1000,
+          "holding_current_ma": 500,
+          "invert_direction": false
+        },
+        "encoder_config": {
+          "type": "none",
+          "resolution": 0,
+          "invert_direction": false
+        },
+        "safety_limits": {
+          "max_velocity": 10.0,
+          "max_acceleration": 5.0,
+          "soft_limit_min": -90.0,
+          "soft_limit_max": 90.0,
+          "emergency_stop_on_error": true
+        }
+      }
+    ],
+    "gamepad": {
+      "enabled": false,
+      "device": "",
+      "axis_mapping": {
+        "left_stick_x": "ha_axis",
+        "left_stick_y": "dec_axis",
+        "right_stick_x": "none",
+        "right_stick_y": "none"
+      },
+      "button_mapping": {
+        "a": "none",
+        "b": "none",
+        "x": "none",
+        "y": "none"
+      }
+    }
+  }
+}

@@ -328,9 +328,12 @@ public:
             
             MOUNT_LOG_DEBUG("HAL components created for axes 0 and 1");
             
-            // Enable HAL motors on initialization
-            if (hal_axis1_motor_) hal_axis1_motor_->enable();
-            if (hal_axis2_motor_) hal_axis2_motor_->enable();
+            // HAL motors do NOT need explicit enable() here — the CANopen
+            // interface's enableDrive() (called below) handles the full
+            // CiA 402 enable sequence including cancellation of stale
+            // motion profiles.  Enabling HAL motors separately would
+            // trigger a duplicate state-machine transition that may
+            // restart a stored motion profile.
         }
         
         // Initialize CANopen interface using factory
@@ -348,6 +351,10 @@ public:
             canopen_config.use_sync = true;
             canopen_config.sync_period_ms = 10;
             canopen_config.sdo_timeout_ms = 1000;
+            canopen_config.position_counts_per_degree =
+                config_.canopen_position_counts_per_degree;
+            canopen_config.velocity_counts_per_deg_s =
+                config_.canopen_velocity_counts_per_deg_s;
             
             canopen_interface_ = CanOpenFactory::create(canopen_config);
             if (!canopen_interface_) {
@@ -363,13 +370,33 @@ public:
         
         // Initialize the CANopen interface if created (use the actual config, not empty)
         if (canopen_interface_) {
-            canopen_interface_->initialize(canopen_config);
+            if (!canopen_interface_->initialize(canopen_config)) {
+                MOUNT_LOG_ERROR("CANopen interface initialization failed — "
+                               "interface={}, node_id={}. Check that the CAN "
+                               "interface exists and is up.",
+                               canopen_config.interface_name,
+                               canopen_config.node_id);
+                // Continue with mock fallback — the system can still serve
+                // gRPC requests and report status, just without drive control.
+            }
             
-            // Enable drives for axes 0 (HA/RA) and 1 (Dec)
+            // Enable drives for axes 0 (HA/RA) and 1 (Dec).
             // In real CANopen hardware, drives are enabled during power-up sequence;
-            // for mock interface, this ensures setPositionTarget calls succeed
-            canopen_interface_->enableDrive(0);
-            canopen_interface_->enableDrive(1);
+            // for mock interface, this ensures setPositionTarget calls succeed.
+            // Each enableDrive() performs multiple SDO operations that time out
+            // (~1 s each) when no drive is on the bus. Log progress so the
+            // operator knows the controller is not hung, just waiting for drives.
+            MOUNT_LOG_INFO("Enabling CANopen axis 0 (node {})...",
+                          canopen_config.node_id);
+            if (!canopen_interface_->enableDrive(0)) {
+                MOUNT_LOG_WARN("Failed to enable axis 0 — no drive responding on CAN bus?");
+            }
+            
+            MOUNT_LOG_INFO("Enabling CANopen axis 1 (node {})...",
+                          canopen_config.node_id + 1);
+            if (!canopen_interface_->enableDrive(1)) {
+                MOUNT_LOG_WARN("Failed to enable axis 1 — no drive responding on CAN bus?");
+            }
         }
         
         // Configure TPointModel with mount and telescope physical parameters.
@@ -2765,6 +2792,45 @@ public:
         status.bootstrap_measurement_count = static_cast<int>(bootstrap_measurements_.size());
 
         return status;
+    }
+
+    /**
+     * @brief Read actual axis positions from CANopen drives and update cached state.
+     *
+     * Called periodically from the main loop to keep axis1_position_ /
+     * axis2_position_ in sync with the physical hardware.  Without this,
+     * getStatus() would return stale (0.0) positions unless a slew/track
+     * operation was active.
+     *
+     * Angles are normalized to [0°, 360°) for consistent reporting.
+     */
+    void refreshPositionsFromCANopen() {
+        if (!canopen_interface_) return;
+
+        // Skip SDO reads if drives are not enabled (e.g. after emergency
+        // stop).  Each SDO read would time out (~1 s) and block the main
+        // loop, making the controller unresponsive.
+        if (!canopen_interface_->isDriveEnabled(0) &&
+            !canopen_interface_->isDriveEnabled(1))
+            return;
+
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+
+        try {
+            auto pos0 = canopen_interface_->getPositionData(0);
+            auto pos1 = canopen_interface_->getPositionData(1);
+            // Only update if the SDO reads returned plausible data.
+            // getPositionData() returns cached zeros when SDO fails.
+            if (std::isfinite(pos0.actual_position) && std::isfinite(pos1.actual_position)) {
+                // Normalize to [0°, 360°)
+                axis1_position_ = std::fmod(std::fmod(pos0.actual_position, 360.0) + 360.0, 360.0);
+                axis2_position_ = std::fmod(std::fmod(pos1.actual_position, 360.0) + 360.0, 360.0);
+                axis1_rate_ = pos0.actual_velocity;
+                axis2_rate_ = pos1.actual_velocity;
+            }
+        } catch (const std::exception& e) {
+            MOUNT_LOG_DEBUG("refreshPositionsFromCANopen: {}", e.what());
+        }
     }
     
     // Bootstrap calibration API
@@ -5221,6 +5287,10 @@ void MountController::clearErrors() {
 
 MountController::MountStatus MountController::getStatus() const {
     return pimpl->getStatus();
+}
+
+void MountController::refreshPositions() {
+    pimpl->refreshPositionsFromCANopen();
 }
 
 bool MountController::addCalibrationMeasurement(double observed_ra, double observed_dec,

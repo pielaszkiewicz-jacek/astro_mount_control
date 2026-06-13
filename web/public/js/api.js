@@ -257,6 +257,20 @@ const Api = (() => {
   }
 
   /**
+   * Move axis by a relative offset using position control.
+   * POST /api/axis/move-relative
+   * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
+   * @param {number} offsetDeg - Relative offset in degrees
+   * @returns {Promise<object>}
+   */
+  async function moveAxisRelative(axisId, offsetDeg) {
+    return request('/axis/move-relative', {
+      method: 'POST',
+      body: JSON.stringify({ axis_id: axisId, offset_deg: offsetDeg }),
+    });
+  }
+
+  /**
    * Stop axis movement with smooth deceleration.
    * POST /api/axis/stop
    * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
@@ -776,6 +790,7 @@ const Api = (() => {
     loadState,
     uploadAndLoadState,
     moveAxis,
+    moveAxisRelative,
     stopAxis,
     emergencyStop,
     getConfig,

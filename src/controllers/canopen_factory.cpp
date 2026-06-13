@@ -303,6 +303,8 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                     canopen_config.pdo_mapping[i] = config.pdo_mapping[i];
                 }
                 canopen_config.sdo_timeout_ms = config.sdo_timeout_ms;
+                canopen_config.position_counts_per_degree = config.position_counts_per_degree;
+                canopen_config.velocity_counts_per_deg_s = config.velocity_counts_per_deg_s;
                 
                 config_ = config;
                 return impl_->initialize(canopen_config);
@@ -558,6 +560,18 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                 }
                 
                 return impl_->executeTrajectory(axis_id, canopen_trajectory, canopen_callback);
+            }
+
+            uint8_t getNodeNMTState(int axis_id) const override {
+                return impl_->getNodeNMTState(axis_id);
+            }
+
+            bool isHeartbeatRecent(int axis_id, int max_age_ms) const override {
+                return impl_->isHeartbeatRecent(axis_id, max_age_ms);
+            }
+
+            bool isDriveEnabled(int axis_id) const override {
+                return impl_->isDriveEnabled(axis_id);
             }
             
         private:

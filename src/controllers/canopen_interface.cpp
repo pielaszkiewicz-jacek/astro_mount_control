@@ -24,6 +24,9 @@ public:
             axis_enabled_[i] = false;
             axis_target_position_[i] = 0.0;
             axis_target_velocity_[i] = 0.0;
+            nmt_cached_state_[i] = 0x00;  // NMT bootup / unknown
+            nmt_heartbeat_count_[i] = 0;
+            nmt_last_heartbeat_[i] = std::chrono::steady_clock::time_point{};
         }
     }
 
@@ -70,6 +73,10 @@ public:
         connected_ = true;
         running_ = true;
 
+        // Register NMT heartbeat callback so we receive real heartbeat
+        // state updates from the C reader thread instead of polling via SDO.
+        canopen_set_nmt_callback(ctx_, nmtCallbackTrampoline, this);
+
         logging::Logger::get("canopen")->info(
             "CANopen: Interface {} initialized successfully",
             config.interface_name);
@@ -81,6 +88,11 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             running_ = false;
             sync_thread_running_ = false;
+        }
+
+        // Join trajectory thread before destroying context
+        if (traj_thread_.joinable()) {
+            traj_thread_.join();
         }
 
         if (sync_thread_.joinable()) {
@@ -97,16 +109,30 @@ public:
             return true;
         }
 
-        // Re-initialize if context exists but not connected
-        if (ctx_) {
-            if (canopen_init(ctx_, config_.interface_name.c_str(),
-                             config_.node_id, config_.bitrate)) {
-                connected_ = true;
-                running_ = true;
-                logging::Logger::get("canopen")->info(
-                    "CANopen: Reconnected to {}", config_.interface_name);
-                return true;
+        // If context was destroyed by a previous disconnect(), create a new one.
+        if (!ctx_) {
+            ctx_ = canopen_create();
+            if (!ctx_) {
+                logging::Logger::get("canopen")->error(
+                    "CANopen: Failed to create context for reconnection");
+                return false;
             }
+        }
+
+        // Re-initialize the CANopen socket and reader thread
+        if (canopen_init(ctx_, config_.interface_name.c_str(),
+                         config_.node_id, config_.bitrate)) {
+            connected_ = true;
+            running_ = true;
+            logging::Logger::get("canopen")->info(
+                "CANopen: Reconnected to {}", config_.interface_name);
+            return true;
+        }
+
+        // Initialization failed — clean up the context we just created
+        if (ctx_) {
+            canopen_destroy(ctx_);
+            ctx_ = nullptr;
         }
         return false;
     }
@@ -118,16 +144,21 @@ public:
             return;
         }
 
-        // Disable all axes
+        // Disable all axes and clear state.  The DriveStatus objects
+        // are mutable (updated by getDriveStatus), so we reset them
+        // under the lock to keep the internal view consistent.
         for (int i = 0; i < 2; ++i) {
             axis_enabled_[i] = false;
             axis_target_velocity_[i] = 0.0;
-            axis_status_[i].enabled = false;
-            axis_status_[i].operational = false;
+            axis_status_[i] = DriveStatus{};
             axis_status_[i].timestamp = std::chrono::system_clock::now();
+            axis_position_[i] = PositionData{};
+            axis_encoder_[i] = EncoderData{};
         }
 
-        // Shutdown CANopen context (closes socket, stops reader thread)
+        // Shutdown CANopen context (stops reader thread, closes socket)
+        // and then destroy it so that a subsequent connect() can create
+        // a fresh context.
         if (ctx_) {
             canopen_shutdown(ctx_);
             canopen_destroy(ctx_);
@@ -185,12 +216,46 @@ public:
         logging::Logger::get("canopen")->info(
             "CANopen: Enabling axis {} (node {})", axis_id, node_id);
 
+        // --- Read actual position BEFORE enabling the drive ---
+        // After the enable sequence, the drive enters Operation Enabled and
+        // may immediately start executing a stale motion profile from a
+        // previous session.  To prevent uncontrolled acceleration, read the
+        // current position (0x6064) and write it as the target (0x607A)
+        // BEFORE the final state transition.
+        int32_t actual_pos = 0;
+        size_t len = 4;
+        bool have_pos = canopen_sdo_read_expedited(ctx_, node_id,
+                                                   0x6064, 0, &actual_pos, &len);
+        if (have_pos) {
+            logging::Logger::get("canopen")->info(
+                "CANopen: Axis {} pre-enable position = {} counts, locking target",
+                axis_id, actual_pos);
+            canopen_sdo_write_expedited(ctx_, node_id,
+                                        0x607A, 0, &actual_pos, 4);
+        }
+
         // Send CiA 402 enable sequence via SDO
         if (!canopen_402_enable_drive(ctx_, node_id)) {
             logging::Logger::get("canopen")->error(
                 "CANopen: Failed to enable axis {} (node {})",
                 axis_id, node_id);
             return false;
+        }
+
+        // --- After enable, always set mode to Profile Position ---
+        // This must be done regardless of whether the position read
+        // succeeded; otherwise the drive may remain in Velocity mode
+        // and ignore all subsequent target position commands.
+        canopen_402_set_mode(ctx_, node_id, CIA402_OPMODE_PROFILE_POS);
+        logging::Logger::get("canopen")->info(
+            "CANopen: Axis {} mode set to Profile Position (1)", axis_id);
+
+        if (have_pos) {
+            // Write target position again with new-set-point toggle
+            canopen_402_set_target_position(ctx_, node_id, actual_pos);
+            logging::Logger::get("canopen")->info(
+                "CANopen: Axis {} post-enable target locked at {} counts",
+                axis_id, actual_pos);
         }
 
         axis_enabled_[axis_id] = true;
@@ -272,21 +337,38 @@ public:
 
         axis_target_position_[axis_id] = position;
 
-        // Convert degrees to motor counts (simple linear mapping)
-        // In a real system, this would use the gear ratio and encoder resolution
-        int32_t target_counts = static_cast<int32_t>(position * 10000.0);
+        // Convert degrees to drive position units using the configured
+        // counts-per-degree factor (default 4000.0/360.0 ≈ 11.111 counts/°,
+        // matching a 4000-count encoder → 360° at the motor shaft).
+        const double cpd = config_.position_counts_per_degree;
+        int32_t target_counts = static_cast<int32_t>(position * cpd);
 
-        // Set profile position mode
-        int8_t mode = CIA402_OPMODE_PROFILE_POS;
-        canopen_402_set_mode(ctx_, node_id, mode);
+        // Ensure the drive is in Profile Position mode.  We read the
+        // current mode first to avoid unnecessary state transitions that
+        // would cancel an in-progress motion profile.
+        int8_t current_mode = 0;
+        size_t mode_len = 1;
+        canopen_sdo_read_expedited(ctx_, node_id,
+                                    OD_INDEX_MODES_OF_OP_DISPLAY, 0,
+                                    &current_mode, &mode_len);
+        if (current_mode != CIA402_OPMODE_PROFILE_POS) {
+            logging::Logger::get("canopen")->info(
+                "CANopen: Axis {} mode={}, switching to Profile Position (1)",
+                axis_id, current_mode);
+            int8_t mode = CIA402_OPMODE_PROFILE_POS;
+            canopen_402_set_mode(ctx_, node_id, mode);
+        }
 
-        // Set profile velocity and acceleration via SDO
-        int32_t profile_vel = static_cast<int32_t>(velocity * 1000.0);
+        // Set profile velocity and acceleration via SDO.
+        // Convert using configured scaling factor (default 4000.0/360.0 ≈ 11.111 counts per °/s,
+        // matching a 4000-count encoder → 360°/s at the motor shaft).
+        const double vpd = config_.velocity_counts_per_deg_s;
+        int32_t profile_vel = static_cast<int32_t>(velocity * vpd);
         canopen_sdo_write_expedited(ctx_, node_id,
                                      OD_INDEX_PROFILE_VELOCITY, 0,
                                      &profile_vel, 4);
 
-        int32_t profile_acc = static_cast<int32_t>(acceleration * 1000.0);
+        int32_t profile_acc = static_cast<int32_t>(acceleration * vpd);
         canopen_sdo_write_expedited(ctx_, node_id,
                                      OD_INDEX_PROFILE_ACCEL, 0,
                                      &profile_acc, 4);
@@ -302,8 +384,8 @@ public:
         axis_status_[axis_id].timestamp = std::chrono::system_clock::now();
 
         logging::Logger::get("canopen")->info(
-            "CANopen: Axis {} (node {}): setPosition target={:.4f}° vel={:.4f} acc={:.4f}",
-            axis_id, node_id, position, velocity, acceleration);
+            "CANopen: Axis {} (node {}): setPosition pos={:.4f}° vel={:.4f} acc={:.4f} cpd={:.6f} -> target_counts={} (raw)",
+            axis_id, node_id, position, velocity, acceleration, cpd, target_counts);
 
         // Notify callbacks
         if (position_callback_) {
@@ -355,13 +437,15 @@ public:
         canopen_402_set_mode(ctx_, node_id, mode);
 
         // Set target velocity via SDO to OD index 0x60FF (Target Velocity for Profile Velocity mode)
-        int32_t target_vel = static_cast<int32_t>(velocity * 1000.0);
+        // Convert using configured scaling factor (default 4000.0/360.0 ≈ 11.111 counts per °/s).
+        const double vpd = config_.velocity_counts_per_deg_s;
+        int32_t target_vel = static_cast<int32_t>(velocity * vpd);
         canopen_sdo_write_expedited(ctx_, node_id,
                                      OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
                                      &target_vel, 4);
 
         // Set profile acceleration/deceleration
-        int32_t profile_acc = static_cast<int32_t>(acceleration * 1000.0);
+        int32_t profile_acc = static_cast<int32_t>(acceleration * vpd);
         canopen_sdo_write_expedited(ctx_, node_id,
                                      OD_INDEX_PROFILE_ACCEL, 0,
                                      &profile_acc, 4);
@@ -392,7 +476,7 @@ public:
         axis_status_[axis_id].timestamp = std::chrono::system_clock::now();
 
         logging::Logger::get("canopen")->info(
-            "CANopen: Axis {} (node {}): setVelocity vel={:.6f}°/{:.4f} acc={:.4f}",
+            "CANopen: Axis {} (node {}): setVelocity vel={:.4f}°/s acc={:.4f}",
             axis_id, node_id, velocity, acceleration);
 
         // Notify callbacks
@@ -422,23 +506,63 @@ public:
         logging::Logger::get("canopen")->info(
             "CANopen: Stopping axis {} (node {})", axis_id, node_id);
 
-        // Graceful stop: write velocity=0 to target velocity OD (0x60FF).
-        // This keeps the drive in Operation Enabled state so subsequent
-        // setVelocityTarget() / setPositionTarget() calls work immediately.
-        // NOTE: We do NOT use canopen_402_quick_stop() here because that
-        // transitions the drive into "Quick Stop Active" state (CiA 402),
-        // from which all new motion commands are rejected. Quick stop is
-        // reserved for emergencyStop() where immediate halt is required.
-        int32_t zero_vel = 0;
-        canopen_sdo_write_expedited(ctx_, node_id,
-                                     OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
-                                     &zero_vel, 4);
+        // Read current mode of operation (OD 0x6061) to determine how to stop.
+        // - Profile Position mode (1): Use Halt bit (0x0100) in control word
+        // - Profile Velocity mode (3): Write velocity=0 to target velocity OD
+        int8_t current_mode = -1;
+        size_t mode_len = sizeof(current_mode);
+        canopen_sdo_read_expedited(ctx_, node_id, 0x6061, 0, &current_mode, &mode_len);
 
-        // Also set a fast deceleration to ensure prompt stop
-        int32_t fast_decel = 500000;
-        canopen_sdo_write_expedited(ctx_, node_id,
-                                     OD_INDEX_PROFILE_DECEL, 0,
-                                     &fast_decel, 4);
+        if (current_mode == CIA402_OPMODE_PROFILE_POS) {
+            // CiA 402 §6.4.1.5: Halt bit (control word bit 8 = 0x0100)
+            // stops ongoing position or velocity motion while keeping the
+            // drive in Operation Enabled state. The drive decelerates using
+            // the configured profile deceleration (OD 0x6084).
+            //
+            // Set a fast deceleration before halt to ensure prompt stop
+            int32_t fast_decel = 500000;
+            canopen_sdo_write_expedited(ctx_, node_id,
+                                         OD_INDEX_PROFILE_DECEL, 0,
+                                         &fast_decel, 4);
+
+            // Set Halt bit (0x0100) in control word: 0x000F (Op Enabled) | 0x0100 = 0x010F
+            // CiA 402 §6.4.1.5: Halt bit stops ongoing motion while keeping the
+            // drive in Operation Enabled state. The drive decelerates using the
+            // profile deceleration (OD 0x6084) which we set above.
+            canopen_402_set_control_word(ctx_, node_id, 0x010F);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+            // Clear halt bit to allow future motion commands without requiring
+            // a re-enable sequence. Per CiA 402, clearing halt while stationary
+            // keeps the drive in Operation Enabled.
+            canopen_402_set_control_word(ctx_, node_id, 0x000F);
+
+            logging::Logger::get("canopen")->info(
+                "CANopen: Axis {} (node {}): stopped via Halt bit (pos mode)",
+                axis_id, node_id);
+        } else {
+            // Profile Velocity mode (3) or unknown: write velocity=0 to 0x60FF.
+            // This keeps the drive in Operation Enabled state so subsequent
+            // setVelocityTarget() / setPositionTarget() calls work immediately.
+            // NOTE: We do NOT use canopen_402_quick_stop() here because that
+            // transitions the drive into "Quick Stop Active" state (CiA 402),
+            // from which all new motion commands are rejected. Quick stop is
+            // reserved for emergencyStop() where immediate halt is required.
+            int32_t zero_vel = 0;
+            canopen_sdo_write_expedited(ctx_, node_id,
+                                         OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
+                                         &zero_vel, 4);
+
+            // Also set a fast deceleration to ensure prompt stop
+            int32_t fast_decel = 500000;
+            canopen_sdo_write_expedited(ctx_, node_id,
+                                         OD_INDEX_PROFILE_DECEL, 0,
+                                         &fast_decel, 4);
+
+            logging::Logger::get("canopen")->info(
+                "CANopen: Axis {} (node {}): stopped via velocity=0 (vel mode)",
+                axis_id, node_id);
+        }
 
         axis_target_velocity_[axis_id] = 0.0;
         axis_position_[axis_id].actual_velocity = 0.0;
@@ -448,10 +572,6 @@ public:
         axis_status_[axis_id].timestamp = std::chrono::system_clock::now();
 
         // axis_enabled_ stays true — drive remains in Operation Enabled state
-
-        logging::Logger::get("canopen")->info(
-            "CANopen: Axis {} (node {}) stopped (velocity=0 via SDO, drive stays enabled)",
-            axis_id, node_id);
 
         // Notify callbacks
         if (position_callback_) {
@@ -469,10 +589,18 @@ public:
             return;
         }
 
-        // Emergency stop all axes via NMT Stop Remote Node
+        // CiA 402 §6.4: Quick Stop (control word = 0x0002) commands the
+        // drive to decelerate using the quick stop deceleration (OD 0x6085)
+        // and transition to "Switch On Disabled".  The drive remains in
+        // NMT Operational state and continues to respond to SDO — so
+        // re-enabling after emergency stop is fast (no SDO timeouts).
+        //
+        // We deliberately do NOT send NMT Stop (0x02) because it would
+        // put the drive in NMT Stopped state where it ignores SDO requests.
+        // The subsequent re-enable would then suffer ~1 s SDO timeouts.
         for (int i = 0; i < 2; ++i) {
             uint8_t node_id = nodeIdForAxis(i);
-            canopen_nmt_send_command(ctx_, node_id, CANOPEN_NMT_STOP_REMOTE_NODE);
+            canopen_402_quick_stop(ctx_, node_id);
 
             axis_enabled_[i] = false;
             axis_target_velocity_[i] = 0.0;
@@ -487,7 +615,7 @@ public:
         }
 
         logging::Logger::get("canopen")->warn(
-            "CANopen: Emergency stop - all axes stopped");
+            "CANopen: Emergency stop — Quick Stop sent to all axes");
     }
 
     bool clearErrors(int axis_id) {
@@ -553,6 +681,13 @@ public:
             return PositionData{};
         }
 
+        // Use configured counts_per_degree for conversion.
+        // Default 10000.0 means the drive reports position in units of
+        // 0.0001° (CiA 402 standard).  For raw encoder counts, set
+        // this to (encoder_resolution × quadrature / 360).
+        const double cpd = config_.position_counts_per_degree;
+        const double vpd = config_.velocity_counts_per_deg_s;
+
         // Try to read actual position from the drive via SDO
         if (connected_ && ctx_) {
             uint8_t node_id = nodeIdForAxis(axis_id);
@@ -563,7 +698,7 @@ public:
             if (canopen_sdo_read_expedited(ctx_, node_id,
                                            0x6064, 0, &actual_pos, &len)) {
                 axis_position_[axis_id].actual_position =
-                    static_cast<double>(actual_pos) / 10000.0;
+                    static_cast<double>(actual_pos) / cpd;
             }
 
             // Read actual velocity (OD 0x606C)
@@ -572,7 +707,7 @@ public:
             if (canopen_sdo_read_expedited(ctx_, node_id,
                                            0x606C, 0, &actual_vel, &len)) {
                 axis_position_[axis_id].actual_velocity =
-                    static_cast<double>(actual_vel) / 1000.0;
+                    static_cast<double>(actual_vel) / vpd;
             }
 
             axis_position_[axis_id].timestamp =
@@ -801,8 +936,14 @@ public:
             return false;
         }
 
-        // Execute trajectory in a background thread
-        std::thread([this, axis_id, trajectory, callback]() {
+        // Join any previous trajectory thread first
+        if (traj_thread_.joinable()) {
+            traj_thread_.join();
+        }
+
+        // Execute trajectory in a background thread, stored so shutdown()
+        // can join it and prevent use-after-free.
+        traj_thread_ = std::thread([this, axis_id, trajectory, callback]() {
             for (const auto& pt : trajectory) {
                 if (!running_) break;
 
@@ -816,9 +957,38 @@ public:
                 std::this_thread::sleep_for(
                     std::chrono::milliseconds(10));
             }
-        }).detach();
+        });
 
         return true;
+    }
+
+    // --- Drive enabled state (cached, no SDO traffic) ---
+    // Returns the last known enabled state for the given axis.
+    // Updated by enableDrive(), disableDrive(), emergencyStop(),
+    // and getDriveStatus() when it reads the CiA 402 status word.
+    bool isDriveEnabled(int axis_id) const {
+        if (axis_id < 0 || axis_id >= 2) return false;
+        return axis_enabled_[axis_id];
+    }
+
+    // --- Real NMT state from heartbeat callbacks (no SDO traffic) ---
+    // Returns the NMT state cached from the last heartbeat received for
+    // the given axis.  Values are CiA 301 NMT states:
+    //   0x00 = Bootup / Initialising
+    //   0x04 = Stopped
+    //   0x05 = Operational
+    //   0x7F = Pre-Operational
+    uint8_t getNodeNMTState(int axis_id) const {
+        return getCachedNMTState(axis_id);
+    }
+
+    bool isHeartbeatRecent(int axis_id, int max_age_ms) const {
+        if (axis_id < 0 || axis_id >= 2) return false;
+        auto last = getLastHeartbeatTime(axis_id);
+        if (last.time_since_epoch().count() == 0) return false;
+        auto age = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - last).count();
+        return age <= max_age_ms;
     }
 
 private:
@@ -835,15 +1005,58 @@ private:
     mutable PositionData axis_position_[2];
     mutable EncoderData axis_encoder_[2];
 
+    // Real NMT state from heartbeat callbacks (updated by reader thread)
+    uint8_t nmt_cached_state_[2];
+    uint32_t nmt_heartbeat_count_[2];
+    std::chrono::steady_clock::time_point nmt_last_heartbeat_[2];
+
     // SYNC thread
     bool sync_thread_running_;
     std::thread sync_thread_;
+
+    // Trajectory execution thread (stored to prevent use-after-free)
+    std::thread traj_thread_;
 
     // Callbacks
     StatusCallback status_callback_;
     PositionCallback position_callback_;
     EncoderCallback encoder_callback_;
     ErrorCallback error_callback_;
+
+    // --- NMT heartbeat callback (called from C reader thread) ---
+    // Updates the cached NMT state for the given node.
+    // The mapping from node_id → axis index is: axis = node_id - config_.node_id.
+    void onNMTStateChange(uint8_t node_id, uint8_t state) {
+        int axis = static_cast<int>(node_id) - config_.node_id;
+        if (axis < 0 || axis >= 2) return;
+
+        nmt_cached_state_[axis] = state;
+        nmt_heartbeat_count_[axis]++;
+        nmt_last_heartbeat_[axis] = std::chrono::steady_clock::now();
+    }
+
+    // Static trampoline for the C callback
+    static void nmtCallbackTrampoline(void* userdata, uint8_t node_id,
+                                      uint8_t state) {
+        auto* impl = static_cast<Impl*>(userdata);
+        if (impl) impl->onNMTStateChange(node_id, state);
+    }
+
+    // --- NMT state query (from real heartbeats, not SDO) ---
+    uint8_t getCachedNMTState(int axis_id) const {
+        if (axis_id < 0 || axis_id >= 2) return 0x00;
+        return nmt_cached_state_[axis_id];
+    }
+
+    uint32_t getHeartbeatCount(int axis_id) const {
+        if (axis_id < 0 || axis_id >= 2) return 0;
+        return nmt_heartbeat_count_[axis_id];
+    }
+
+    std::chrono::steady_clock::time_point getLastHeartbeatTime(int axis_id) const {
+        if (axis_id < 0 || axis_id >= 2) return {};
+        return nmt_last_heartbeat_[axis_id];
+    }
 
     mutable std::mutex mutex_;
 };
@@ -994,5 +1207,18 @@ bool CanOpenInterface::executeTrajectory(
     return pimpl->executeTrajectory(axis_id, trajectory, callback);
 }
 
+uint8_t CanOpenInterface::getNodeNMTState(int axis_id) const {
+    return pimpl->getNodeNMTState(axis_id);
+}
+
+bool CanOpenInterface::isDriveEnabled(int axis_id) const {
+    return pimpl->isDriveEnabled(axis_id);
+}
+
+bool CanOpenInterface::isHeartbeatRecent(int axis_id, int max_age_ms) const {
+    return pimpl->isHeartbeatRecent(axis_id, max_age_ms);
+}
+
 } // namespace controllers
 } // namespace astro_mount
+

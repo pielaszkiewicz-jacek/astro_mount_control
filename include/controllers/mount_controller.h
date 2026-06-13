@@ -165,6 +165,8 @@ public:
         // Network configuration
         std::string canopen_interface;
         int canopen_node_id;
+        double canopen_position_counts_per_degree = 4000.0 / 360.0;
+        double canopen_velocity_counts_per_deg_s = 4000.0 / 360.0;
         std::string grpc_address;
         int grpc_port;
         
@@ -325,6 +327,15 @@ public:
      * @return Mount status
      */
     MountStatus getStatus() const;
+
+    /**
+     * @brief Read live axis positions from CANopen drives and update cached state.
+     *
+     * Call periodically (e.g. from the main loop) to keep getStatus()
+     * in sync with the physical hardware.  Without this, positions
+     * would only be updated during active slew/track operations.
+     */
+    void refreshPositions();
 
     /**
      * @brief Clear error state and reset to IDLE

@@ -42,6 +42,8 @@ public:
         int baud_rate;
         bool enable_sync;
         int sync_interval_ms;
+        double position_counts_per_degree = 1000.0 / 360.0;
+        double velocity_counts_per_deg_s = 1000.0 / 360.0;
     };
 
     struct AxisPhysicalParameters {

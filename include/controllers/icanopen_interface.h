@@ -32,6 +32,8 @@ public:
         int pdo_mapping[4];              // PDO mapping configuration
         int sdo_timeout_ms;              // SDO timeout in milliseconds
         std::string library;             // Library to use: "mock", "canopensocket", "libedssharp", "canfestival"
+        double position_counts_per_degree = 1000.0 / 360.0;
+        double velocity_counts_per_deg_s = 1000.0 / 360.0;
     };
 
     struct DriveStatus {
@@ -365,6 +367,27 @@ public:
      */
     virtual bool executeTrajectory(int axis_id, const std::vector<TrajectoryPoint>& trajectory,
                                   std::function<void(const TrajectoryPoint&)> callback = nullptr) = 0;
+
+    /**
+     * @brief Get cached NMT state from real heartbeat reception (no SDO traffic).
+     * @param axis_id Axis identifier (0=RA/Azimuth, 1=Dec/Altitude)
+     * @return CiA 301 NMT state: 0x00=Bootup, 0x04=Stopped, 0x05=Operational, 0x7F=Pre-Op
+     */
+    virtual uint8_t getNodeNMTState(int axis_id) const { return 0x00; }
+
+    /**
+     * @brief Check if the last heartbeat for this axis is recent (received via real
+     *        heartbeat callback, not SDO polling).
+     * @param axis_id Axis identifier
+     * @param max_age_ms Maximum acceptable age of the last heartbeat in ms
+     * @return True if a heartbeat was received within max_age_ms
+     */
+    virtual bool isHeartbeatRecent(int axis_id, int max_age_ms) const { return false; }
+
+    /**
+     * @brief Check if a drive is currently enabled (cached, no SDO traffic).
+     */
+    virtual bool isDriveEnabled(int axis_id) const { return false; }
 };
 
 } // namespace controllers

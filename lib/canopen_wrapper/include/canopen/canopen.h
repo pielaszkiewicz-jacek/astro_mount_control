@@ -33,7 +33,7 @@ typedef struct {
 /* NMT state values */
 #define CANOPEN_NMT_STATE_BOOTUP         0x00
 #define CANOPEN_NMT_STATE_STOPPED        0x04
-#define CANOPEN_NMT_STATE_OP_PREOP       0x7F
+#define CANOPEN_NMT_STATE_PRE_OPERATIONAL 0x7F
 #define CANOPEN_NMT_STATE_OPERATIONAL    0x05
 
 /* CiA 402 Control Word bits */
@@ -106,7 +106,7 @@ typedef struct {
 /* COB-ID base addresses */
 #define CANOPEN_COBID_NMT                0x000
 #define CANOPEN_COBID_SYNC               0x080
-#define CANOPEN_COBID_EMERGENCY          0x080
+#define CANOPEN_COBID_EMERGENCY_BASE     0x080 /* + node_id for specific node */
 #define CANOPEN_COBID_TPDO1              0x180
 #define CANOPEN_COBID_RPDO1              0x200
 #define CANOPEN_COBID_TPDO2              0x280
@@ -115,7 +115,7 @@ typedef struct {
 #define CANOPEN_COBID_RSDO               0x600
 #define CANOPEN_COBID_HEARTBEAT          0x700
 
-/* SDO commands */
+/* SDO commands (CiA 301 §7.2.10) */
 #define CANOPEN_SDO_CMD_WRITE_4          0x23
 #define CANOPEN_SDO_CMD_WRITE_3          0x27
 #define CANOPEN_SDO_CMD_WRITE_2          0x2B
@@ -125,6 +125,33 @@ typedef struct {
 #define CANOPEN_SDO_CMD_READ_RESP_3      0x47
 #define CANOPEN_SDO_CMD_READ_RESP_2      0x4B
 #define CANOPEN_SDO_CMD_READ_RESP_1      0x4F
+#define CANOPEN_SDO_CMD_ABORT            0x80
+
+/* SDO abort codes (CiA 301 §7.2.10.7) */
+#define CANOPEN_SDO_ABORT_TOGGLE_BIT     0x05030000UL
+#define CANOPEN_SDO_ABORT_TIMEOUT        0x05040000UL
+#define CANOPEN_SDO_ABORT_CMD_UNKNOWN    0x05040001UL
+#define CANOPEN_SDO_ABORT_NO_ACCESS      0x06010000UL
+#define CANOPEN_SDO_ABORT_WRITE_ONLY     0x06010001UL
+#define CANOPEN_SDO_ABORT_READ_ONLY      0x06010002UL
+#define CANOPEN_SDO_ABORT_OD_NO_EXIST    0x06020000UL
+#define CANOPEN_SDO_ABORT_PARAM_INCOMP   0x06040043UL
+#define CANOPEN_SDO_ABORT_TYPE_MISMATCH  0x06070010UL
+#define CANOPEN_SDO_ABORT_DATA_RANGE     0x06090030UL
+#define CANOPEN_SDO_ABORT_DATA_TOO_LARGE 0x06090031UL
+#define CANOPEN_SDO_ABORT_DATA_TOO_SMALL 0x06090032UL
+#define CANOPEN_SDO_ABORT_LOCAL_CTRL     0x08000000UL
+#define CANOPEN_SDO_ABORT_DEVICE        0x08000020UL
+
+/* Emergency error codes (CiA 301 §7.2.7) */
+#define CANOPEN_EMCY_NO_ERROR            0x0000
+#define CANOPEN_EMCY_GENERIC_ERROR       0x1000
+#define CANOPEN_EMCY_CURRENT             0x2000
+#define CANOPEN_EMCY_VOLTAGE             0x3000
+#define CANOPEN_EMCY_TEMPERATURE         0x4000
+#define CANOPEN_EMCY_COMMUNICATION       0x5000
+#define CANOPEN_EMCY_DEVICE_PROFILE      0x6000
+#define CANOPEN_EMCY_MANUFACTURER        0xFF00
 
 /* ========================================================================
  *  Opaque handle
@@ -140,6 +167,10 @@ typedef void (*canopen_pdo_cb_t)(void* userdata, uint32_t cob_id,
                                  const uint8_t* data, uint8_t dlc);
 typedef void (*canopen_nmt_cb_t)(void* userdata, uint8_t node_id,
                                  uint8_t state);
+typedef void (*canopen_emcy_cb_t)(void* userdata, uint8_t node_id,
+                                  uint16_t error_code,
+                                  const uint8_t* frame_data,
+                                  uint8_t frame_dlc);
 
 /* ========================================================================
  *  Core API
@@ -208,6 +239,10 @@ void canopen_set_pdo_callback(canopen_ctx_t* ctx, canopen_pdo_cb_t cb,
                               void* userdata);
 void canopen_set_nmt_callback(canopen_ctx_t* ctx, canopen_nmt_cb_t cb,
                               void* userdata);
+void canopen_set_emergency_callback(canopen_ctx_t* ctx, canopen_emcy_cb_t cb,
+                                    void* userdata);
+bool canopen_get_emergency(canopen_ctx_t* ctx, uint8_t node_id,
+                           uint16_t* error_code, uint8_t* error_register);
 
 #ifdef __cplusplus
 }
