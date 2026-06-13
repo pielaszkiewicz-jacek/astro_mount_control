@@ -32,11 +32,60 @@ const DatabaseComponent = (() => {
   let currentCatalogs = '';
   let currentConstellation = '';
 
+  // ─── Help Content ─────────────────────────────────────────────────────
+
+  function buildDatabaseHelpContent() {
+    const container = $('#database-help-content');
+    if (!container) return;
+
+    const t = I18n.t.bind(I18n);
+
+    const steps = [
+      { num: '1', titleKey: 'database.help_step1_title', open: true,
+        bodyHtml: '<ol><li>' + t('database.help_step1_li1') + '</li><li>' + t('database.help_step1_li2') + '</li><li>' + t('database.help_step1_li3') + '</li></ol>' },
+      { num: '2', titleKey: 'database.help_step2_title', open: false,
+        bodyHtml: '<ol><li>' + t('database.help_step2_li1') + '</li><li>' + t('database.help_step2_li2') + '</li><li>' + t('database.help_step2_li3') + '</li></ol>' },
+      { num: '3', titleKey: 'database.help_step3_title', open: false,
+        bodyHtml: '<ol><li>' + t('database.help_step3_li1') + '</li><li>' + t('database.help_step3_li2') + '</li><li>' + t('database.help_step3_li3') + '</li></ol>' },
+      { num: '4', titleKey: 'database.help_step4_title', open: false,
+        bodyHtml: '<ul><li>' + t('database.help_step4_li1') + '</li><li>' + t('database.help_step4_li2') + '</li><li>' + t('database.help_step4_li3') + '</li></ul>' }
+    ];
+
+    let html = '<p><strong>' + t('database.help_purpose_label') + '</strong> ' + t('database.help_purpose_text') + '</p>';
+
+    steps.forEach(function(step) {
+      html += '<details class="calibration-help-step"' + (step.open ? ' open' : '') + '>'
+        + '<summary class="calibration-help-step-summary">'
+        + '<span class="calibration-help-step-number">' + step.num + '</span>'
+        + t(step.titleKey) + '</summary>'
+        + '<div class="calibration-help-step-body">' + step.bodyHtml + '</div>'
+        + '</details>';
+    });
+
+    container.innerHTML = html;
+  }
+
   // ─── Initialization ───────────────────────────────────────────────────
 
   function init() {
+    buildDatabaseHelpContent();
+    document.addEventListener('i18n:applied', buildDatabaseHelpContent);
+    bindHelpToggle('card-database-help');
     bindEvents();
     loadStats();
+  }
+
+  function bindHelpToggle(cardId) {
+    const card = $('#' + cardId);
+    if (!card) return;
+    const toggleBtn = card.querySelector('.card-toggle-btn');
+    const header = card.querySelector('.card-header');
+    const doToggle = function() {
+      const collapsed = card.classList.toggle('card-collapsed');
+      if (toggleBtn) toggleBtn.textContent = collapsed ? '+' : '\u2212';
+    };
+    if (toggleBtn) { toggleBtn.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); }); }
+    if (header) { header.addEventListener('click', function(e) { if (e.target.closest('button, input, select, a, label')) return; doToggle(); }); }
   }
 
   // ─── Event Binding ────────────────────────────────────────────────────
@@ -126,9 +175,9 @@ const DatabaseComponent = (() => {
         badge.className = 'status-badge idle';
       }
     } catch (err) {
-      content.innerHTML = `<div class="status-placeholder" style="color:var(--color-danger);">Database unavailable: ${err.message}</div>`;
+      content.innerHTML = `<div class="status-placeholder" style="color:var(--color-danger);">${I18n.t('db.unavailable', { message: err.message })}</div>`;
       if (badge) {
-        badge.textContent = 'Offline';
+        badge.textContent = I18n.t('status.offline');
         badge.className = 'status-badge error';
       }
     }
@@ -345,7 +394,7 @@ const DatabaseComponent = (() => {
 
     if (!hasMultiplePages) return;
 
-    pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    pageInfo.textContent = I18n.t('db.page_of', { page: currentPage, total: totalPages });
     prevBtn.disabled = currentPage <= 1;
     nextBtn.disabled = currentPage >= totalPages;
 
@@ -866,7 +915,7 @@ function handleEditObject() {
   if (!currentDetail) return;
 
   const title = $('#db-edit-title');
-  if (title) title.textContent = `Edit: ${currentDetail.name || 'Unnamed'}`;
+  if (title) title.textContent = I18n.t('db.edit_title_with_name', { name: currentDetail.name || I18n.t('db.unnamed') });
 
   populateEditForm(currentDetail);
 
@@ -1065,8 +1114,10 @@ async function handleUpdate(event) {
    */
   function toggleCreatePanel() {
     const card = $('#card-db-create');
+    const btn = $('#btn-db-create-toggle');
     if (!card) return;
-    card.classList.toggle('card-collapsed');
+    const collapsed = card.classList.toggle('card-collapsed');
+    if (btn) btn.textContent = collapsed ? '+' : '\u2212';
   }
 
   /**
@@ -1074,20 +1125,24 @@ async function handleUpdate(event) {
    */
   function toggleStatsPanel() {
     const card = $('#card-db-stats');
+    const btn = $('#btn-db-stats-toggle');
     if (!card) return;
-    card.classList.toggle('card-collapsed');
+    const collapsed = card.classList.toggle('card-collapsed');
+    if (btn) btn.textContent = collapsed ? '+' : '\u2212';
   }
 
   // ─── Import: Toggle Panel ────────────────────────────────────────────
 
   function toggleImportPanel() {
     const card = $('#card-db-import');
+    const btn = $('#btn-db-import-toggle');
     if (!card) return;
-    card.classList.toggle('card-collapsed');
+    const collapsed = card.classList.toggle('card-collapsed');
     // Load presets when first expanded
     if (!card.classList.contains('card-collapsed')) {
       loadImportPresets();
     }
+    if (btn) btn.textContent = collapsed ? '+' : '\u2212';
   }
 
   // ─── Import: Load Presets ────────────────────────────────────────────

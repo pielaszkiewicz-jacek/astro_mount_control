@@ -48,11 +48,60 @@ const TrackingComponent = (() => {
     ERROR: 'error',
   };
 
+  // ─── Help Content ─────────────────────────────────────────────────────────
+
+  function buildTrackingHelpContent() {
+    const container = $('#tracking-help-content');
+    if (!container) return;
+
+    const t = I18n.t.bind(I18n);
+
+    const steps = [
+      { num: '1', titleKey: 'tracking.help_step1_title', open: true,
+        bodyHtml: '<ol><li>' + t('tracking.help_step1_li1') + '</li><li>' + t('tracking.help_step1_li2') + '</li><li>' + t('tracking.help_step1_li3') + '</li></ol>' },
+      { num: '2', titleKey: 'tracking.help_step2_title', open: false,
+        bodyHtml: '<ol><li>' + t('tracking.help_step2_li1') + '</li><li>' + t('tracking.help_step2_li2') + '</li><li>' + t('tracking.help_step2_li3') + '</li></ol>' },
+      { num: '3', titleKey: 'tracking.help_step3_title', open: false,
+        bodyHtml: '<ol><li>' + t('tracking.help_step3_li1') + '</li><li>' + t('tracking.help_step3_li2') + '</li><li>' + t('tracking.help_step3_li3') + '</li></ol>' },
+      { num: '4', titleKey: 'tracking.help_step4_title', open: false,
+        bodyHtml: '<ul><li>' + t('tracking.help_step4_li1') + '</li><li>' + t('tracking.help_step4_li2') + '</li><li>' + t('tracking.help_step4_li3') + '</li></ul>' }
+    ];
+
+    let html = '<p><strong>' + t('tracking.help_purpose_label') + '</strong> ' + t('tracking.help_purpose_text') + '</p>';
+
+    steps.forEach(function(step) {
+      html += '<details class="calibration-help-step"' + (step.open ? ' open' : '') + '>'
+        + '<summary class="calibration-help-step-summary">'
+        + '<span class="calibration-help-step-number">' + step.num + '</span>'
+        + t(step.titleKey) + '</summary>'
+        + '<div class="calibration-help-step-body">' + step.bodyHtml + '</div>'
+        + '</details>';
+    });
+
+    container.innerHTML = html;
+  }
+
   // ─── Initialization ───────────────────────────────────────────────────────
 
   function init() {
+    buildTrackingHelpContent();
+    document.addEventListener('i18n:applied', buildTrackingHelpContent);
+    bindHelpToggle('card-tracking-help');
     console.log('[TrackingComponent] init() called');
     bindEvents();
+  }
+
+  function bindHelpToggle(cardId) {
+    const card = $('#' + cardId);
+    if (!card) return;
+    const toggleBtn = card.querySelector('.card-toggle-btn');
+    const header = card.querySelector('.card-header');
+    const doToggle = function() {
+      const collapsed = card.classList.toggle('card-collapsed');
+      if (toggleBtn) toggleBtn.textContent = collapsed ? '+' : '\u2212';
+    };
+    if (toggleBtn) { toggleBtn.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); }); }
+    if (header) { header.addEventListener('click', function(e) { if (e.target.closest('button, input, select, a, label')) return; doToggle(); }); }
   }
 
   function bindEvents() {

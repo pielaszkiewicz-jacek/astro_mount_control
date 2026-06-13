@@ -90,8 +90,18 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         response->set_status(convertStatus(static_cast<int>(status.state)));
         response->set_encoders_enabled(status.encoders_active);
         response->set_guider_active(status.guider_active);
-        response->set_tracking_rate_ra(status.tracking_error_ra);
-        response->set_tracking_rate_dec(status.tracking_error_dec);
+        response->set_tracking_rate_ra(status.axis1_rate * 3600.0);   // deg/s → arcsec/s
+        response->set_tracking_rate_dec(status.axis2_rate * 3600.0);  // deg/s → arcsec/s
+        
+        // Current axis position
+        auto* pos = response->mutable_current_position();
+        pos->set_axis1(status.axis1_position);
+        pos->set_axis2(status.axis2_position);
+        
+        // Meridian flip status
+        response->set_pier_side(status.pier_side);
+        response->set_meridian_flipped(status.meridian_flip_in_progress);
+        response->set_time_to_meridian(status.time_to_meridian);
         
         // Set timestamp
         *response->mutable_state_time() = TimeUtil::GetCurrentTime();

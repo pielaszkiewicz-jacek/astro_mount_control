@@ -229,8 +229,10 @@ public:
         };
         
         State state;
-        double axis1_position;      // Degrees
-        double axis2_position;      // Degrees
+        double axis1_position;      // Degrees (servo/motor shaft)
+        double axis2_position;      // Degrees (servo/motor shaft)
+        double telescope_axis1_position; // Degrees (telescope axis, after gear ratio)
+        double telescope_axis2_position; // Degrees (telescope axis, after gear ratio)
         double axis1_rate;          // Degrees/sec
         double axis2_rate;          // Degrees/sec
         double axis1_target;        // Degrees

@@ -459,6 +459,17 @@ body {
   overflow: hidden;
 }
 
+/* Make collapsible card headers indicate they are clickable */
+.card-collapsible .card-header {
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.card-collapsible .card-header:hover {
+  background: var(--color-bg);
+}
+
 .card-toggle-btn {
   display: inline-flex;
   align-items: center;
@@ -2742,4 +2753,80 @@ input[type="file"].form-input::file-selector-button:hover {
   .help-tip-body {
     padding: 10px;
   }
+}
+
+/* ─── Debug / Test Tab ──────────────────────────────────────────────────── */
+
+.debug-subsection {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-border);
+}
+
+.debug-subtitle {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin: 0 0 4px 0;
+}
+
+.debug-hint {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 10px 0;
+  line-height: 1.4;
+}
+
+.debug-output-container {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.debug-output {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', 'Consolas', monospace;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  padding: 10px 12px;
+  margin: 0;
+  min-height: 120px;
+  max-height: 400px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  tab-size: 2;
+}
+
+.mono {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', 'Consolas', monospace !important;
+  font-size: 0.78rem !important;
+}
+
+/* ─── Language Toggle ─────────────────────────────────────────────── */
+.lang-toggle {
+  font-size: 0.75rem;
+  font-weight: 700;
+  min-width: 32px;
+  padding: 2px 6px;
+  letter-spacing: 0.5px;
+}
+
+/* ─── Rotation Matrix & Quaternion Table ──────────────────────────── */
+.rotmatrix-table {
+  border-collapse: collapse;
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'Menlo', 'Consolas', monospace;
+  font-size: 0.80rem;
+  margin: 6px 0;
+}
+
+.rotmatrix-table td {
+  padding: 4px 10px;
+  text-align: center;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text);
+  min-width: 56px;
+  white-space: nowrap;
 }

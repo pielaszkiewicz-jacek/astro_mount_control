@@ -37,9 +37,13 @@ const App = (() => {
   function init() {
     Logger.init(); // Must be first — wraps console methods to capture all output
     console.log('[App] Logger.init() done');
+    I18n.init();
+    console.log('[App] I18n.init() done');
     initTabs();
     initRedThemeToggle();
     initMobileModeToggle();
+    initFullscreenToggle();
+    initLangToggle();
     MountControlComponent.init();
     console.log('[App] MountControlComponent.init() done');
     DatabaseComponent.init();
@@ -50,6 +54,8 @@ const App = (() => {
     console.log('[App] TrackingComponent.init() done');
     LoggingComponent.init();
     console.log('[App] LoggingComponent.init() done');
+    DebugTestComponent.init();
+    console.log('[App] DebugTestComponent.init() done');
     SettingsComponent.initAddressForm();
     startPolling();
   }
@@ -174,6 +180,57 @@ const App = (() => {
       const isActive = document.body.classList.toggle('mobile-mode');
       toggle.classList.toggle('active', isActive);
       localStorage.setItem('mobile-mode', isActive ? 'true' : 'false');
+    });
+  }
+
+  /**
+   * Initialize the fullscreen toggle button.
+   * Uses the Fullscreen API to toggle fullscreen mode on the document.
+   * The SVG icon swaps between expand and collapse icons based on state.
+   * Listens for the 'fullscreenchange' event to stay in sync with
+   * browser-initiated fullscreen changes (e.g., pressing F11/Esc).
+   */
+  function initFullscreenToggle() {
+    const toggle = $('#fullscreen-toggle');
+    if (!toggle) return;
+
+    const expandIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`;
+    const collapseIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 8 4 3 9 3"/><polyline points="20 16 20 21 15 21"/><line x1="4" y1="3" x2="11" y2="10"/><line x1="20" y1="21" x2="13" y2="14"/></svg>`;
+
+    function updateIcon() {
+      const isFullscreen = !!document.fullscreenElement;
+      toggle.innerHTML = isFullscreen ? collapseIcon : expandIcon;
+      toggle.classList.toggle('active', isFullscreen);
+      toggle.title = isFullscreen ? 'Exit fullscreen mode' : 'Toggle fullscreen mode';
+    }
+
+    // Sync on load (in case F11 was pressed before the page loaded)
+    updateIcon();
+
+    // Listen for browser-initiated fullscreen changes
+    document.addEventListener('fullscreenchange', updateIcon);
+
+    toggle.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch((err) => {
+          console.warn('[App] Fullscreen request failed:', err.message);
+        });
+      } else {
+        document.exitFullscreen();
+      }
+    });
+  }
+
+  /**
+   * Initialize the language toggle button.
+   * Switches between English (en) and Polish (pl).
+   */
+  function initLangToggle() {
+    const toggle = $('#lang-toggle');
+    if (!toggle) return;
+
+    toggle.addEventListener('click', () => {
+      I18n.toggleLang();
     });
   }
 

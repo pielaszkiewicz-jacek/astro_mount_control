@@ -261,12 +261,17 @@ const Api = (() => {
    * POST /api/axis/move-relative
    * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
    * @param {number} offsetDeg - Relative offset in degrees
+   * @param {number} [velocity] - Maximum velocity in deg/s (uses config max_slew_rate if omitted)
    * @returns {Promise<object>}
    */
-  async function moveAxisRelative(axisId, offsetDeg) {
+  async function moveAxisRelative(axisId, offsetDeg, velocity) {
+    const body = { axis_id: axisId, offset_deg: offsetDeg };
+    if (velocity !== undefined && velocity > 0) {
+      body.velocity = velocity;
+    }
     return request('/axis/move-relative', {
       method: 'POST',
-      body: JSON.stringify({ axis_id: axisId, offset_deg: offsetDeg }),
+      body: JSON.stringify(body),
     });
   }
 
@@ -292,6 +297,28 @@ const Api = (() => {
     return request('/axis/emergency-stop', {
       method: 'POST',
       body: JSON.stringify({ axis_id: -1 }),
+    });
+  }
+
+  /**
+   * Get current mount orientation quaternion.
+   * GET /api/mount/orientation
+   * @returns {Promise<{qx: number, qy: number, qz: number, qw: number}>}
+   */
+  async function getMountOrientation() {
+    return request('/mount/orientation');
+  }
+
+  /**
+   * Set mount orientation quaternion (for CASUAL mount type).
+   * POST /api/mount/orientation
+   * @param {object} orient - { qx, qy, qz, qw }
+   * @returns {Promise<object>}
+   */
+  async function setMountOrientation(orient) {
+    return request('/mount/orientation', {
+      method: 'POST',
+      body: JSON.stringify(orient),
     });
   }
 
@@ -777,6 +804,40 @@ const Api = (() => {
     });
   }
 
+  // ─── Field Rotation / Derotator API Methods ────────────────────────────
+
+  /**
+   * Get current derotator status.
+   * GET /api/derotator/status
+   * @returns {Promise<object>} DerotatorStatus
+   */
+  async function getDerotatorStatus() {
+    return request('/derotator/status');
+  }
+
+  /**
+   * Get current field rotation parameters.
+   * GET /api/field-rotation/params
+   * @returns {Promise<object>} FieldRotationParams
+   */
+  async function getFieldRotationParams() {
+    return request('/field-rotation/params');
+  }
+
+  /**
+   * Enable or disable field rotation compensation.
+   * POST /api/field-rotation/enable
+   * @param {object} params - { enabled: boolean, latitude?: number, ... }
+   * @returns {Promise<object>}
+   */
+  async function enableFieldRotation(params) {
+    return request('/field-rotation/enable', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+  }
+
+
   // Public API
   return {
     getStatus,
@@ -793,6 +854,8 @@ const Api = (() => {
     moveAxisRelative,
     stopAxis,
     emergencyStop,
+    getMountOrientation,
+    setMountOrientation,
     getConfig,
     updateConfig,
     resetConfig,
@@ -837,5 +900,9 @@ const Api = (() => {
     importCatalogFromUrl,
     getImportPresets,
     importPreset,
+    // Field Rotation / Derotator methods
+    getDerotatorStatus,
+    getFieldRotationParams,
+    enableFieldRotation,
   };
 })();

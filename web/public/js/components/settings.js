@@ -1284,7 +1284,8 @@ const SettingsComponent = (() => {
     const summary = document.createElement('summary');
     const icon = GROUP_ICONS[group.id] || '';
     const groupHelpAttr = GROUP_HELP[group.id] ? ` data-help-group="${group.id}"` : '';
-    summary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${icon}<span>${group.label}</span><button class="help-icon"${groupHelpAttr} aria-label="Poka\u017c opis grupy: ${group.label}">i</button></span>`;
+    const groupLabel = I18n.t('cfg.group.' + group.id, group.label);
+    summary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${icon}<span>${groupLabel}</span><button class="help-icon"${groupHelpAttr} aria-label="Poka\u017c opis grupy: ${groupLabel}">i</button></span>`;
 
     // Update arrow direction when group toggles
     details.addEventListener('toggle', () => {
@@ -1312,7 +1313,8 @@ const SettingsComponent = (() => {
         const subSummary = document.createElement('summary');
         const subIcon = GROUP_ICONS[sub.id] || '';
         const subHelpAttr = GROUP_HELP[sub.id] ? ` data-help-group="${sub.id}"` : '';
-        subSummary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${subIcon}<span>${sub.label}</span><button class="help-icon"${subHelpAttr} aria-label="Poka\u017c opis grupy: ${sub.label}">i</button></span>`;
+        const subLabel = I18n.t('cfg.group.' + sub.id, sub.label);
+        subSummary.innerHTML = `<span class="disclosure-arrow">&#x25B6;</span><span class="config-summary-content">${subIcon}<span>${subLabel}</span><button class="help-icon"${subHelpAttr} aria-label="Poka\u017c opis grupy: ${subLabel}">i</button></span>`;
 
         // Update arrow direction when sub-group toggles
         subDetails.addEventListener('toggle', () => {
@@ -1340,8 +1342,8 @@ const SettingsComponent = (() => {
         const subActions = document.createElement('div');
         subActions.className = 'config-group-actions';
         subActions.innerHTML = `
-          <button class="btn btn-primary btn-sm btn-save-group" data-group="${group.id}" data-sub="${sub.id}">Save</button>
-          <button class="btn btn-sm btn-reset-group" data-group="${group.id}" data-sub="${sub.id}">Restore Defaults</button>
+          <button class="btn btn-primary btn-sm btn-save-group" data-group="${group.id}" data-sub="${sub.id}">${I18n.t('cfg.btn.save', 'Save')}</button>
+          <button class="btn btn-sm btn-reset-group" data-group="${group.id}" data-sub="${sub.id}">${I18n.t('cfg.btn.restore_defaults', 'Restore Defaults')}</button>
           <span class="config-group-status" id="cfg-status-${group.id}-${sub.id}"></span>
         `;
         subBody.appendChild(subActions);
@@ -1376,8 +1378,8 @@ const SettingsComponent = (() => {
       const actions = document.createElement('div');
       actions.className = 'config-group-actions';
       actions.innerHTML = `
-        <button class="btn btn-primary btn-sm btn-save-group" data-group="${group.id}">Save</button>
-        <button class="btn btn-sm btn-reset-group" data-group="${group.id}">Restore Defaults</button>
+        <button class="btn btn-primary btn-sm btn-save-group" data-group="${group.id}">${I18n.t('cfg.btn.save', 'Save')}</button>
+        <button class="btn btn-sm btn-reset-group" data-group="${group.id}">${I18n.t('cfg.btn.restore_defaults', 'Restore Defaults')}</button>
         <span class="config-group-status" id="cfg-status-${group.id}"></span>
       `;
       body.appendChild(actions);
@@ -1393,11 +1395,13 @@ const SettingsComponent = (() => {
     const wrapper = document.createElement('div');
     wrapper.className = 'config-field';
 
+    const fieldLabel = I18n.t('cfg.field.' + field.key, field.label);
+
     // Quaternion type
     if (field.type === 'quaternion') {
       wrapper.innerHTML = `
-        <label class="config-field-label">${field.label}
-          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+        <label class="config-field-label">${fieldLabel}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
         </label>
         <input type="text" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="quaternion"
           value="${escapeHtml(String(value || ''))}" />
@@ -1412,8 +1416,8 @@ const SettingsComponent = (() => {
         <label class="checkbox-label config-checkbox-label">
           <input type="checkbox" class="config-input" data-group="${groupId}" data-key="${field.key}" data-type="checkbox"
             ${value ? 'checked' : ''} />
-          ${field.label}
-          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+          ${fieldLabel}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
         </label>
       `;
       return wrapper;
@@ -1425,8 +1429,8 @@ const SettingsComponent = (() => {
         <option value="${escapeHtml(opt)}" ${String(value) === String(opt) ? 'selected' : ''}>${escapeHtml(opt)}</option>
       `).join('');
       wrapper.innerHTML = `
-        <label class="config-field-label">${field.label}
-          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+        <label class="config-field-label">${fieldLabel}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
         </label>
         <select class="form-input form-select config-input" data-group="${groupId}" data-key="${field.key}" data-type="select">
           ${options}
@@ -1441,8 +1445,8 @@ const SettingsComponent = (() => {
       const max = field.max !== undefined ? `max="${field.max}"` : '';
       const step = field.step !== undefined ? `step="${field.step}"` : 'step="any"';
       wrapper.innerHTML = `
-        <label class="config-field-label">${field.label}
-          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+        <label class="config-field-label">${fieldLabel}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
         </label>
         <input type="number" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="number"
           ${min} ${max} ${step} value="${value !== undefined ? escapeHtml(String(value)) : ''}" />
@@ -1452,8 +1456,8 @@ const SettingsComponent = (() => {
 
     // Text (default)
     wrapper.innerHTML = `
-      <label class="config-field-label">${field.label}
-        <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${field.label}">i</button>
+      <label class="config-field-label">${fieldLabel}
+        <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
       </label>
       <input type="text" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="text"
         value="${escapeHtml(String(value || ''))}" />
@@ -1558,7 +1562,7 @@ const SettingsComponent = (() => {
     if (!group) return;
 
     const statusEl = document.getElementById(`cfg-status-${groupId}${subId ? '-' + subId : ''}`);
-    if (statusEl) statusEl.textContent = 'Saving...';
+    if (statusEl) statusEl.textContent = I18n.t('cfg.status.saving');
 
     try {
       const data = collectGroupData(groupId);
@@ -1612,7 +1616,7 @@ const SettingsComponent = (() => {
    */
   async function resetGroup(groupId, subId) {
     const statusEl = document.getElementById(`cfg-status-${groupId}${subId ? '-' + subId : ''}`);
-    if (statusEl) statusEl.textContent = 'Resetting...';
+    if (statusEl) statusEl.textContent = I18n.t('cfg.status.resetting');
 
     try {
       // Try API reset first
@@ -1633,7 +1637,7 @@ const SettingsComponent = (() => {
     } catch (err) {
       // If API reset fails, try reloading
       try {
-        if (statusEl) statusEl.textContent = 'Reloading...';
+        if (statusEl) statusEl.textContent = I18n.t('cfg.status.reloading');
         const fresh = await Api.getConfig();
         currentConfig = fresh;
         const container = $('#config-content');
@@ -1835,33 +1839,39 @@ const SettingsComponent = (() => {
     // Build content
     let bodyHtml;
     if (isParam) {
-      const desc = helpData.description || 'Brak opisu.';
-      const defVal = helpData.defaultValue !== undefined ? String(helpData.defaultValue) : '—';
-      const typeVal = helpData.type || '—';
-      const rangeVal = helpData.range || '—';
+      const desc = I18n.t('cfg.param.' + key + '.desc', helpData.description || 'Brak opisu.');
+      const defVal = I18n.t('cfg.param.' + key + '.default', helpData.defaultValue !== undefined ? String(helpData.defaultValue) : '—');
+      const typeVal = I18n.t('cfg.param.' + key + '.type', helpData.type || '—');
+      const rangeVal = I18n.t('cfg.param.' + key + '.range', helpData.range || '—');
+      const labelType = I18n.t('cfg.help.label_type', 'Typ');
+      const labelRange = I18n.t('cfg.help.label_range', 'Zakres');
+      const labelDefault = I18n.t('cfg.help.label_default', 'Domyślnie');
+      const labelClose = I18n.t('cfg.help.label_close', 'Zamknij');
 
       bodyHtml = `
         <div class="help-tip-header">
           <span class="help-tip-title">${escapeHtml(key)}</span>
-          <button class="help-tip-close" aria-label="Zamknij">&times;</button>
+          <button class="help-tip-close" aria-label="${labelClose}">&times;</button>
         </div>
         <div class="help-tip-body">
           <p class="help-tip-desc">${escapeHtml(desc)}</p>
           <table class="help-tip-table">
-            <tr><th>Typ</th><td>${escapeHtml(typeVal)}</td></tr>
-            <tr><th>Zakres</th><td>${escapeHtml(rangeVal)}</td></tr>
-            <tr><th>Domyślnie</th><td><code>${escapeHtml(defVal)}</code></td></tr>
+            <tr><th>${labelType}</th><td>${escapeHtml(typeVal)}</td></tr>
+            <tr><th>${labelRange}</th><td>${escapeHtml(rangeVal)}</td></tr>
+            <tr><th>${labelDefault}</th><td><code>${escapeHtml(defVal)}</code></td></tr>
           </table>
         </div>
       `;
     } else {
+      const desc = I18n.t('cfg.help.' + key, helpData || '');
+      const labelClose = I18n.t('cfg.help.label_close', 'Zamknij');
       bodyHtml = `
         <div class="help-tip-header">
           <span class="help-tip-title">${escapeHtml(key)}</span>
-          <button class="help-tip-close" aria-label="Zamknij">&times;</button>
+          <button class="help-tip-close" aria-label="${labelClose}">&times;</button>
         </div>
         <div class="help-tip-body">
-          <p class="help-tip-desc">${escapeHtml(helpData)}</p>
+          <p class="help-tip-desc">${escapeHtml(desc)}</p>
         </div>
       `;
     }
@@ -1974,7 +1984,7 @@ const SettingsComponent = (() => {
       portDb.value = addr.database.port;
       if (statusEl) statusEl.textContent = '';
     } catch (err) {
-      if (statusEl) statusEl.textContent = `Failed to load addresses: ${err.message}`;
+      if (statusEl) statusEl.textContent = I18n.t('settings.addr_load_failed', { message: err.message });
     }
   }
 
@@ -1997,26 +2007,26 @@ const SettingsComponent = (() => {
 
     // Validate
     if (!controllerHost) {
-      if (statusEl) statusEl.textContent = 'Controller host cannot be empty';
+      if (statusEl) statusEl.textContent = I18n.t('settings.ctrl_host_empty');
       return;
     }
     if (isNaN(controllerPort) || controllerPort < 1 || controllerPort > 65535) {
-      if (statusEl) statusEl.textContent = 'Controller port must be between 1 and 65535';
+      if (statusEl) statusEl.textContent = I18n.t('settings.ctrl_port_range');
       return;
     }
     if (!databaseHost) {
-      if (statusEl) statusEl.textContent = 'Database host cannot be empty';
+      if (statusEl) statusEl.textContent = I18n.t('settings.db_host_empty');
       return;
     }
     if (isNaN(databasePort) || databasePort < 1 || databasePort > 65535) {
-      if (statusEl) statusEl.textContent = 'Database port must be between 1 and 65535';
+      if (statusEl) statusEl.textContent = I18n.t('settings.db_port_range');
       return;
     }
 
     const saveBtn = $('#btn-save-addresses');
     if (saveBtn) {
       saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving...';
+      saveBtn.textContent = I18n.t('cfg.status.saving');
     }
     if (statusEl) statusEl.textContent = '';
 
@@ -2037,7 +2047,7 @@ const SettingsComponent = (() => {
     } finally {
       if (saveBtn) {
         saveBtn.disabled = false;
-        saveBtn.textContent = 'Save & Reconnect';
+        saveBtn.textContent = I18n.t('settings.save_reconnect');
       }
     }
   }
@@ -2052,11 +2062,60 @@ const SettingsComponent = (() => {
     }
   }
 
+  // ─── Help Content ─────────────────────────────────────────────────────────
+
+  function buildSettingsHelpContent() {
+    const container = $('#settings-help-content');
+    if (!container) return;
+
+    const t = I18n.t.bind(I18n);
+
+    const steps = [
+      { num: '1', titleKey: 'settings.help_step1_title', open: true,
+        bodyHtml: '<ol><li>' + t('settings.help_step1_li1') + '</li><li>' + t('settings.help_step1_li2') + '</li><li>' + t('settings.help_step1_li3') + '</li></ol>' },
+      { num: '2', titleKey: 'settings.help_step2_title', open: false,
+        bodyHtml: '<ol><li>' + t('settings.help_step2_li1') + '</li><li>' + t('settings.help_step2_li2') + '</li><li>' + t('settings.help_step2_li3') + '</li></ol>' },
+      { num: '3', titleKey: 'settings.help_step3_title', open: false,
+        bodyHtml: '<ol><li>' + t('settings.help_step3_li1') + '</li><li>' + t('settings.help_step3_li2') + '</li><li>' + t('settings.help_step3_li3') + '</li></ol>' },
+      { num: '4', titleKey: 'settings.help_step4_title', open: false,
+        bodyHtml: '<ul><li>' + t('settings.help_step4_li1') + '</li><li>' + t('settings.help_step4_li2') + '</li><li>' + t('settings.help_step4_li3') + '</li></ul>' }
+    ];
+
+    let html = '<p><strong>' + t('settings.help_purpose_label') + '</strong> ' + t('settings.help_purpose_text') + '</p>';
+
+    steps.forEach(function(step) {
+      html += '<details class="calibration-help-step"' + (step.open ? ' open' : '') + '>'
+        + '<summary class="calibration-help-step-summary">'
+        + '<span class="calibration-help-step-number">' + step.num + '</span>'
+        + t(step.titleKey) + '</summary>'
+        + '<div class="calibration-help-step-body">' + step.bodyHtml + '</div>'
+        + '</details>';
+    });
+
+    container.innerHTML = html;
+  }
+
   // ─── Initialization ───────────────────────────────────────────────────────
 
   function init() {
+    buildSettingsHelpContent();
+    document.addEventListener('i18n:applied', buildSettingsHelpContent);
+    bindHelpToggle('card-settings-help');
     initEventHandlers();
     initAddressForm();
+  }
+
+  function bindHelpToggle(cardId) {
+    const card = $('#' + cardId);
+    if (!card) return;
+    const toggleBtn = card.querySelector('.card-toggle-btn');
+    const header = card.querySelector('.card-header');
+    const doToggle = function() {
+      const collapsed = card.classList.toggle('card-collapsed');
+      if (toggleBtn) toggleBtn.textContent = collapsed ? '+' : '\u2212';
+    };
+    if (toggleBtn) { toggleBtn.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); }); }
+    if (header) { header.addEventListener('click', function(e) { if (e.target.closest('button, input, select, a, label')) return; doToggle(); }); }
   }
 
   // Run init

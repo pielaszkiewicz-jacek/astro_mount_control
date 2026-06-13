@@ -283,10 +283,10 @@ int main(int argc, char* argv[]) {
             auto now = std::chrono::steady_clock::now();
             
             if (std::chrono::duration_cast<std::chrono::seconds>(now - last_log).count() >= 10) {
-                logger->info("Mount status: {}, Axis1: {:.2f}°, Axis2: {:.2f}°",
+                logger->info("Mount status: {}, Servo: axis1={:.2f}° axis2={:.2f}° | Telescope: axis1={:.4f}° axis2={:.4f}°",
                     static_cast<int>(status.state),
-                    status.axis1_position,
-                    status.axis2_position);
+                    status.axis1_position, status.axis2_position,
+                    status.telescope_axis1_position, status.telescope_axis2_position);
                 last_log = now;
             }
             

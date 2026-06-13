@@ -39,6 +39,39 @@ const MountControlComponent = (() => {
   /** Step size for step mode in degrees */
   let stepSizeDeg = 1.0;
 
+  // ─── Help Content ───────────────────────────────────────────────────
+
+  function buildControlHelpContent() {
+    const container = $('#control-help-content');
+    if (!container) return;
+
+    const t = I18n.t.bind(I18n);
+
+    const steps = [
+      { num: '1', titleKey: 'control.help_step1_title', open: true,
+        bodyHtml: '<ol><li>' + t('control.help_step1_li1') + '</li><li>' + t('control.help_step1_li2') + '</li><li>' + t('control.help_step1_li3') + '</li></ol>' },
+      { num: '2', titleKey: 'control.help_step2_title', open: false,
+        bodyHtml: '<ol><li>' + t('control.help_step2_li1') + '</li><li>' + t('control.help_step2_li2') + '</li><li>' + t('control.help_step2_li3') + '</li></ol>' },
+      { num: '3', titleKey: 'control.help_step3_title', open: false,
+        bodyHtml: '<ol><li>' + t('control.help_step3_li1') + '</li><li>' + t('control.help_step3_li2') + '</li><li>' + t('control.help_step3_li3') + '</li></ol>' },
+      { num: '4', titleKey: 'control.help_step4_title', open: false,
+        bodyHtml: '<ul><li>' + t('control.help_step4_li1') + '</li><li>' + t('control.help_step4_li2') + '</li><li>' + t('control.help_step4_li3') + '</li></ul>' }
+    ];
+
+    let html = '<p><strong>' + t('control.help_purpose_label') + '</strong> ' + t('control.help_purpose_text') + '</p>';
+
+    steps.forEach(function(step) {
+      html += '<details class="calibration-help-step"' + (step.open ? ' open' : '') + '>'
+        + '<summary class="calibration-help-step-summary">'
+        + '<span class="calibration-help-step-number">' + step.num + '</span>'
+        + t(step.titleKey) + '</summary>'
+        + '<div class="calibration-help-step-body">' + step.bodyHtml + '</div>'
+        + '</details>';
+    });
+
+    container.innerHTML = html;
+  }
+
   // ─── Initialization ─────────────────────────────────────────────────
 
   /**
@@ -46,11 +79,44 @@ const MountControlComponent = (() => {
    * Binds all event listeners.
    */
   function init() {
+    buildControlHelpContent();
+    document.addEventListener('i18n:applied', buildControlHelpContent);
+    bindHelpToggle('card-control-help');
     initSlewForm();
     initQuickActions();
     initAxisControl();
     initAxisModeControls();
     initStateFileInput();
+  }
+
+  /**
+   * Bind collapse/expand toggle for the help card.
+   * Clicking the header or the +/− button toggles card-collapsed.
+   */
+  function bindHelpToggle(cardId) {
+    const card = $('#' + cardId);
+    if (!card) return;
+    const toggleBtn = card.querySelector('.card-toggle-btn');
+    const header = card.querySelector('.card-header');
+
+    const doToggle = function() {
+      const collapsed = card.classList.toggle('card-collapsed');
+      if (toggleBtn) toggleBtn.textContent = collapsed ? '+' : '\u2212';
+    };
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        doToggle();
+      });
+    }
+
+    if (header) {
+      header.addEventListener('click', function(e) {
+        if (e.target.closest('button, input, select, a, label')) return;
+        doToggle();
+      });
+    }
   }
 
   /**
@@ -299,14 +365,14 @@ const MountControlComponent = (() => {
     toggleBtn.addEventListener('click', () => {
       if (axisControlMode === 'velocity') {
         axisControlMode = 'step';
-        if (toggleLabel) toggleLabel.textContent = 'Step';
+        if (toggleLabel) toggleLabel.textContent = I18n.t('axis.mode_step');
         if (stepControl) stepControl.style.display = 'flex';
-        toggleBtn.title = 'Step mode: single click moves axis by the set angle. Click to switch to Velocity mode.';
+        toggleBtn.title = I18n.t('axis.mode_step_title');
       } else {
         axisControlMode = 'velocity';
-        if (toggleLabel) toggleLabel.textContent = 'Velocity';
+        if (toggleLabel) toggleLabel.textContent = I18n.t('axis.mode_velocity');
         if (stepControl) stepControl.style.display = 'none';
-        toggleBtn.title = 'Velocity mode: hold button to rotate axis, release to stop. Click to switch to Step mode.';
+        toggleBtn.title = I18n.t('axis.mode_velocity_title');
       }
     });
 
@@ -469,14 +535,15 @@ const MountControlComponent = (() => {
       vertLabel = 'Dec';
     }
 
+    const mountTypeLabel = currentMountType === 'alt_az' ? I18n.t('tests.alt_az') : I18n.t('tests.equatorial');
     if (isCalibrated) {
       badge.className = 'status-badge tracking';
-      badge.textContent = 'Astronomical Mode';
-      infoText.textContent = `Calibrated — nudging ${horizLabel}/${vertLabel} coordinates (${currentMountType === 'alt_az' ? 'Alt-Az' : 'Equatorial'} mount)`;
+      badge.textContent = I18n.t('axis.mode_astro');
+      infoText.textContent = I18n.t('axis.mode_calibrated_info', { horiz: horizLabel, vert: vertLabel, type: mountTypeLabel });
     } else {
       badge.className = 'status-badge idle';
-      badge.textContent = 'Low-Level Mode';
-      infoText.textContent = `Uncalibrated — direct axis velocity control (axis 0=${horizLabel}, axis 1=${vertLabel})`;
+      badge.textContent = I18n.t('axis.mode_low_level');
+      infoText.textContent = I18n.t('axis.mode_uncalibrated_info', { horiz: horizLabel, vert: vertLabel });
     }
   }
 
@@ -666,17 +733,19 @@ const MountControlComponent = (() => {
 
     if (isCalibrated) {
       // Calibrated: single coordinate nudge by stepSize degrees
+      // The speed slider controls the slew velocity used to reach the target.
       await performCalibratedNudge(axisId, direction, stepSize);
       App.showToast(`Step ${stepSize.toFixed(1)}° on axis ${axisId}`, 'success', 1500);
     } else {
       // Uncalibrated: use POSITION_CONTROL with relative offset.
       // The drive handles the CiA 402 profile position move — acceleration,
       // deceleration, and automatic stop at the target.  No timer needed.
+      // Pass the speed slider value as max_velocity so the drive respects it.
       const offset = direction * stepSize;
-      console.log('[AxisCtrl] performStepMove uncalibrated: offset=%f°', offset);
+      console.log('[AxisCtrl] performStepMove uncalibrated: offset=%f°, speed=%f °/s', offset, speed);
 
       try {
-        await Api.moveAxisRelative(axisId, offset);
+        await Api.moveAxisRelative(axisId, offset, speed);
         console.log('[AxisCtrl] performStepMove: POSITION_CONTROL SUCCESS');
         App.showToast(`Step ${stepSize.toFixed(1)}° on axis ${axisId}`, 'success', 1500);
       } catch (err) {

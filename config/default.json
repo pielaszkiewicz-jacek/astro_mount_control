@@ -1,6 +1,6 @@
 {
   "logging": {
-    "level": "INFO",
+    "level": "DEBUG",
     "directory": "/var/log/astro-mount",
     "rotation_days": 7,
     "max_file_size_mb": 100,
@@ -38,7 +38,7 @@
     "encoders_absolute": true,
     "encoder_resolution": 1000,
     
-    "max_slew_rate": 60.0,
+    "max_slew_rate": 720.0,
     "max_tracking_rate": 0.004178,
     "slew_acceleration": 1.0,
     "tracking_acceleration": 0.001,

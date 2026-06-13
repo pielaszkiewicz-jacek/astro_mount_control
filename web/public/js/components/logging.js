@@ -27,12 +27,61 @@ const LoggingComponent = (() => {
   let isActive = false;
   const MAX_CONTROLLER_LOGS = 5000;
 
+  // ─── Help Content ───────────────────────────────────────────────────────
+
+  function buildLoggingHelpContent() {
+    const container = $('#logging-help-content');
+    if (!container) return;
+
+    const t = I18n.t.bind(I18n);
+
+    const steps = [
+      { num: '1', titleKey: 'logging.help_step1_title', open: true,
+        bodyHtml: '<ol><li>' + t('logging.help_step1_li1') + '</li><li>' + t('logging.help_step1_li2') + '</li><li>' + t('logging.help_step1_li3') + '</li></ol>' },
+      { num: '2', titleKey: 'logging.help_step2_title', open: false,
+        bodyHtml: '<ol><li>' + t('logging.help_step2_li1') + '</li><li>' + t('logging.help_step2_li2') + '</li><li>' + t('logging.help_step2_li3') + '</li></ol>' },
+      { num: '3', titleKey: 'logging.help_step3_title', open: false,
+        bodyHtml: '<ol><li>' + t('logging.help_step3_li1') + '</li><li>' + t('logging.help_step3_li2') + '</li><li>' + t('logging.help_step3_li3') + '</li></ol>' },
+      { num: '4', titleKey: 'logging.help_step4_title', open: false,
+        bodyHtml: '<ul><li>' + t('logging.help_step4_li1') + '</li><li>' + t('logging.help_step4_li2') + '</li><li>' + t('logging.help_step4_li3') + '</li></ul>' }
+    ];
+
+    let html = '<p><strong>' + t('logging.help_purpose_label') + '</strong> ' + t('logging.help_purpose_text') + '</p>';
+
+    steps.forEach(function(step) {
+      html += '<details class="calibration-help-step"' + (step.open ? ' open' : '') + '>'
+        + '<summary class="calibration-help-step-summary">'
+        + '<span class="calibration-help-step-number">' + step.num + '</span>'
+        + t(step.titleKey) + '</summary>'
+        + '<div class="calibration-help-step-body">' + step.bodyHtml + '</div>'
+        + '</details>';
+    });
+
+    container.innerHTML = html;
+  }
+
   // ─── Initialization ─────────────────────────────────────────────────────
 
   function init() {
+    buildLoggingHelpContent();
+    document.addEventListener('i18n:applied', buildLoggingHelpContent);
+    bindHelpToggle('card-logging-help');
     console.log('[LoggingComponent] init() called');
     bindEvents();
     renderBrowserLogs();
+  }
+
+  function bindHelpToggle(cardId) {
+    const card = $('#' + cardId);
+    if (!card) return;
+    const toggleBtn = card.querySelector('.card-toggle-btn');
+    const header = card.querySelector('.card-header');
+    const doToggle = function() {
+      const collapsed = card.classList.toggle('card-collapsed');
+      if (toggleBtn) toggleBtn.textContent = collapsed ? '+' : '\u2212';
+    };
+    if (toggleBtn) { toggleBtn.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); }); }
+    if (header) { header.addEventListener('click', function(e) { if (e.target.closest('button, input, select, a, label')) return; doToggle(); }); }
   }
 
   function bindEvents() {

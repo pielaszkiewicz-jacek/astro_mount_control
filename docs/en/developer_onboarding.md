@@ -17,6 +17,7 @@ Welcome to the Astronomical Mount Controller project. This guide provides everyt
 9. [Contribution Workflow](#9-contribution-workflow)
 10. [Common Tasks](#10-common-tasks)
 11. [Troubleshooting](#11-troubleshooting)
+12. [Internationalization (i18n)](#12-internationalization-i18n)
 
 ---
 
@@ -862,6 +863,155 @@ journalctl -u astro-mount-controller -f
 | `HALConfig` | [proto:1063](proto/mount_controller.proto:1063) | Complete HAL configuration |
 | `TrajectoryParams` | [proto:116](proto/mount_controller.proto:116) | Trajectory generation parameters |
 | `EphemerisData` | [proto:689](proto/mount_controller.proto:689) | Ephemeris data for moving objects |
+
+---
+
+## 12. Internationalization (i18n)
+
+### Overview
+
+The web UI supports multiple languages through a lightweight i18n system implemented in [`web/public/js/i18n.js`](web/public/js/i18n.js). Currently supported languages:
+
+| Code | Language | Status |
+|------|----------|--------|
+| `en` | English | ✅ Complete |
+| `pl` | Polish (Polski) | ✅ Complete |
+
+The system uses **data attributes** on DOM elements (`data-i18n`, `data-i18n-title`, `data-i18n-placeholder`, `data-i18n-aria`) and a **`t(key)` function** for dynamic text in JavaScript. Language preference is persisted in `localStorage` under the key `ui-lang`.
+
+### Architecture
+
+```
+i18n.js
+├── dict.en  → English translation dictionary (200+ keys)
+├── dict.pl  → Polish translation dictionary (200+ keys)
+├── init()           → Reads saved language, auto-detects browser lang, applies translations
+├── t(key, params)   → Lookup translation by key, with optional {param} substitution
+├── setLang(lang)    → Switch to 'en' or 'pl', persist, re-apply translations
+├── toggleLang()     → Toggle between 'en' ↔ 'pl'
+└── applyTranslations() → Scans DOM for data-i18n attributes and updates text
+```
+
+### How to Translate a New HTML Element
+
+1. Add a `data-i18n` attribute to the element with a unique key:
+
+```html
+<!-- Before -->
+<span class="tab-label">Status</span>
+
+<!-- After -->
+<span class="tab-label" data-i18n="tab.status">Status</span>
+```
+
+2. Add the key to both dictionaries in [`i18n.js`](web/public/js/i18n.js):
+
+```javascript
+// dict.en
+'tab.status': 'Status',
+
+// dict.pl
+'tab.status': 'Status',
+```
+
+The original text content serves as the English fallback — it is replaced at runtime by `applyTranslations()`.
+
+### Supported Data Attributes
+
+| Attribute | Purpose | Example |
+|-----------|---------|---------|
+| `data-i18n` | Replace `textContent` | `<span data-i18n="tab.control">Control</span>` |
+| `data-i18n-title` | Replace `title` attribute | `<button data-i18n-title="db.slew_title">...</button>` |
+| `data-i18n-placeholder` | Replace `placeholder` attribute | `<input data-i18n-placeholder="db.search_placeholder">` |
+| `data-i18n-aria` | Replace `aria-label` attribute | `<button data-i18n-aria="fullscreen.enter">...</button>` |
+
+### Using `t()` in JavaScript
+
+For dynamically generated text (toast messages, status updates, etc.), use the `I18n.t()` function:
+
+```javascript
+// Simple translation
+App.showToast(I18n.t('cal.run_bootstrap'));
+
+// With parameter substitution
+const text = I18n.t('db.page_of', { page: 3, total: 10 });
+// → "Page 3 of 10" (en) or "Strona 3 z 10" (pl)
+```
+
+### Adding a New Language
+
+Follow these steps to add a third language (e.g., German, French, Spanish):
+
+#### Step 1: Add the language code
+
+In [`i18n.js`](web/public/js/i18n.js), add the new code to the `SUPPORTED` array (line ~16):
+
+```javascript
+const SUPPORTED = ['en', 'pl', 'de'];  // Added 'de'
+```
+
+#### Step 2: Create the translation dictionary
+
+Add a new block `dict.XX` in the `dict` object:
+
+```javascript
+const dict = {
+  en: { /* ... existing ... */ },
+  pl: { /* ... existing ... */ },
+  de: {
+    // Copy all keys from dict.en and translate values
+    'app.title': 'Mount Control',  // Keep or translate
+    'tab.status': 'Status',
+    'tab.control': 'Steuerung',
+    'tab.settings': 'Einstellungen',
+    // ... translate all 200+ keys ...
+    'lang.switch_to': 'EN',        // What to show when German is active
+    'lang.title': 'Auf Englisch umschalten',
+  }
+};
+```
+
+> **Tip:** Start by copying the entire `dict.en` block, then translate each value. Keys must match exactly — the system falls back to English for any missing key.
+
+#### Step 3: Update the language toggle logic
+
+If adding more than 2 languages, replace `toggleLang()` with a cycling mechanism or a dropdown. For 2 languages, the current toggle is sufficient.
+
+#### Step 4: Test
+
+- Clear `localStorage` (or set `ui-lang` to the new code)
+- Reload the page — the UI should render in the new language
+- Click the language toggle to verify switching works
+- Check for untranslated strings (they will show the English fallback)
+
+### Translation Key Naming Convention
+
+Keys follow a hierarchical dot-notation pattern:
+
+| Prefix | Scope |
+|--------|-------|
+| `tab.*` | Tab navigation labels |
+| `card.*` | Card titles |
+| `btn.*` | Button labels |
+| `slew.*` | Slew control form |
+| `axis.*` | Axis control panel |
+| `cal.*` | Calibration panel (bootstrap + TPOINT) |
+| `db.*` | Database panel |
+| `tests.*` | Tests/Debug panel |
+| `settings.*` | Settings panel |
+| `logs.*` | Logging panel |
+| `status.*` | Status panel placeholders |
+| `lang.*` | Language switcher itself |
+| `fullscreen.*` | Fullscreen toggle |
+| `theme.*` | Theme toggle |
+| `conn.*` | Connection indicators |
+
+### Runtime Behavior
+
+- On first load, `I18n.init()` checks `localStorage.ui-lang` → falls back to browser `navigator.language` → defaults to `'en'`
+- `applyTranslations()` scans the entire DOM for `[data-i18n]` elements and replaces their `textContent`
+- `setLang()` persists the choice and re-applies all translations immediately
+- Elements added dynamically after `init()` must be re-translated by calling `I18n.applyTranslations()` again (or by using `I18n.t()` directly when creating them)
 
 ---
 

@@ -12,7 +12,8 @@
 9. [Przepływ pracy przy zgłaszaniu zmian](#9-przepływ-pracy-przy-zgłaszaniu-zmian)
 10. [Najczęstsze zadania](#10-najczęstsze-zadania)
 11. [Rozwiązywanie problemów](#11-rozwiązywanie-problemów)
-12. [Indeks plików](#12-indeks-plików)
+12. [Internacjonalizacja (i18n)](#12-internacjonalizacja-i18n)
+13. [Indeks plików](#13-indeks-plików)
 
 ---
 
@@ -770,7 +771,156 @@ tail -f /var/log/astro_mount_controller.log
 
 ---
 
-## 12. Indeks plików
+## 12. Internacjonalizacja (i18n)
+
+### Przegląd
+
+Interfejs webowy obsługuje wiele języków poprzez lekki system i18n zaimplementowany w [`web/public/js/i18n.js`](../../web/public/js/i18n.js). Obecnie obsługiwane języki:
+
+| Kod | Język | Status |
+|-----|-------|--------|
+| `en` | Angielski (English) | ✅ Kompletny |
+| `pl` | Polski | ✅ Kompletny |
+
+System używa **atrybutów danych** na elementach DOM (`data-i18n`, `data-i18n-title`, `data-i18n-placeholder`, `data-i18n-aria`) oraz **funkcji `t(klucz)`** dla dynamicznego tekstu w JavaScript. Preferencja językowa jest przechowywana w `localStorage` pod kluczem `ui-lang`.
+
+### Architektura
+
+```
+i18n.js
+├── dict.en  → Słownik angielski (200+ kluczy)
+├── dict.pl  → Słownik polski (200+ kluczy)
+├── init()           → Wczytuje zapisany język, auto-detekcja języka przeglądarki, nakłada tłumaczenia
+├── t(klucz, param)  → Pobiera tłumaczenie po kluczu, z opcjonalnym podstawieniem {param}
+├── setLang(język)   → Przełącza na 'en' lub 'pl', zapisuje, ponownie nakłada tłumaczenia
+├── toggleLang()     → Przełącza między 'en' ↔ 'pl'
+└── applyTranslations() → Skanuje DOM w poszukiwaniu atrybutów data-i18n i aktualizuje tekst
+```
+
+### Jak przetłumaczyć nowy element HTML
+
+1. Dodaj atrybut `data-i18n` do elementu z unikalnym kluczem:
+
+```html
+<!-- Przed -->
+<span class="tab-label">Status</span>
+
+<!-- Po -->
+<span class="tab-label" data-i18n="tab.status">Status</span>
+```
+
+2. Dodaj klucz do obu słowników w [`i18n.js`](../../web/public/js/i18n.js):
+
+```javascript
+// dict.en
+'tab.status': 'Status',
+
+// dict.pl
+'tab.status': 'Status',
+```
+
+Oryginalna zawartość tekstowa służy jako fallback dla angielskiego — jest zastępowana w czasie działania przez `applyTranslations()`.
+
+### Obsługiwane atrybuty danych
+
+| Atrybut | Przeznaczenie | Przykład |
+|---------|--------------|----------|
+| `data-i18n` | Zastępuje `textContent` | `<span data-i18n="tab.control">Sterowanie</span>` |
+| `data-i18n-title` | Zastępuje atrybut `title` | `<button data-i18n-title="db.slew_title">...</button>` |
+| `data-i18n-placeholder` | Zastępuje atrybut `placeholder` | `<input data-i18n-placeholder="db.search_placeholder">` |
+| `data-i18n-aria` | Zastępuje atrybut `aria-label` | `<button data-i18n-aria="fullscreen.enter">...</button>` |
+
+### Używanie `t()` w JavaScript
+
+Dla dynamicznie generowanego tekstu (komunikaty toast, aktualizacje statusu itp.) użyj funkcji `I18n.t()`:
+
+```javascript
+// Proste tłumaczenie
+App.showToast(I18n.t('cal.run_bootstrap'));
+
+// Z podstawieniem parametrów
+const text = I18n.t('db.page_of', { page: 3, total: 10 });
+// → "Strona 3 z 10" (pl) lub "Page 3 of 10" (en)
+```
+
+### Dodawanie nowego języka
+
+Wykonaj poniższe kroki aby dodać trzeci język (np. niemiecki, francuski, hiszpański):
+
+#### Krok 1: Dodaj kod języka
+
+W [`i18n.js`](../../web/public/js/i18n.js) dodaj nowy kod do tablicy `SUPPORTED` (linia ~16):
+
+```javascript
+const SUPPORTED = ['en', 'pl', 'de'];  // Dodano 'de'
+```
+
+#### Krok 2: Utwórz słownik tłumaczeń
+
+Dodaj nowy blok `dict.XX` w obiekcie `dict`:
+
+```javascript
+const dict = {
+  en: { /* ... istniejący ... */ },
+  pl: { /* ... istniejący ... */ },
+  de: {
+    // Skopiuj wszystkie klucze z dict.en i przetłumacz wartości
+    'app.title': 'Mount Control',  // Zachowaj lub przetłumacz
+    'tab.status': 'Status',
+    'tab.control': 'Steuerung',
+    'tab.settings': 'Einstellungen',
+    // ... przetłumacz wszystkie 200+ kluczy ...
+    'lang.switch_to': 'EN',        // Co pokazywać gdy niemiecki jest aktywny
+    'lang.title': 'Auf Englisch umschalten',
+  }
+};
+```
+
+> **Wskazówka:** Zacznij od skopiowania całego bloku `dict.en`, a następnie przetłumacz każdą wartość. Klucze muszą być dokładnie takie same — system używa angielskiego fallbacku dla brakujących kluczy.
+
+#### Krok 3: Zaktualizuj logikę przełącznika języka
+
+Jeśli dodajesz więcej niż 2 języki, zastąp `toggleLang()` mechanizmem cyklicznym lub listą rozwijaną. Dla 2 języków obecny przełącznik jest wystarczający.
+
+#### Krok 4: Testuj
+
+- Wyczyść `localStorage` (lub ustaw `ui-lang` na nowy kod)
+- Odśwież stronę — interfejs powinien wyrenderować się w nowym języku
+- Kliknij przełącznik języka aby sprawdzić czy zmiana działa
+- Sprawdź nieprzetłumaczone ciągi (będą pokazywać angielski fallback)
+
+### Konwencja nazewnictwa kluczy tłumaczeń
+
+Klucze używają hierarchicznego wzorca z kropkami:
+
+| Prefiks | Zakres |
+|---------|--------|
+| `tab.*` | Etykiety nawigacji zakładek |
+| `card.*` | Tytuły kart |
+| `btn.*` | Etykiety przycisków |
+| `slew.*` | Formularz sterowania slewingiem |
+| `axis.*` | Panel sterowania osiami |
+| `cal.*` | Panel kalibracji (bootstrap + TPOINT) |
+| `db.*` | Panel bazy danych |
+| `tests.*` | Panel Testy/Debug |
+| `settings.*` | Panel ustawień |
+| `logs.*` | Panel logowania |
+| `status.*` | Teksty zastępcze panelu statusu |
+| `lang.*` | Sam przełącznik języka |
+| `fullscreen.*` | Przełącznik pełnego ekranu |
+| `theme.*` | Przełącznik motywu |
+| `conn.*` | Wskaźniki połączenia |
+
+### Zachowanie w czasie działania
+
+- Przy pierwszym załadowaniu `I18n.init()` sprawdza `localStorage.ui-lang` → jeśli brak, używa `navigator.language` przeglądarki → domyślnie `'en'`
+- `applyTranslations()` skanuje cały DOM w poszukiwaniu elementów `[data-i18n]` i zastępuje ich `textContent`
+- `setLang()` zapisuje wybór i natychmiast ponownie nakłada wszystkie tłumaczenia
+- Elementy dodane dynamicznie po `init()` muszą być ponownie przetłumaczone przez wywołanie `I18n.applyTranslations()` (lub przez użycie `I18n.t()` bezpośrednio podczas ich tworzenia)
+
+---
+
+## 13. Indeks plików
 
 ### Kluczowe pliki nagłówkowe
 

@@ -521,6 +521,39 @@ app.post('/api/config', async (req, res) => {
 });
 
 /**
+ * GET /api/mount/orientation
+ * Get the mount orientation quaternion.
+ * Maps to gRPC: GetMountOrientation()
+ */
+app.get('/api/mount/orientation', async (req, res) => {
+  try {
+    const result = await grpcCall('GetMountOrientation', {});
+    res.json({ qx: result.qx, qy: result.qy, qz: result.qz, qw: result.qw });
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to get mount orientation', details: err.message });
+  }
+});
+
+/**
+ * POST /api/mount/orientation
+ * Set the mount orientation quaternion (for CASUAL mount type).
+ * Maps to gRPC: SetMountOrientation()
+ * Body: { qx, qy, qz, qw }
+ */
+app.post('/api/mount/orientation', async (req, res) => {
+  try {
+    const { qx, qy, qz, qw } = req.body;
+    if (qx === undefined || qy === undefined || qz === undefined || qw === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: qx, qy, qz, qw' });
+    }
+    await grpcCall('SetMountOrientation', { qx, qy, qz, qw });
+    res.json({ success: true, message: 'Mount orientation updated' });
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to set mount orientation', details: err.message });
+  }
+});
+
+/**
  * POST /api/config/reset
  * Reset all configuration to factory defaults.
  * Maps to gRPC: ResetConfiguration() (if available) or UpdateConfiguration() with defaults
@@ -620,11 +653,11 @@ app.post('/api/axis/stop', async (req, res) => {
  * POST /api/axis/move-relative
  * Move an axis by a relative offset using position control.
  * Maps to gRPC: ControlAxis() with POSITION_CONTROL, relative=true
- * Body: { axis_id: number, offset_deg: number }
+ * Body: { axis_id: number, offset_deg: number, velocity?: number }
  */
 app.post('/api/axis/move-relative', async (req, res) => {
   try {
-    const { axis_id, offset_deg } = req.body;
+    const { axis_id, offset_deg, velocity } = req.body;
 
     if (axis_id === undefined || offset_deg === undefined) {
       return res.status(400).json({ error: 'Missing required fields: axis_id, offset_deg' });
@@ -636,12 +669,19 @@ app.post('/api/axis/move-relative', async (req, res) => {
       return res.status(400).json({ error: 'offset_deg must be a valid number' });
     }
 
-    await grpcCall('ControlAxis', {
+    const grpcRequest = {
       axis_id,
       mode: 'POSITION_CONTROL',
       target_position: offset_deg,
       relative: true,
-    });
+    };
+    // Pass max_velocity only when explicitly provided; backend falls back to
+    // config.max_slew_rate when the field is absent (0).
+    if (typeof velocity === 'number' && isFinite(velocity) && velocity > 0) {
+      grpcRequest.max_velocity = velocity;
+    }
+
+    await grpcCall('ControlAxis', grpcRequest);
     res.json({ success: true, message: `Axis ${axis_id} moving by ${offset_deg}°` });
   } catch (err) {
     res.status(502).json({ error: 'Axis relative move failed', details: err.message });
@@ -1915,12 +1955,10 @@ app.get('/api/db/tonight', async (req, res) => {
 function formatState(state) {
   return {
     status: state.status || 'UNKNOWN',
-    position: state.current_position
-      ? {
-          axis1: state.current_position.axis1,
-          axis2: state.current_position.axis2,
-        }
-      : null,
+    position: {
+      axis1: state.current_position?.axis1 ?? 0,
+      axis2: state.current_position?.axis2 ?? 0,
+    },
     tracked_object: state.tracked_object
       ? {
           ra: state.tracked_object.coordinates?.ra,
@@ -2187,6 +2225,56 @@ app.get('/api/logs/stream', (req, res) => {
     }
   });
 });
+
+// ─── Field Rotation & Derotator REST API Endpoints ───────────────────────────
+
+/**
+ * GET /api/derotator/status
+ * Get current derotator status (enabled, homed, position, rates).
+ * Maps to gRPC: GetDerotatorStatus()
+ */
+app.get('/api/derotator/status', async (req, res) => {
+  try {
+    const status = await grpcCall('GetDerotatorStatus', {});
+    res.json(status);
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to get derotator status', details: err.message });
+  }
+});
+
+/**
+ * GET /api/field-rotation/params
+ * Get current field rotation parameters (rate, enabled, altitude/azimuth).
+ * Maps to gRPC: GetFieldRotationParams()
+ */
+app.get('/api/field-rotation/params', async (req, res) => {
+  try {
+    const params = await grpcCall('GetFieldRotationParams', {});
+    res.json(params);
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to get field rotation params', details: err.message });
+  }
+});
+
+/**
+ * POST /api/field-rotation/enable
+ * Enable or disable field rotation compensation.
+ * Maps to gRPC: EnableFieldRotation()
+ * Body: FieldRotationParams (enabled, latitude, altitude, azimuth, etc.)
+ */
+app.post('/api/field-rotation/enable', async (req, res) => {
+  try {
+    const params = req.body;
+    if (params.enabled === undefined) {
+      return res.status(400).json({ error: 'Missing required field: enabled' });
+    }
+    await grpcCall('EnableFieldRotation', params);
+    res.json({ success: true, message: params.enabled ? 'Field rotation enabled' : 'Field rotation disabled' });
+  } catch (err) {
+    res.status(502).json({ error: 'Failed to toggle field rotation', details: err.message });
+  }
+});
+
 
 // ─── Error Handling ──────────────────────────────────────────────────────────
 

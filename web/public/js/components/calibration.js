@@ -21,14 +21,9 @@ const CalibrationComponent = (() => {
 
   // ─── Constants ────────────────────────────────────────────────────────────
 
-  const BOOTSTRAP_STATE_LABELS = {
-    NOT_CALIBRATED: 'Not Calibrated',
-    MEASUREMENTS_COLLECTING: 'Collecting Measurements',
-    CALIBRATING: 'Calibrating...',
-    CALIBRATED: 'Calibrated',
-    NEEDS_MORE_MEASUREMENTS: 'Needs More Measurements',
-    ERROR: 'Error',
-  };
+  function bsStateLabel(state) {
+    return I18n.t('cal.bs_state.' + state, state);
+  }
 
   const BOOTSTRAP_BADGE_CLASSES = {
     NOT_CALIBRATED: 'idle',
@@ -39,19 +34,14 @@ const CalibrationComponent = (() => {
     ERROR: 'error',
   };
 
-  const BOOTSTRAP_MODE_LABELS = {
-    0: 'Manual',
-    1: 'Hybrid',
-    2: 'Automatic',
-  };
+  function getBootstrapModeLabel(mode) {
+    const key = mode === 0 ? 'cal.mode_manual' : (mode === 1 ? 'cal.mode_hybrid' : (mode === 2 ? 'cal.mode_automatic' : null));
+    return key ? I18n.t(key, String(mode)) : String(mode);
+  }
 
-  const AUTO_BOOTSTRAP_STATE_LABELS = {
-    0: 'Idle',
-    1: 'Adding Measurement',
-    2: 'Calibrating...',
-    3: 'Completed',
-    4: 'Error',
-  };
+  function getAutoBootstrapStateLabel(state) {
+    return I18n.t('cal.auto_state.' + state, String(state));
+  }
 
   // ─── State ────────────────────────────────────────────────────────────────
 
@@ -72,6 +62,96 @@ const CalibrationComponent = (() => {
 
   function init() {
     bindEvents();
+    buildHelpContent();
+    // Re-render help content when language changes
+    document.addEventListener('i18n:applied', buildHelpContent);
+  }
+
+  /**
+   * Build the calibration help section using translated HTML from i18n dictionary.
+   * The help content contains rich HTML (strong, kbd, em, ol, li, etc.) that
+   * cannot be handled by simple data-i18n textContent replacements.
+   */
+  function buildHelpContent() {
+    const container = $('#calibration-help-content');
+    if (!container) return;
+
+    const html = `
+      <p>${I18n.t('cal.help_intro')}</p>
+
+      <details class="calibration-help-step" open>
+        <summary class="calibration-help-step-summary">
+          <span class="calibration-help-step-number">1</span>
+          <span>${I18n.t('cal.step1_title')}</span>
+        </summary>
+        <div class="calibration-help-step-body">
+          <ol>
+            <li>${I18n.t('cal.step1_li1')}</li>
+            <li>${I18n.t('cal.step1_li2')}</li>
+            <li>${I18n.t('cal.step1_li3')}</li>
+            <li>${I18n.t('cal.step1_li4')}</li>
+            <li>${I18n.t('cal.step1_li5')}</li>
+          </ol>
+        </div>
+      </details>
+
+      <details class="calibration-help-step">
+        <summary class="calibration-help-step-summary">
+          <span class="calibration-help-step-number">2</span>
+          <span>${I18n.t('cal.step2_title')}</span>
+        </summary>
+        <div class="calibration-help-step-body">
+          <p>${I18n.t('cal.step2_p1')}</p>
+          <p>${I18n.t('cal.step2_p2')}</p>
+        </div>
+      </details>
+
+      <details class="calibration-help-step">
+        <summary class="calibration-help-step-summary">
+          <span class="calibration-help-step-number">3</span>
+          <span>${I18n.t('cal.step3_title')}</span>
+        </summary>
+        <div class="calibration-help-step-body">
+          <ol>
+            <li>${I18n.t('cal.step3_li1')}</li>
+            <li>${I18n.t('cal.step3_li2')}</li>
+            <li>${I18n.t('cal.step3_li3')}</li>
+          </ol>
+        </div>
+      </details>
+
+      <details class="calibration-help-step">
+        <summary class="calibration-help-step-summary">
+          <span class="calibration-help-step-number">4</span>
+          <span>${I18n.t('cal.step4_title')}</span>
+        </summary>
+        <div class="calibration-help-step-body">
+          <p>${I18n.t('cal.step4_p1')}</p>
+          <ul>
+            <li>${I18n.t('cal.step4_li1')}</li>
+            <li>${I18n.t('cal.step4_li2')}</li>
+            <li>${I18n.t('cal.step4_li3')}</li>
+          </ul>
+        </div>
+      </details>
+
+      <details class="calibration-help-step">
+        <summary class="calibration-help-step-summary">
+          <span class="calibration-help-step-number">5</span>
+          <span>${I18n.t('cal.step5_title')}</span>
+        </summary>
+        <div class="calibration-help-step-body">
+          <ul>
+            <li>${I18n.t('cal.step5_li1')}</li>
+            <li>${I18n.t('cal.step5_li2')}</li>
+            <li>${I18n.t('cal.step5_li3')}</li>
+            <li>${I18n.t('cal.step5_li4')}</li>
+            <li>${I18n.t('cal.step5_li5')}</li>
+          </ul>
+        </div>
+      </details>`;
+
+    container.innerHTML = html;
   }
 
   /**
@@ -79,7 +159,10 @@ const CalibrationComponent = (() => {
    */
   function toggleHelp() {
     const card = $('#card-calibration-help');
-    if (card) card.classList.toggle('card-collapsed');
+    const btn = $('#btn-toggle-calibration-help');
+    if (!card) return;
+    const collapsed = card.classList.toggle('card-collapsed');
+    if (btn) btn.textContent = collapsed ? '+' : '\u2212';
   }
 
   // ─── Event Binding ───────────────────────────────────────────────────────
@@ -171,18 +254,18 @@ const CalibrationComponent = (() => {
 
     const query = input.value.trim();
     if (!query) {
-      resultsContainer.innerHTML = '<div class="calibration-search-hint">Enter a name or catalog ID to search.</div>';
+      resultsContainer.innerHTML = `<div class="calibration-search-hint">${I18n.t('cal.search.hint')}</div>`;
       return;
     }
 
-    resultsContainer.innerHTML = '<div class="calibration-search-hint">Searching...</div>';
+    resultsContainer.innerHTML = `<div class="calibration-search-hint">${I18n.t('cal.search.searching')}</div>`;
 
     try {
       const result = await Api.searchObjects({ query });
       const objects = result.objects || [];
 
       if (objects.length === 0) {
-        resultsContainer.innerHTML = '<div class="calibration-search-hint">No objects found. Try a different search.</div>';
+        resultsContainer.innerHTML = `<div class="calibration-search-hint">${I18n.t('cal.search.no_results')}</div>`;
         return;
       }
 
@@ -196,7 +279,7 @@ const CalibrationComponent = (() => {
         if (obj.catalog_id) html += ` <span class="calibration-search-item-catalog">${escapeHtml(obj.catalog_id)}</span>`;
         html += `</div>`;
         html += `<div class="calibration-search-item-coords">RA: ${ra}h &nbsp; Dec: ${dec}° &nbsp; Mag: ${mag}</div>`;
-        html += `<button class="btn btn-sm btn-primary calibration-search-item-select" data-type="${type}" data-id="${escapeHtml(obj.id || obj.name)}">Select</button>`;
+        html += `<button class="btn btn-sm btn-primary calibration-search-item-select" data-type="${type}" data-id="${escapeHtml(obj.id || obj.name)}">${I18n.t('cal.search.select_btn')}</button>`;
         html += `</div>`;
       });
       html += '</div>';
@@ -223,7 +306,7 @@ const CalibrationComponent = (() => {
       });
 
     } catch (err) {
-      resultsContainer.innerHTML = `<div class="calibration-search-hint" style="color:var(--color-danger);">Search failed: ${escapeHtml(err.message)}</div>`;
+      resultsContainer.innerHTML = `<div class="calibration-search-hint" style="color:var(--color-danger);">${I18n.t('cal.search.error', { message: escapeHtml(err.message) })}</div>`;
     }
   }
 
@@ -312,28 +395,28 @@ const CalibrationComponent = (() => {
   async function handleSlewAndMeasure(type) {
     const obj = type === 'bs' ? bsSelectedObject : tpSelectedObject;
     if (!obj) {
-      App.showToast('No reference object selected', 'error');
+      App.showToast(I18n.t('cal.msg.no_ref_selected'), 'error');
       return;
     }
 
     const ra = obj.ra_hours;
     const dec = obj.dec_degrees;
     if (ra == null || dec == null) {
-      App.showToast('Selected object has no coordinates', 'error');
+      App.showToast(I18n.t('cal.msg.no_coords'), 'error');
       return;
     }
 
     // First slew to the object
     try {
       await Api.slewToCoordinates(ra, dec);
-      App.showToast(`Slewing to ${obj.name || 'object'}...`, 'info', 3000);
+      App.showToast(I18n.t('cal.msg.slewing_to', { name: obj.name || 'object' }), 'info', 3000);
 
       // Wait a moment for the slew to start, then add measurement
       setTimeout(async () => {
         await addMeasurement(type, obj, ra, dec);
       }, 2000);
     } catch (err) {
-      App.showToast(`Slew failed: ${err.message}`, 'error');
+      App.showToast(I18n.t('cal.msg.slew_failed', { message: err.message }), 'error');
     }
   }
 
@@ -344,7 +427,7 @@ const CalibrationComponent = (() => {
   async function handleAddMeasurement(type) {
     const obj = type === 'bs' ? bsSelectedObject : tpSelectedObject;
     if (!obj) {
-      App.showToast('No reference object selected', 'error');
+      App.showToast(I18n.t('cal.msg.no_ref_selected'), 'error');
       return;
     }
 
@@ -356,7 +439,7 @@ const CalibrationComponent = (() => {
     const dec = decInput ? parseFloat(decInput.value) : obj.dec_degrees;
 
     if (isNaN(ra) || isNaN(dec)) {
-      App.showToast('Valid expected coordinates are required', 'error');
+      App.showToast(I18n.t('cal.msg.valid_coords_required'), 'error');
       return;
     }
 
@@ -394,10 +477,10 @@ const CalibrationComponent = (() => {
       }
 
       resultDiv.className = 'calibration-result success';
-      resultDiv.textContent = `Measurement added for "${obj.name || 'object'}" (RA=${Number(ra).toFixed(4)}h, Dec=${Number(dec).toFixed(2)}°)`;
+      resultDiv.textContent = I18n.t('cal.msg.measurement_added', { name: obj.name || 'object', ra: Number(ra).toFixed(4), dec: Number(dec).toFixed(2) });
       resultDiv.style.display = 'block';
 
-      App.showToast(`Measurement added for ${obj.name || 'object'}`, 'success');
+      App.showToast(I18n.t('cal.msg.measurement_added_toast', { name: obj.name || 'object' }), 'success');
 
       // Refresh status
       if (type === 'bs') {
@@ -407,9 +490,9 @@ const CalibrationComponent = (() => {
       }
     } catch (err) {
       resultDiv.className = 'calibration-result error';
-      resultDiv.textContent = `Failed to add measurement: ${err.message}`;
+      resultDiv.textContent = I18n.t('cal.msg.measurement_failed', { message: err.message });
       resultDiv.style.display = 'block';
-      App.showToast(`Measurement failed: ${err.message}`, 'error');
+      App.showToast(I18n.t('cal.msg.measurement_failed_toast', { message: err.message }), 'error');
     }
   }
 
@@ -423,7 +506,7 @@ const CalibrationComponent = (() => {
       if (resultDiv) resultDiv.style.display = 'none';
     } catch (err) {
       if (resultDiv) {
-        resultDiv.textContent = `Failed to load status: ${err.message}`;
+        resultDiv.textContent = I18n.t('cal.msg.status_load_failed', { message: err.message });
         resultDiv.className = 'calibration-result error';
         resultDiv.style.display = 'block';
       }
@@ -432,7 +515,7 @@ const CalibrationComponent = (() => {
 
   function updateBootstrapUI(status) {
     const stateLabel = status.state || 'NOT_CALIBRATED';
-    const stateText = BOOTSTRAP_STATE_LABELS[stateLabel] || stateLabel;
+    const stateText = bsStateLabel(stateLabel);
 
     // Badge
     const badge = $('#bootstrap-status-badge');
@@ -447,7 +530,7 @@ const CalibrationComponent = (() => {
     setText('#bootstrap-measurement-count', String(status.measurement_count ?? 0));
     setText('#bootstrap-alignment-error', formatArcsec(status.current_alignment_error_arcsec));
     setText('#bootstrap-residual-rms', status.residual_rms_arcsec != null ? `${Number(status.residual_rms_arcsec).toFixed(2)}"` : '—');
-    setText('#bootstrap-tpoint-ready', status.ready_for_tpoint ? 'Yes' : 'No');
+    setText('#bootstrap-tpoint-ready', status.ready_for_tpoint ? I18n.t('cal.yes', 'Yes') : I18n.t('cal.no', 'No'));
     setText('#bootstrap-last-calibration', status.last_calibration ? formatTimestamp(status.last_calibration) : '—');
 
     // New BootstrapStatus fields
@@ -455,8 +538,8 @@ const CalibrationComponent = (() => {
     currentBootstrapMode = mode != null ? mode : currentBootstrapMode;
     const modeSelect = $('#bootstrap-mode-select');
     if (modeSelect) modeSelect.value = String(currentBootstrapMode);
-    setText('#bootstrap-encoder-type', status.encoder_type_absolute ? 'Absolute' : 'Incremental');
-    setText('#bootstrap-ref-position-known', status.reference_position_known ? 'Yes' : 'No');
+    setText('#bootstrap-encoder-type', status.encoder_type_absolute ? I18n.t('cal.absolute', 'Absolute') : I18n.t('cal.incremental', 'Incremental'));
+    setText('#bootstrap-ref-position-known', status.reference_position_known ? I18n.t('cal.yes', 'Yes') : I18n.t('cal.no', 'No'));
     setText('#bootstrap-manual-meas-needed', status.manual_measurements_needed != null ? String(status.manual_measurements_needed) : '—');
   }
 
@@ -473,7 +556,7 @@ const CalibrationComponent = (() => {
       resultDiv.className = 'calibration-result success';
       resultDiv.style.display = 'block';
 
-      let msg = 'Bootstrap calibration completed.';
+      let msg = I18n.t('cal.msg.bootstrap_completed');
       if (result.alignment_error_arcsec != null) {
         msg += ` Alignment error: ${Number(result.alignment_error_arcsec).toFixed(2)}"`;
       }
@@ -488,7 +571,7 @@ const CalibrationComponent = (() => {
       await loadBootstrapStatus();
     } catch (err) {
       resultDiv.className = 'calibration-result error';
-      resultDiv.textContent = `Calibration failed: ${err.message}`;
+      resultDiv.textContent = I18n.t('cal.msg.bootstrap_failed', { message: err.message });
       resultDiv.style.display = 'block';
     } finally {
       btn.disabled = false;
@@ -506,12 +589,12 @@ const CalibrationComponent = (() => {
     try {
       await Api.clearBootstrapMeasurements();
       resultDiv.className = 'calibration-result success';
-      resultDiv.textContent = 'Bootstrap measurements cleared.';
+      resultDiv.textContent = I18n.t('cal.msg.bootstrap_cleared');
       resultDiv.style.display = 'block';
       await loadBootstrapStatus();
     } catch (err) {
       resultDiv.className = 'calibration-result error';
-      resultDiv.textContent = `Failed to clear: ${err.message}`;
+      resultDiv.textContent = I18n.t('cal.msg.clear_failed', { message: err.message });
       resultDiv.style.display = 'block';
     } finally {
       btn.disabled = false;
@@ -527,20 +610,20 @@ const CalibrationComponent = (() => {
 
     const mode = parseInt(select.value, 10);
     if (isNaN(mode) || mode < 0 || mode > 2) {
-      App.showToast('Invalid bootstrap mode value', 'error');
+      App.showToast(I18n.t('cal.msg.invalid_mode'), 'error');
       return;
     }
 
     try {
       await Api.setBootstrapMode(mode);
       currentBootstrapMode = mode;
-      App.showToast(`Bootstrap mode set to ${BOOTSTRAP_MODE_LABELS[mode] || mode}`, 'success');
+      App.showToast(I18n.t('cal.msg.mode_set', { mode: getBootstrapModeLabel(mode) }), 'success');
       await loadBootstrapStatus();
     } catch (err) {
       resultDiv.className = 'calibration-result error';
-      resultDiv.textContent = `Failed to set bootstrap mode: ${err.message}`;
+      resultDiv.textContent = I18n.t('cal.msg.mode_set_failed', { message: err.message });
       resultDiv.style.display = 'block';
-      App.showToast(`Failed to set bootstrap mode: ${err.message}`, 'error');
+      App.showToast(I18n.t('cal.msg.mode_set_failed_toast', { message: err.message }), 'error');
     }
   }
 
@@ -580,16 +663,16 @@ const CalibrationComponent = (() => {
 
     try {
       await Api.runAutomaticBootstrap(options);
-      App.showToast('Automatic bootstrap started', 'success');
+      App.showToast(I18n.t('cal.msg.auto_started'), 'success');
       // Show progress section and start polling
       const progressDiv = $('#auto-bootstrap-progress');
       if (progressDiv) progressDiv.style.display = 'block';
       await loadAutoBootstrapStatus();
     } catch (err) {
       resultDiv.className = 'calibration-result error';
-      resultDiv.textContent = `Failed to start auto-bootstrap: ${err.message}`;
+      resultDiv.textContent = I18n.t('cal.msg.auto_failed', { message: err.message });
       resultDiv.style.display = 'block';
-      App.showToast(`Auto-bootstrap failed: ${err.message}`, 'error');
+      App.showToast(I18n.t('cal.msg.auto_failed_toast', { message: err.message }), 'error');
     } finally {
       btn.disabled = false;
     }
@@ -616,7 +699,7 @@ const CalibrationComponent = (() => {
       progressDiv.style.display = 'block';
     }
 
-    const stateLabel = AUTO_BOOTSTRAP_STATE_LABELS[stateVal] || 'Unknown';
+    const stateLabel = getAutoBootstrapStateLabel(stateVal);
     setText('#auto-bs-state', stateLabel);
 
     // Progress bar
@@ -648,9 +731,9 @@ const CalibrationComponent = (() => {
 
     // Update badge if completed or in error
     if (stateVal === 3) {
-      App.showToast('Automatic bootstrap completed successfully!', 'success');
+      App.showToast(I18n.t('cal.msg.auto_completed'), 'success');
     } else if (stateVal === 4) {
-      App.showToast(`Auto-bootstrap error: ${status.error_message || 'Unknown error'}`, 'error');
+      App.showToast(I18n.t('cal.msg.auto_error', { message: status.error_message || 'Unknown error' }), 'error');
     }
   }
 
@@ -664,7 +747,7 @@ const CalibrationComponent = (() => {
       if (resultDiv) resultDiv.style.display = 'none';
     } catch (err) {
       if (resultDiv) {
-        resultDiv.textContent = `Failed to load TPOINT status: ${err.message}`;
+        resultDiv.textContent = I18n.t('cal.msg.tpoint_status_failed', { message: err.message });
         resultDiv.className = 'calibration-result error';
         resultDiv.style.display = 'block';
       }
@@ -675,7 +758,7 @@ const CalibrationComponent = (() => {
     const badge = $('#tpoint-status-badge');
     if (badge) {
       const isCalibrated = params.calibrated;
-      badge.textContent = isCalibrated ? 'CALIBRATED' : 'INACTIVE';
+      badge.textContent = isCalibrated ? I18n.t('cal.calibrated_yes', 'CALIBRATED') : I18n.t('cal.calibrated_no', 'INACTIVE');
       badge.className = isCalibrated ? 'status-badge tracking' : 'status-badge idle';
     }
 
@@ -684,7 +767,7 @@ const CalibrationComponent = (() => {
     setText('#tpoint-max-residual', formatArcsec(params.residual_max));
     setText('#tpoint-chi-squared', params.chi_squared != null ? Number(params.chi_squared).toFixed(3) : '—');
     setText('#tpoint-last-update', params.last_update ? formatTimestamp(params.last_update) : '—');
-    setText('#tpoint-calibrated', params.calibrated ? 'Yes' : 'No');
+    setText('#tpoint-calibrated', params.calibrated ? I18n.t('cal.yes', 'Yes') : I18n.t('cal.no', 'No'));
   }
 
   async function handleRunTPoint() {
@@ -698,12 +781,12 @@ const CalibrationComponent = (() => {
     try {
       await Api.runTPointCalibration();
       resultDiv.className = 'calibration-result success';
-      resultDiv.textContent = 'TPOINT calibration completed successfully.';
+      resultDiv.textContent = I18n.t('cal.msg.tpoint_completed');
       resultDiv.style.display = 'block';
       await loadTPointStatus();
     } catch (err) {
       resultDiv.className = 'calibration-result error';
-      resultDiv.textContent = `TPOINT calibration failed: ${err.message}`;
+      resultDiv.textContent = I18n.t('cal.msg.tpoint_failed', { message: err.message });
       resultDiv.style.display = 'block';
     } finally {
       btn.disabled = false;
@@ -721,12 +804,12 @@ const CalibrationComponent = (() => {
     try {
       await Api.clearTPointMeasurements();
       resultDiv.className = 'calibration-result success';
-      resultDiv.textContent = 'TPOINT measurements cleared.';
+      resultDiv.textContent = I18n.t('cal.msg.tpoint_cleared');
       resultDiv.style.display = 'block';
       await loadTPointStatus();
     } catch (err) {
       resultDiv.className = 'calibration-result error';
-      resultDiv.textContent = `Failed to clear: ${err.message}`;
+      resultDiv.textContent = I18n.t('cal.msg.clear_failed', { message: err.message });
       resultDiv.style.display = 'block';
     } finally {
       btn.disabled = false;
@@ -799,6 +882,15 @@ const CalibrationComponent = (() => {
 
   // ─── Public API ──────────────────────────────────────────────────────────
 
+  /**
+   * Get the currently selected calibration reference object.
+   * Used by the Tests tab to import the object for transform/slew.
+   * @returns {{ bs: object|null, tp: object|null }}
+   */
+  function getSelectedObject() {
+    return { bs: bsSelectedObject, tp: tpSelectedObject };
+  }
+
   return {
     init,
     startPolling,
@@ -806,5 +898,6 @@ const CalibrationComponent = (() => {
     loadBootstrapStatus,
     loadTPointStatus,
     toggleHelp,
+    getSelectedObject,
   };
 })();

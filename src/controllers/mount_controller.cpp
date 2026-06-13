@@ -284,13 +284,18 @@ public:
                 axis2_position_ = 0.0;
             }
         } else {
-            // Incremental encoders — start from reference (0,0).
+            // Incremental encoders — start from configured park position.
+            // Using the park position as reference gives a sensible default
+            // (e.g. NCP for equatorial: HA=0°, Dec=90°) that is immediately
+            // visible in the status UI, rather than forcing the operator to
+            // issue a move command just to see non-zero positions.
             // The bootstrap calibration (Wahba/SVD) will later determine the
             // rotation offset between the mount frame and the true horizontal frame,
             // which implicitly absorbs the unknown encoder zero offset.
-            MOUNT_LOG_INFO("Incremental encoders: starting from reference (0,0)");
-            axis1_position_ = 0.0;
-            axis2_position_ = 0.0;
+            MOUNT_LOG_INFO("Incremental encoders: starting from park position ({:.4f}°, {:.4f}°)",
+                          config_.park_position_axis1, config_.park_position_axis2);
+            axis1_position_ = config_.park_position_axis1;
+            axis2_position_ = config_.park_position_axis2;
         }
 
         // Initialize position Kalman filter with config noise parameters.
@@ -397,6 +402,20 @@ public:
             if (!canopen_interface_->enableDrive(1)) {
                 MOUNT_LOG_WARN("Failed to enable axis 1 — no drive responding on CAN bus?");
             }
+
+            // Sync CANopen drive positions to the initialized axis positions.
+            // This is essential for the mock interface (which starts at 0,0)
+            // and for real drives to reflect the post-initialization offsets.
+            // Without this, refreshPositions() would overwrite the park position
+            // with the drive's stale zero on the first loop iteration.
+            canopen_interface_->setPositionTarget(0, axis1_position_,
+                                                  config_.max_slew_rate,
+                                                  config_.slew_acceleration);
+            canopen_interface_->setPositionTarget(1, axis2_position_,
+                                                  config_.max_slew_rate,
+                                                  config_.slew_acceleration);
+            MOUNT_LOG_DEBUG("CANopen positions synced to initialized ({:.4f}°, {:.4f}°)",
+                           axis1_position_, axis2_position_);
         }
         
         // Configure TPointModel with mount and telescope physical parameters.
@@ -873,6 +892,8 @@ public:
                             auto pos1 = canopen_interface_->getPositionData(1);
                             axis1_position_ = pos0.actual_position;
                             axis2_position_ = pos1.actual_position;
+                            raw_servo_axis1_position_ = pos0.actual_position;
+                            raw_servo_axis2_position_ = pos1.actual_position;
                         }
                         axis1_rate_ = 0.0;
                         axis2_rate_ = 0.0;
@@ -1195,6 +1216,8 @@ public:
                             auto pos1 = canopen_interface_->getPositionData(1);
                             axis1_position_ = pos0.actual_position;
                             axis2_position_ = pos1.actual_position;
+                            raw_servo_axis1_position_ = pos0.actual_position;
+                            raw_servo_axis2_position_ = pos1.actual_position;
                         }
                         axis1_rate_ = 0.0;
                         axis2_rate_ = 0.0;
@@ -1491,7 +1514,19 @@ public:
                 // Track iteration count and timing for metrics
                 tracking_iteration_count_++;
                 total_update_time_ms_ += dt * 1000.0;
-                
+
+                // Periodic telescope position logging (every 100 iterations ≈ 10 s).
+                // Reports the actual telescope axis position (in mount degrees) alongside
+                // the tracking rates, so the operator can verify the mount is tracking correctly.
+                if (tracking_iteration_count_ % 100 == 0) {
+                    MOUNT_LOG_INFO("Tracking pos: axis1={:.4f}° axis2={:.4f}° "
+                                   "| rate: axis1={:.6f}°/s axis2={:.6f}°/s "
+                                   "| iter={} dt={:.3f}s",
+                                   axis1_position_, axis2_position_,
+                                   axis1_rate_, axis2_rate_,
+                                   tracking_iteration_count_, dt);
+                }
+
                 // Apply soft safety limits: evaluate zones and get rate scaling factor
                 double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
                 
@@ -2753,6 +2788,11 @@ public:
         status.state = state_;
         status.axis1_position = axis1_position_;
         status.axis2_position = axis2_position_;
+        // Telescope position: servo degrees divided by gear ratio gives
+        // the actual telescope axis position on the sky.
+        // Uses raw (non-normalized) servo position to preserve absolute angle.
+        status.telescope_axis1_position = raw_servo_axis1_position_ / config_.ha_axis_params.gear_ratio;
+        status.telescope_axis2_position = raw_servo_axis2_position_ / config_.dec_axis_params.gear_ratio;
         // Read rates under rate_mutex_ — applyGuiderCorrection() writes them
         // concurrently on the guider callback thread.
         {
@@ -2822,11 +2862,31 @@ public:
             // Only update if the SDO reads returned plausible data.
             // getPositionData() returns cached zeros when SDO fails.
             if (std::isfinite(pos0.actual_position) && std::isfinite(pos1.actual_position)) {
-                // Normalize to [0°, 360°)
+                // Store raw (absolute) servo motor position for telescope calculation.
+                // Normalization is done AFTER saving the raw value.
+                raw_servo_axis1_position_ = pos0.actual_position;
+                raw_servo_axis2_position_ = pos1.actual_position;
+
+                // Normalize to [0°, 360°) for status display
                 axis1_position_ = std::fmod(std::fmod(pos0.actual_position, 360.0) + 360.0, 360.0);
                 axis2_position_ = std::fmod(std::fmod(pos1.actual_position, 360.0) + 360.0, 360.0);
                 axis1_rate_ = pos0.actual_velocity;
                 axis2_rate_ = pos1.actual_velocity;
+
+                // Throttled log: servo → telescope position conversion.
+                // Logs every ~100 calls (~10 s at 100 ms main loop) to avoid spam.
+                static int refresh_log_counter = 0;
+                refresh_log_counter++;
+                if (refresh_log_counter % 100 == 0) {
+                    double telescope_axis1 = raw_servo_axis1_position_ / config_.ha_axis_params.gear_ratio;
+                    double telescope_axis2 = raw_servo_axis2_position_ / config_.dec_axis_params.gear_ratio;
+                    MOUNT_LOG_INFO("CANopen pos → Telescope: axis1={:.4f}° axis2={:.4f}° "
+                                   "| Servo (raw): axis1={:.4f}° axis2={:.4f}° "
+                                   "| Gear HA={:.1f}:1 Dec={:.1f}:1",
+                                   telescope_axis1, telescope_axis2,
+                                   raw_servo_axis1_position_, raw_servo_axis2_position_,
+                                   config_.ha_axis_params.gear_ratio, config_.dec_axis_params.gear_ratio);
+                }
             }
         } catch (const std::exception& e) {
             MOUNT_LOG_DEBUG("refreshPositionsFromCANopen: {}", e.what());
@@ -5073,8 +5133,10 @@ private:
     };
     
     MountStatus::State state_;
-    double axis1_position_;
-    double axis2_position_;
+    double axis1_position_;             // Normalized servo position [0°, 360°)
+    double axis2_position_;             // Normalized servo position [0°, 360°)
+    double raw_servo_axis1_position_{0.0}; // Non-normalized (absolute) servo motor degrees
+    double raw_servo_axis2_position_{0.0}; // Non-normalized (absolute) servo motor degrees
     double axis1_target_;
     double axis2_target_;
     double axis1_rate_;
