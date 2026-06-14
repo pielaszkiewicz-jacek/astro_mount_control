@@ -53,10 +53,6 @@ protected:
         config_.dec_axis_params.backlash = 0.0;
         config_.ha_axis_params.encoder_resolution = 360000.0;
         config_.dec_axis_params.encoder_resolution = 360000.0;
-        config_.ha_axis_params.motor_steps_per_rev = 200;
-        config_.dec_axis_params.motor_steps_per_rev = 200;
-        config_.ha_axis_params.motor_microstepping = 16;
-        config_.dec_axis_params.motor_microstepping = 16;
     }
 
     void TearDown() override {

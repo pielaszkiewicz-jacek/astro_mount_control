@@ -9,7 +9,7 @@
 const MountStatusComponent = (() => {
   'use strict';
 
-  const { $, formatNumber, formatRA, formatDec } = Utils;
+  const { $, formatNumber, formatRA, formatDec, formatAngleDeg } = Utils;
 
   // Cache for database object details (keyed by object name)
   let _dbObjectCache = {};
@@ -184,11 +184,11 @@ const MountStatusComponent = (() => {
       posEl.innerHTML = `
         <div class="stat-row">
           <span class="stat-label">Axis 1</span>
-          <span class="stat-value highlight">${formatNumber(state.position?.axis1, 4)}°</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.position?.axis1, false)}</span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Axis 2</span>
-          <span class="stat-value highlight">${formatNumber(state.position?.axis2, 4)}°</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.position?.axis2, false)}</span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Tracking Rate RA</span>

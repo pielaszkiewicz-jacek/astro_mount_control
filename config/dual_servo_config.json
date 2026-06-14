@@ -67,7 +67,6 @@
     "axis_physical_parameters": {
       "ha_axis": {
         "motor_steps_per_rev": 200,
-        "motor_microstepping": 64,
         "motor_step_angle": 101.25,
         "encoder_resolution": 16384,
         "encoder_counts_per_arcsec": 0.0126,
@@ -90,7 +89,6 @@
       },
       "dec_axis": {
         "motor_steps_per_rev": 200,
-        "motor_microstepping": 64,
         "motor_step_angle": 101.25,
         "encoder_resolution": 16384,
         "encoder_counts_per_arcsec": 0.0126,

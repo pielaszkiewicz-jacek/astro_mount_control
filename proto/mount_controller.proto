@@ -499,10 +499,7 @@ message GuiderCorrection {
 
 // Axis physical parameters
 message AxisPhysicalParameters {
-    // Motor parameters
-    double motor_steps_per_rev = 1;      // Steps per revolution
-    double motor_microstepping = 2;      // Microstepping factor (e.g., 16, 32, 64)
-    double motor_step_angle = 3;         // Step angle [arcseconds]
+    reserved 1, 2, 3;
     
     // Encoder parameters
     double encoder_resolution = 4;       // Encoder resolution [counts/rev]
@@ -535,6 +532,10 @@ message AxisPhysicalParameters {
     // Calibration data
     repeated double calibration_table = 20; // Calibration table [counts → arcseconds]
     double calibration_temp = 21;        // Temperature during calibration [°C]
+
+    // CANopen scaling factors (per-axis, replaces global fields 55/56)
+    double position_counts_per_degree = 22;  // counts per degree for 0x6064
+    double velocity_counts_per_deg_s = 23;   // counts per °/s for 0x606C
 }
 
 // Mount orientation (for CASUAL mount type)
@@ -644,6 +645,23 @@ message Configuration {
 
     // Mount orientation quaternion (used when mount_type = CASUAL)
     MountOrientation mount_orientation = 51;  // Mount orientation in local horizontal frame
+
+    // Servo initialization via custom SDO sequence
+    bool servo_init_enabled = 52;             // Enable custom SDO sequence during init
+    string servo_init_sequence = 53;          // JSON array of {axis, index, subindex, value, description} entries
+
+    // CANopen acceleration interpretation mode
+    string canopen_accel_mode = 54;           // "time" (0x6083 = ramp time) or "rate" (0x6083 = acceleration rate)
+
+    reserved 55, 56;
+
+    // Field rotation parameters
+    bool field_rotation_enabled = 57;
+    double field_rotation_altitude = 58;
+    double field_rotation_computed_rate = 59;
+    double field_rotation_applied_correction = 60;
+    double field_rotation_temperature = 61;
+    double field_rotation_flexure_correction = 62;
 }
 
 // Health check messages

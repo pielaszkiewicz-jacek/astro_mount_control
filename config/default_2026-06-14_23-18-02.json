@@ -1,0 +1,341 @@
+{
+    "canopen": {
+        "accel_mode": "time",
+        "baud_rate": 1000000,
+        "enable_sync": true,
+        "interface": "can0",
+        "node_id": 1,
+        "position_counts_per_degree": 142.222222222,
+        "sync_interval_ms": 100,
+        "velocity_counts_per_deg_s": 142.222222222
+    },
+    "derotator": {
+        "absolute_encoder": true,
+        "backlash": 2.0,
+        "calibration_table": [],
+        "connection_string": "",
+        "enabled": false,
+        "encoder_resolution": 1000,
+        "gear_ratio": 10.0,
+        "homing_offset": 0.0,
+        "max_acceleration": 2.0,
+        "max_speed": 5.0,
+        "type": "CANOPEN"
+    },
+    "field_rotation": {
+        "altitude": 0.0,
+        "applied_correction": 0.0,
+        "computed_rate": 0.0,
+        "enabled": false,
+        "flexure_correction": 0.0,
+        "temperature": 15.0
+    },
+    "guider": {
+        "aggression": 0.5,
+        "binning": 2,
+        "connection_string": "",
+        "enabled": false,
+        "exposure_time_ms": 2000,
+        "max_correction": 10.0
+    },
+    "hal": {
+        "axes": [
+            {
+                "can_node_id": 1,
+                "encoder_config": {
+                    "calibration_offset": 0.0,
+                    "counts_per_degree": 10000.0,
+                    "enable_error_detection": true,
+                    "error_threshold": 10,
+                    "interface": "CANOPEN",
+                    "max_velocity": 1000.0,
+                    "resolution": 16384,
+                    "type": "ABSOLUTE",
+                    "update_rate_hz": 100,
+                    "use_direction_signal": true,
+                    "use_index_pulse": true
+                },
+                "id": 0,
+                "motor_config": {
+                    "current_limit": 5.0,
+                    "default_mode": "POSITION",
+                    "enable_current_limit": true,
+                    "enable_temperature_protection": true,
+                    "encoder_counts_per_degree": 10000.0,
+                    "gear_ratio": 360.0,
+                    "max_acceleration": 1.0,
+                    "max_temperature": 80.0,
+                    "max_torque": 100.0,
+                    "max_velocity": 5.0,
+                    "type": "CANOPEN_SERVO"
+                },
+                "name": "HA_Axis",
+                "safety_limits": {
+                    "max_acceleration": 2.0,
+                    "max_current": 10.0,
+                    "max_position": 270.0,
+                    "max_temperature": 80.0,
+                    "max_velocity": 5.0,
+                    "min_position": -270.0
+                }
+            },
+            {
+                "can_node_id": 2,
+                "encoder_config": {
+                    "calibration_offset": 0.0,
+                    "counts_per_degree": 10000.0,
+                    "enable_error_detection": true,
+                    "error_threshold": 10,
+                    "interface": "CANOPEN",
+                    "max_velocity": 1000.0,
+                    "resolution": 16384,
+                    "type": "ABSOLUTE",
+                    "update_rate_hz": 100,
+                    "use_direction_signal": true,
+                    "use_index_pulse": true
+                },
+                "id": 1,
+                "motor_config": {
+                    "current_limit": 5.0,
+                    "default_mode": "POSITION",
+                    "enable_current_limit": true,
+                    "enable_temperature_protection": true,
+                    "encoder_counts_per_degree": 10000.0,
+                    "gear_ratio": 360.0,
+                    "max_acceleration": 1.0,
+                    "max_temperature": 80.0,
+                    "max_torque": 100.0,
+                    "max_velocity": 5.0,
+                    "type": "CANOPEN_SERVO"
+                },
+                "name": "Dec_Axis",
+                "safety_limits": {
+                    "max_acceleration": 2.0,
+                    "max_current": 10.0,
+                    "max_position": 185.0,
+                    "max_temperature": 80.0,
+                    "max_velocity": 5.0,
+                    "min_position": -5.0
+                }
+            }
+        ],
+        "canopen": {
+            "bitrate": 1000000,
+            "interface_name": "can0",
+            "library": "canopensocket",
+            "nmt": {
+                "bootup_timeout_ms": 5000,
+                "enable_auto_recovery": true,
+                "enable_bootup_check": true,
+                "enable_nmt": true,
+                "enable_node_guarding": false,
+                "heartbeat_period_ms": 100,
+                "heartbeat_timeout_ms": 500,
+                "max_missed_heartbeats": 3,
+                "node_guarding_period_ms": 1000,
+                "recovery_interval_s": 5
+            },
+            "node_id": 1,
+            "pdo_update_rate": 100,
+            "sdo_timeout_ms": 1000,
+            "sync_period_ms": 100,
+            "use_sync": true
+        },
+        "gamepad": {
+            "axis_mapping": {
+                "0": "lx",
+                "1": "ly",
+                "16": "pov_x",
+                "17": "pov_y",
+                "2": "trigger_l",
+                "3": "rx",
+                "4": "ry",
+                "5": "trigger_r"
+            },
+            "button_mapping": {
+                "0": "home",
+                "1": "stop",
+                "10": "none",
+                "2": "park",
+                "3": "emergency_stop",
+                "4": "speed_down",
+                "5": "speed_up",
+                "6": "manual_toggle",
+                "7": "none",
+                "8": "none",
+                "9": "none"
+            },
+            "deadzone": 0.15,
+            "device_path": "",
+            "poll_interval_ms": 20,
+            "sensitivity": 1.0
+        },
+        "type": "canopen"
+    },
+    "kalman": {
+        "adaptive_q": true,
+        "adaptive_r": false,
+        "innovation_threshold": 3.0,
+        "max_iterations": 10,
+        "measurement_noise": 1.0,
+        "process_noise": 0.01
+    },
+    "logging": {
+        "console_output": true,
+        "directory": "/var/log/astro-mount",
+        "level": "DEBUG",
+        "max_file_size_mb": 100,
+        "rotation_days": 706980816
+    },
+    "mount": {
+        "altitude": 100.0,
+        "axis_physical_parameters": {
+            "dec_axis": {
+                "axis_stiffness": 0.0,
+                "backlash": 6.3,
+                "backlash_temp_coeff": 0.015,
+                "calibration_table": [],
+                "calibration_temp": 20.0,
+                "cyclic_error_amplitude": 12.8,
+                "cyclic_error_period": 360.0,
+                "cyclic_harmonics": [
+                    8.2,
+                    0.0,
+                    2.5,
+                    1.5708,
+                    0.8,
+                    3.1416,
+                    0.3,
+                    4.7124
+                ],
+                "encoder_counts_per_arcsec": 0.0126,
+                "encoder_quantization_error": 0.0,
+                "encoder_resolution": 1000.0,
+                "expansion_coeff": 0.0,
+                "gear_ratio": 360.0,
+                "motor_step_angle": 1.8,
+                "motor_steps_per_rev": 200.0,
+                "temp_gear_error_coeff": 0.0,
+                "torsional_compliance": 0.0,
+                "worm_ratio": 180.0,
+                "worm_teeth": 1,
+                "worm_wheel_teeth": 180
+            },
+            "ha_axis": {
+                "axis_stiffness": 0.0,
+                "backlash": 6.3,
+                "backlash_temp_coeff": 0.015,
+                "calibration_table": [],
+                "calibration_temp": 20.0,
+                "cyclic_error_amplitude": 0.0,
+                "cyclic_error_period": 360.0,
+                "cyclic_harmonics": [
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0
+                ],
+                "encoder_counts_per_arcsec": 0.0,
+                "encoder_quantization_error": 0.0,
+                "encoder_resolution": 1000.0,
+                "expansion_coeff": 0.0,
+                "gear_ratio": 360.0,
+                "motor_step_angle": 1.8,
+                "motor_steps_per_rev": 200.0,
+                "temp_gear_error_coeff": 0.0,
+                "torsional_compliance": 0.0,
+                "worm_ratio": 180.0,
+                "worm_teeth": 1,
+                "worm_wheel_teeth": 180
+            }
+        },
+        "default_humidity": 0.5,
+        "default_pressure": 1013.25,
+        "default_temperature": 15.0,
+        "enable_refraction_correction": false,
+        "encoder_resolution": 1000.0,
+        "encoders_absolute": false,
+        "latitude": 52.22972,
+        "longitude": 21.011667,
+        "max_slew_rate": 20.0,
+        "max_tracking_rate": 1.504,
+        "meridian_flip_delay_minutes": 5.0,
+        "meridian_flip_enabled": false,
+        "meridian_flip_hysteresis_degrees": 0.5,
+        "meridian_flip_timeout_seconds": 120.0,
+        "mount_height": 1.5,
+        "orientation_quaternion": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+        ],
+        "park_position_axis1": 0.0,
+        "park_position_axis2": 0.0,
+        "pier_east": 0.0,
+        "pier_west": 0.0,
+        "position_tolerance": 0.1,
+        "rate_tolerance": 0.01,
+        "slew_acceleration": 50.0,
+        "soft_limit_axis1_max": 0.0,
+        "soft_limit_axis1_min": 0.0,
+        "soft_limit_axis2_max": 0.0,
+        "soft_limit_axis2_min": 0.0,
+        "soft_limit_deceleration_degrees": 5.0,
+        "soft_limit_tracking_rate_factor": 0.1,
+        "soft_limit_warning_degrees": 10.0,
+        "soft_limits_enabled": false,
+        "tracking_acceleration": 50.0,
+        "type": "equatorial",
+        "use_encoders": false
+    },
+    "network": {
+        "enable_ssl": false,
+        "grpc_address": "0.0.0.0",
+        "grpc_port": 50051,
+        "max_connections": 10,
+        "ssl_cert_path": "",
+        "ssl_key_path": ""
+    },
+    "servo_init": {
+        "comment": "Custom SDO configuration sequence sent to servo drives during initialization. Each entry specifies axis (0=HA, 1=Dec), CANopen OD index (hex), subindex, 32-bit value, and a human-readable description.",
+        "enabled": true,
+        "sequence": [
+            {
+                "axis": 0,
+                "data_size": 2,
+                "description": "HA axis: electronic gear ratio numerator",
+                "index": "0x2201",
+                "subindex": 0,
+                "value": 51200
+            },
+            {
+                "axis": 1,
+                "data_size": 2,
+                "description": "Dec axis: electronic gear ratio numerator",
+                "index": "0x2201",
+                "subindex": 0,
+                "value": 51200
+            }
+        ]
+    },
+    "telescope": {
+        "aperture": 205.0,
+        "camera_model": "ASI1600",
+        "focal_length": 3.492935817e-315,
+        "pixel_size": 3.8,
+        "sensor_height": 3520,
+        "sensor_width": 4656,
+        "tube_length": 1800.0
+    },
+    "tpoint": {
+        "auto_calibrate": true,
+        "enabled_terms": 65535,
+        "max_residual": 30.0,
+        "min_measurements": 10
+    }
+}

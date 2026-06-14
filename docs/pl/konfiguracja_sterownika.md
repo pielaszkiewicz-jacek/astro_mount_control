@@ -128,12 +128,14 @@ Dotyczy warstwy CANopen — interfejsu magistrali CAN.
 | `baud_rate` | integer | 10000, 20000, 50000, 100000, 125000, 250000, 500000, 800000, 1000000 | `1000000` | Szybkość transmisji magistrali CAN (1 Mbit/s) |
 | `enable_sync` | boolean | `true`, `false` | `true` | Czy włączyć cykliczny SYNC (CiA 301 §7.2.4) |
 | `sync_interval_ms` | integer | 10–10000 | `100` | Interwał SYNC w milisekundach |
+| `accel_mode` | string | `"time"`, `"rate"` | `"time"` | Sposób interpretacji przyspieszenia przez napęd. `"time"` – napęd traktuje wartość 0x6083/0x6084 jako czas rampy (mniejsza wartość = szybsza rampa). `"rate"` – napęd traktuje jako tempo (°/s², większa wartość = szybsza rampa). |
 
-**Uwaga:** `node_id` w tej sekcji to adres samego sterownika na magistrali CAN, **nie** adresy serwonapędów. 
-Adresy napędów konfiguruje się w sekcji [`hal.axes[].can_node_id`](#811-can_node-id).
+**Uwaga:** `node_id` w tej sekcji to adres samego sterownika na magistrali CAN, **nie** adresy serwonapędów.
+Adresy napędów konfiguruje się w sekcji [`hal.axes[].can_node_id`](#811-can-node-id).
 
-Implementacja: [`CanOpenConfig`](include/config/configuration.h:39), 
+Implementacja: [`CanOpenConfig`](include/config/configuration.h:39),
 odczyt: [`Configuration::getCanOpenConfig()`](src/config/configuration.cpp:302).
+Konwersja: [`canopen_interface.cpp::setVelocityTarget()`](src/controllers/canopen_interface.cpp:527).
 
 ---
 
@@ -212,9 +214,6 @@ Definiuje charakterystykę mechaniczną każdej osi montażu.
 
 | Parametr | Typ | Zakres | Wartość domyślna | Opis |
 |---|---|---|---|---|
-| `motor_steps_per_rev` | integer | 1–10000 | `200` | Liczba kroków silnika na obrót (dla silników krokowych) |
-| `motor_microstepping` | integer | 1–256 | `64` | Mikrokrokowanie (1 = full step) |
-| `motor_step_angle` | float | 0.0 do 360.0 | `101.25` | Kąt kroku silnika (arcsec) |
 | `encoder_resolution` | integer | 1–2³² | `16384` | Rozdzielczość enkodera (counts/obrót) |
 | `encoder_counts_per_arcsec` | float | > 0 | `0.0126` | Liczba impulsów enkodera na sekundę kątową |
 | `encoder_quantization_error` | float | > 0 | `39.6` | Błąd kwantyzacji enkodera (mas) |

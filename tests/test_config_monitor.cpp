@@ -66,14 +66,10 @@ protected:
                 "mount_height": 1.5,
                 "axis_physical_parameters": {
                     "ha_axis": {
-                        "motor_steps_per_rev": 200,
-                        "motor_microstepping": 64,
                         "encoder_resolution": 16384,
                         "gear_ratio": 360.0
                     },
                     "dec_axis": {
-                        "motor_steps_per_rev": 200,
-                        "motor_microstepping": 64,
                         "encoder_resolution": 16384,
                         "gear_ratio": 360.0
                     }
@@ -135,14 +131,10 @@ protected:
                 "mount_height": 1.5,
                 "axis_physical_parameters": {
                     "ha_axis": {
-                        "motor_steps_per_rev": 200,
-                        "motor_microstepping": 64,
                         "encoder_resolution": 16384,
                         "gear_ratio": 360.0
                     },
                     "dec_axis": {
-                        "motor_steps_per_rev": 200,
-                        "motor_microstepping": 64,
                         "encoder_resolution": 16384,
                         "gear_ratio": 360.0
                     }
@@ -464,14 +456,10 @@ protected:
                 "mount_height": 1.5,
                 "axis_physical_parameters": {
                     "ha_axis": {
-                        "motor_steps_per_rev": 200,
-                        "motor_microstepping": 64,
                         "encoder_resolution": 16384,
                         "gear_ratio": 360.0
                     },
                     "dec_axis": {
-                        "motor_steps_per_rev": 200,
-                        "motor_microstepping": 64,
                         "encoder_resolution": 16384,
                         "gear_ratio": 360.0
                     }

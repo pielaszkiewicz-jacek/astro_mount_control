@@ -42,16 +42,15 @@ public:
         int baud_rate;
         bool enable_sync;
         int sync_interval_ms;
-        double position_counts_per_degree = 1000.0 / 360.0;
-        double velocity_counts_per_deg_s = 1000.0 / 360.0;
+        std::string accel_mode = "time";  // "time" = drive interprets 0x6083/0x6084 as ramp time,
+                                           // "rate" = drive interprets as acceleration rate (°/s²)
     };
 
     struct AxisPhysicalParameters {
-        // Motor parameters
-        double motor_steps_per_rev;      // Steps per revolution
-        double motor_microstepping;      // Microstepping factor (e.g., 16, 32, 64)
-        double motor_step_angle;         // Step angle [arcseconds]
-        
+        // CANopen scaling factors (per-axis)
+        double position_counts_per_degree;  // counts per degree for 0x6064
+        double velocity_counts_per_deg_s;   // counts per °/s for 0x606C
+
         // Encoder parameters
         double encoder_resolution;       // Encoder resolution [counts/rev]
         double encoder_counts_per_arcsec; // Counts per arcsecond
@@ -199,13 +198,32 @@ public:
 
     struct FieldRotationParams {
         bool enabled;
-        double latitude;
         double altitude;
-        double azimuth;
         double computed_rate;
         double applied_correction;
         double temperature;
         double flexure_correction;
+    };
+
+    /**
+     * @brief Servo initialization SDO sequence entry
+     *
+     * Defines a single SDO write to be sent during servo drive initialization.
+     * Used to configure manufacturer-specific parameters like microstep resolution,
+     * electronic gearing, and encoder settings per the drive's manual.
+     */
+    struct ServoInitEntry {
+        int axis;
+        uint16_t index;
+        uint8_t  subindex;
+        int32_t  value;
+        std::string description;
+        uint8_t data_size = 4;  // 1, 2, or 4 bytes (default 4 for backward compat)
+    };
+
+    struct ServoInitConfig {
+        bool enabled{false};
+        std::vector<ServoInitEntry> sequence;
     };
 
     // Forward declaration for HAL configuration (defined in hal/hal_config.h)
@@ -311,6 +329,12 @@ public:
      * @return Derotator configuration
      */
     DerotatorConfig getDerotatorConfig() const;
+
+    /**
+     * @brief Get servo initialization configuration
+     * @return Servo init configuration (SDO sequence)
+     */
+    ServoInitConfig getServoInitConfig() const;
 
     /**
      * @brief Get field rotation parameters

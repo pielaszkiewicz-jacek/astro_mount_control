@@ -303,8 +303,15 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                     canopen_config.pdo_mapping[i] = config.pdo_mapping[i];
                 }
                 canopen_config.sdo_timeout_ms = config.sdo_timeout_ms;
-                canopen_config.position_counts_per_degree = config.position_counts_per_degree;
-                canopen_config.velocity_counts_per_deg_s = config.velocity_counts_per_deg_s;
+                canopen_config.axis_position_counts_per_degree[0] = config.axis_position_counts_per_degree[0];
+                canopen_config.axis_position_counts_per_degree[1] = config.axis_position_counts_per_degree[1];
+                canopen_config.axis_velocity_counts_per_deg_s[0] = config.axis_velocity_counts_per_deg_s[0];
+                canopen_config.axis_velocity_counts_per_deg_s[1] = config.axis_velocity_counts_per_deg_s[1];
+                canopen_config.accel_mode = config.accel_mode;
+                
+                // Propagate servo initialization sequence from ICanOpenInterface::Config
+                canopen_config.servo_init_enabled = config.servo_init_enabled;
+                canopen_config.servo_init_sequence = config.servo_init_sequence;
                 
                 config_ = config;
                 return impl_->initialize(canopen_config);

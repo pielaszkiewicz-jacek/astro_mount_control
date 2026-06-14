@@ -51,11 +51,10 @@ public:
     };
 
     struct AxisPhysicalParameters {
-        // Motor parameters
-        double motor_steps_per_rev;      // Steps per revolution
-        double motor_microstepping;      // Microstepping factor (e.g., 16, 32, 64)
-        double motor_step_angle;         // Step angle [arcseconds]
-        
+        // CANopen scaling factors (per-axis)
+        double position_counts_per_degree;
+        double velocity_counts_per_deg_s;
+
         // Encoder parameters
         double encoder_resolution;       // Encoder resolution [counts/rev]
         double encoder_counts_per_arcsec; // Counts per arcsecond

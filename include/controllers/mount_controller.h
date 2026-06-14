@@ -9,6 +9,7 @@
 #include <functional>
 #include "proto/mount_controller.pb.h"
 #include "models/ephemeris_tracker.h"
+#include "controllers/icanopen_interface.h"
 
 // Forward declaration for HAL
 namespace astro_mount {
@@ -19,9 +20,6 @@ class HALInterface;
 
 namespace astro_mount {
 namespace controllers {
-
-// Forward declarations
-class ICanOpenInterface;
 
 /**
  * @brief Main mount controller class
@@ -83,42 +81,41 @@ public:
     };
 
     struct AxisPhysicalParameters {
-        // Motor parameters
-        double motor_steps_per_rev;      // Steps per revolution
-        double motor_microstepping;      // Microstepping factor (e.g., 16, 32, 64)
-        double motor_step_angle;         // Step angle [arcseconds]
-        
+        // CANopen scaling factors (per-axis)
+        double position_counts_per_degree{4000.0 / 360.0};
+        double velocity_counts_per_deg_s{4000.0 / 360.0};
+
         // Encoder parameters
-        double encoder_resolution;       // Encoder resolution [counts/rev]
-        double encoder_counts_per_arcsec; // Counts per arcsecond
-        double encoder_quantization_error; // Quantization error [arcseconds]
+        double encoder_resolution{1000.0};      // Encoder resolution [counts/rev]
+        double encoder_counts_per_arcsec{0.0};  // Counts per arcsecond
+        double encoder_quantization_error{0.0}; // Quantization error [arcseconds]
         
         // Gear parameters
-        double gear_ratio;               // Total gear ratio (motor:output)
-        double worm_ratio;               // Worm gear ratio (if applicable)
-        int worm_teeth;                  // Number of worm teeth
-        int worm_wheel_teeth;            // Number of worm wheel teeth
+        double gear_ratio{360.0};               // Total gear ratio (motor:output)
+        double worm_ratio{180.0};               // Worm gear ratio (if applicable)
+        int worm_teeth{1};                      // Number of worm teeth
+        int worm_wheel_teeth{180};              // Number of worm wheel teeth
         
         // Cyclic errors (periodic errors)
-        double cyclic_error_amplitude;   // Amplitude of cyclic error [arcseconds]
-        double cyclic_error_period;      // Period of cyclic error [degrees]
-        std::array<double, 8> cyclic_harmonics; // Harmonic coefficients for cyclic error
+        double cyclic_error_amplitude{0.0};     // Amplitude of cyclic error [arcseconds]
+        double cyclic_error_period{360.0};      // Period of cyclic error [degrees]
+        std::array<double, 8> cyclic_harmonics{}; // Harmonic coefficients for cyclic error
         
         // Backlash parameters
-        double backlash;                 // Backlash [arcseconds]
-        double backlash_temp_coeff;      // Backlash temperature coefficient [arcseconds/°C]
+        double backlash{0.0};                   // Backlash [arcseconds]
+        double backlash_temp_coeff{0.0};        // Backlash temperature coefficient [arcseconds/°C]
         
         // Stiffness and compliance
-        double axis_stiffness;           // Axis stiffness [arcseconds/Nm]
-        double torsional_compliance;     // Torsional compliance [rad/Nm]
+        double axis_stiffness{0.0};             // Axis stiffness [arcseconds/Nm]
+        double torsional_compliance{0.0};       // Torsional compliance [rad/Nm]
         
         // Temperature coefficients
-        double expansion_coeff;          // Thermal expansion coefficient [1/°C]
-        double temp_gear_error_coeff;    // Gear error temperature coefficient [arcseconds/°C]
+        double expansion_coeff{0.0};            // Thermal expansion coefficient [1/°C]
+        double temp_gear_error_coeff{0.0};      // Gear error temperature coefficient [arcseconds/°C]
         
         // Calibration data
-        std::vector<double> calibration_table; // Calibration table [counts → arcseconds]
-        double calibration_temp;         // Temperature during calibration [°C]
+        std::vector<double> calibration_table;  // Calibration table [counts → arcseconds]
+        double calibration_temp{20.0};           // Temperature during calibration [°C]
     };
 
     struct ControllerConfig {
@@ -165,8 +162,7 @@ public:
         // Network configuration
         std::string canopen_interface;
         int canopen_node_id;
-        double canopen_position_counts_per_degree = 4000.0 / 360.0;
-        double canopen_velocity_counts_per_deg_s = 4000.0 / 360.0;
+        std::string canopen_accel_mode = "time";  // "time" or "rate"
         std::string grpc_address;
         int grpc_port;
         
@@ -210,9 +206,21 @@ public:
         // Mount orientation (for CASUAL mount type)
         MountOrientation mount_orientation;
 
+        // Servo initialization via custom SDO sequence
+        bool servo_init_enabled{false};
+        std::vector<ICanOpenInterface::ServoInitEntry> servo_init_sequence;
+
         // Axis physical parameters
         AxisPhysicalParameters ha_axis_params;
         AxisPhysicalParameters dec_axis_params;
+
+        // Field rotation parameters (initial values from config)
+        bool field_rotation_enabled{false};
+        double field_rotation_altitude{0.0};
+        double field_rotation_computed_rate{0.0};
+        double field_rotation_applied_correction{0.0};
+        double field_rotation_temperature{15.0};
+        double field_rotation_flexure_correction{0.0};
     };
 
     struct MountStatus {
@@ -737,6 +745,16 @@ public:
      * @return True if update successful
      */
     bool updateConfiguration(const ControllerConfig& config);
+
+    /**
+     * @brief Set the configuration file path for persistence
+     *
+     * When set, updateConfiguration() will also save changes to this file
+     * so they survive controller restarts.
+     *
+     * @param path Path to the JSON configuration file
+     */
+    void setConfigFilePath(const std::string& path);
 
     // ============================================
     // Mount Orientation API (for CASUAL mount type)

@@ -18,7 +18,7 @@
 const App = (() => {
   'use strict';
 
-  const { $, $$, formatTime } = Utils;
+  const { $, $$, formatTime, enhanceAllAngleInputs } = Utils;
 
   // ─── State ────────────────────────────────────────────────────────────
   let pollInterval = null;
@@ -44,6 +44,8 @@ const App = (() => {
     initMobileModeToggle();
     initFullscreenToggle();
     initLangToggle();
+    // Enhance angle inputs with DMS/HMS format support
+    Utils.enhanceAllAngleInputs();
     MountControlComponent.init();
     console.log('[App] MountControlComponent.init() done');
     DatabaseComponent.init();
@@ -111,6 +113,8 @@ const App = (() => {
         // Start/stop calibration polling when tab is shown/hidden
         if (tabName === 'calibration') {
           CalibrationComponent.startPolling();
+          // Re-run angle enhancement for dynamically-shown calibration inputs
+          Utils.enhanceAllAngleInputs(document.getElementById('panel-calibration'));
         } else {
           CalibrationComponent.stopPolling();
         }

@@ -24,6 +24,13 @@ const MountControlComponent = (() => {
   /** Whether the mount is calibrated (TRACKING or SLEWING state) */
   let isCalibrated = false;
 
+  /** Gear ratios for HA and Dec axes (servo → telescope) */
+  let haAxisGearRatio = 360.0;
+  let decAxisGearRatio = 360.0;
+
+  /** Whether speed/step refers to telescope axis (true) or servo motor (false) */
+  let speedRefTelescope = false;
+
   /** Currently active axis movement timer (for continuous velocity control) */
   let activeAxisTimer = null;
 
@@ -219,8 +226,9 @@ const MountControlComponent = (() => {
 
     if (!raInput || !decInput) return;
 
-    const ra = parseFloat(raInput.value);
-    const dec = parseFloat(decInput.value);
+    // Use enhanced angle input getters if available, fall back to parseFloat
+    const ra = raInput.getAngleDecimal ? raInput.getAngleDecimal() : parseFloat(raInput.value);
+    const dec = decInput.getAngleDecimal ? decInput.getAngleDecimal() : parseFloat(decInput.value);
 
     if (isNaN(ra) || ra < 0 || ra >= 24) {
       App.showToast('RA must be between 0 and 24 hours', 'error');
@@ -236,7 +244,9 @@ const MountControlComponent = (() => {
 
     try {
       const result = await Api.slewToCoordinates(ra, dec);
-      App.showToast(result.message || `Slewing to RA=${ra}h, Dec=${dec}°`, 'success');
+      const raStr = Utils.formatRA(ra);
+      const decStr = Utils.formatDec(dec);
+      App.showToast(result.message || `Slewing to RA=${raStr}, Dec=${decStr}`, 'success');
     } catch (err) {
       App.showToast(`Slew failed: ${err.message}`, 'error');
     } finally {
@@ -392,13 +402,21 @@ const MountControlComponent = (() => {
    * Get the current step size from the input, falling back to stored value.
    * @returns {number} Step size in degrees
    */
-  function getStepSize() {
+  function getStepSize(axisId = 0) {
     const input = $('#axis-step-size');
+    let val = 1.0;
     if (input) {
-      const val = parseFloat(input.value);
-      if (!isNaN(val) && val > 0) return val;
+      const parsed = parseFloat(input.value);
+      if (!isNaN(parsed) && parsed > 0) val = parsed;
+      else val = stepSizeDeg;
     }
-    return stepSizeDeg;
+    // When in telescope-axis mode, step refers to telescope angle,
+    // so convert to servo angle via gear ratio
+    if (speedRefTelescope) {
+      const gear = (axisId === 1) ? decAxisGearRatio : haAxisGearRatio;
+      return val * gear;
+    }
+    return val;
   }
 
   // ─── Axis Control ────────────────────────────────────────────────────
@@ -413,6 +431,70 @@ const MountControlComponent = (() => {
       speedSlider.addEventListener('input', updateSpeedLabel);
       // Sync slider max with the backend max_slew_rate config
       syncSpeedSliderMax(speedSlider);
+    }
+
+    const accelSlider = $('#axis-accel');
+    if (accelSlider) {
+      accelSlider.addEventListener('input', updateAccelLabel);
+    }
+
+    const decelSlider = $('#axis-decel');
+    if (decelSlider) {
+      decelSlider.addEventListener('input', updateDecelLabel);
+    }
+
+    // Bind speed reference toggle (servo motor vs telescope axis)
+    const refToggle = $('#axis-speed-ref-toggle');
+    if (refToggle) {
+      refToggle.addEventListener('change', onSpeedRefToggleChanged);
+    }
+    // Load gear ratios for telescope-axis speed conversion
+    loadGearRatios();
+  }
+
+  /**
+   * Fetch gear ratios from backend config.
+   */
+  async function loadGearRatios() {
+    try {
+      const config = await Api.getConfig();
+      // Gear ratios may be under ha_axis_params / dec_axis_params sub-objects
+      // or directly on the config (depending on API version). Try both paths.
+      const haGear = config?.ha_axis_params?.gear_ratio ?? config?.ha_axis_gear_ratio;
+      const decGear = config?.dec_axis_params?.gear_ratio ?? config?.dec_axis_gear_ratio;
+      if (haGear && haGear > 0) haAxisGearRatio = haGear;
+      if (decGear && decGear > 0) decAxisGearRatio = decGear;
+      updateGearInfoLabel();
+      syncSpeedSliderMax($('#axis-speed'));
+      console.log('[AxisCtrl] Gear ratios: HA=%.1f:1, Dec=%.1f:1', haAxisGearRatio, decAxisGearRatio);
+    } catch (err) {
+      console.warn('[AxisCtrl] Could not load gear ratios, using defaults: %s', err.message);
+    }
+  }
+
+  /**
+   * Toggle between servo motor and telescope axis speed reference.
+   */
+  function onSpeedRefToggleChanged() {
+    const toggle = $('#axis-speed-ref-toggle');
+    speedRefTelescope = toggle ? toggle.checked : false;
+    updateGearInfoLabel();
+    syncSpeedSliderMax($('#axis-speed'));
+    console.log('[AxisCtrl] Speed reference: %s', speedRefTelescope ? 'telescope axis' : 'servo motor');
+  }
+
+  /**
+   * Update the gear info label showing the conversion ratio.
+   */
+  function updateGearInfoLabel() {
+    const info = $('#axis-speed-gear-info');
+    if (info) {
+      const avgGear = (haAxisGearRatio + decAxisGearRatio) / 2;
+      if (speedRefTelescope) {
+        info.textContent = `(×${avgGear.toFixed(0)}:1 → servo)`;
+      } else {
+        info.textContent = `(÷${avgGear.toFixed(0)}:1 → telescope)`;
+      }
     }
 
     const estopBtn = $('#btn-emergency-stop');
@@ -466,12 +548,17 @@ const MountControlComponent = (() => {
       const config = await Api.getConfig();
       const maxSpeed = config.max_slew_rate;
       if (maxSpeed && typeof maxSpeed === 'number' && maxSpeed > 0) {
-        slider.max = maxSpeed;
-        if (parseFloat(slider.value) > maxSpeed) {
-          slider.value = maxSpeed;
+        // In telescope-axis mode, the effective max is reduced by gear ratio
+        const avgGear = (haAxisGearRatio + decAxisGearRatio) / 2;
+        const effectiveMax = speedRefTelescope ? (maxSpeed / avgGear) : maxSpeed;
+        const step = speedRefTelescope ? Math.max(0.001, effectiveMax / 500) : 0.1;
+        slider.max = effectiveMax;
+        slider.step = step;
+        slider.min = speedRefTelescope ? 0.001 : 0.1;
+        if (parseFloat(slider.value) > effectiveMax) {
+          slider.value = effectiveMax;
         }
         updateSpeedLabel();
-        console.log('[AxisCtrl] Speed slider max synced to config.max_slew_rate = %f', maxSpeed);
       }
     } catch (err) {
       console.warn('[AxisCtrl] Could not sync speed slider max: %s', err.message);
@@ -485,17 +572,73 @@ const MountControlComponent = (() => {
     const slider = $('#axis-speed');
     const label = $('#axis-speed-label');
     if (slider && label) {
-      label.textContent = parseFloat(slider.value).toFixed(1);
+      const val = parseFloat(slider.value);
+      if (speedRefTelescope && val < 0.01) {
+        // Show in arcsec/s for very small telescope-axis speeds
+        label.textContent = (val * 3600).toFixed(1) + '"';
+      } else {
+        label.textContent = val.toFixed(val < 0.1 ? 3 : 1);
+      }
     }
   }
 
   /**
-   * Get the current speed from the slider.
-   * @returns {number} Speed in deg/s
+   * Update the acceleration label when slider changes.
    */
-  function getCurrentSpeed() {
+  function updateAccelLabel() {
+    const slider = $('#axis-accel');
+    const label = $('#axis-accel-label');
+    if (slider && label) {
+      const val = parseFloat(slider.value);
+      label.textContent = val.toFixed(val < 1 ? 1 : 0);
+    }
+  }
+
+  /**
+   * Update the deceleration label when slider changes.
+   */
+  function updateDecelLabel() {
+    const slider = $('#axis-decel');
+    const label = $('#axis-decel-label');
+    if (slider && label) {
+      const val = parseFloat(slider.value);
+      label.textContent = val.toFixed(val < 1 ? 1 : 0);
+    }
+  }
+
+  /**
+   * Get the current speed from the slider, accounting for gear ratio.
+   * When in telescope-axis mode, converts telescope speed → servo speed.
+   * @param {number} [axisId=0] - Axis ID (0=HA, 1=Dec) for correct gear ratio
+   * @returns {number} Speed in servo °/s (what the API expects)
+   */
+  function getCurrentSpeed(axisId = 0) {
     const slider = $('#axis-speed');
-    return slider ? parseFloat(slider.value) : 1.0;
+    const rawSpeed = slider ? parseFloat(slider.value) : 1.0;
+    if (speedRefTelescope) {
+      // Convert telescope speed → servo speed using the correct gear ratio
+      const gear = (axisId === 1) ? decAxisGearRatio : haAxisGearRatio;
+      return rawSpeed * gear;
+    }
+    return rawSpeed;
+  }
+
+  /**
+   * Get the current acceleration from the slider.
+   * @returns {number} Acceleration in °/s²
+   */
+  function getCurrentAcceleration() {
+    const slider = $('#axis-accel');
+    return slider ? parseFloat(slider.value) : 50.0;
+  }
+
+  /**
+   * Get the current deceleration from the slider.
+   * @returns {number} Deceleration in °/s²
+   */
+  function getCurrentDeceleration() {
+    const slider = $('#axis-decel');
+    return slider ? parseFloat(slider.value) : 50.0;
   }
 
   /**
@@ -580,7 +723,7 @@ const MountControlComponent = (() => {
       console.log('[AxisCtrl] startAxisMovement: starting CALIBRATED velocity mode, interval 250ms');
       if (activeAxisTimer) clearInterval(activeAxisTimer);
       activeAxisTimer = setInterval(() => {
-        const speed = getCurrentSpeed();
+        const speed = getCurrentSpeed(axisId);
         const delta = speed * 0.25; // nudge 4× per second
         performCalibratedNudge(axisId, direction, delta);
       }, 250);
@@ -611,7 +754,8 @@ const MountControlComponent = (() => {
     }
 
     if (!isCalibrated && activeAxisId >= 0) {
-      Api.stopAxis(axisId).catch(() => {});
+      const deceleration = getCurrentDeceleration();
+      Api.stopAxis(axisId, deceleration).catch(() => {});
     }
     // Calibrated velocity mode: handled by clearing the interval above
 
@@ -628,14 +772,15 @@ const MountControlComponent = (() => {
    * @param {number} direction
    */
   async function performVelocityMove(axisId, direction) {
-    const speed = getCurrentSpeed();
+    const speed = getCurrentSpeed(axisId);
     const velocity = direction * speed;
-    console.log('[AxisCtrl] performVelocityMove: axisId=%d, direction=%d, speed=%f, velocity=%f, isCalibrated=%s',
-                axisId, direction, speed, velocity, isCalibrated);
+    const acceleration = getCurrentAcceleration();
+    console.log('[AxisCtrl] performVelocityMove: axisId=%d, direction=%d, speed=%f, velocity=%f, accel=%f, isCalibrated=%s',
+                axisId, direction, speed, velocity, acceleration, isCalibrated);
 
     try {
-      await Api.moveAxis(axisId, velocity);
-      console.log('[AxisCtrl] performVelocityMove: SUCCESS axisId=%d, velocity=%f', axisId, velocity);
+      await Api.moveAxis(axisId, velocity, acceleration);
+      console.log('[AxisCtrl] performVelocityMove: SUCCESS axisId=%d, velocity=%f, accel=%f', axisId, velocity, acceleration);
     } catch (err) {
       console.error('[AxisCtrl] performVelocityMove: FAILED axisId=%d, velocity=%f, error=%s', axisId, velocity, err.message);
       App.showToast(`Axis move failed: ${err.message}`, 'error');
@@ -659,7 +804,7 @@ const MountControlComponent = (() => {
       return;
     }
 
-    const speed = getCurrentSpeed();
+    const speed = getCurrentSpeed(axisId);
     const delta = (overrideDelta !== undefined) ? overrideDelta : speed * 0.5;
     const offset = direction * delta;
 
@@ -722,8 +867,8 @@ const MountControlComponent = (() => {
    * @param {number} direction - +1 or -1
    */
   async function performStepMove(axisId, direction) {
-    const speed = getCurrentSpeed();
-    const stepSize = getStepSize();
+    const speed = getCurrentSpeed(axisId);
+    const stepSize = getStepSize(axisId);
     const offset = direction * stepSize;
     console.log('[AxisCtrl] performStepMove: axisId=%d, direction=%d, speed=%f, stepSize=%f, isCalibrated=%s',
                 axisId, direction, speed, stepSize, isCalibrated);
@@ -742,10 +887,13 @@ const MountControlComponent = (() => {
       // deceleration, and automatic stop at the target.  No timer needed.
       // Pass the speed slider value as max_velocity so the drive respects it.
       const offset = direction * stepSize;
-      console.log('[AxisCtrl] performStepMove uncalibrated: offset=%f°, speed=%f °/s', offset, speed);
+      const acceleration = getCurrentAcceleration();
+      const deceleration = getCurrentDeceleration();
+      console.log('[AxisCtrl] performStepMove uncalibrated: offset=%f°, speed=%f °/s, accel=%f °/s², decel=%f °/s²',
+                  offset, speed, acceleration, deceleration);
 
       try {
-        await Api.moveAxisRelative(axisId, offset, speed);
+        await Api.moveAxisRelative(axisId, offset, speed, acceleration, deceleration);
         console.log('[AxisCtrl] performStepMove: POSITION_CONTROL SUCCESS');
         App.showToast(`Step ${stepSize.toFixed(1)}° on axis ${axisId}`, 'success', 1500);
       } catch (err) {

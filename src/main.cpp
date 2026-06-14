@@ -112,8 +112,21 @@ int main(int argc, char* argv[]) {
         auto canopen_config = config.getCanOpenConfig();
         controller_config.canopen_interface = canopen_config.interface;
         controller_config.canopen_node_id = canopen_config.node_id;
-        controller_config.canopen_position_counts_per_degree = canopen_config.position_counts_per_degree;
-        controller_config.canopen_velocity_counts_per_deg_s = canopen_config.velocity_counts_per_deg_s;
+        controller_config.canopen_accel_mode = canopen_config.accel_mode;
+        
+        // Set servo initialization configuration (custom SDO sequence)
+        auto servo_init_config = config.getServoInitConfig();
+        controller_config.servo_init_enabled = servo_init_config.enabled;
+        for (const auto& entry : servo_init_config.sequence) {
+            controllers::ICanOpenInterface::ServoInitEntry e;
+            e.axis = entry.axis;
+            e.index = entry.index;
+            e.subindex = entry.subindex;
+            e.value = entry.value;
+            e.description = entry.description;
+            e.data_size = entry.data_size;
+            controller_config.servo_init_sequence.push_back(e);
+        }
         
         // Set network configuration
         auto network_config = config.getNetworkConfig();
@@ -151,9 +164,6 @@ int main(int argc, char* argv[]) {
         
         // Set axis physical parameters (copy field by field)
         auto& ha = mount_config.ha_axis_params;
-        controller_config.ha_axis_params.motor_steps_per_rev = ha.motor_steps_per_rev;
-        controller_config.ha_axis_params.motor_microstepping = ha.motor_microstepping;
-        controller_config.ha_axis_params.motor_step_angle = ha.motor_step_angle;
         controller_config.ha_axis_params.encoder_resolution = ha.encoder_resolution;
         controller_config.ha_axis_params.encoder_counts_per_arcsec = ha.encoder_counts_per_arcsec;
         controller_config.ha_axis_params.encoder_quantization_error = ha.encoder_quantization_error;
@@ -174,9 +184,6 @@ int main(int argc, char* argv[]) {
         controller_config.ha_axis_params.calibration_temp = ha.calibration_temp;
         
         auto& dec = mount_config.dec_axis_params;
-        controller_config.dec_axis_params.motor_steps_per_rev = dec.motor_steps_per_rev;
-        controller_config.dec_axis_params.motor_microstepping = dec.motor_microstepping;
-        controller_config.dec_axis_params.motor_step_angle = dec.motor_step_angle;
         controller_config.dec_axis_params.encoder_resolution = dec.encoder_resolution;
         controller_config.dec_axis_params.encoder_counts_per_arcsec = dec.encoder_counts_per_arcsec;
         controller_config.dec_axis_params.encoder_quantization_error = dec.encoder_quantization_error;
@@ -203,6 +210,9 @@ int main(int argc, char* argv[]) {
         }
         
         logger->info("Mount controller initialized successfully");
+        
+        // Enable config persistence: changes from the UI will be saved to disk
+        mount_controller->setConfigFilePath(config_file);
         
         // Configure derotator from config file (if derotator section exists and is enabled)
         {
@@ -237,13 +247,18 @@ int main(int argc, char* argv[]) {
             auto fr_params = config.getFieldRotationParams();
             ::astro_mount::FieldRotationParams proto_params;
             proto_params.set_enabled(fr_params.enabled);
-            proto_params.set_latitude(fr_params.latitude);
             proto_params.set_altitude(fr_params.altitude);
-            proto_params.set_azimuth(fr_params.azimuth);
             proto_params.set_computed_rate(fr_params.computed_rate);
             proto_params.set_applied_correction(fr_params.applied_correction);
             proto_params.set_temperature(fr_params.temperature);
             proto_params.set_flexure_correction(fr_params.flexure_correction);
+            controller_config.field_rotation_enabled = fr_params.enabled;
+            controller_config.field_rotation_altitude = fr_params.altitude;
+            controller_config.field_rotation_computed_rate = fr_params.computed_rate;
+            controller_config.field_rotation_applied_correction = fr_params.applied_correction;
+            controller_config.field_rotation_temperature = fr_params.temperature;
+            controller_config.field_rotation_flexure_correction = fr_params.flexure_correction;
+
             if (!mount_controller->enableFieldRotation(proto_params)) {
                 logger->warn("Failed to enable field rotation from config");
             } else {

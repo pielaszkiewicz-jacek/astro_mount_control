@@ -247,12 +247,17 @@ const Api = (() => {
    * POST /api/axis/move
    * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
    * @param {number} velocity - Velocity in deg/s (positive=forward, negative=backward)
+   * @param {number} [acceleration] - Acceleration in deg/s² (default: 50)
    * @returns {Promise<object>}
    */
-  async function moveAxis(axisId, velocity) {
+  async function moveAxis(axisId, velocity, acceleration) {
+    const body = { axis_id: axisId, velocity };
+    if (acceleration !== undefined && acceleration > 0) {
+      body.acceleration = acceleration;
+    }
     return request('/axis/move', {
       method: 'POST',
-      body: JSON.stringify({ axis_id: axisId, velocity }),
+      body: JSON.stringify(body),
     });
   }
 
@@ -262,12 +267,20 @@ const Api = (() => {
    * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
    * @param {number} offsetDeg - Relative offset in degrees
    * @param {number} [velocity] - Maximum velocity in deg/s (uses config max_slew_rate if omitted)
+   * @param {number} [acceleration] - Acceleration in deg/s² (default: 50)
+   * @param {number} [deceleration] - Deceleration in deg/s² (default: 50)
    * @returns {Promise<object>}
    */
-  async function moveAxisRelative(axisId, offsetDeg, velocity) {
+  async function moveAxisRelative(axisId, offsetDeg, velocity, acceleration, deceleration) {
     const body = { axis_id: axisId, offset_deg: offsetDeg };
     if (velocity !== undefined && velocity > 0) {
       body.velocity = velocity;
+    }
+    if (acceleration !== undefined && acceleration > 0) {
+      body.acceleration = acceleration;
+    }
+    if (deceleration !== undefined && deceleration > 0) {
+      body.deceleration = deceleration;
     }
     return request('/axis/move-relative', {
       method: 'POST',
@@ -279,12 +292,39 @@ const Api = (() => {
    * Stop axis movement with smooth deceleration.
    * POST /api/axis/stop
    * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
+   * @param {number} [deceleration] - Deceleration rate in deg/s² (default: from config)
    * @returns {Promise<object>}
    */
-  async function stopAxis(axisId) {
+  async function stopAxis(axisId, deceleration) {
+    const body = { axis_id: axisId };
+    if (deceleration !== undefined && deceleration > 0) {
+      body.deceleration = deceleration;
+    }
     return request('/axis/stop', {
       method: 'POST',
-      body: JSON.stringify({ axis_id: axisId }),
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
+   * Get HAL configuration (flattened).
+   * GET /api/hal/config
+   * @returns {Promise<object>}
+   */
+  async function getHALConfig() {
+    return request('/hal/config');
+  }
+
+  /**
+   * Update HAL configuration.
+   * POST /api/hal/config
+   * @param {object} halData - Flattened HAL config object
+   * @returns {Promise<object>}
+   */
+  async function setHALConfig(halData) {
+    return request('/hal/config', {
+      method: 'POST',
+      body: JSON.stringify(halData),
     });
   }
 
@@ -838,6 +878,15 @@ const Api = (() => {
   }
 
 
+  /**
+   * Get current gamepad/joystick state (axes, buttons, connection).
+   * GET /api/hal/gamepad/state
+   * @returns {Promise<object>} GamepadState
+   */
+  async function getGamepadState() {
+    return request('/hal/gamepad/state', { timeout: 3000 });
+  }
+
   // Public API
   return {
     getStatus,
@@ -856,6 +905,8 @@ const Api = (() => {
     emergencyStop,
     getMountOrientation,
     setMountOrientation,
+    getHALConfig,
+    setHALConfig,
     getConfig,
     updateConfig,
     resetConfig,
@@ -904,5 +955,7 @@ const Api = (() => {
     getDerotatorStatus,
     getFieldRotationParams,
     enableFieldRotation,
+    // Gamepad
+    getGamepadState,
   };
 })();

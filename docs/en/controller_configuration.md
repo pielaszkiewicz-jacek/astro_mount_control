@@ -212,9 +212,6 @@ Defines the mechanical characteristics of each mount axis.
 
 | Parameter | Type | Range | Default Value | Description |
 |---|---|---|---|---|
-| `motor_steps_per_rev` | integer | 1–10000 | `200` | Number of motor steps per revolution (for stepper motors) |
-| `motor_microstepping` | integer | 1–256 | `64` | Microstepping (1 = full step) |
-| `motor_step_angle` | float | 0.0 to 360.0 | `101.25` | Motor step angle (arcsec) |
 | `encoder_resolution` | integer | 1–2³² | `16384` | Encoder resolution (counts/revolution) |
 | `encoder_counts_per_arcsec` | float | > 0 | `0.0126` | Number of encoder counts per arcsecond |
 | `encoder_quantization_error` | float | > 0 | `39.6` | Encoder quantization error (mas) |

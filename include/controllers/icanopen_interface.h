@@ -23,6 +23,23 @@ namespace controllers {
  */
 class ICanOpenInterface {
 public:
+    /**
+     * @brief Single entry in the servo initialization SDO sequence.
+     *
+     * During initialize(), if servo_init_enabled is true, each entry
+     * is sent as an SDO write to the specified axis before normal
+     * operation begins.  Use this to configure manufacturer-specific
+     * parameters like microstep resolution, electronic gearing, etc.
+     */
+    struct ServoInitEntry {
+        int axis = 0;
+        uint16_t index = 0;
+        uint8_t  subindex = 0;
+        int32_t  value = 0;
+        std::string description;
+        uint8_t data_size = 4;  // 1, 2, or 4 bytes (default 4 for backward compat)
+    };
+
     struct Config {
         std::string interface_name;      // e.g., "can0", "vcan0", "mock"
         int bitrate;                     // CAN bitrate (125000, 250000, 500000, 1000000)
@@ -32,8 +49,13 @@ public:
         int pdo_mapping[4];              // PDO mapping configuration
         int sdo_timeout_ms;              // SDO timeout in milliseconds
         std::string library;             // Library to use: "mock", "canopensocket", "libedssharp", "canfestival"
-        double position_counts_per_degree = 1000.0 / 360.0;
-        double velocity_counts_per_deg_s = 1000.0 / 360.0;
+        double axis_position_counts_per_degree[2] = {4000.0 / 360.0, 4000.0 / 360.0};
+        double axis_velocity_counts_per_deg_s[2] = {4000.0 / 360.0, 4000.0 / 360.0};
+        std::string accel_mode = "time";  // "time" or "rate"
+
+        /** Custom SDO sequence sent to each axis during initialization */
+        bool servo_init_enabled = false;
+        std::vector<ServoInitEntry> servo_init_sequence;
     };
 
     struct DriveStatus {

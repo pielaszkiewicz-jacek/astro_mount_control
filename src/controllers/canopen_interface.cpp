@@ -77,6 +77,59 @@ public:
         // state updates from the C reader thread instead of polling via SDO.
         canopen_set_nmt_callback(ctx_, nmtCallbackTrampoline, this);
 
+        // ── Execute custom servo initialization SDO sequence ──────────
+        // Sends manufacturer-specific configuration (microstep resolution,
+        // electronic gearing, encoder settings) to each drive before
+        // normal operation. The sequence is defined in config JSON under
+        // "servo_init" and loaded through ControllerConfig → CanOpenConfig.
+        if (config_.servo_init_enabled && !config_.servo_init_sequence.empty()) {
+            auto logger = logging::Logger::get("canopen");
+            logger->info("CANopen: Applying servo init sequence ({} entries)...",
+                        config_.servo_init_sequence.size());
+
+            for (const auto& entry : config_.servo_init_sequence) {
+                uint8_t node = nodeIdForAxis(entry.axis);
+                logger->info("  Axis {} (node {}): SDO write 0x{:04X}:{} = {} ({})",
+                            entry.axis, node, entry.index, entry.subindex,
+                            entry.value,
+                            entry.description);
+
+                size_t sz = (entry.data_size >= 1 && entry.data_size <= 4) ? entry.data_size : 4;
+                bool ok = canopen_sdo_write_expedited(
+                    ctx_, node,
+                    entry.index, entry.subindex,
+                    &entry.value, sz);
+
+                if (!ok) {
+                    logger->warn("  Axis {}: SDO write 0x{:04X}:{} FAILED (timeout?)",
+                                entry.axis, entry.index, entry.subindex);
+                } else {
+                    // Read-back verification: confirm the written value is
+                    // actually applied on the drive.  Some objects are
+                    // scaled / capped by the drive firmware, so the stored
+                    // value may differ from the one written.
+                    int32_t readback = 0;
+                    size_t rb_len = sizeof(readback);
+                    bool rb_ok = canopen_sdo_read_expedited(
+                        ctx_, node,
+                        entry.index, entry.subindex,
+                        &readback, &rb_len);
+                    if (rb_ok) {
+                        // Mask readback to the expected size so we don't
+                        // print garbage high bytes for 8/16-bit objects.
+                        if (sz == 1) readback &= 0xFF;
+                        else if (sz == 2) readback &= 0xFFFF;
+                        logger->info("  Axis {}: SDO verify 0x{:04X}:{} → wrote={}, read={} ({})",
+                                    entry.axis, entry.index, entry.subindex,
+                                    entry.value, readback, entry.description);
+                    } else {
+                        logger->warn("  Axis {}: SDO verify 0x{:04X}:{} readback FAILED",
+                                    entry.axis, entry.index, entry.subindex);
+                    }
+                }
+            }
+        }
+
         logging::Logger::get("canopen")->info(
             "CANopen: Interface {} initialized successfully",
             config.interface_name);
@@ -216,12 +269,21 @@ public:
         logging::Logger::get("canopen")->info(
             "CANopen: Enabling axis {} (node {})", axis_id, node_id);
 
-        // --- Read actual position BEFORE enabling the drive ---
+        // --- Zero target velocity BEFORE enabling the drive ---
         // After the enable sequence, the drive enters Operation Enabled and
-        // may immediately start executing a stale motion profile from a
-        // previous session.  To prevent uncontrolled acceleration, read the
-        // current position (0x6064) and write it as the target (0x607A)
-        // BEFORE the final state transition.
+        // immediately starts executing whichever motion profile was last
+        // configured.  If target velocity (0x60FF) still holds a non-zero
+        // value from a previous Profile Velocity command, the axis will
+        // lurch as soon as it is enabled.  Zero it first.
+        int32_t zero_vel = 0;
+        canopen_sdo_write_expedited(ctx_, node_id,
+                                    0x60FF, 0, &zero_vel, 4);
+        logging::Logger::get("canopen")->info(
+            "CANopen: Axis {} pre-enable: target velocity zeroed", axis_id);
+
+        // --- Read actual position BEFORE enabling the drive ---
+        // Also prevent a stale target position (0x607A) from causing a
+        // move: read the current position and write it back as the target.
         int32_t actual_pos = 0;
         size_t len = 4;
         bool have_pos = canopen_sdo_read_expedited(ctx_, node_id,
@@ -340,7 +402,7 @@ public:
         // Convert degrees to drive position units using the configured
         // counts-per-degree factor (default 4000.0/360.0 ≈ 11.111 counts/°,
         // matching a 4000-count encoder → 360° at the motor shaft).
-        const double cpd = config_.position_counts_per_degree;
+        const double cpd = config_.axis_position_counts_per_degree[axis_id];
         int32_t target_counts = static_cast<int32_t>(position * cpd);
 
         // Ensure the drive is in Profile Position mode.  We read the
@@ -362,13 +424,25 @@ public:
         // Set profile velocity and acceleration via SDO.
         // Convert using configured scaling factor (default 4000.0/360.0 ≈ 11.111 counts per °/s,
         // matching a 4000-count encoder → 360°/s at the motor shaft).
-        const double vpd = config_.velocity_counts_per_deg_s;
+        const double vpd = config_.axis_velocity_counts_per_deg_s[axis_id];
         int32_t profile_vel = static_cast<int32_t>(velocity * vpd);
         canopen_sdo_write_expedited(ctx_, node_id,
                                      OD_INDEX_PROFILE_VELOCITY, 0,
                                      &profile_vel, 4);
 
-        int32_t profile_acc = static_cast<int32_t>(acceleration * vpd);
+        // Convert acceleration to drive units.
+        // Mode "time": drive interprets 0x6083/0x6084 as ramp time → use inverse mapping.
+        // Mode "rate": drive interprets as acceleration rate → use linear mapping.
+        int32_t profile_acc;
+        if (config_.accel_mode == "rate") {
+            profile_acc = static_cast<int32_t>(acceleration * vpd);
+        } else {
+            // Default "time" mode: larger °/s² → smaller time → faster ramp
+            // K = 27750 chosen so default 50 °/s² maps to ~555 drive units
+            const double accel_K = 27750.0;
+            profile_acc = static_cast<int32_t>(
+                accel_K / std::max(acceleration, 0.001));
+        }
         canopen_sdo_write_expedited(ctx_, node_id,
                                      OD_INDEX_PROFILE_ACCEL, 0,
                                      &profile_acc, 4);
@@ -411,9 +485,10 @@ public:
 
         uint8_t node_id = nodeIdForAxis(axis_id);
 
-        // Ensure drive is in Operation Enabled state
-        // This handles the case where stopAxis() previously used quick stop,
-        // or the drive was otherwise put into a non-operational state.
+        // Ensure drive is in Operation Enabled state before sending velocity command.
+        // This handles recovery from Quick Stop Active or fault states, same as
+        // setPositionTarget() — without this, a drive that faulted during init
+        // would permanently fail all velocity commands.
         uint16_t status = canopen_402_get_status_word(ctx_, node_id);
         if ((status & CIA402_STATUS_OPERATION_ENABLED) == 0) {
             logging::Logger::get("canopen")->warn(
@@ -423,6 +498,8 @@ public:
                 logging::Logger::get("canopen")->error(
                     "CANopen: Failed to re-enable axis {} (node {}) before setVelocityTarget",
                     axis_id, node_id);
+                axis_enabled_[axis_id] = false;
+                axis_status_[axis_id].enabled = false;
                 return false;
             }
             axis_enabled_[axis_id] = true;
@@ -434,39 +511,55 @@ public:
 
         // Set Profile Velocity mode (mode 3)
         int8_t mode = CIA402_OPMODE_PROFILE_VEL;
-        canopen_402_set_mode(ctx_, node_id, mode);
+        if (!canopen_402_set_mode(ctx_, node_id, mode)) {
+            axis_enabled_[axis_id] = false;
+            axis_status_[axis_id].enabled = false;
+            logging::Logger::get("canopen")->debug(
+                "CANopen: Axis {} (node {}): set_mode failed, marking disabled",
+                axis_id, node_id);
+            return false;
+        }
 
-        // Set target velocity via SDO to OD index 0x60FF (Target Velocity for Profile Velocity mode)
-        // Convert using configured scaling factor (default 4000.0/360.0 ≈ 11.111 counts per °/s).
-        const double vpd = config_.velocity_counts_per_deg_s;
-        int32_t target_vel = static_cast<int32_t>(velocity * vpd);
-        canopen_sdo_write_expedited(ctx_, node_id,
-                                     OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
-                                     &target_vel, 4);
+        const double vpd = config_.axis_velocity_counts_per_deg_s[axis_id];
 
-        // Set profile acceleration/deceleration
-        int32_t profile_acc = static_cast<int32_t>(acceleration * vpd);
+        // Write acceleration/deceleration BEFORE target velocity.
+        // In Profile Velocity mode, the drive starts executing the target
+        // velocity as soon as 0x60FF is written.  If we write 0x60FF first,
+        // the drive uses whatever acceleration values were left over from
+        // the previous motion — causing asymmetric behaviour on direction
+        // changes.  The manual CAN test worked because it wrote accel/decel
+        // first, then target velocity.
+        //
+        // Convert acceleration to drive units.
+        // Mode "time": drive interprets 0x6083/0x6084 as ramp time → use inverse mapping.
+        // Mode "rate": drive interprets as acceleration rate → use linear mapping.
+        int32_t profile_acc;
+        if (config_.accel_mode == "rate") {
+            profile_acc = static_cast<int32_t>(acceleration * vpd);
+        } else {
+            // Default "time" mode: larger °/s² → smaller time → faster ramp
+            const double accel_K = 27750.0;
+            profile_acc = static_cast<int32_t>(
+                accel_K / std::max(acceleration, 0.001));
+        }
         canopen_sdo_write_expedited(ctx_, node_id,
                                      OD_INDEX_PROFILE_ACCEL, 0,
                                      &profile_acc, 4);
+        canopen_sdo_write_expedited(ctx_, node_id,
+                                     OD_INDEX_PROFILE_DECEL, 0,
+                                     &profile_acc, 4);
 
-        // When velocity target is 0 (stop command), use maximum deceleration
-        // to ensure the axis stops promptly. Using the normal profile deceleration
-        // value would result in slow coasting to a stop.
-        if (velocity == 0.0) {
-            // Use Quick Stop deceleration (OD 0x6085) value for prompt stop
-            // Setting profile deceleration to maximum ensures immediate deceleration
-            int32_t quick_decel = 500000; // very fast deceleration
-            canopen_sdo_write_expedited(ctx_, node_id,
-                                         OD_INDEX_PROFILE_DECEL, 0,
-                                         &quick_decel, 4);
+        // Set target velocity via SDO to OD index 0x60FF
+        int32_t target_vel = static_cast<int32_t>(velocity * vpd);
+        if (!canopen_sdo_write_expedited(ctx_, node_id,
+                                          OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
+                                          &target_vel, 4)) {
+            axis_enabled_[axis_id] = false;
+            axis_status_[axis_id].enabled = false;
             logging::Logger::get("canopen")->debug(
-                "CANopen: Axis {} (node {}): stop with fast decel={}",
-                axis_id, node_id, quick_decel);
-        } else {
-            canopen_sdo_write_expedited(ctx_, node_id,
-                                         OD_INDEX_PROFILE_DECEL, 0,
-                                         &profile_acc, 4);
+                "CANopen: Axis {} (node {}): target_vel write failed, marking disabled",
+                axis_id, node_id);
+            return false;
         }
 
         axis_position_[axis_id].actual_velocity = velocity;
@@ -504,65 +597,26 @@ public:
         uint8_t node_id = nodeIdForAxis(axis_id);
 
         logging::Logger::get("canopen")->info(
-            "CANopen: Stopping axis {} (node {})", axis_id, node_id);
+            "CANopen: Stopping axis {} (node {}) via Halt bit", axis_id, node_id);
 
-        // Read current mode of operation (OD 0x6061) to determine how to stop.
-        // - Profile Position mode (1): Use Halt bit (0x0100) in control word
-        // - Profile Velocity mode (3): Write velocity=0 to target velocity OD
-        int8_t current_mode = -1;
-        size_t mode_len = sizeof(current_mode);
-        canopen_sdo_read_expedited(ctx_, node_id, 0x6061, 0, &current_mode, &mode_len);
+        // CiA 402 §6.4.1.5: Halt bit (control word bit 8 = 0x0100) works in
+        // BOTH Profile Position and Profile Velocity modes. It stops ongoing
+        // motion using the currently configured profile deceleration (0x6084)
+        // WITHOUT permanently changing any OD parameters.
+        //
+        // Previously, for velocity mode, we wrote velocity=0 to 0x60FF and
+        // overwrote 0x6084 with 500000. This left a persistent asymmetry
+        // between 0x6083 (accel) and 0x6084 (decel), causing visibly different
+        // speeds when starting motion in opposite directions.
 
-        if (current_mode == CIA402_OPMODE_PROFILE_POS) {
-            // CiA 402 §6.4.1.5: Halt bit (control word bit 8 = 0x0100)
-            // stops ongoing position or velocity motion while keeping the
-            // drive in Operation Enabled state. The drive decelerates using
-            // the configured profile deceleration (OD 0x6084).
-            //
-            // Set a fast deceleration before halt to ensure prompt stop
-            int32_t fast_decel = 500000;
-            canopen_sdo_write_expedited(ctx_, node_id,
-                                         OD_INDEX_PROFILE_DECEL, 0,
-                                         &fast_decel, 4);
+        // Set Halt bit: 0x000F (Op Enabled) | 0x0100 = 0x010F
+        canopen_402_set_control_word(ctx_, node_id, 0x010F);
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-            // Set Halt bit (0x0100) in control word: 0x000F (Op Enabled) | 0x0100 = 0x010F
-            // CiA 402 §6.4.1.5: Halt bit stops ongoing motion while keeping the
-            // drive in Operation Enabled state. The drive decelerates using the
-            // profile deceleration (OD 0x6084) which we set above.
-            canopen_402_set_control_word(ctx_, node_id, 0x010F);
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-            // Clear halt bit to allow future motion commands without requiring
-            // a re-enable sequence. Per CiA 402, clearing halt while stationary
-            // keeps the drive in Operation Enabled.
-            canopen_402_set_control_word(ctx_, node_id, 0x000F);
-
-            logging::Logger::get("canopen")->info(
-                "CANopen: Axis {} (node {}): stopped via Halt bit (pos mode)",
-                axis_id, node_id);
-        } else {
-            // Profile Velocity mode (3) or unknown: write velocity=0 to 0x60FF.
-            // This keeps the drive in Operation Enabled state so subsequent
-            // setVelocityTarget() / setPositionTarget() calls work immediately.
-            // NOTE: We do NOT use canopen_402_quick_stop() here because that
-            // transitions the drive into "Quick Stop Active" state (CiA 402),
-            // from which all new motion commands are rejected. Quick stop is
-            // reserved for emergencyStop() where immediate halt is required.
-            int32_t zero_vel = 0;
-            canopen_sdo_write_expedited(ctx_, node_id,
-                                         OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
-                                         &zero_vel, 4);
-
-            // Also set a fast deceleration to ensure prompt stop
-            int32_t fast_decel = 500000;
-            canopen_sdo_write_expedited(ctx_, node_id,
-                                         OD_INDEX_PROFILE_DECEL, 0,
-                                         &fast_decel, 4);
-
-            logging::Logger::get("canopen")->info(
-                "CANopen: Axis {} (node {}): stopped via velocity=0 (vel mode)",
-                axis_id, node_id);
-        }
+        // Clear halt bit to allow future motion commands.
+        // Per CiA 402, clearing halt while stationary keeps the drive
+        // in Operation Enabled — no re-enable needed.
+        canopen_402_set_control_word(ctx_, node_id, 0x000F);
 
         axis_target_velocity_[axis_id] = 0.0;
         axis_position_[axis_id].actual_velocity = 0.0;
@@ -685,8 +739,8 @@ public:
         // Default 10000.0 means the drive reports position in units of
         // 0.0001° (CiA 402 standard).  For raw encoder counts, set
         // this to (encoder_resolution × quadrature / 360).
-        const double cpd = config_.position_counts_per_degree;
-        const double vpd = config_.velocity_counts_per_deg_s;
+        const double cpd = config_.axis_position_counts_per_degree[axis_id];
+        const double vpd = config_.axis_velocity_counts_per_deg_s[axis_id];
 
         // Try to read actual position from the drive via SDO
         if (connected_ && ctx_) {

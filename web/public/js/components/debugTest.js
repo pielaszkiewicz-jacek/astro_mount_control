@@ -66,6 +66,8 @@ const DebugTestComponent = (() => {
     tab.addEventListener('click', () => {
       loadCurrentOrientation();
       loadCurrentConfig();
+      // Re-run angle input enhancement for dynamically-shown inputs
+      Utils.enhanceAllAngleInputs(document.getElementById('panel-debug'));
     });
   }
 
@@ -594,8 +596,14 @@ const DebugTestComponent = (() => {
 
     const raEl = $('#debug-ref-ra');
     const decEl = $('#debug-ref-dec');
-    if (raEl) raEl.value = obj.ra_hours;
-    if (decEl) decEl.value = obj.dec_degrees;
+    if (raEl) {
+      if (raEl.setAngleDecimal) raEl.setAngleDecimal(obj.ra_hours);
+      else raEl.value = obj.ra_hours;
+    }
+    if (decEl) {
+      if (decEl.setAngleDecimal) decEl.setAngleDecimal(obj.dec_degrees);
+      else decEl.value = obj.dec_degrees;
+    }
 
     logOutput(`Imported from Calibration: ${obj.name || '(unnamed)'} — RA=${Number(obj.ra_hours).toFixed(4)}h, Dec=${Number(obj.dec_degrees).toFixed(2)}°`);
     App.showToast(`Imported: ${obj.name || 'object'} (RA=${Number(obj.ra_hours).toFixed(2)}h, Dec=${Number(obj.dec_degrees).toFixed(2)}°)`, 'success');
@@ -821,8 +829,16 @@ const DebugTestComponent = (() => {
 
     const axis1Input = $('#debug-pos-axis1');
     const axis2Input = $('#debug-pos-axis2');
-    if (axis1Input) axis1Input.value = (state.position.axis1 || 0).toFixed(4);
-    if (axis2Input) axis2Input.value = (state.position.axis2 || 0).toFixed(4);
+    const v1 = state.position.axis1 || 0;
+    const v2 = state.position.axis2 || 0;
+    if (axis1Input) {
+      if (axis1Input.setAngleDecimal) axis1Input.setAngleDecimal(v1);
+      else axis1Input.value = v1.toFixed(4);
+    }
+    if (axis2Input) {
+      if (axis2Input.setAngleDecimal) axis2Input.setAngleDecimal(v2);
+      else axis2Input.value = v2.toFixed(4);
+    }
 
     logOutput(`Synced axis positions: axis1=${state.position.axis1?.toFixed(4)}°, axis2=${state.position.axis2?.toFixed(4)}°`);
     App.showToast('Axis positions synced from live status', 'info');
@@ -1652,6 +1668,11 @@ const DebugTestComponent = (() => {
   function readFloat(id, defaultValue) {
     const el = $(`#${id}`);
     if (!el) return defaultValue;
+    // If the input has been enhanced with angle support, use the decimal getter
+    if (el.getAngleDecimal) {
+      const val = el.getAngleDecimal();
+      return isFinite(val) ? val : defaultValue;
+    }
     const val = parseFloat(el.value);
     return isNaN(val) ? defaultValue : val;
   }

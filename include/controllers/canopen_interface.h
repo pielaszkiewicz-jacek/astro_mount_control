@@ -6,6 +6,7 @@
 #include <functional>
 #include <vector>
 #include <chrono>
+#include "controllers/icanopen_interface.h"
 
 namespace astro_mount {
 namespace controllers {
@@ -26,8 +27,13 @@ public:
         int sync_period_ms;              // SYNC period in milliseconds
         int pdo_mapping[4];              // PDO mapping configuration
         int sdo_timeout_ms;              // SDO timeout in milliseconds
-        double position_counts_per_degree = 1000.0 / 360.0;  // counts per degree for 0x6064
-        double velocity_counts_per_deg_s = 4000.0 / 360.0;  // counts per °/s for 0x606C
+        double axis_position_counts_per_degree[2] = {4000.0 / 360.0, 4000.0 / 360.0};  // per-axis counts per degree
+        double axis_velocity_counts_per_deg_s[2] = {4000.0 / 360.0, 4000.0 / 360.0};  // per-axis counts per °/s
+        std::string accel_mode = "time";  // "time" or "rate"
+
+        /** Custom SDO sequence sent to each axis during initialize() */
+        bool servo_init_enabled = false;
+        std::vector<ICanOpenInterface::ServoInitEntry> servo_init_sequence;
     };
 
     struct DriveStatus {

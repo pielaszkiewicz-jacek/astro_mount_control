@@ -646,6 +646,11 @@ const DatabaseComponent = (() => {
   function getNum(id) {
     const el = document.getElementById(id);
     if (!el) return undefined;
+    // If the input has been enhanced with angle support, use the decimal getter
+    if (el.getAngleDecimal) {
+      const val = el.getAngleDecimal();
+      return isFinite(val) ? val : undefined;
+    }
     const v = el.value.trim();
     if (v === '') return undefined;
     const n = parseFloat(v);
@@ -825,6 +830,9 @@ function populateEditForm(obj) {
     if (!el) return;
     if (el.type === 'checkbox') {
       el.checked = !!val;
+    } else if (el.setAngleDecimal && typeof val === 'number' && isFinite(val)) {
+      // Enhanced angle input: set decimal value (displays as DMS/HMS)
+      el.setAngleDecimal(val);
     } else {
       el.value = (val !== undefined && val !== null) ? String(val) : '';
     }
@@ -947,6 +955,11 @@ function collectEditData() {
   function getNum(id) {
     const el = document.getElementById(id);
     if (!el) return undefined;
+    // If the input has been enhanced with angle support, use the decimal getter
+    if (el.getAngleDecimal) {
+      const val = el.getAngleDecimal();
+      return isFinite(val) ? val : undefined;
+    }
     const v = el.value.trim();
     if (v === '') return undefined;
     const n = parseFloat(v);

@@ -368,6 +368,50 @@ bool validateMountConfig(const MountConfig& config) {
 }
 ```
 
+### Jednostki prędkości i przełożenie przekładni
+
+Wszystkie prędkości w konfiguracji (`max_slew_rate`, `max_tracking_rate`) są wyrażone w **stopniach na sekundę wału serwosilnika** (°/s servo), a nie osi teleskopu. Przeliczenie na prędkość teleskopu:
+
+```
+prędkość_teleskopu [°/s] = prędkość_serwa [°/s] / gear_ratio
+```
+
+#### Dlaczego jednostki serwa?
+
+Serwonapędy CANopen otrzymują komendy bezpośrednio w jednostkach wału silnika (counts/s przeliczone z °/s przez `position_counts_per_degree`). Stosowanie jednostek serwa w całym systemie eliminuje konieczność wielokrotnego przeliczania i zapewnia spójność między komendami slew, tracking i sterowaniem ręcznym.
+
+#### Wartości domyślne dla `gear_ratio = 360:1`
+
+| Parametr | Serwo | Teleskop | Opis |
+|---|---|---|---|
+| `max_slew_rate` | 720.0 °/s | 2.0 °/s | Maksymalna prędkość slewa |
+| `max_tracking_rate` | 1.504 °/s | 0.004178 °/s (15.04 "/s) | Prędkość śledzenia gwiazdowego |
+
+#### Przełącznik w UI
+
+Zakładka Sterowanie zawiera checkbox "Oś teleskopu (°/s)" który:
+- **Odznaczony** (domyślnie): suwak pokazuje prędkość serwa, krok w ° serwa
+- **Zaznaczony**: suwak pokazuje prędkość teleskopu, wartość jest automatycznie mnożona przez `gear_ratio` przed wysłaniem do serwa
+
+Przełożenia (`ha_axis_params.gear_ratio`, `dec_axis_params.gear_ratio`) są pobierane z backendu przez API.
+
+#### Tracking z gear_ratio
+
+Kod śledzenia ([`startTracking()`](src/controllers/mount_controller.cpp:1379)) mnoży astronomiczne prędkości (teleskopowe) przez odpowiednie `gear_ratio` przed zastosowaniem do pozycji serwa:
+
+```cpp
+// EQUATORIAL tracking
+axis1_tracking_rate = 0.004178 * ha_axis_params.gear_ratio; // servo °/s
+
+// ALT_AZ tracking
+axis1_rate_ = alt_rate_deg * ha_axis_params.gear_ratio;     // servo °/s
+axis2_rate_ = az_rate_deg * dec_axis_params.gear_ratio;     // servo °/s
+
+// CASUAL tracking
+axis1_rate_ = m1_rate_deg * ha_axis_params.gear_ratio;      // servo °/s
+axis2_rate_ = m2_rate_deg * dec_axis_params.gear_ratio;     // servo °/s
+```
+
 ---
 
 ## 6. System budowania

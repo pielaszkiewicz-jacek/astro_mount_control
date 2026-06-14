@@ -48,14 +48,17 @@ const SettingsComponent = (() => {
         { key: 'canopen_baud_rate', label: 'Baud Rate', type: 'select', options: ['100000', '250000', '500000', '1000000'] },
         { key: 'canopen_enable_sync', label: 'Enable SYNC', type: 'checkbox' },
         { key: 'canopen_sync_interval_ms', label: 'SYNC Interval (ms)', type: 'number', min: 10, max: 10000 },
+        { key: 'canopen_accel_mode', label: 'Accel/Decel Mode', type: 'select', options: ['time', 'rate'] },
+        { key: 'canopen_position_counts_per_degree', label: 'Position Counts/°', type: 'number', min: 0.001, max: 100000, step: 0.001 },
+        { key: 'canopen_velocity_counts_per_deg_s', label: 'Velocity Counts per °/s', type: 'number', min: 0.001, max: 100000, step: 0.001 },
       ],
     },
     {
       id: 'mount_location',
       label: 'Mount Location',
       fields: [
-        { key: 'latitude', label: 'Latitude (°)', type: 'number', min: -90, max: 90, step: 0.0001 },
-        { key: 'longitude', label: 'Longitude (°)', type: 'number', min: -180, max: 180, step: 0.0001 },
+        { key: 'latitude', label: 'Latitude (°)', type: 'number', angleType: 'deg' },
+        { key: 'longitude', label: 'Longitude (°)', type: 'number', angleType: 'deg' },
         { key: 'altitude', label: 'Altitude (m)', type: 'number', min: -500, max: 10000 },
         { key: 'mount_height', label: 'Mount Height (m)', type: 'number', min: 0, max: 50, step: 0.1 },
       ],
@@ -103,7 +106,7 @@ const SettingsComponent = (() => {
       fields: [
         { key: 'meridian_flip_enabled', label: 'Enable Auto Flip', type: 'checkbox' },
         { key: 'meridian_flip_delay_minutes', label: 'Delay After Meridian (min)', type: 'number', min: 0, max: 60, step: 0.5 },
-        { key: 'meridian_flip_hysteresis_degrees', label: 'Hysteresis (°)', type: 'number', min: 0, max: 10, step: 0.1 },
+        { key: 'meridian_flip_hysteresis_degrees', label: 'Hysteresis (°)', type: 'number', angleType: 'deg' },
         { key: 'meridian_flip_timeout_seconds', label: 'Flip Timeout (s)', type: 'number', min: 10, max: 600, step: 5 },
       ],
     },
@@ -112,12 +115,12 @@ const SettingsComponent = (() => {
       label: 'Soft Limits',
       fields: [
         { key: 'soft_limits_enabled', label: 'Enable Soft Limits', type: 'checkbox' },
-        { key: 'soft_limit_axis1_min', label: 'Axis 1 Min (°)', type: 'number', min: -360, max: 360, step: 0.1 },
-        { key: 'soft_limit_axis1_max', label: 'Axis 1 Max (°)', type: 'number', min: -360, max: 360, step: 0.1 },
-        { key: 'soft_limit_axis2_min', label: 'Axis 2 Min (°)', type: 'number', min: -360, max: 360, step: 0.1 },
-        { key: 'soft_limit_axis2_max', label: 'Axis 2 Max (°)', type: 'number', min: -360, max: 360, step: 0.1 },
-        { key: 'soft_limit_warning_degrees', label: 'Warning Zone (°)', type: 'number', min: 0, max: 90, step: 0.1 },
-        { key: 'soft_limit_deceleration_degrees', label: 'Deceleration Zone (°)', type: 'number', min: 0, max: 90, step: 0.1 },
+        { key: 'soft_limit_axis1_min', label: 'Axis 1 Min (°)', type: 'number', angleType: 'deg' },
+        { key: 'soft_limit_axis1_max', label: 'Axis 1 Max (°)', type: 'number', angleType: 'deg' },
+        { key: 'soft_limit_axis2_min', label: 'Axis 2 Min (°)', type: 'number', angleType: 'deg' },
+        { key: 'soft_limit_axis2_max', label: 'Axis 2 Max (°)', type: 'number', angleType: 'deg' },
+        { key: 'soft_limit_warning_degrees', label: 'Warning Zone (°)', type: 'number', angleType: 'deg' },
+        { key: 'soft_limit_deceleration_degrees', label: 'Deceleration Zone (°)', type: 'number', angleType: 'deg' },
         { key: 'soft_limit_tracking_rate_factor', label: 'Min Rate Factor', type: 'number', min: 0, max: 1, step: 0.01 },
       ],
     },
@@ -125,8 +128,8 @@ const SettingsComponent = (() => {
       id: 'mount_park',
       label: 'Park Position',
       fields: [
-        { key: 'park_position_axis1', label: 'Axis 1 Park Position (°)', type: 'number', min: -360, max: 360, step: 0.1 },
-        { key: 'park_position_axis2', label: 'Axis 2 Park Position (°)', type: 'number', min: -360, max: 360, step: 0.1 },
+        { key: 'park_position_axis1', label: 'Axis 1 Park Position (°)', type: 'number', angleType: 'deg' },
+        { key: 'park_position_axis2', label: 'Axis 2 Park Position (°)', type: 'number', angleType: 'deg' },
       ],
     },
     {
@@ -151,18 +154,11 @@ const SettingsComponent = (() => {
       ],
       sub_groups: [
         {
-          id: 'ha_motor',
-          label: 'Motor',
-          fields: [
-            { key: 'motor_steps_per_rev', label: 'Motor Steps/Rev', type: 'number', min: 1, max: 10000 },
-            { key: 'motor_microstepping', label: 'Microstepping', type: 'number', min: 1, max: 256 },
-            { key: 'motor_step_angle', label: 'Step Angle (arcsec)', type: 'number', min: 0.1, max: 360, step: 0.01 },
-          ],
-        },
-        {
           id: 'ha_encoder',
           label: 'Encoder',
           fields: [
+            { key: 'position_counts_per_degree', label: 'CANopen Pos. Counts/°', type: 'number', min: 0.001, max: 100000, step: 0.001 },
+            { key: 'velocity_counts_per_deg_s', label: 'CANopen Vel. Counts per °/s', type: 'number', min: 0.001, max: 100000, step: 0.001 },
             { key: 'encoder_resolution', label: 'Resolution (counts/rev)', type: 'number', min: 1, max: 10000000 },
             { key: 'encoder_counts_per_arcsec', label: 'Counts/arcsec', type: 'number', min: 0.0001, max: 100, step: 0.0001 },
             { key: 'encoder_quantization_error', label: 'Quantization Error (arcsec)', type: 'number', min: 0, max: 1000, step: 0.1 },
@@ -216,18 +212,11 @@ const SettingsComponent = (() => {
       ],
       sub_groups: [
         {
-          id: 'dec_motor',
-          label: 'Motor',
-          fields: [
-            { key: 'motor_steps_per_rev', label: 'Motor Steps/Rev', type: 'number', min: 1, max: 10000 },
-            { key: 'motor_microstepping', label: 'Microstepping', type: 'number', min: 1, max: 256 },
-            { key: 'motor_step_angle', label: 'Step Angle (arcsec)', type: 'number', min: 0.1, max: 360, step: 0.01 },
-          ],
-        },
-        {
           id: 'dec_encoder',
           label: 'Encoder',
           fields: [
+            { key: 'position_counts_per_degree', label: 'CANopen Pos. Counts/°', type: 'number', min: 0.001, max: 100000, step: 0.001 },
+            { key: 'velocity_counts_per_deg_s', label: 'CANopen Vel. Counts per °/s', type: 'number', min: 0.001, max: 100000, step: 0.001 },
             { key: 'encoder_resolution', label: 'Resolution (counts/rev)', type: 'number', min: 1, max: 10000000 },
             { key: 'encoder_counts_per_arcsec', label: 'Counts/arcsec', type: 'number', min: 0.0001, max: 100, step: 0.0001 },
             { key: 'encoder_quantization_error', label: 'Quantization Error (arcsec)', type: 'number', min: 0, max: 1000, step: 0.1 },
@@ -333,7 +322,7 @@ const SettingsComponent = (() => {
         { key: 'derotator_backlash', label: 'Backlash (arcsec)', type: 'number', min: 0, max: 1000, step: 0.1 },
         { key: 'derotator_absolute_encoder', label: 'Absolute Encoder', type: 'checkbox' },
         { key: 'derotator_encoder_resolution', label: 'Encoder Resolution', type: 'number', min: 1, max: 10000000 },
-        { key: 'derotator_homing_offset', label: 'Homing Offset (°)', type: 'number', min: -360, max: 360, step: 0.1 },
+        { key: 'derotator_homing_offset', label: 'Homing Offset (°)', type: 'number', angleType: 'deg' },
       ],
     },
     {
@@ -341,13 +330,19 @@ const SettingsComponent = (() => {
       label: 'Field Rotation',
       fields: [
         { key: 'field_rotation_enabled', label: 'Enabled', type: 'checkbox' },
-        { key: 'field_rotation_latitude', label: 'Latitude (°)', type: 'number', min: -90, max: 90, step: 0.0001 },
-        { key: 'field_rotation_altitude', label: 'Altitude (°)', type: 'number', min: -90, max: 90, step: 0.1 },
-        { key: 'field_rotation_azimuth', label: 'Azimuth (°)', type: 'number', min: 0, max: 360, step: 0.1 },
+        { key: 'field_rotation_altitude', label: 'Altitude (°)', type: 'number', angleType: 'deg' },
         { key: 'field_rotation_computed_rate', label: 'Computed Rate (°/s)', type: 'number', min: -10, max: 10, step: 0.000001 },
-        { key: 'field_rotation_applied_correction', label: 'Applied Correction (°)', type: 'number', min: -360, max: 360, step: 0.001 },
+        { key: 'field_rotation_applied_correction', label: 'Applied Correction (°)', type: 'number', angleType: 'deg' },
         { key: 'field_rotation_temperature', label: 'Temperature (°C)', type: 'number', min: -50, max: 60, step: 0.1 },
         { key: 'field_rotation_flexure_correction', label: 'Flexure Correction', type: 'number', min: -10, max: 10, step: 0.001 },
+      ],
+    },
+    {
+      id: 'servo_init',
+      label: 'Servo Initialization (SDO Sequence)',
+      fields: [
+        { key: 'servo_init_enabled', label: 'Enable Custom Init Sequence', type: 'checkbox' },
+        { key: 'servo_init_sequence', label: 'SDO Sequence (JSON array)', type: 'textarea' },
       ],
     },
     {
@@ -399,16 +394,15 @@ const SettingsComponent = (() => {
     tpoint:           '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="2" x2="12" y2="12"/><line x1="12" y1="12" x2="16" y2="16"/></svg>',
     derotator:        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
     field_rotation:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>',
+    servo_init:       '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>',
     hal:              '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="4" x2="9" y2="9"/><line x1="15" y1="4" x2="15" y2="9"/><line x1="9" y1="15" x2="9" y2="20"/><line x1="15" y1="15" x2="15" y2="20"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="15" y1="9" x2="20" y2="9"/></svg>',
     hal_gamepad:      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>',
     // Sub-group icons (axis physical parameters)
-    ha_motor:         '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 9V4l-3 3m3-3l3 3"/><path d="M12 15v5l-3-3m3 3l3-3"/></svg>',
     ha_encoder:       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/><line x1="12" y1="12" x2="17" y2="7"/><line x1="12" y1="12" x2="8" y2="16"/></svg>',
     ha_gear:          '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="2"/></svg>',
     ha_cyclic_error:  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/><circle cx="12" cy="12" r="2"/></svg>',
     ha_backlash:      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>',
     ha_stiffness:     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/><path d="M4 4l16 16M20 4L4 20"/></svg>',
-    dec_motor:        '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 9V4l-3 3m3-3l3 3"/><path d="M12 15v5l-3-3m3 3l3-3"/></svg>',
     dec_encoder:      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/><line x1="12" y1="12" x2="17" y2="7"/><line x1="12" y1="12" x2="8" y2="16"/></svg>',
     dec_gear:         '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v4m0 12v4M2 12h4m12 0h4"/><circle cx="12" cy="12" r="2"/></svg>',
     dec_cyclic_error: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/><circle cx="12" cy="12" r="2"/></svg>',
@@ -440,16 +434,15 @@ const SettingsComponent = (() => {
     tpoint: 'Model TPoint do korekcji b\u0142\u0119dów systematycznych monta\u017cu: aktywne terminy, pomiary, residua.',
     derotator: 'Derotator pola obrazu: typ, prze\u0142o\u017cenie, pr\u0119dko\u015bci, enkoder, pozycja domowa.',
     field_rotation: 'Obliczona rotacja pola: korekcja flexury, temperatura, parametry geometryczne.',
+    servo_init: 'Sekwencja inicjalizacyjna SDO dla serwonap\u0119dów: w\u0142\u0105czenie/wy\u0142\u0105czenie oraz lista wpisów JSON ({axis, index, subindex, value, description}) wysy\u0142anych podczas startu.',
     hal: 'Warstwa abstrakcji sprz\u0119towej (HAL): typ interfejsu, parametry CAN, heartbeat i mapowanie PDO.',
     hal_gamepad: 'Konfiguracja gamepada: \u015bcie\u017cka urz\u0105dzenia, strefa martwa, czu\u0142o\u015b\u0107, cz\u0119stotliwo\u015b\u0107 odczytu.',
     // Sub-group help
-    ha_motor: 'Konfiguracja silnika osi HA: liczba kroków, mikrokrokowanie, k\u0105t kroku.',
     ha_encoder: 'Konfiguracja enkodera osi HA: rozdzielczo\u015b\u0107, liczba impulsów, b\u0142\u0105d kwantyzacji.',
     ha_gear: 'Przek\u0142adnia mechaniczna osi HA: prze\u0142o\u017cenie ca\u0142kowite, \u015blimakowe, liczba z\u0119bów.',
     ha_cyclic_error: 'B\u0142\u0105d cykliczny osi HA: amplituda, okres, harmoniczne.',
     ha_backlash: 'Luz mechaniczny osi HA: warto\u015b\u0107 luzu i wspó\u0142czynnik temperaturowy.',
     ha_stiffness: 'Sztywno\u015b\u0107 i w\u0142a\u015bciwo\u015bci termiczne osi HA: podatno\u015b\u0107 skr\u0119tna, rozszerzalno\u015b\u0107, temperatura kalibracji.',
-    dec_motor: 'Konfiguracja silnika osi Dec: liczba kroków, mikrokrokowanie, k\u0105t kroku.',
     dec_encoder: 'Konfiguracja enkodera osi Dec: rozdzielczo\u015b\u0107, liczba impulsów, b\u0142\u0105d kwantyzacji.',
     dec_gear: 'Przek\u0142adnia mechaniczna osi Dec: prze\u0142o\u017cenie ca\u0142kowite, \u015blimakowe, liczba z\u0119bów.',
     dec_cyclic_error: 'B\u0142\u0105d cykliczny osi Dec: amplituda, okres, harmoniczne.',
@@ -995,23 +988,11 @@ const SettingsComponent = (() => {
       type: 'boolean',
       range: 'true / false',
     },
-    field_rotation_latitude: {
-      description: 'Szeroko\u015b\u0107 geograficzna dla oblicze\u0144 rotacji pola. Zazwyczaj taka sama jak szeroko\u015b\u0107 obserwatorium.',
-      defaultValue: '52.0',
-      type: 'float',
-      range: '-90.0 do 90.0',
-    },
     field_rotation_altitude: {
       description: 'Wysoko\u015b\u0107 (altitude) celu nad horyzontem w stopniach dla obliczenia rotacji pola.',
       defaultValue: '0.0',
       type: 'float',
       range: '-90.0 do 90.0',
-    },
-    field_rotation_azimuth: {
-      description: 'Azymut celu w stopniach dla obliczenia rotacji pola. 0° = pó\u0142noc, 90° = wschód.',
-      defaultValue: '0.0',
-      type: 'float',
-      range: '0.0 – 360.0',
     },
     field_rotation_computed_rate: {
       description: 'Obliczona pr\u0119dko\u015b\u0107 rotacji pola w stopniach na sekund\u0119. Warto\u015b\u0107 wyliczana automatycznie na podstawie pozycji i ruchu monta\u017cu.',
@@ -1103,24 +1084,6 @@ const SettingsComponent = (() => {
     },
 
     // ── Axis Physical Parameters (shared between HA and Dec) ──
-    motor_steps_per_rev: {
-      description: 'Liczba kroków silnika na pe\u0142ny obrót wa\u0142u silnika. Dla silników krokowych typowo 200 (1.8°/step) lub 400 (0.9°/step). Wy\u017csza warto\u015b\u0107 = wi\u0119ksza precyzja przy danym mikrokrokowaniu.',
-      defaultValue: '200',
-      type: 'integer',
-      range: '1 – 10000',
-    },
-    motor_microstepping: {
-      description: 'Mikrokrokowanie silnika (1 = pe\u0142ny krok, 64 = 1/64 kroku). Wy\u017csza warto\u015b\u0107 = p\u0142ynniejszy ruch i wi\u0119ksza precyzja, ale mniejszy moment obrotowy.',
-      defaultValue: '64',
-      type: 'integer',
-      range: '1 – 256',
-    },
-    motor_step_angle: {
-      description: 'K\u0105t pojedynczego kroku silnika po mikrokrokowaniu w sekundach k\u0105towych (arcsec). Obliczany jako (360° × 3600) / (kroki/obrót × mikrokroki).',
-      defaultValue: '101.25',
-      type: 'float',
-      range: '0.1 – 360.0',
-    },
     encoder_resolution: {
       description: 'Rozdzielczo\u015b\u0107 enkodera w liczbie impulsów na pe\u0142ny obrót (counts per revolution). Wy\u017csza warto\u015b\u0107 = wy\u017csza precyzja (ale wolniejszy maksymalny odczyt).',
       defaultValue: '16384',
@@ -1223,12 +1186,91 @@ const SettingsComponent = (() => {
       type: 'float',
       range: '-50.0 do 60.0',
     },
+  // ── Servo Init ──
+  servo_init_enabled: {
+    description: 'W\u0142\u0105cza wysy\u0142anie niestandardowej sekwencji SDO do serwonap\u0119dów podczas inicjalizacji. Sekwencja zawiera wpisy konfiguracyjne producenta (np. rozdzielczo\u015b\u0107 mikrokroków 0x2005, ustawienia enkodera 0x2006) wysy\u0142ane po uruchomieniu magistrali CANopen.',
+    defaultValue: 'false (wy\u0142\u0105czone)',
+    type: 'boolean',
+    range: 'true / false',
+  },
+  servo_init_sequence: {
+    description: 'Tablica JSON wpisów SDO do wys\u0142ania. Ka\u017cdy wpis: {"axis": 0|1, "index": "0x2005", "subindex": 0, "value": 16, "description": "HA axis microstep"}. O\u015b 0 = HA, O\u015b 1 = Dec. Indeksy per instrukcja serwonap\u0119du (sekcja 3.2.1).',
+    defaultValue: '[] (pusta tablica)',
+    type: 'string (JSON array)',
+    range: 'JSON array of SDO entry objects',
+  },
   };
 
   // ─── Internal State ───────────────────────────────────────────────────────
 
   let currentConfig = null;
   let isDirty = {};
+  let gamepadPollTimer = null;
+  const GAMEPAD_POLL_MS = 2000;
+
+  async function fetchAndRenderGamepadState() {
+    const panel = $('#gamepad-state-panel');
+    if (!panel) return;
+    try {
+      const state = await Api.getGamepadState();
+      renderGamepadState(state, panel);
+    } catch (err) {
+      panel.innerHTML = '<div class="gamepad-state-error">' + I18n.t('cfg.gamepad.poll_error', 'Gamepad state unavailable') + ': ' + Utils.escapeHtml(err.message) + '</div>';
+    }
+  }
+
+  function renderGamepadState(s, panel) {
+    const connIcon = s.connected ? '\u{1F7E2}' : '\u{1F534}';
+    const connLabel = s.connected ? I18n.t('cfg.gamepad.connected', 'Connected') : I18n.t('cfg.gamepad.disconnected', 'Disconnected');
+    const deviceName = s.device_name || I18n.t('cfg.gamepad.no_device', 'No device detected');
+
+    const axisBar = (value, label) => {
+      const clamped = Math.max(-1, Math.min(1, value));
+      const pct = Math.abs(clamped) * 100;
+      const dir = clamped < 0 ? 'neg' : 'pos';
+      const barLeft = clamped < 0 ? 50 - pct / 2 : 50;
+      const barWidth = pct / 2;
+      return '<div class="gamepad-axis-row"><span class="gamepad-axis-label">' + Utils.escapeHtml(label) + '</span><span class="gamepad-axis-bar-track"><span class="gamepad-axis-bar-fill ' + dir + '" style="left:' + barLeft + '%;width:' + barWidth + '%"></span></span><span class="gamepad-axis-value">' + clamped.toFixed(3) + '</span></div>';
+    };
+
+    const btnIndicator = (pressed, label) => {
+      const cls = pressed ? 'gamepad-btn-active' : 'gamepad-btn-inactive';
+      const icon = pressed ? '\u25CF' : '\u25CB';
+      return '<span class="gamepad-btn-indicator ' + cls + '" title="' + Utils.escapeHtml(label) + '">' + icon + ' ' + Utils.escapeHtml(label) + '</span>';
+    };
+
+    const povLabel = s.pov_hat >= 0 ? s.pov_hat.toFixed(0) + '\u00B0' : I18n.t('cfg.gamepad.neutral', 'Neutral');
+
+    panel.innerHTML = '<div class="gamepad-state-header"><span class="gamepad-connection-status">' + connIcon + ' ' + connLabel + '</span><span class="gamepad-device-name">' + Utils.escapeHtml(deviceName) + '</span></div>'
+      + '<div class="gamepad-state-grid">'
+      + '<div class="gamepad-state-section"><div class="gamepad-section-title">' + I18n.t('cfg.gamepad.axes', 'Analog Axes') + '</div>'
+      + axisBar(s.axis_lx, 'Left X') + axisBar(s.axis_ly, 'Left Y') + axisBar(s.axis_rx, 'Right X') + axisBar(s.axis_ry, 'Right Y')
+      + axisBar(s.axis_trigger_l, 'Trig. L') + axisBar(s.axis_trigger_r, 'Trig. R')
+      + '<div class="gamepad-axis-row"><span class="gamepad-axis-label">' + I18n.t('cfg.gamepad.pov_hat', 'POV Hat') + '</span><span class="gamepad-axis-value" style="margin-left:auto">' + povLabel + '</span></div>'
+      + '</div>'
+      + '<div class="gamepad-state-section"><div class="gamepad-section-title">' + I18n.t('cfg.gamepad.buttons', 'Buttons') + '</div>'
+      + '<div class="gamepad-buttons-grid">'
+      + btnIndicator(s.button_stop, 'STOP') + btnIndicator(s.button_emergency_stop, 'E-STOP')
+      + btnIndicator(s.button_park, 'PARK') + btnIndicator(s.button_home, 'HOME')
+      + btnIndicator(s.button_speed_up, 'SPD+') + btnIndicator(s.button_speed_down, 'SPD\u2212')
+      + btnIndicator(s.button_manual_toggle, 'MANUAL')
+      + '</div>'
+      + '<div class="gamepad-info-row"><span>' + I18n.t('cfg.gamepad.axes_count', 'Axes') + ': ' + (s.axis_count || 0) + '</span><span>' + I18n.t('cfg.gamepad.buttons_count', 'Buttons') + ': ' + (s.button_count || 0) + '</span></div>'
+      + '</div></div>';
+  }
+
+  function startGamepadPolling() {
+    stopGamepadPolling();
+    fetchAndRenderGamepadState();
+    gamepadPollTimer = setInterval(fetchAndRenderGamepadState, GAMEPAD_POLL_MS);
+  }
+
+  function stopGamepadPolling() {
+    if (gamepadPollTimer) {
+      clearInterval(gamepadPollTimer);
+      gamepadPollTimer = null;
+    }
+  }
 
   // ─── Public API ───────────────────────────────────────────────────────────
 
@@ -1244,8 +1286,21 @@ const SettingsComponent = (() => {
 
     try {
       const configData = await Api.getConfig();
+      // Also load HAL config and merge it into the flat config object
+      try {
+        const halData = await Api.getHALConfig();
+        Object.assign(configData, halData);
+      } catch (halErr) {
+        console.warn('[Settings] Failed to load HAL config, using defaults:', halErr.message);
+      }
       currentConfig = configData;
       renderConfig(configData, configEl);
+
+      // Enhance angle inputs with DMS/HMS formatting
+      Utils.enhanceAllAngleInputs(configEl);
+
+      // Start live gamepad state polling (panel injected by renderConfig)
+      startGamepadPolling();
 
       // Show the Reset All button
       const resetAllBtn = $('#btn-reset-all-config');
@@ -1385,6 +1440,15 @@ const SettingsComponent = (() => {
       body.appendChild(actions);
     }
 
+    // Inject live gamepad state panel for the HAL Gamepad group
+    if (group.id === 'hal_gamepad') {
+      const gamepadPanel = document.createElement('div');
+      gamepadPanel.id = 'gamepad-state-panel';
+      gamepadPanel.className = 'gamepad-state-panel';
+      gamepadPanel.innerHTML = '<div class="status-placeholder">' + I18n.t('cfg.gamepad.loading', 'Loading gamepad state...') + '</div>';
+      body.appendChild(gamepadPanel);
+    }
+
     return details;
   }
 
@@ -1439,17 +1503,41 @@ const SettingsComponent = (() => {
       return wrapper;
     }
 
-    // Number
+    // Number (or angle with DMS/HMS support)
     if (field.type === 'number') {
-      const min = field.min !== undefined ? `min="${field.min}"` : '';
-      const max = field.max !== undefined ? `max="${field.max}"` : '';
-      const step = field.step !== undefined ? `step="${field.step}"` : 'step="any"';
+      if (field.angleType) {
+        // Angle field: render as text with data-angle-type for DMS/HMS formatting
+        wrapper.innerHTML = `
+          <label class="config-field-label">${fieldLabel}
+            <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
+          </label>
+          <input type="text" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="number"
+            data-angle-type="${escapeHtml(field.angleType)}" value="${value !== undefined ? escapeHtml(String(value)) : ''}" />
+        `;
+      } else {
+        const min = field.min !== undefined ? `min="${field.min}"` : '';
+        const max = field.max !== undefined ? `max="${field.max}"` : '';
+        const step = field.step !== undefined ? `step="${field.step}"` : 'step="any"';
+        wrapper.innerHTML = `
+          <label class="config-field-label">${fieldLabel}
+            <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
+          </label>
+          <input type="number" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="number"
+            ${min} ${max} ${step} value="${value !== undefined ? escapeHtml(String(value)) : ''}" />
+        `;
+      }
+      return wrapper;
+    }
+
+    // Textarea (multiline)
+    if (field.type === 'textarea') {
       wrapper.innerHTML = `
         <label class="config-field-label">${fieldLabel}
           <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
         </label>
-        <input type="number" class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="number"
-          ${min} ${max} ${step} value="${value !== undefined ? escapeHtml(String(value)) : ''}" />
+        <textarea class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="textarea"
+          rows="5" style="font-family:monospace; font-size:0.75rem; min-height:60px;"
+        >${escapeHtml(String(value || ''))}</textarea>
       `;
       return wrapper;
     }
@@ -1503,8 +1591,14 @@ const SettingsComponent = (() => {
       if (type === 'checkbox') {
         value = input.checked;
       } else if (type === 'number') {
-        value = parseFloat(input.value);
-        if (isNaN(value)) value = 0;
+        // Use enhanced angle getter if available
+        if (input.getAngleDecimal) {
+          value = input.getAngleDecimal();
+          if (!isFinite(value)) value = 0;
+        } else {
+          value = parseFloat(input.value);
+          if (isNaN(value)) value = 0;
+        }
       } else if (type === 'quaternion') {
         // Parse comma-separated quaternion values
         const parts = input.value.split(',').map(s => parseFloat(s.trim()));
@@ -1591,7 +1685,12 @@ const SettingsComponent = (() => {
           await Api.updateConfig(payload);
         }
       } else {
-        await Api.updateConfig(data);
+        // Route HAL groups to separate endpoint
+        if (groupId.startsWith('hal')) {
+          await Api.setHALConfig(data);
+        } else {
+          await Api.updateConfig(data);
+        }
       }
 
       if (statusEl) {
@@ -1602,6 +1701,11 @@ const SettingsComponent = (() => {
 
       // Reload config to reflect changes
       const fresh = await Api.getConfig();
+      // Also reload HAL data
+      try {
+        const halData = await Api.getHALConfig();
+        Object.assign(fresh, halData);
+      } catch (e) { /* ignore */ }
       currentConfig = fresh;
     } catch (err) {
       if (statusEl) {
@@ -2122,5 +2226,5 @@ const SettingsComponent = (() => {
   init();
 
   // Public API
-  return { loadConfig, loadAddresses, initAddressForm };
+  return { loadConfig, loadAddresses, initAddressForm, stopGamepadPolling };
 })();

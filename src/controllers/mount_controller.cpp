@@ -13,6 +13,7 @@
 #include "logging/logger.h"
 #include <google/protobuf/util/time_util.h>
 #include <chrono>
+#include <ctime>
 #include <thread>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -252,7 +253,8 @@ public:
              astro_calc_(std::make_unique<core::AstronomicalCalculations>()),
              tpoint_model_(std::make_unique<models::TPointModel>()),
              flip_start_time_{},
-             error_message_() {}
+             error_message_(),
+             config_file_path_() {}
     
     Impl(std::unique_ptr<hal::HALInterface> hal)
         : Impl() {
@@ -356,10 +358,15 @@ public:
             canopen_config.use_sync = true;
             canopen_config.sync_period_ms = 10;
             canopen_config.sdo_timeout_ms = 1000;
-            canopen_config.position_counts_per_degree =
-                config_.canopen_position_counts_per_degree;
-            canopen_config.velocity_counts_per_deg_s =
-                config_.canopen_velocity_counts_per_deg_s;
+            canopen_config.axis_position_counts_per_degree[0] = config_.ha_axis_params.position_counts_per_degree;
+            canopen_config.axis_position_counts_per_degree[1] = config_.dec_axis_params.position_counts_per_degree;
+            canopen_config.axis_velocity_counts_per_deg_s[0] = config_.ha_axis_params.velocity_counts_per_deg_s;
+            canopen_config.axis_velocity_counts_per_deg_s[1] = config_.dec_axis_params.velocity_counts_per_deg_s;
+            canopen_config.accel_mode = config_.canopen_accel_mode;
+            
+            // Propagate servo initialization sequence from ControllerConfig
+            canopen_config.servo_init_enabled = config_.servo_init_enabled;
+            canopen_config.servo_init_sequence = config_.servo_init_sequence;
             
             canopen_interface_ = CanOpenFactory::create(canopen_config);
             if (!canopen_interface_) {
@@ -403,19 +410,48 @@ public:
                 MOUNT_LOG_WARN("Failed to enable axis 1 — no drive responding on CAN bus?");
             }
 
-            // Sync CANopen drive positions to the initialized axis positions.
-            // This is essential for the mock interface (which starts at 0,0)
-            // and for real drives to reflect the post-initialization offsets.
-            // Without this, refreshPositions() would overwrite the park position
-            // with the drive's stale zero on the first loop iteration.
+            // ── Sync internal state with actual drive positions ──────
+            // After enabling the drives, read their actual positions BEFORE
+            // sending any position targets.  This prevents uncontrolled
+            // rotations at max_slew_rate when the drive remembers its
+            // position from before a restart (e.g. after config change).
+            //
+            // For incremental encoders the park position is used as a
+            // fallback when the drive does not respond to position queries
+            // (e.g. mock interface, or drive not on the bus).
+            bool drive_positions_read = false;
+            if (canopen_interface_->isConnected()) {
+                try {
+                    auto pos0 = canopen_interface_->getPositionData(0);
+                    auto pos1 = canopen_interface_->getPositionData(1);
+                    if (std::isfinite(pos0.actual_position) &&
+                        std::isfinite(pos1.actual_position)) {
+                        axis1_position_ = pos0.actual_position;
+                        axis2_position_ = pos1.actual_position;
+                        raw_servo_axis1_position_ = pos0.actual_position;
+                        raw_servo_axis2_position_ = pos1.actual_position;
+                        drive_positions_read = true;
+                        MOUNT_LOG_INFO("Synced internal state to drive positions: "
+                                      "axis1={:.4f}°, axis2={:.4f}°",
+                                      axis1_position_, axis2_position_);
+                    }
+                } catch (const std::exception& e) {
+                    MOUNT_LOG_WARN("Could not read drive positions during init: {}", e.what());
+                }
+            }
+
+            // Now set position targets to the current position (no-op motion)
+            // using a moderate velocity to prevent sudden moves if the positions
+            // didn't match (shouldn't happen since we just synced).
             canopen_interface_->setPositionTarget(0, axis1_position_,
                                                   config_.max_slew_rate,
                                                   config_.slew_acceleration);
             canopen_interface_->setPositionTarget(1, axis2_position_,
                                                   config_.max_slew_rate,
                                                   config_.slew_acceleration);
-            MOUNT_LOG_DEBUG("CANopen positions synced to initialized ({:.4f}°, {:.4f}°)",
-                           axis1_position_, axis2_position_);
+            MOUNT_LOG_DEBUG("CANopen position targets set to ({:.4f}°, {:.4f}°) "
+                           "(drive_positions_read={})",
+                           axis1_position_, axis2_position_, drive_positions_read);
         }
         
         // Configure TPointModel with mount and telescope physical parameters.
@@ -1345,28 +1381,37 @@ public:
                 }
             }
             
-            // Calculate tracking rates based on mode
-            // For equatorial: axis1_rate = sidereal/solar/lunar, axis2_rate = 0 (Dec doesn't drift)
-            // For CASUAL and Alt-Az: both rates are computed dynamically in the tracking loop
+            // Calculate tracking rates based on mode.
+            // All rates are in SERVO degrees/second — the rates are applied
+            // directly to axis1_position_ (servo position), so they must be
+            // multiplied by the gear ratio to convert from celestial
+            // (telescope-axis) rates to servo-motor rates.
+            //
+            // Celestial rates:
+            //   Sidereal: 360° / 86164.0905 s = 0.004178 °/s (telescope)
+            //   Solar:    360° / 86400 s     = 0.004167 °/s (telescope)
+            //   Lunar:    ~14.685 "/s        = 0.004079 °/s (telescope)
+            //
+            // With gear_ratio G, the servo must move G× faster.
+            const double ha_gear = config_.ha_axis_params.gear_ratio;
+            const double dec_gear = config_.dec_axis_params.gear_ratio;
+
             if (config_.mount_type == MountType::EQUATORIAL) {
                 switch (mode) {
                     case TrackingMode::SIDEREAL:
-                        // Sidereal rate = 15.041 arcsec/s = 0.004178 deg/s
-                        axis1_tracking_rate = 0.004178;
+                        axis1_tracking_rate = 0.004178 * ha_gear;
                         axis2_tracking_rate = 0.0;
                         break;
                     case TrackingMode::SOLAR:
-                        // Solar rate ≈ 15.0 arcsec/s
-                        axis1_tracking_rate = 0.004167;
+                        axis1_tracking_rate = 0.004167 * ha_gear;
                         axis2_tracking_rate = 0.0;
                         break;
                     case TrackingMode::LUNAR:
-                        // Lunar rate ≈ 14.685 arcsec/s
-                        axis1_tracking_rate = 0.004079;
+                        axis1_tracking_rate = 0.004079 * ha_gear;
                         axis2_tracking_rate = 0.0;
                         break;
                     case TrackingMode::CUSTOM:
-                        // Custom – use configured max_tracking_rate divided by 2
+                        // max_tracking_rate is now in servo °/s (unified)
                         axis1_tracking_rate = config_.max_tracking_rate;
                         axis2_tracking_rate = 0.0;
                         break;
@@ -2044,14 +2089,21 @@ public:
                     double alt_rate_deg = alt_rate_rad * 180.0 / M_PI;
                     double az_rate_deg  = az_rate_rad  * 180.0 / M_PI;
                     
+                    // Convert telescope-axis rates to servo-motor rates.
+                    // The astronomical formulas produce Earth-relative rates
+                    // (telescope axis °/s); the servo must move G× faster
+                    // where G is the gear ratio.
+                    const double ha_gear_local = config_.ha_axis_params.gear_ratio;
+                    const double dec_gear_local = config_.dec_axis_params.gear_ratio;
+
                     // Write rates under rate_mutex_ for thread safety
                     // (applyGuiderCorrection may read axis1_rate_/axis2_rate_ from another thread)
                     {
                         std::lock_guard<std::shared_mutex> rate_lock(*rate_mutex_);
-                        axis1_rate_ = alt_rate_deg;
-                        axis2_rate_ = az_rate_deg;
-                        current_rate_1 = alt_rate_deg;
-                        current_rate_2 = az_rate_deg;
+                        axis1_rate_ = alt_rate_deg * ha_gear_local;
+                        axis2_rate_ = az_rate_deg * dec_gear_local;
+                        current_rate_1 = alt_rate_deg * ha_gear_local;
+                        current_rate_2 = az_rate_deg * dec_gear_local;
                     }
                     
                     // Guard against non-finite rates (zenith singularity, NaN propagation).
@@ -2170,13 +2222,17 @@ public:
                                           + mount_vel[1] * std::cos(m2_rad))
                                          / cos_m1 * 180.0 / M_PI;
                     
+                    // Convert telescope-axis rates to servo-motor rates.
+                    const double ha_gear_cas = config_.ha_axis_params.gear_ratio;
+                    const double dec_gear_cas = config_.dec_axis_params.gear_ratio;
+
                     // Write rates under rate_mutex_ for thread safety
                     {
                         std::lock_guard<std::shared_mutex> rate_lock(*rate_mutex_);
-                        axis1_rate_ = m1_rate_deg;
-                        axis2_rate_ = m2_rate_deg;
-                        current_rate_1 = m1_rate_deg;
-                        current_rate_2 = m2_rate_deg;
+                        axis1_rate_ = m1_rate_deg * ha_gear_cas;
+                        axis2_rate_ = m2_rate_deg * dec_gear_cas;
+                        current_rate_1 = m1_rate_deg * ha_gear_cas;
+                        current_rate_2 = m2_rate_deg * dec_gear_cas;
                     }
                     
                     // Guard against non-finite rates (zenith singularity, NaN propagation)
@@ -2745,30 +2801,13 @@ public:
         // Join any background thread first — it may be in an ERROR loop
         joinWorkThread();
         
-        {
-            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-            
-            // Only reset from ERROR state; other states are unaffected
-            if (state_ != MountStatus::State::ERROR) {
-                return;
-            }
-            
-            // Reset tracking flags to safe defaults
-            tracking_active_ = false;
-            meridian_flip_pending_ = false;
-            meridian_flip_in_progress_ = false;
-            
-            // Clear derotator errors
-            if (derotator_) {
-                derotator_->clearErrors();
-            }
-            
-            // Clear error state
-            state_ = MountStatus::State::IDLE;
-            error_message_.clear();
-        }  // state_mutex_ released
+        // ── Reset CANopen/HAL errors on both axes ALWAYS ─────────────
+        // Drive-level faults (CiA 402 fault state) can occur even when
+        // the controller state_ is not ERROR (e.g. IDLE after a quick
+        // stop).  The CANopen fault reset and drive re-enable must run
+        // unconditionally so the user can recover from hardware faults
+        // regardless of the logical controller state.
         
-        // Reset HAL safety monitor errors on both axes (non-critical, best-effort)
         if (hal_safety_monitor_) {
             try {
                 hal_safety_monitor_->clearErrors(0);
@@ -2777,9 +2816,46 @@ public:
                 MOUNT_LOG_WARN("HAL clearErrors exception: {}", e.what());
             }
         }
+        if (canopen_interface_) {
+            try {
+                canopen_interface_->clearErrors(0);
+                canopen_interface_->clearErrors(1);
+                // Re-enable drives that may have been disabled by failed
+                // SDO operations (e.g. setVelocityTarget fast-fail path).
+                // Without this, the drives stay permanently disabled after
+                // a single SDO timeout and the mount cannot move.
+                canopen_interface_->enableDrive(0);
+                canopen_interface_->enableDrive(1);
+            } catch (const std::exception& e) {
+                MOUNT_LOG_WARN("CANopen clearErrors exception: {}", e.what());
+            }
+        }
         
-        notifyStatusChanged();  // ERROR → IDLE
-        MOUNT_LOG_INFO("Mount error state cleared, returned to IDLE");
+        // ── Reset controller state if in ERROR ──────────────────────
+        {
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+            
+            if (state_ == MountStatus::State::ERROR) {
+                // Reset tracking flags to safe defaults
+                tracking_active_ = false;
+                meridian_flip_pending_ = false;
+                meridian_flip_in_progress_ = false;
+                
+                // Clear derotator errors
+                if (derotator_) {
+                    derotator_->clearErrors();
+                }
+                
+                // Clear error state
+                state_ = MountStatus::State::IDLE;
+                error_message_.clear();
+                
+                notifyStatusChanged();  // ERROR → IDLE
+                MOUNT_LOG_INFO("Mount error state cleared, returned to IDLE");
+            } else {
+                MOUNT_LOG_INFO("CANopen/HAL errors cleared (controller was not in ERROR state)");
+            }
+        }
     }
     
     MountStatus getStatus() const {
@@ -2791,8 +2867,16 @@ public:
         // Telescope position: servo degrees divided by gear ratio gives
         // the actual telescope axis position on the sky.
         // Uses raw (non-normalized) servo position to preserve absolute angle.
-        status.telescope_axis1_position = raw_servo_axis1_position_ / config_.ha_axis_params.gear_ratio;
-        status.telescope_axis2_position = raw_servo_axis2_position_ / config_.dec_axis_params.gear_ratio;
+        // Telescope position: servo degrees divided by gear ratio gives
+        // the actual telescope axis position on the sky.
+        // Guard against zero or near-zero gear_ratio (e.g. from corrupted config)
+        // that would produce inf/nan in the status display and logs.
+        double ha_gear = config_.ha_axis_params.gear_ratio;
+        double dec_gear = config_.dec_axis_params.gear_ratio;
+        if (ha_gear < 1.0) ha_gear = 360.0;
+        if (dec_gear < 1.0) dec_gear = 360.0;
+        status.telescope_axis1_position = raw_servo_axis1_position_ / ha_gear;
+        status.telescope_axis2_position = raw_servo_axis2_position_ / dec_gear;
         // Read rates under rate_mutex_ — applyGuiderCorrection() writes them
         // concurrently on the guider callback thread.
         {
@@ -2847,9 +2931,11 @@ public:
     void refreshPositionsFromCANopen() {
         if (!canopen_interface_) return;
 
-        // Skip SDO reads if drives are not enabled (e.g. after emergency
-        // stop).  Each SDO read would time out (~1 s) and block the main
-        // loop, making the controller unresponsive.
+        // Skip SDO reads if drives are not enabled or not connected.
+        // Each SDO read would time out (~1 s per axis) and block the main
+        // loop, making the controller unresponsive and causing instability
+        // when gRPC handlers compete for the CANopen mutex.
+        if (!canopen_interface_->isConnected()) return;
         if (!canopen_interface_->isDriveEnabled(0) &&
             !canopen_interface_->isDriveEnabled(1))
             return;
@@ -2878,8 +2964,12 @@ public:
                 static int refresh_log_counter = 0;
                 refresh_log_counter++;
                 if (refresh_log_counter % 100 == 0) {
-                    double telescope_axis1 = raw_servo_axis1_position_ / config_.ha_axis_params.gear_ratio;
-                    double telescope_axis2 = raw_servo_axis2_position_ / config_.dec_axis_params.gear_ratio;
+                    double ha_gear_r = config_.ha_axis_params.gear_ratio;
+                    double dec_gear_r = config_.dec_axis_params.gear_ratio;
+                    if (ha_gear_r < 1.0) ha_gear_r = 360.0;
+                    if (dec_gear_r < 1.0) dec_gear_r = 360.0;
+                    double telescope_axis1 = raw_servo_axis1_position_ / ha_gear_r;
+                    double telescope_axis2 = raw_servo_axis2_position_ / dec_gear_r;
                     MOUNT_LOG_INFO("CANopen pos → Telescope: axis1={:.4f}° axis2={:.4f}° "
                                    "| Servo (raw): axis1={:.4f}° axis2={:.4f}° "
                                    "| Gear HA={:.1f}:1 Dec={:.1f}:1",
@@ -4254,7 +4344,279 @@ public:
     bool updateConfiguration(const ControllerConfig& config) {
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         config_ = config;
+
+        // Persist to disk if a config file path has been set
+        if (!config_file_path_.empty()) {
+            saveConfigToFile();
+        }
+
         return true;
+    }
+
+    /**
+     * @brief Serialize current config_ to the JSON config file.
+     *
+     * Loads the existing file to preserve fields not managed by ControllerConfig,
+     * updates the managed fields, and writes back.
+     */
+    void saveConfigToFile() {
+        try {
+            json j;
+
+            // Load existing file to preserve unmanaged sections
+            std::ifstream in_file(config_file_path_);
+            if (in_file.is_open()) {
+                try {
+                    j = json::parse(in_file);
+                } catch (...) {
+                    j = json::object();
+                }
+                in_file.close();
+            }
+
+            // Helper: only overwrite a JSON field if the new value is meaningful
+            // (non-empty string, non-zero number).  This prevents partial gRPC
+            // updates from zeroing out fields the UI did not touch.
+            auto setIfStr = [&](const std::string& section, const std::string& key,
+                                const std::string& val) {
+                if (!val.empty()) {
+                    if (!j.contains(section)) j[section] = json::object();
+                    j[section][key] = val;
+                }
+            };
+            auto setIfInt = [&](const std::string& section, const std::string& key,
+                                int val) {
+                if (val != 0) {
+                    if (!j.contains(section)) j[section] = json::object();
+                    j[section][key] = val;
+                }
+            };
+            auto setIfDbl = [&](const std::string& section, const std::string& key,
+                                double val) {
+                if (val != 0.0) {
+                    if (!j.contains(section)) j[section] = json::object();
+                    j[section][key] = val;
+                }
+            };
+            // Always-set helper (for booleans, sections that must be present)
+            auto setAlways = [&](const std::string& section, const std::string& key,
+                                 const json& val) {
+                if (!j.contains(section)) j[section] = json::object();
+                j[section][key] = val;
+            };
+            // Section-level helper: ensure section exists
+            auto ensureSection = [&](const std::string& section) {
+                if (!j.contains(section)) j[section] = json::object();
+            };
+
+            // ── logging ──────────────────────────────────────────────
+            setIfStr("logging", "level", config_.log_level);
+            setIfStr("logging", "directory", config_.log_directory);
+            setIfInt("logging", "rotation_days", config_.log_rotation_days);
+
+            // ── network ──────────────────────────────────────────────
+            setIfStr("network", "grpc_address", config_.grpc_address);
+            setIfInt("network", "grpc_port", config_.grpc_port);
+
+            // ── canopen ──────────────────────────────────────────────
+            setIfStr("canopen", "interface", config_.canopen_interface);
+            setIfInt("canopen", "node_id", config_.canopen_node_id);
+
+            // ── mount ────────────────────────────────────────────────
+            ensureSection("mount");
+            auto& m = j["mount"];
+
+            // Mount type — only write if not default (EQUATORIAL)
+            if (config_.mount_type != MountType::EQUATORIAL || !m.contains("type")) {
+                switch (config_.mount_type) {
+                    case MountType::EQUATORIAL:  m["type"] = "equatorial"; break;
+                    case MountType::ALT_AZ:      m["type"] = "alt_az";     break;
+                    case MountType::CASUAL:      m["type"] = "casual";     break;
+                    default:                     m["type"] = "equatorial"; break;
+                }
+            }
+
+            // Location — always update (0.0 is a valid coordinate)
+            if (config_.latitude != 0.0 || !m.contains("latitude"))
+                m["latitude"] = config_.latitude;
+            if (config_.longitude != 0.0 || !m.contains("longitude"))
+                m["longitude"] = config_.longitude;
+            if (config_.altitude != 0.0 || !m.contains("altitude"))
+                m["altitude"] = config_.altitude;
+
+            // Physical / rate params — only update if non-zero
+            if (config_.mount_height != 0.0) m["mount_height"] = config_.mount_height;
+            if (config_.pier_west != 0.0) m["pier_west"] = config_.pier_west;
+            if (config_.pier_east != 0.0) m["pier_east"] = config_.pier_east;
+            if (config_.default_temperature != 0.0) m["default_temperature"] = config_.default_temperature;
+            if (config_.default_pressure != 0.0) m["default_pressure"] = config_.default_pressure;
+            if (config_.default_humidity != 0.0) m["default_humidity"] = config_.default_humidity;
+
+            // Encoder booleans — always update
+            m["use_encoders"] = config_.use_encoders;
+            m["encoders_absolute"] = config_.encoders_absolute;
+            if (config_.encoder_resolution != 0.0) m["encoder_resolution"] = config_.encoder_resolution;
+
+            if (config_.max_slew_rate != 0.0) m["max_slew_rate"] = config_.max_slew_rate;
+            if (config_.max_tracking_rate != 0.0) m["max_tracking_rate"] = config_.max_tracking_rate;
+            if (config_.slew_acceleration != 0.0) m["slew_acceleration"] = config_.slew_acceleration;
+            if (config_.tracking_acceleration != 0.0) m["tracking_acceleration"] = config_.tracking_acceleration;
+
+            if (config_.position_tolerance != 0.0) m["position_tolerance"] = config_.position_tolerance;
+            if (config_.rate_tolerance != 0.0) m["rate_tolerance"] = config_.rate_tolerance;
+
+            // Meridian / limits booleans — always update
+            m["meridian_flip_enabled"] = config_.meridian_flip_enabled;
+            if (config_.meridian_flip_delay_minutes != 0.0) m["meridian_flip_delay_minutes"] = config_.meridian_flip_delay_minutes;
+            if (config_.meridian_flip_hysteresis_degrees != 0.0) m["meridian_flip_hysteresis_degrees"] = config_.meridian_flip_hysteresis_degrees;
+            if (config_.meridian_flip_timeout_seconds != 0.0) m["meridian_flip_timeout_seconds"] = config_.meridian_flip_timeout_seconds;
+
+            m["soft_limits_enabled"] = config_.soft_limits_enabled;
+            m["soft_limit_axis1_min"] = config_.soft_limit_axis1_min;
+            m["soft_limit_axis1_max"] = config_.soft_limit_axis1_max;
+            m["soft_limit_axis2_min"] = config_.soft_limit_axis2_min;
+            m["soft_limit_axis2_max"] = config_.soft_limit_axis2_max;
+            if (config_.soft_limit_warning_degrees != 0.0) m["soft_limit_warning_degrees"] = config_.soft_limit_warning_degrees;
+            if (config_.soft_limit_deceleration_degrees != 0.0) m["soft_limit_deceleration_degrees"] = config_.soft_limit_deceleration_degrees;
+            if (config_.soft_limit_tracking_rate_factor != 0.0) m["soft_limit_tracking_rate_factor"] = config_.soft_limit_tracking_rate_factor;
+
+            m["park_position_axis1"] = config_.park_position_axis1;
+            m["park_position_axis2"] = config_.park_position_axis2;
+            m["enable_refraction_correction"] = config_.enable_refraction_correction;
+
+            // Orientation quaternion — always update
+            m["orientation_quaternion"] = {
+                config_.mount_orientation.quaternion[0],
+                config_.mount_orientation.quaternion[1],
+                config_.mount_orientation.quaternion[2],
+                config_.mount_orientation.quaternion[3]
+            };
+
+            // ── axis_physical_parameters ─────────────────────────────
+            if (!m.contains("axis_physical_parameters"))
+                m["axis_physical_parameters"] = json::object();
+            auto& app = m["axis_physical_parameters"];
+
+            // Ha_axis — only update fields with explicit (non-zero) values
+            if (!app.contains("ha_axis")) app["ha_axis"] = json::object();
+            auto& ha = app["ha_axis"];
+            if (config_.ha_axis_params.position_counts_per_degree != 0.0) ha["position_counts_per_degree"] = config_.ha_axis_params.position_counts_per_degree;
+            if (config_.ha_axis_params.velocity_counts_per_deg_s != 0.0) ha["velocity_counts_per_deg_s"] = config_.ha_axis_params.velocity_counts_per_deg_s;
+            if (config_.ha_axis_params.encoder_resolution != 0.0) ha["encoder_resolution"] = config_.ha_axis_params.encoder_resolution;
+            if (config_.ha_axis_params.encoder_counts_per_arcsec != 0.0) ha["encoder_counts_per_arcsec"] = config_.ha_axis_params.encoder_counts_per_arcsec;
+            if (config_.ha_axis_params.encoder_quantization_error != 0.0) ha["encoder_quantization_error"] = config_.ha_axis_params.encoder_quantization_error;
+            if (config_.ha_axis_params.gear_ratio != 0.0) ha["gear_ratio"] = config_.ha_axis_params.gear_ratio;
+            if (config_.ha_axis_params.worm_ratio != 0.0) ha["worm_ratio"] = config_.ha_axis_params.worm_ratio;
+            if (config_.ha_axis_params.worm_teeth != 0) ha["worm_teeth"] = config_.ha_axis_params.worm_teeth;
+            if (config_.ha_axis_params.worm_wheel_teeth != 0) ha["worm_wheel_teeth"] = config_.ha_axis_params.worm_wheel_teeth;
+            if (config_.ha_axis_params.cyclic_error_amplitude != 0.0) ha["cyclic_error_amplitude"] = config_.ha_axis_params.cyclic_error_amplitude;
+            if (config_.ha_axis_params.cyclic_error_period != 0.0) ha["cyclic_error_period"] = config_.ha_axis_params.cyclic_error_period;
+            if (config_.ha_axis_params.cyclic_error_amplitude != 0.0)
+                ha["cyclic_harmonics"] = config_.ha_axis_params.cyclic_harmonics;
+            if (config_.ha_axis_params.backlash != 0.0) ha["backlash"] = config_.ha_axis_params.backlash;
+            if (config_.ha_axis_params.backlash_temp_coeff != 0.0) ha["backlash_temp_coeff"] = config_.ha_axis_params.backlash_temp_coeff;
+            if (config_.ha_axis_params.axis_stiffness != 0.0) ha["axis_stiffness"] = config_.ha_axis_params.axis_stiffness;
+            if (config_.ha_axis_params.torsional_compliance != 0.0) ha["torsional_compliance"] = config_.ha_axis_params.torsional_compliance;
+            if (config_.ha_axis_params.expansion_coeff != 0.0) ha["expansion_coeff"] = config_.ha_axis_params.expansion_coeff;
+            if (config_.ha_axis_params.temp_gear_error_coeff != 0.0) ha["temp_gear_error_coeff"] = config_.ha_axis_params.temp_gear_error_coeff;
+            if (config_.ha_axis_params.calibration_temp != 0.0) ha["calibration_temp"] = config_.ha_axis_params.calibration_temp;
+            if (!config_.ha_axis_params.calibration_table.empty())
+                ha["calibration_table"] = config_.ha_axis_params.calibration_table;
+
+            // dec_axis
+            if (!app.contains("dec_axis")) app["dec_axis"] = json::object();
+            auto& dec = app["dec_axis"];
+            if (config_.dec_axis_params.position_counts_per_degree != 0.0) dec["position_counts_per_degree"] = config_.dec_axis_params.position_counts_per_degree;
+            if (config_.dec_axis_params.velocity_counts_per_deg_s != 0.0) dec["velocity_counts_per_deg_s"] = config_.dec_axis_params.velocity_counts_per_deg_s;
+            if (config_.dec_axis_params.encoder_resolution != 0.0) dec["encoder_resolution"] = config_.dec_axis_params.encoder_resolution;
+            if (config_.dec_axis_params.encoder_counts_per_arcsec != 0.0) dec["encoder_counts_per_arcsec"] = config_.dec_axis_params.encoder_counts_per_arcsec;
+            if (config_.dec_axis_params.encoder_quantization_error != 0.0) dec["encoder_quantization_error"] = config_.dec_axis_params.encoder_quantization_error;
+            if (config_.dec_axis_params.gear_ratio != 0.0) dec["gear_ratio"] = config_.dec_axis_params.gear_ratio;
+            if (config_.dec_axis_params.worm_ratio != 0.0) dec["worm_ratio"] = config_.dec_axis_params.worm_ratio;
+            if (config_.dec_axis_params.worm_teeth != 0) dec["worm_teeth"] = config_.dec_axis_params.worm_teeth;
+            if (config_.dec_axis_params.worm_wheel_teeth != 0) dec["worm_wheel_teeth"] = config_.dec_axis_params.worm_wheel_teeth;
+            if (config_.dec_axis_params.cyclic_error_amplitude != 0.0) dec["cyclic_error_amplitude"] = config_.dec_axis_params.cyclic_error_amplitude;
+            if (config_.dec_axis_params.cyclic_error_period != 0.0) dec["cyclic_error_period"] = config_.dec_axis_params.cyclic_error_period;
+            if (config_.dec_axis_params.cyclic_error_amplitude != 0.0)
+                dec["cyclic_harmonics"] = config_.dec_axis_params.cyclic_harmonics;
+            if (config_.dec_axis_params.backlash != 0.0) dec["backlash"] = config_.dec_axis_params.backlash;
+            if (config_.dec_axis_params.backlash_temp_coeff != 0.0) dec["backlash_temp_coeff"] = config_.dec_axis_params.backlash_temp_coeff;
+            if (config_.dec_axis_params.axis_stiffness != 0.0) dec["axis_stiffness"] = config_.dec_axis_params.axis_stiffness;
+            if (config_.dec_axis_params.torsional_compliance != 0.0) dec["torsional_compliance"] = config_.dec_axis_params.torsional_compliance;
+            if (config_.dec_axis_params.expansion_coeff != 0.0) dec["expansion_coeff"] = config_.dec_axis_params.expansion_coeff;
+            if (config_.dec_axis_params.temp_gear_error_coeff != 0.0) dec["temp_gear_error_coeff"] = config_.dec_axis_params.temp_gear_error_coeff;
+            if (config_.dec_axis_params.calibration_temp != 0.0) dec["calibration_temp"] = config_.dec_axis_params.calibration_temp;
+            if (!config_.dec_axis_params.calibration_table.empty())
+                dec["calibration_table"] = config_.dec_axis_params.calibration_table;
+
+            // ── telescope ────────────────────────────────────────────
+            if (config_.focal_length != 0.0) {
+                ensureSection("telescope");
+                j["telescope"]["focal_length"] = config_.focal_length;
+            }
+            if (config_.aperture != 0.0) {
+                ensureSection("telescope");
+                j["telescope"]["aperture"] = config_.aperture;
+            }
+
+            // ── guider ───────────────────────────────────────────────
+            ensureSection("guider");
+            j["guider"]["enabled"] = config_.enable_guider;
+            if (config_.guider_max_correction != 0.0)
+                j["guider"]["max_correction"] = config_.guider_max_correction;
+            if (config_.guider_aggression != 0.0)
+                j["guider"]["aggression"] = config_.guider_aggression;
+
+            // ── kalman ───────────────────────────────────────────────
+            if (config_.process_noise != 0.0) {
+                ensureSection("kalman");
+                j["kalman"]["process_noise"] = config_.process_noise;
+            }
+            if (config_.measurement_noise != 0.0) {
+                ensureSection("kalman");
+                j["kalman"]["measurement_noise"] = config_.measurement_noise;
+            }
+
+            // ── tpoint ───────────────────────────────────────────────
+            if (config_.tpoint_enabled_terms != 0) {
+                ensureSection("tpoint");
+                j["tpoint"]["enabled_terms"] = config_.tpoint_enabled_terms;
+            }
+
+            // ── Backup existing file before overwriting ────────────
+            if (std::filesystem::exists(config_file_path_)) {
+                auto now = std::chrono::system_clock::now();
+                auto time_t_now = std::chrono::system_clock::to_time_t(now);
+                std::tm tm_now;
+                localtime_r(&time_t_now, &tm_now);
+                char ts_buf[32];
+                std::strftime(ts_buf, sizeof(ts_buf), "%Y-%m-%d_%H-%M-%S", &tm_now);
+                // Backup format: {stem}_{timestamp}{ext}
+                // e.g. config/default_2026-06-14_10-05-08.json
+                std::filesystem::path cfg_path(config_file_path_);
+                std::string backup_path = (cfg_path.parent_path() /
+                    (cfg_path.stem().string() + "_" + ts_buf + cfg_path.extension().string())).string();
+                try {
+                    std::filesystem::copy_file(config_file_path_, backup_path,
+                                  std::filesystem::copy_options::overwrite_existing);
+                    MOUNT_LOG_INFO("Config backup created: {}", backup_path);
+                } catch (const std::exception& e) {
+                    MOUNT_LOG_WARN("Failed to create config backup {}: {}", backup_path, e.what());
+                }
+            }
+
+            // ── Write to file ────────────────────────────────────────
+            std::ofstream out_file(config_file_path_);
+            if (out_file.is_open()) {
+                out_file << j.dump(4);
+                out_file.close();
+                MOUNT_LOG_INFO("Configuration saved to {}", config_file_path_);
+            } else {
+                MOUNT_LOG_ERROR("Failed to open config file for writing: {}", config_file_path_);
+            }
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("Failed to save configuration to {}: {}", config_file_path_, e.what());
+        }
     }
     
     // Ephemeris tracking methods
@@ -4857,6 +5219,7 @@ public:
     std::function<void(const MountStatus&)> status_callback_;
     std::function<void(const std::string&)> error_callback_;
     std::string error_message_;
+    std::string config_file_path_;
     
     /**
      * @brief Build a MountStatus snapshot and invoke status_callback_ if set.
@@ -5550,6 +5913,10 @@ MountController::ControllerConfig MountController::getConfiguration() const {
 
 bool MountController::updateConfiguration(const ControllerConfig& config) {
     return pimpl->updateConfiguration(config);
+}
+
+void MountController::setConfigFilePath(const std::string& path) {
+    pimpl->config_file_path_ = path;
 }
 
 bool MountController::setMountOrientation(const MountOrientation& orientation) {

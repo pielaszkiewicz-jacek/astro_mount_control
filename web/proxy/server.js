@@ -598,7 +598,9 @@ app.post('/api/config/reset-group', async (req, res) => {
  */
 app.post('/api/axis/move', async (req, res) => {
   try {
-    const { axis_id, velocity } = req.body;
+    const { axis_id, velocity, acceleration } = req.body;
+
+    console.log('[proxy] POST /api/axis/move body:', JSON.stringify(req.body));
 
     if (axis_id === undefined || velocity === undefined) {
       return res.status(400).json({ error: 'Missing required fields: axis_id, velocity' });
@@ -612,12 +614,21 @@ app.post('/api/axis/move', async (req, res) => {
       return res.status(400).json({ error: 'velocity must be a valid number' });
     }
 
-    await grpcCall('ControlAxis', {
+    const grpcReq = {
       axis_id,
       mode: 'VELOCITY_CONTROL',
       target_velocity: velocity,
-      relative: true,
-    });
+      relative: false,
+    };
+    // Pass acceleration when explicitly provided; fall back to 50.0 default
+    if (typeof acceleration === 'number' && isFinite(acceleration) && acceleration > 0) {
+      grpcReq.acceleration = acceleration;
+    } else {
+      grpcReq.acceleration = 50.0;
+    }
+
+    console.log('[proxy] ControlAxis gRPC request:', JSON.stringify(grpcReq));
+    await grpcCall('ControlAxis', grpcReq);
     res.json({ success: true, message: `Axis ${axis_id} moving at ${velocity}°/s` });
   } catch (err) {
     res.status(502).json({ error: 'Axis move failed', details: err.message });
@@ -632,7 +643,9 @@ app.post('/api/axis/move', async (req, res) => {
  */
 app.post('/api/axis/stop', async (req, res) => {
   try {
-    const { axis_id } = req.body;
+    const { axis_id, deceleration } = req.body;
+
+    console.log('[proxy] POST /api/axis/stop body:', JSON.stringify(req.body));
 
     if (axis_id === undefined) {
       return res.status(400).json({ error: 'Missing required field: axis_id' });
@@ -642,7 +655,13 @@ app.post('/api/axis/stop', async (req, res) => {
       return res.status(400).json({ error: 'axis_id must be 0 or 1' });
     }
 
-    await grpcCall('StopAxis', { axis_id, decelerate: true });
+    const stopReq = { axis_id, decelerate: true };
+    if (typeof deceleration === 'number' && isFinite(deceleration) && deceleration > 0) {
+      stopReq.deceleration = deceleration;
+    }
+
+    console.log('[proxy] StopAxis gRPC request:', JSON.stringify(stopReq));
+    await grpcCall('StopAxis', stopReq);
     res.json({ success: true, message: `Axis ${axis_id} stopping` });
   } catch (err) {
     res.status(502).json({ error: 'Axis stop failed', details: err.message });
@@ -657,7 +676,7 @@ app.post('/api/axis/stop', async (req, res) => {
  */
 app.post('/api/axis/move-relative', async (req, res) => {
   try {
-    const { axis_id, offset_deg, velocity } = req.body;
+    const { axis_id, offset_deg, velocity, acceleration, deceleration } = req.body;
 
     if (axis_id === undefined || offset_deg === undefined) {
       return res.status(400).json({ error: 'Missing required fields: axis_id, offset_deg' });
@@ -680,6 +699,12 @@ app.post('/api/axis/move-relative', async (req, res) => {
     if (typeof velocity === 'number' && isFinite(velocity) && velocity > 0) {
       grpcRequest.max_velocity = velocity;
     }
+    if (typeof acceleration === 'number' && isFinite(acceleration) && acceleration > 0) {
+      grpcRequest.acceleration = acceleration;
+    }
+    if (typeof deceleration === 'number' && isFinite(deceleration) && deceleration > 0) {
+      grpcRequest.deceleration = deceleration;
+    }
 
     await grpcCall('ControlAxis', grpcRequest);
     res.json({ success: true, message: `Axis ${axis_id} moving by ${offset_deg}°` });
@@ -701,6 +726,155 @@ app.post('/api/axis/emergency-stop', async (req, res) => {
     res.json({ success: true, message: 'Emergency stop — all axes halted' });
   } catch (err) {
     res.status(502).json({ error: 'Emergency stop failed', details: err.message });
+  }
+});
+
+/**
+ * GET /api/hal/config
+ * Returns the HAL configuration flattened for the settings UI.
+ */
+app.get('/api/hal/config', async (req, res) => {
+  try {
+    const halConfig = await grpcCall('GetHALConfig', {});
+    // Flatten HALConfig proto to flat JSON with hal_* prefixes
+    const flat = {};
+
+    // Top-level fields
+    if (halConfig.type) flat.hal_type = halConfig.type;
+    if (halConfig.name) flat.hal_name = halConfig.name;
+
+    // Gamepad subsection
+    if (halConfig.gamepad) {
+      flat.hal_gamepad_device_path = halConfig.gamepad.device_path || '';
+      flat.hal_gamepad_deadzone = halConfig.gamepad.dead_zone ?? 0.05;
+      flat.hal_gamepad_sensitivity = halConfig.gamepad.sensitivity ?? 1.0;
+      flat.hal_gamepad_poll_interval_ms = halConfig.gamepad.read_frequency ?? 50;
+    }
+
+    // Simulated subsection
+    if (halConfig.simulated) {
+      flat.hal_simulated_enabled = halConfig.simulated.enable_simulation !== false;
+      flat.hal_simulated_update_rate = halConfig.simulated.simulation_update_rate ?? 100;
+      flat.hal_simulated_position_noise = halConfig.simulated.position_noise_stddev ?? 0.001;
+      flat.hal_simulated_velocity_noise = halConfig.simulated.velocity_noise_stddev ?? 0.01;
+      flat.hal_simulated_error_probability = halConfig.simulated.error_probability ?? 0.01;
+    }
+
+    // Safety subsection
+    if (halConfig.safety) {
+      flat.hal_safety_enable_limits = halConfig.safety.enable_limits !== false;
+      flat.hal_safety_emergency_stop = halConfig.safety.enable_emergency_stop !== false;
+      flat.hal_safety_timeout_ms = halConfig.safety.emergency_stop_timeout_ms ?? 1000;
+      flat.hal_safety_temp_monitoring = halConfig.safety.enable_temperature_monitoring ?? false;
+      flat.hal_safety_current_monitoring = halConfig.safety.enable_current_monitoring ?? false;
+      flat.hal_safety_voltage_monitoring = halConfig.safety.enable_voltage_monitoring ?? false;
+      flat.hal_safety_min_voltage = halConfig.safety.min_voltage ?? 0;
+      flat.hal_safety_max_voltage = halConfig.safety.max_voltage ?? 0;
+      flat.hal_safety_monitoring_rate = halConfig.safety.monitoring_rate ?? 10;
+    }
+
+    // CanOpen subsection
+    if (halConfig.canopen) {
+      flat.hal_canopen_library = halConfig.canopen.library || '';
+      flat.hal_canopen_interface = halConfig.canopen.interface_name || '';
+      flat.hal_canopen_bitrate = halConfig.canopen.bitrate ?? 1000000;
+      flat.hal_canopen_node_id = halConfig.canopen.node_id ?? 1;
+      flat.hal_canopen_sync = halConfig.canopen.use_sync !== false;
+      flat.hal_canopen_sync_period = halConfig.canopen.sync_period_ms ?? 10;
+      flat.hal_canopen_sdo_timeout = halConfig.canopen.sdo_timeout_ms ?? 1000;
+    }
+
+    // PID subsection
+    if (halConfig.pid_params) {
+      flat.hal_pid_kp = halConfig.pid_params.kp ?? 1.0;
+      flat.hal_pid_ki = halConfig.pid_params.ki ?? 0.0;
+      flat.hal_pid_kd = halConfig.pid_params.kd ?? 0.0;
+      flat.hal_pid_integral_limit = halConfig.pid_params.integral_limit ?? 1000;
+      flat.hal_pid_output_limit = halConfig.pid_params.output_limit ?? 1000;
+      flat.hal_pid_anti_windup_gain = halConfig.pid_params.anti_windup_gain ?? 0.1;
+      flat.hal_pid_anti_windup = halConfig.pid_params.enable_anti_windup !== false;
+    }
+
+    res.json(flat);
+  } catch (err) {
+    res.status(502).json({ error: 'HAL config fetch failed', details: err.message });
+  }
+});
+
+/**
+ * POST /api/hal/config
+ * Updates HAL configuration from flat JSON (reverse of GET).
+ */
+app.post('/api/hal/config', async (req, res) => {
+  try {
+    const body = req.body;
+    const halConfig = {};
+
+    // Rebuild nested structure from flat keys
+    if (body.hal_type !== undefined) halConfig.type = body.hal_type;
+    if (body.hal_name !== undefined) halConfig.name = body.hal_name;
+
+    // Gamepad
+    const gp = {};
+    let hasGp = false;
+    if (body.hal_gamepad_device_path !== undefined) { gp.device_path = body.hal_gamepad_device_path; hasGp = true; }
+    if (body.hal_gamepad_deadzone !== undefined) { gp.dead_zone = Number(body.hal_gamepad_deadzone); hasGp = true; }
+    if (body.hal_gamepad_sensitivity !== undefined) { gp.sensitivity = Number(body.hal_gamepad_sensitivity); hasGp = true; }
+    if (body.hal_gamepad_poll_interval_ms !== undefined) { gp.read_frequency = Number(body.hal_gamepad_poll_interval_ms); hasGp = true; }
+    if (hasGp) halConfig.gamepad = gp;
+
+    // Simulated
+    const sim = {};
+    let hasSim = false;
+    if (body.hal_simulated_enabled !== undefined) { sim.enable_simulation = body.hal_simulated_enabled; hasSim = true; }
+    if (body.hal_simulated_update_rate !== undefined) { sim.simulation_update_rate = Number(body.hal_simulated_update_rate); hasSim = true; }
+    if (body.hal_simulated_position_noise !== undefined) { sim.position_noise_stddev = Number(body.hal_simulated_position_noise); hasSim = true; }
+    if (body.hal_simulated_velocity_noise !== undefined) { sim.velocity_noise_stddev = Number(body.hal_simulated_velocity_noise); hasSim = true; }
+    if (body.hal_simulated_error_probability !== undefined) { sim.error_probability = Number(body.hal_simulated_error_probability); hasSim = true; }
+    if (hasSim) halConfig.simulated = sim;
+
+    // Safety
+    const saf = {};
+    let hasSaf = false;
+    if (body.hal_safety_enable_limits !== undefined) { saf.enable_limits = body.hal_safety_enable_limits; hasSaf = true; }
+    if (body.hal_safety_emergency_stop !== undefined) { saf.enable_emergency_stop = body.hal_safety_emergency_stop; hasSaf = true; }
+    if (body.hal_safety_timeout_ms !== undefined) { saf.emergency_stop_timeout_ms = Number(body.hal_safety_timeout_ms); hasSaf = true; }
+    if (body.hal_safety_temp_monitoring !== undefined) { saf.enable_temperature_monitoring = body.hal_safety_temp_monitoring; hasSaf = true; }
+    if (body.hal_safety_current_monitoring !== undefined) { saf.enable_current_monitoring = body.hal_safety_current_monitoring; hasSaf = true; }
+    if (body.hal_safety_voltage_monitoring !== undefined) { saf.enable_voltage_monitoring = body.hal_safety_voltage_monitoring; hasSaf = true; }
+    if (body.hal_safety_min_voltage !== undefined) { saf.min_voltage = Number(body.hal_safety_min_voltage); hasSaf = true; }
+    if (body.hal_safety_max_voltage !== undefined) { saf.max_voltage = Number(body.hal_safety_max_voltage); hasSaf = true; }
+    if (body.hal_safety_monitoring_rate !== undefined) { saf.monitoring_rate = Number(body.hal_safety_monitoring_rate); hasSaf = true; }
+    if (hasSaf) halConfig.safety = saf;
+
+    // CanOpen
+    const co = {};
+    let hasCo = false;
+    if (body.hal_canopen_library !== undefined) { co.library = body.hal_canopen_library; hasCo = true; }
+    if (body.hal_canopen_interface !== undefined) { co.interface_name = body.hal_canopen_interface; hasCo = true; }
+    if (body.hal_canopen_bitrate !== undefined) { co.bitrate = Number(body.hal_canopen_bitrate); hasCo = true; }
+    if (body.hal_canopen_node_id !== undefined) { co.node_id = Number(body.hal_canopen_node_id); hasCo = true; }
+    if (body.hal_canopen_sync !== undefined) { co.use_sync = body.hal_canopen_sync; hasCo = true; }
+    if (body.hal_canopen_sync_period !== undefined) { co.sync_period_ms = Number(body.hal_canopen_sync_period); hasCo = true; }
+    if (body.hal_canopen_sdo_timeout !== undefined) { co.sdo_timeout_ms = Number(body.hal_canopen_sdo_timeout); hasCo = true; }
+    if (hasCo) halConfig.canopen = co;
+
+    // PID
+    const pid = {};
+    let hasPid = false;
+    if (body.hal_pid_kp !== undefined) { pid.kp = Number(body.hal_pid_kp); hasPid = true; }
+    if (body.hal_pid_ki !== undefined) { pid.ki = Number(body.hal_pid_ki); hasPid = true; }
+    if (body.hal_pid_kd !== undefined) { pid.kd = Number(body.hal_pid_kd); hasPid = true; }
+    if (body.hal_pid_integral_limit !== undefined) { pid.integral_limit = Number(body.hal_pid_integral_limit); hasPid = true; }
+    if (body.hal_pid_output_limit !== undefined) { pid.output_limit = Number(body.hal_pid_output_limit); hasPid = true; }
+    if (body.hal_pid_anti_windup_gain !== undefined) { pid.anti_windup_gain = Number(body.hal_pid_anti_windup_gain); hasPid = true; }
+    if (body.hal_pid_anti_windup !== undefined) { pid.enable_anti_windup = body.hal_pid_anti_windup; hasPid = true; }
+    if (hasPid) halConfig.pid_params = pid;
+
+    await grpcCall('SetHALConfig', { config: halConfig });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(502).json({ error: 'HAL config update failed', details: err.message });
   }
 });
 
@@ -2272,6 +2446,71 @@ app.post('/api/field-rotation/enable', async (req, res) => {
     res.json({ success: true, message: params.enabled ? 'Field rotation enabled' : 'Field rotation disabled' });
   } catch (err) {
     res.status(502).json({ error: 'Failed to toggle field rotation', details: err.message });
+  }
+});
+
+
+// ─── Gamepad State Endpoint ──────────────────────────────────────────────────
+
+/**
+ * GET /api/hal/gamepad/state
+ * Returns the current gamepad/joystick state (axes, buttons, connection status).
+ * Maps to gRPC: GetHALStatus() with gamepad subsection when available.
+ *
+ * When the gRPC backend has a dedicated GetGamepadState RPC, this endpoint
+ * will forward the call. For now, it returns a default/empty state structure
+ * matching the GamepadState proto.
+ */
+app.get('/api/hal/gamepad/state', async (req, res) => {
+  try {
+    // Attempt to get gamepad state from the HAL status gRPC call.
+    // If the backend has gamepad data, it will be included.
+    const halStatus = await grpcCall('GetHALStatus', {});
+
+    // Build gamepad state from HAL status if available,
+    // otherwise return a zero/default state.
+    const gamepadState = {
+      connected: halStatus.gamepad ? (halStatus.gamepad.connected || false) : false,
+      device_name: halStatus.gamepad ? (halStatus.gamepad.device_name || '') : '',
+      // Analog axes (normalized to [-1.0, 1.0])
+      axis_lx: halStatus.gamepad ? (halStatus.gamepad.axis_lx || 0.0) : 0.0,
+      axis_ly: halStatus.gamepad ? (halStatus.gamepad.axis_ly || 0.0) : 0.0,
+      axis_rx: halStatus.gamepad ? (halStatus.gamepad.axis_rx || 0.0) : 0.0,
+      axis_ry: halStatus.gamepad ? (halStatus.gamepad.axis_ry || 0.0) : 0.0,
+      // Analog triggers (range [-1.0, 1.0]; 0.0 = released)
+      axis_trigger_l: halStatus.gamepad ? (halStatus.gamepad.axis_trigger_l || 0.0) : 0.0,
+      axis_trigger_r: halStatus.gamepad ? (halStatus.gamepad.axis_trigger_r || 0.0) : 0.0,
+      // D-Pad / POV hat (in degrees, -1.0 = neutral)
+      pov_hat: halStatus.gamepad ? (halStatus.gamepad.pov_hat !== undefined ? halStatus.gamepad.pov_hat : -1.0) : -1.0,
+      // Semantic buttons
+      button_stop: halStatus.gamepad ? (halStatus.gamepad.button_stop || false) : false,
+      button_emergency_stop: halStatus.gamepad ? (halStatus.gamepad.button_emergency_stop || false) : false,
+      button_park: halStatus.gamepad ? (halStatus.gamepad.button_park || false) : false,
+      button_speed_up: halStatus.gamepad ? (halStatus.gamepad.button_speed_up || false) : false,
+      button_speed_down: halStatus.gamepad ? (halStatus.gamepad.button_speed_down || false) : false,
+      button_manual_toggle: halStatus.gamepad ? (halStatus.gamepad.button_manual_toggle || false) : false,
+      button_home: halStatus.gamepad ? (halStatus.gamepad.button_home || false) : false,
+      // Axis and button counts
+      axis_count: halStatus.gamepad ? (halStatus.gamepad.axis_count || 0) : 0,
+      button_count: halStatus.gamepad ? (halStatus.gamepad.button_count || 0) : 0,
+    };
+
+    res.json(gamepadState);
+  } catch (err) {
+    // If the gRPC call fails (e.g., GetHALStatus not implemented yet),
+    // return a default disconnected state so the UI can still render.
+    res.json({
+      connected: false,
+      device_name: '',
+      axis_lx: 0.0, axis_ly: 0.0, axis_rx: 0.0, axis_ry: 0.0,
+      axis_trigger_l: 0.0, axis_trigger_r: 0.0,
+      pov_hat: -1.0,
+      button_stop: false, button_emergency_stop: false,
+      button_park: false, button_speed_up: false,
+      button_speed_down: false, button_manual_toggle: false,
+      button_home: false,
+      axis_count: 0, button_count: 0,
+    });
   }
 });
 

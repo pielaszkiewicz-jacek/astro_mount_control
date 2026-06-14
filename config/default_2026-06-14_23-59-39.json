@@ -87,7 +87,7 @@
         "encoders_absolute": true,
         "latitude": 52.0,
         "longitude": 21.0,
-        "max_slew_rate": 100.0,
+        "max_slew_rate": 20.0,
         "max_tracking_rate": 1.504,
         "meridian_flip_delay_minutes": 5.0,
         "meridian_flip_enabled": true,

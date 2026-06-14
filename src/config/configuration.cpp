@@ -149,25 +149,15 @@ public:
         auto axis_params = mount.value("axis_physical_parameters", json::object());
         for (const auto& axis_name : {"ha_axis", "dec_axis"}) {
             auto axis = axis_params.value(axis_name, json::object());
-            double motor_steps = axis.value("motor_steps_per_rev", 0.0);
-            if (motor_steps <= 0.0) {
-                errors.push_back("Invalid mount.axis_physical_parameters." +
-                    std::string(axis_name) + ".motor_steps_per_rev (must be > 0)");
-            }
-            double microstepping = axis.value("motor_microstepping", 0.0);
-            if (microstepping <= 0.0) {
-                errors.push_back("Invalid mount.axis_physical_parameters." +
-                    std::string(axis_name) + ".motor_microstepping (must be > 0)");
-            }
             double enc_res = axis.value("encoder_resolution", 0.0);
             if (enc_res <= 0.0) {
                 errors.push_back("Invalid mount.axis_physical_parameters." +
                     std::string(axis_name) + ".encoder_resolution (must be > 0)");
             }
             double gear_ratio = axis.value("gear_ratio", 0.0);
-            if (gear_ratio <= 0.0) {
+            if (gear_ratio < 1.0) {
                 errors.push_back("Invalid mount.axis_physical_parameters." +
-                    std::string(axis_name) + ".gear_ratio (must be > 0)");
+                    std::string(axis_name) + ".gear_ratio (must be >= 1.0)");
             }
         }
         
@@ -308,8 +298,7 @@ public:
         config.baud_rate = canopen.value("baud_rate", 1000000);
         config.enable_sync = canopen.value("enable_sync", true);
         config.sync_interval_ms = canopen.value("sync_interval_ms", 100);
-        config.position_counts_per_degree = canopen.value("position_counts_per_degree", 4000.0 / 360.0);
-        config.velocity_counts_per_deg_s = canopen.value("velocity_counts_per_deg_s", 4000.0 / 360.0);
+        config.accel_mode = canopen.value("accel_mode", "time");
         
         return config;
     }
@@ -323,7 +312,7 @@ public:
         config.longitude = mount.value("longitude", 21.0);
         config.altitude = mount.value("altitude", 100.0);
         config.max_slew_rate = mount.value("max_slew_rate", 5.0);
-        config.max_tracking_rate = mount.value("max_tracking_rate", 0.004178);
+        config.max_tracking_rate = mount.value("max_tracking_rate", 1.504);
         config.slew_acceleration = mount.value("slew_acceleration", 1.0);
         config.tracking_acceleration = mount.value("tracking_acceleration", 0.001);
         
@@ -379,9 +368,8 @@ public:
         auto dec_axis = axis_params.value("dec_axis", json::object());
         
         // HA axis parameters
-        config.ha_axis_params.motor_steps_per_rev = ha_axis.value("motor_steps_per_rev", 200.0);
-        config.ha_axis_params.motor_microstepping = ha_axis.value("motor_microstepping", 64.0);
-        config.ha_axis_params.motor_step_angle = ha_axis.value("motor_step_angle", 101.25);
+        config.ha_axis_params.position_counts_per_degree = ha_axis.value("position_counts_per_degree", 4000.0 / 360.0);
+        config.ha_axis_params.velocity_counts_per_deg_s = ha_axis.value("velocity_counts_per_deg_s", 4000.0 / 360.0);
         config.ha_axis_params.encoder_resolution = ha_axis.value("encoder_resolution", 16384.0);
         config.ha_axis_params.encoder_counts_per_arcsec = ha_axis.value("encoder_counts_per_arcsec", 0.0126);
         config.ha_axis_params.encoder_quantization_error = ha_axis.value("encoder_quantization_error", 39.6);
@@ -407,9 +395,8 @@ public:
         config.ha_axis_params.calibration_temp = ha_axis.value("calibration_temp", 20.0);
         
         // Dec axis parameters
-        config.dec_axis_params.motor_steps_per_rev = dec_axis.value("motor_steps_per_rev", 200.0);
-        config.dec_axis_params.motor_microstepping = dec_axis.value("motor_microstepping", 64.0);
-        config.dec_axis_params.motor_step_angle = dec_axis.value("motor_step_angle", 101.25);
+        config.dec_axis_params.position_counts_per_degree = dec_axis.value("position_counts_per_degree", 4000.0 / 360.0);
+        config.dec_axis_params.velocity_counts_per_deg_s = dec_axis.value("velocity_counts_per_deg_s", 4000.0 / 360.0);
         config.dec_axis_params.encoder_resolution = dec_axis.value("encoder_resolution", 16384.0);
         config.dec_axis_params.encoder_counts_per_arcsec = dec_axis.value("encoder_counts_per_arcsec", 0.0126);
         config.dec_axis_params.encoder_quantization_error = dec_axis.value("encoder_quantization_error", 39.6);
@@ -529,6 +516,7 @@ public:
         canopen["baud_rate"] = config.baud_rate;
         canopen["enable_sync"] = config.enable_sync;
         canopen["sync_interval_ms"] = config.sync_interval_ms;
+        canopen["accel_mode"] = config.accel_mode;
         
         config_["canopen"] = canopen;
         modified_ = true;
@@ -591,9 +579,8 @@ public:
         
         // Axis physical parameters (HA)
         json ha_axis;
-        ha_axis["motor_steps_per_rev"] = config.ha_axis_params.motor_steps_per_rev;
-        ha_axis["motor_microstepping"] = config.ha_axis_params.motor_microstepping;
-        ha_axis["motor_step_angle"] = config.ha_axis_params.motor_step_angle;
+        ha_axis["position_counts_per_degree"] = config.ha_axis_params.position_counts_per_degree;
+        ha_axis["velocity_counts_per_deg_s"] = config.ha_axis_params.velocity_counts_per_deg_s;
         ha_axis["encoder_resolution"] = config.ha_axis_params.encoder_resolution;
         ha_axis["encoder_counts_per_arcsec"] = config.ha_axis_params.encoder_counts_per_arcsec;
         ha_axis["encoder_quantization_error"] = config.ha_axis_params.encoder_quantization_error;
@@ -615,9 +602,8 @@ public:
         
         // Axis physical parameters (Dec)
         json dec_axis;
-        dec_axis["motor_steps_per_rev"] = config.dec_axis_params.motor_steps_per_rev;
-        dec_axis["motor_microstepping"] = config.dec_axis_params.motor_microstepping;
-        dec_axis["motor_step_angle"] = config.dec_axis_params.motor_step_angle;
+        dec_axis["position_counts_per_degree"] = config.dec_axis_params.position_counts_per_degree;
+        dec_axis["velocity_counts_per_deg_s"] = config.dec_axis_params.velocity_counts_per_deg_s;
         dec_axis["encoder_resolution"] = config.dec_axis_params.encoder_resolution;
         dec_axis["encoder_counts_per_arcsec"] = config.dec_axis_params.encoder_counts_per_arcsec;
         dec_axis["encoder_quantization_error"] = config.dec_axis_params.encoder_quantization_error;
@@ -736,13 +722,38 @@ public:
         auto field_rotation = config_.value("field_rotation", json::object());
         
         config.enabled = field_rotation.value("enabled", false);
-        config.latitude = field_rotation.value("latitude", 52.0);
         config.altitude = field_rotation.value("altitude", 100.0);
-        config.azimuth = field_rotation.value("azimuth", 0.0);
         config.computed_rate = field_rotation.value("computed_rate", 0.0);
         config.applied_correction = field_rotation.value("applied_correction", 0.0);
         config.temperature = field_rotation.value("temperature", 15.0);
         config.flexure_correction = field_rotation.value("flexure_correction", 0.0);
+        
+        return config;
+    }
+
+    ServoInitConfig getServoInitConfig() const {
+        ServoInitConfig config;
+        auto servo_init = config_.value("servo_init", json::object());
+        
+        config.enabled = servo_init.value("enabled", false);
+        
+        auto seq = servo_init.value("sequence", json::array());
+        for (const auto& entry : seq) {
+            if (!entry.is_object()) continue;
+            
+            ServoInitEntry e;
+            e.axis = entry.value("axis", 0);
+            
+            std::string idx_str = entry.value("index", "0x0000");
+            e.index = static_cast<uint16_t>(std::stoul(idx_str, nullptr, 0));
+            
+            e.subindex = static_cast<uint8_t>(entry.value("subindex", 0));
+            e.value = entry.value("value", 0);
+            e.description = entry.value("description", "");
+            e.data_size = static_cast<uint8_t>(entry.value("data_size", 4));
+            
+            config.sequence.push_back(e);
+        }
         
         return config;
     }
@@ -783,9 +794,7 @@ public:
     void setFieldRotationParams(const FieldRotationParams& config) {
         json field_rotation;
         field_rotation["enabled"] = config.enabled;
-        field_rotation["latitude"] = config.latitude;
         field_rotation["altitude"] = config.altitude;
-        field_rotation["azimuth"] = config.azimuth;
         field_rotation["computed_rate"] = config.computed_rate;
         field_rotation["applied_correction"] = config.applied_correction;
         field_rotation["temperature"] = config.temperature;
@@ -925,7 +934,7 @@ private:
         mount_default.longitude = 21.0;
         mount_default.altitude = 100.0;
         mount_default.max_slew_rate = 5.0;
-        mount_default.max_tracking_rate = 0.004178;
+        mount_default.max_tracking_rate = 1.504;
         mount_default.slew_acceleration = 1.0;
         mount_default.tracking_acceleration = 0.001;
         
@@ -971,9 +980,8 @@ private:
         mount_default.orientation_quaternion = {0.0, 0.0, 0.0, 1.0};
         
         // HA axis physical parameters
-        mount_default.ha_axis_params.motor_steps_per_rev = 200.0;
-        mount_default.ha_axis_params.motor_microstepping = 64.0;
-        mount_default.ha_axis_params.motor_step_angle = 101.25;
+        mount_default.ha_axis_params.position_counts_per_degree = 4000.0 / 360.0;
+        mount_default.ha_axis_params.velocity_counts_per_deg_s = 4000.0 / 360.0;
         mount_default.ha_axis_params.encoder_resolution = 16384.0;
         mount_default.ha_axis_params.encoder_counts_per_arcsec = 0.0126;
         mount_default.ha_axis_params.encoder_quantization_error = 39.6;
@@ -993,9 +1001,8 @@ private:
         mount_default.ha_axis_params.calibration_temp = 20.0;
         
         // Dec axis physical parameters
-        mount_default.dec_axis_params.motor_steps_per_rev = 200.0;
-        mount_default.dec_axis_params.motor_microstepping = 64.0;
-        mount_default.dec_axis_params.motor_step_angle = 101.25;
+        mount_default.dec_axis_params.position_counts_per_degree = 4000.0 / 360.0;
+        mount_default.dec_axis_params.velocity_counts_per_deg_s = 4000.0 / 360.0;
         mount_default.dec_axis_params.encoder_resolution = 16384.0;
         mount_default.dec_axis_params.encoder_counts_per_arcsec = 0.0126;
         mount_default.dec_axis_params.encoder_quantization_error = 39.6;
@@ -1148,6 +1155,10 @@ Configuration::TPointConfig Configuration::getTPointConfig() const {
 
 Configuration::DerotatorConfig Configuration::getDerotatorConfig() const {
     return pimpl->getDerotatorConfig();
+}
+
+Configuration::ServoInitConfig Configuration::getServoInitConfig() const {
+    return pimpl->getServoInitConfig();
 }
 
 Configuration::FieldRotationParams Configuration::getFieldRotationParams() const {

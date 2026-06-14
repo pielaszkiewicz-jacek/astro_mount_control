@@ -332,11 +332,23 @@ const CalibrationComponent = (() => {
     const nameEl = $(`#${prefix}-selected-name`);
     if (nameEl) nameEl.textContent = obj.name || '(unnamed)';
 
-    // Auto-fill coordinates
+    // Auto-fill coordinates — use setAngleDecimal for enhanced inputs
     const raInput = $(`#${prefix}-expected-ra`);
     const decInput = $(`#${prefix}-expected-dec`);
-    if (raInput && obj.ra_hours != null) raInput.value = obj.ra_hours;
-    if (decInput && obj.dec_degrees != null) decInput.value = obj.dec_degrees;
+    if (raInput && obj.ra_hours != null) {
+      if (raInput.setAngleDecimal) {
+        raInput.setAngleDecimal(obj.ra_hours);
+      } else {
+        raInput.value = obj.ra_hours;
+      }
+    }
+    if (decInput && obj.dec_degrees != null) {
+      if (decInput.setAngleDecimal) {
+        decInput.setAngleDecimal(obj.dec_degrees);
+      } else {
+        decInput.value = obj.dec_degrees;
+      }
+    }
 
     // Clear previous result
     const resultDiv = $(`#${prefix}-measurement-result`);

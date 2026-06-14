@@ -189,11 +189,11 @@
               <form id="slew-form" class="control-form">
                 <div class="form-group">
                   <label for="slew-ra" data-i18n="slew.ra_label">Right Ascension (hours)</label>
-                  <input type="number" id="slew-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="e.g. 10.5" required>
+                  <input type="text" id="slew-ra" class="form-input" data-angle-type="ra" data-angle-decimals="4" placeholder="e.g. 10h 30m 00s" required>
                 </div>
                 <div class="form-group">
                   <label for="slew-dec" data-i18n="slew.dec_label">Declination (degrees)</label>
-                  <input type="number" id="slew-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="e.g. 41.27" required>
+                  <input type="text" id="slew-dec" class="form-input" data-angle-type="dec" data-angle-decimals="4" placeholder="e.g. +41° 16' 12.3\"" required>
                 </div>
                 <button type="submit" class="btn btn-primary btn-full" data-i18n="slew.btn">Slew</button>
               </form>
@@ -241,13 +241,42 @@
                 </div>
               </div>
 
+              <!-- Speed Reference Toggle -->
+              <div class="speed-control" style="margin-bottom:4px;">
+                <label class="checkbox-label" style="gap:6px; font-size:0.82rem; cursor:pointer;" data-i18n-title="axis.speed_ref_title" title="Choose whether speed refers to the servo motor shaft or the telescope axis">
+                  <input type="checkbox" id="axis-speed-ref-toggle">
+                  <span data-i18n="axis.speed_ref_telescope">Telescope axis (°/s)</span>
+                </label>
+                <span style="font-size:0.7rem; color:var(--color-text-secondary);" id="axis-speed-gear-info"></span>
+              </div>
+
               <!-- Speed Control -->
               <div class="speed-control">
                 <label for="axis-speed">Speed: <span id="axis-speed-label">1.0</span> °/s</label>
-                <input type="range" id="axis-speed" class="speed-slider" min="0.1" max="5.0" step="0.1" value="1.0">
+                <input type="range" id="axis-speed" class="speed-slider" min="0.01" max="5.0" step="0.01" value="1.0">
                 <div class="speed-labels">
                   <span data-i18n="axis.slow">Slow</span>
                   <span data-i18n="axis.fast">Fast</span>
+                </div>
+              </div>
+
+              <!-- Acceleration Control -->
+              <div class="speed-control">
+                <label for="axis-accel">Acceleration: <span id="axis-accel-label">50</span> °/s²</label>
+                <input type="range" id="axis-accel" class="speed-slider" min="0.1" max="500" step="0.1" value="50">
+                <div class="speed-labels">
+                  <span>Gentle</span>
+                  <span>Aggressive</span>
+                </div>
+              </div>
+
+              <!-- Deceleration Control -->
+              <div class="speed-control">
+                <label for="axis-decel">Deceleration: <span id="axis-decel-label">50</span> °/s²</label>
+                <input type="range" id="axis-decel" class="speed-slider" min="0.1" max="500" step="0.1" value="50">
+                <div class="speed-labels">
+                  <span>Gentle</span>
+                  <span>Aggressive</span>
                 </div>
               </div>
 
@@ -360,7 +389,7 @@
 
           <!-- Connection Addresses Card (collapsible) -->
           <div id="card-addresses" class="card full-width">
-            <details class="card-collapsible-details">
+            <details class="card-collapsible-details" open>
               <summary class="card-header card-summary">
                 <h2 class="card-title" data-i18n="card.conn_addresses">Connection Addresses</h2>
               </summary>
@@ -435,7 +464,7 @@
         <div class="card-grid">
 
           <!-- Calibration Help / Instructions -->
-          <div id="card-calibration-help" class="card full-width card-collapsible">
+          <div id="card-calibration-help" class="card full-width card-collapsible card-collapsed">
             <div class="card-header" id="calibration-help-header">
               <h2 class="card-title" data-i18n="card.cal_help">How to Calibrate the Mount</h2>
               <button class="card-toggle-btn" id="btn-toggle-calibration-help" data-i18n-aria="cal.help_toggle" data-i18n-title="cal.help_toggle_show" aria-label="Toggle calibration instructions" title="Show/hide instructions">+</button>
@@ -596,11 +625,11 @@
                     <div class="calibration-coord-inputs">
                       <div class="form-group">
                         <label for="bs-expected-ra" data-i18n="cal.expected_ra">Expected RA (hours)</label>
-                        <input type="number" id="bs-expected-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="Auto-filled" />
+                        <input type="text" id="bs-expected-ra" class="form-input" data-angle-type="ra" data-angle-decimals="4" placeholder="Auto-filled" />
                       </div>
                       <div class="form-group">
                         <label for="bs-expected-dec" data-i18n="cal.expected_dec">Expected Dec (°)</label>
-                        <input type="number" id="bs-expected-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="Auto-filled" />
+                        <input type="text" id="bs-expected-dec" class="form-input" data-angle-type="dec" data-angle-decimals="4" placeholder="Auto-filled" />
                       </div>
                     </div>
                     <div class="calibration-measurement-actions">
@@ -681,11 +710,11 @@
                     <div class="calibration-coord-inputs">
                       <div class="form-group">
                         <label for="tp-expected-ra" data-i18n="cal.expected_ra">Expected RA (hours)</label>
-                        <input type="number" id="tp-expected-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="Auto-filled" />
+                        <input type="text" id="tp-expected-ra" class="form-input" data-angle-type="ra" data-angle-decimals="4" placeholder="Auto-filled" />
                       </div>
                       <div class="form-group">
                         <label for="tp-expected-dec" data-i18n="cal.expected_dec">Expected Dec (°)</label>
-                        <input type="number" id="tp-expected-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="Auto-filled" />
+                        <input type="text" id="tp-expected-dec" class="form-input" data-angle-type="dec" data-angle-decimals="4" placeholder="Auto-filled" />
                       </div>
                     </div>
                     <div class="calibration-measurement-actions">
@@ -717,11 +746,11 @@
           </div>
 
           <!-- Database Stats Card (full width, collapsible, collapsed by default) -->
-          <div id="card-db-stats" class="card full-width card-collapsible card-collapsed">
+          <div id="card-db-stats" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title" data-i18n="card.db_stats">Database Stats</h2>
               <span id="db-stats-badge" class="status-badge idle">—</span>
-              <button id="btn-db-stats-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle database stats">+</button>
+              <button id="btn-db-stats-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle database stats">−</button>
             </div>
             <div class="card-body" id="db-stats-content">
               <div class="status-placeholder">Connecting to database...</div>
@@ -1025,11 +1054,11 @@
                     <div class="form-row">
                       <div class="form-group">
                         <label for="db-edit-ra">RA (hours) J2000</label>
-                        <input type="number" id="db-edit-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="0.0" />
+                        <input type="text" id="db-edit-ra" class="form-input" data-angle-type="ra" data-angle-decimals="4" placeholder="0h 0m 0s" />
                       </div>
                       <div class="form-group">
                         <label for="db-edit-dec">Dec (°) J2000</label>
-                        <input type="number" id="db-edit-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="0.0" />
+                        <input type="text" id="db-edit-dec" class="form-input" data-angle-type="dec" data-angle-decimals="4" placeholder="0° 0' 0\"" />
                       </div>
                     </div>
                     <div class="form-row">
@@ -1203,21 +1232,21 @@
                     <div class="form-row">
                       <div class="form-group">
                         <label for="db-edit-inclination">Inclination (°)</label>
-                        <input type="number" id="db-edit-inclination" class="form-input" step="0.01" min="0" max="180" placeholder="0.0" />
+                        <input type="text" id="db-edit-inclination" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                       <div class="form-group">
                         <label for="db-edit-long-node">Long. Asc. Node (°)</label>
-                        <input type="number" id="db-edit-long-node" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                        <input type="text" id="db-edit-long-node" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                     </div>
                     <div class="form-row">
                       <div class="form-group">
                         <label for="db-edit-arg-peri">Arg. of Perihelion (°)</label>
-                        <input type="number" id="db-edit-arg-peri" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                        <input type="text" id="db-edit-arg-peri" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                       <div class="form-group">
                         <label for="db-edit-mean-anom">Mean Anomaly (°)</label>
-                        <input type="number" id="db-edit-mean-anom" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                        <input type="text" id="db-edit-mean-anom" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                     </div>
                     <div class="form-group">
@@ -1352,10 +1381,10 @@
           </div>
 
           <!-- Create Object Card (full width, collapsible) -->
-          <div id="card-db-create" class="card full-width card-collapsible card-collapsed">
+          <div id="card-db-create" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title">Add New Object</h2>
-              <button id="btn-db-create-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle add object form">+</button>
+              <button id="btn-db-create-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle add object form">−</button>
             </div>
             <div class="card-body">
               <form id="db-create-form" class="control-form">
@@ -1417,11 +1446,11 @@
                     <div class="form-row">
                       <div class="form-group">
                         <label for="db-new-ra">RA (hours) J2000</label>
-                        <input type="number" id="db-new-ra" class="form-input" step="0.0001" min="0" max="24" placeholder="0.0" />
+                        <input type="text" id="db-new-ra" class="form-input" data-angle-type="ra" data-angle-decimals="4" placeholder="0h 0m 0s" />
                       </div>
                       <div class="form-group">
                         <label for="db-new-dec">Dec (°) J2000</label>
-                        <input type="number" id="db-new-dec" class="form-input" step="0.01" min="-90" max="90" placeholder="0.0" />
+                        <input type="text" id="db-new-dec" class="form-input" data-angle-type="dec" data-angle-decimals="4" placeholder="0° 0' 0\"" />
                       </div>
                     </div>
                     <div class="form-row">
@@ -1595,21 +1624,21 @@
                     <div class="form-row">
                       <div class="form-group">
                         <label for="db-new-inclination">Inclination (°)</label>
-                        <input type="number" id="db-new-inclination" class="form-input" step="0.01" min="0" max="180" placeholder="0.0" />
+                        <input type="text" id="db-new-inclination" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                       <div class="form-group">
                         <label for="db-new-long-node">Long. Asc. Node (°)</label>
-                        <input type="number" id="db-new-long-node" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                        <input type="text" id="db-new-long-node" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                     </div>
                     <div class="form-row">
                       <div class="form-group">
                         <label for="db-new-arg-peri">Arg. of Perihelion (°)</label>
-                        <input type="number" id="db-new-arg-peri" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                        <input type="text" id="db-new-arg-peri" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                       <div class="form-group">
                         <label for="db-new-mean-anom">Mean Anomaly (°)</label>
-                        <input type="number" id="db-new-mean-anom" class="form-input" step="0.01" min="0" max="360" placeholder="0.0" />
+                        <input type="text" id="db-new-mean-anom" class="form-input" data-angle-type="deg" placeholder="0° 0' 0\"" />
                       </div>
                     </div>
                     <div class="form-group">
@@ -1748,10 +1777,10 @@
           </div>
 
           <!-- Import Objects Card (full width, collapsible) -->
-          <div id="card-db-import" class="card full-width card-collapsible card-collapsed">
+          <div id="card-db-import" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title">Import Objects</h2>
-              <button id="btn-db-import-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle import panel">+</button>
+              <button id="btn-db-import-toggle" class="card-toggle-btn" title="Collapse/Expand" aria-label="Toggle import panel">−</button>
             </div>
             <div class="card-body">
               <div class="control-form">
@@ -2104,10 +2133,10 @@
           </div>
 
           <!-- Mount Simulation Setup Card -->
-          <div id="card-debug-sim" class="card full-width card-collapsible card-collapsed">
+          <div id="card-debug-sim" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title" data-i18n="card.mount_sim">Mount Simulation Setup</h2>
-              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">+</button>
+              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">−</button>
             </div>
             <div class="card-body">
               <!-- Mount Type -->
@@ -2127,11 +2156,11 @@
                 <div class="form-row">
                   <div class="form-group">
                     <label for="debug-axis1-alt" class="form-label">Axis1 Altitude (°)</label>
-                    <input type="number" id="debug-axis1-alt" class="form-input" value="45.0" step="0.1" min="-90" max="90">
+                    <input type="text" id="debug-axis1-alt" class="form-input" data-angle-type="deg" value="45.0">
                   </div>
                   <div class="form-group">
                     <label for="debug-axis1-az" class="form-label">Axis1 Azimuth (°)</label>
-                    <input type="number" id="debug-axis1-az" class="form-input" value="0.0" step="0.1" min="0" max="360">
+                    <input type="text" id="debug-axis1-az" class="form-input" data-angle-type="deg" value="0.0">
                   </div>
                 </div>
                 <div class="form-row">
@@ -2162,12 +2191,12 @@
                 <div class="form-row">
                   <div class="form-group">
                     <label for="debug-pos-axis1" class="form-label">Axis 1 Position (°)</label>
-                    <input type="number" id="debug-pos-axis1" class="form-input" value="0.0" step="0.01">
+                    <input type="text" id="debug-pos-axis1" class="form-input" data-angle-type="deg" value="0.0">
                     <span id="debug-pos-axis1-label" class="form-hint">HA/RA/Azimuth</span>
                   </div>
                   <div class="form-group">
                     <label for="debug-pos-axis2" class="form-label">Axis 2 Position (°)</label>
-                    <input type="number" id="debug-pos-axis2" class="form-input" value="0.0" step="0.01">
+                    <input type="text" id="debug-pos-axis2" class="form-input" data-angle-type="deg" value="0.0">
                     <span id="debug-pos-axis2-label" class="form-hint">Dec/Altitude</span>
                   </div>
                 </div>
@@ -2177,10 +2206,10 @@
           </div>
 
           <!-- Euler Angles & Rotation Matrix Card -->
-          <div id="card-debug-euler" class="card full-width card-collapsible card-collapsed">
+          <div id="card-debug-euler" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title" data-i18n="card.euler_matrix">Euler Angles & Rotation Matrix</h2>
-              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">+</button>
+              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">−</button>
             </div>
             <div class="card-body">
               <p class="debug-hint" id="debug-euler-hint">Define Euler angles (ZYX convention: yaw→pitch→roll) that describe the mount orientation. For CASUAL mounts these are user-defined; for EQUATORIAL and ALT_AZ they are precomputed from the mount's geographic position.</p>
@@ -2189,17 +2218,17 @@
               <div class="form-row">
                 <div class="form-group">
                   <label for="debug-euler-yaw" class="form-label">Yaw ψ (Z-axis) [°]</label>
-                  <input type="number" id="debug-euler-yaw" class="form-input" value="0.0" step="0.01" min="-360" max="360">
+                  <input type="text" id="debug-euler-yaw" class="form-input" data-angle-type="deg" value="0.0">
                   <span class="form-hint">Rotation around Up axis</span>
                 </div>
                 <div class="form-group">
                   <label for="debug-euler-pitch" class="form-label">Pitch θ (Y'-axis) [°]</label>
-                  <input type="number" id="debug-euler-pitch" class="form-input" value="0.0" step="0.01" min="-90" max="90">
+                  <input type="text" id="debug-euler-pitch" class="form-input" data-angle-type="deg" value="0.0">
                   <span class="form-hint">Rotation around tilted East axis</span>
                 </div>
                 <div class="form-group">
                   <label for="debug-euler-roll" class="form-label">Roll φ (X''-axis) [°]</label>
-                  <input type="number" id="debug-euler-roll" class="form-input" value="0.0" step="0.01" min="-180" max="180">
+                  <input type="text" id="debug-euler-roll" class="form-input" data-angle-type="deg" value="0.0">
                   <span class="form-hint">Rotation around final pointing axis</span>
                 </div>
               </div>
@@ -2250,10 +2279,10 @@
           </div>
 
           <!-- Reference Object & Calibration Card -->
-          <div id="card-debug-ref-obj" class="card full-width card-collapsible card-collapsed">
+          <div id="card-debug-ref-obj" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title" data-i18n="card.ref_obj_cal">Reference Object & Initial Calibration</h2>
-              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">+</button>
+              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">−</button>
             </div>
             <div class="card-body">
               <p class="debug-hint">For initial calibration: enter the celestial coordinates of a reference object. These will be transformed via the rotation matrix into the telescope frame. You can then send a physical slew command to the servo.</p>
@@ -2262,11 +2291,11 @@
               <div class="form-row">
                 <div class="form-group">
                   <label for="debug-ref-ra" class="form-label">Reference RA [hours]</label>
-                  <input type="number" id="debug-ref-ra" class="form-input" value="0.0" step="0.001" min="0" max="24">
+                  <input type="text" id="debug-ref-ra" class="form-input" data-angle-type="ra" value="0.0">
                 </div>
                 <div class="form-group">
                   <label for="debug-ref-dec" class="form-label">Reference Dec [°]</label>
-                  <input type="number" id="debug-ref-dec" class="form-input" value="0.0" step="0.01" min="-90" max="90">
+                  <input type="text" id="debug-ref-dec" class="form-input" data-angle-type="dec" value="0.0">
                 </div>
                 <button id="btn-debug-import-calib" class="btn btn-sm btn-secondary" style="margin-top:8px;" title="Import selected object from Calibration tab">← Import from Calibration</button>
               </div>
@@ -2277,11 +2306,11 @@
                 <div class="form-row">
                   <div class="form-group">
                     <label for="debug-tf-axis1" class="form-label">Axis 1 (HA-like) [°]</label>
-                    <input type="number" id="debug-tf-axis1" class="form-input mono" value="0.0" step="0.01" readonly>
+                    <input type="text" id="debug-tf-axis1" class="form-input mono" data-angle-type="deg" value="0.0" readonly>
                   </div>
                   <div class="form-group">
                     <label for="debug-tf-axis2" class="form-label">Axis 2 (Dec-like) [°]</label>
-                    <input type="number" id="debug-tf-axis2" class="form-input mono" value="0.0" step="0.01" readonly>
+                    <input type="text" id="debug-tf-axis2" class="form-input mono" data-angle-type="deg" value="0.0" readonly>
                   </div>
                 </div>
               </div>
@@ -2294,10 +2323,10 @@
           </div>
 
           <!-- Calibration Error Injection Card -->
-          <div id="card-debug-errors" class="card full-width card-collapsible card-collapsed">
+          <div id="card-debug-errors" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title" data-i18n="card.cal_error_inject">Calibration Error Injection</h2>
-              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">+</button>
+              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">−</button>
             </div>
             <div class="card-body">
               <p class="debug-hint">Inject systematic pointing errors to test TPoint calibration and mount modeling. These simulate physical mount misalignments.</p>
@@ -2305,43 +2334,43 @@
               <div class="form-row">
                 <div class="form-group">
                   <label for="debug-err-polar-alt" class="form-label">Polar Axis Altitude Error (°)</label>
-                  <input type="number" id="debug-err-polar-alt" class="form-input" value="0.0" step="0.01" min="-5" max="5">
+                  <input type="text" id="debug-err-polar-alt" class="form-input" data-angle-type="deg" value="0.0">
                 </div>
                 <div class="form-group">
                   <label for="debug-err-polar-az" class="form-label">Polar Axis Azimuth Error (°)</label>
-                  <input type="number" id="debug-err-polar-az" class="form-input" value="0.0" step="0.01" min="-5" max="5">
+                  <input type="text" id="debug-err-polar-az" class="form-input" data-angle-type="deg" value="0.0">
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
                   <label for="debug-err-nonperp-ha" class="form-label">HA/Dec Non-Perpendicularity (°)</label>
-                  <input type="number" id="debug-err-nonperp-ha" class="form-input" value="0.0" step="0.001" min="-1" max="1">
+                  <input type="text" id="debug-err-nonperp-ha" class="form-input" data-angle-type="deg" value="0.0">
                 </div>
                 <div class="form-group">
                   <label for="debug-err-collimation" class="form-label">Collimation Error (°)</label>
-                  <input type="number" id="debug-err-collimation" class="form-input" value="0.0" step="0.001" min="-1" max="1">
+                  <input type="text" id="debug-err-collimation" class="form-input" data-angle-type="deg" value="0.0">
                 </div>
               </div>
 
               <div class="form-row">
                 <div class="form-group">
                   <label for="debug-err-flexure" class="form-label">Tube Flexure (°)</label>
-                  <input type="number" id="debug-err-flexure" class="form-input" value="0.0" step="0.001" min="-1" max="1">
+                  <input type="text" id="debug-err-flexure" class="form-input" data-angle-type="deg" value="0.0">
                 </div>
                 <div class="form-group">
                   <label for="debug-err-backlash" class="form-label">Backlash (°)</label>
-                  <input type="number" id="debug-err-backlash" class="form-input" value="0.0" step="0.001" min="0" max="1">
+                  <input type="text" id="debug-err-backlash" class="form-input" data-angle-type="deg" value="0.0">
                 </div>
               </div>
             </div>
           </div>
 
            <!-- Field Rotation & Derotator Card -->
-           <div id="card-debug-field-rotation" class="card full-width card-collapsible card-collapsed">
+           <div id="card-debug-field-rotation" class="card full-width card-collapsible">
              <div class="card-header">
                <h2 class="card-title">Field Rotation & Derotator</h2>
-               <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">+</button>
+               <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">−</button>
              </div>
              <div class="card-body">
                <p class="debug-hint">Compute the field rotation rate for a target position and optionally enable derotator compensation. The rotation rate depends on the parallactic angle and mount orientation.</p>
@@ -2375,7 +2404,7 @@
                  <div class="form-row">
                    <div class="form-group">
                      <label for="debug-fr-parallactic" class="form-label">Parallactic Angle [°]</label>
-                     <input type="number" id="debug-fr-parallactic" class="form-input mono" value="0.0" step="0.001" readonly>
+                     <input type="text" id="debug-fr-parallactic" class="form-input mono" data-angle-type="deg" value="0.0" readonly>
                    </div>
                    <div class="form-group">
                      <label for="debug-fr-rate" class="form-label">Field Rotation Rate [°/h]</label>
@@ -2385,11 +2414,11 @@
                  <div class="form-row">
                    <div class="form-group">
                      <label for="debug-fr-alt" class="form-label">Altitude [°]</label>
-                     <input type="number" id="debug-fr-alt" class="form-input mono" value="0.0" step="0.01" readonly>
+                     <input type="text" id="debug-fr-alt" class="form-input mono" data-angle-type="deg" value="0.0" readonly>
                    </div>
                    <div class="form-group">
                      <label for="debug-fr-az" class="form-label">Azimuth [°]</label>
-                     <input type="number" id="debug-fr-az" class="form-input mono" value="0.0" step="0.01" readonly>
+                     <input type="text" id="debug-fr-az" class="form-input mono" data-angle-type="deg" value="0.0" readonly>
                    </div>
                  </div>
                </div>
@@ -2403,10 +2432,10 @@
            </div>
 
            <!-- Astrometric Corrections Card -->
-           <div id="card-debug-astro-corr" class="card full-width card-collapsible card-collapsed">
+           <div id="card-debug-astro-corr" class="card full-width card-collapsible">
              <div class="card-header">
                <h2 class="card-title">Astrometric Corrections</h2>
-               <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">+</button>
+               <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">−</button>
              </div>
              <div class="card-body">
                <p class="debug-hint">Compute the apparent place of a celestial object by applying precession, nutation, annual aberration, and atmospheric refraction corrections. J2000.0 catalog coordinates are transformed to the current epoch.</p>
@@ -2469,11 +2498,11 @@
                  <div class="form-row">
                    <div class="form-group">
                      <label for="debug-ac-apparent-ra" class="form-label">Apparent RA [hours]</label>
-                     <input type="number" id="debug-ac-apparent-ra" class="form-input mono" value="0.0" step="0.0001" readonly>
+                     <input type="text" id="debug-ac-apparent-ra" class="form-input mono" data-angle-type="ra" value="0.0" readonly>
                    </div>
                    <div class="form-group">
                      <label for="debug-ac-apparent-dec" class="form-label">Apparent Dec [°]</label>
-                     <input type="number" id="debug-ac-apparent-dec" class="form-input mono" value="0.0" step="0.0001" readonly>
+                     <input type="text" id="debug-ac-apparent-dec" class="form-input mono" data-angle-type="dec" value="0.0" readonly>
                    </div>
                  </div>
                  <div class="form-row">
@@ -2496,10 +2525,10 @@
 
 
           <!-- Test Actions Card -->
-          <div id="card-debug-actions" class="card full-width card-collapsible card-collapsed">
+          <div id="card-debug-actions" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title" data-i18n="card.test_actions">Test Actions</h2>
-              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">+</button>
+              <button class="card-toggle-btn" aria-label="Toggle panel" title="Show/hide">−</button>
             </div>
             <div class="card-body">
               <div class="action-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
