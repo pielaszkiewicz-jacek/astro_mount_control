@@ -207,7 +207,10 @@ bool CanOpenHAL::CanOpenMotor::setVelocity(double velocity_deg_s,
         // This is consistent with canopen_interface.cpp which also uses mode 3 (pv).
         // Mode 3 provides profile acceleration/deceleration via separate OD entries.
         int8_t velocity_mode = 3; // Profile Velocity mode (pv)
-        canopen_.sendSDO(axis_id_, 0x6060, 0x00, &velocity_mode, sizeof(velocity_mode));
+        if (!canopen_.sendSDO(axis_id_, 0x6060, 0x00, &velocity_mode, sizeof(velocity_mode))) {
+            error_message_ = "Failed to switch to velocity mode";
+            return false;
+        }
         
         // Convert °/s to drive units (counts/s)
         double counts_per_degree = config_.encoder_counts_per_degree;
@@ -221,10 +224,14 @@ bool CanOpenHAL::CanOpenMotor::setVelocity(double velocity_deg_s,
         
         // Set profile acceleration (0x6083: Profile Acceleration)
         int32_t accel_counts = static_cast<int32_t>(acceleration_deg_s2 * counts_per_degree);
-        canopen_.sendSDO(axis_id_, 0x6083, 0x00, &accel_counts, sizeof(accel_counts));
+        if (!canopen_.sendSDO(axis_id_, 0x6083, 0x00, &accel_counts, sizeof(accel_counts))) {
+            // Acceleration write is non-critical for operation — log and continue
+        }
         
         // Set profile deceleration (0x6084: Profile Deceleration)
-        canopen_.sendSDO(axis_id_, 0x6084, 0x00, &accel_counts, sizeof(accel_counts));
+        if (!canopen_.sendSDO(axis_id_, 0x6084, 0x00, &accel_counts, sizeof(accel_counts))) {
+            // Deceleration write is non-critical for operation — log and continue
+        }
         
         target_position_ = velocity_deg_s; // store velocity as pseudo-target
         moving_ = true;

@@ -746,7 +746,7 @@ app.get('/api/hal/config', async (req, res) => {
     // Gamepad subsection
     if (halConfig.gamepad) {
       flat.hal_gamepad_device_path = halConfig.gamepad.device_path || '';
-      flat.hal_gamepad_deadzone = halConfig.gamepad.dead_zone ?? 0.05;
+      flat.hal_gamepad_deadzone = halConfig.gamepad.dead_zone ?? 0.15;
       flat.hal_gamepad_sensitivity = halConfig.gamepad.sensitivity ?? 1.0;
       flat.hal_gamepad_poll_interval_ms = halConfig.gamepad.read_frequency ?? 50;
     }
@@ -782,6 +782,12 @@ app.get('/api/hal/config', async (req, res) => {
       flat.hal_canopen_sync = halConfig.canopen.use_sync !== false;
       flat.hal_canopen_sync_period = halConfig.canopen.sync_period_ms ?? 10;
       flat.hal_canopen_sdo_timeout = halConfig.canopen.sdo_timeout_ms ?? 1000;
+      // Aliases for Settings UI "HAL" group (expects hal_can_* prefix)
+      flat.hal_can_interface = halConfig.canopen.interface_name || '';
+      flat.hal_can_node_id = halConfig.canopen.node_id ?? 1;
+      flat.hal_can_baud_rate = halConfig.canopen.bitrate ?? 1000000;
+      flat.hal_heartbeat_interval_ms = halConfig.canopen.sync_period_ms ?? 100;
+      flat.hal_pdo_mapping_mode = String(halConfig.canopen.pdo_update_rate ?? 100);
     }
 
     // PID subsection
@@ -857,6 +863,12 @@ app.post('/api/hal/config', async (req, res) => {
     if (body.hal_canopen_sync !== undefined) { co.use_sync = body.hal_canopen_sync; hasCo = true; }
     if (body.hal_canopen_sync_period !== undefined) { co.sync_period_ms = Number(body.hal_canopen_sync_period); hasCo = true; }
     if (body.hal_canopen_sdo_timeout !== undefined) { co.sdo_timeout_ms = Number(body.hal_canopen_sdo_timeout); hasCo = true; }
+    // Aliases for Settings UI "HAL" group (hal_can_* prefix)
+    if (body.hal_can_interface !== undefined) { co.interface_name = body.hal_can_interface; hasCo = true; }
+    if (body.hal_can_node_id !== undefined) { co.node_id = Number(body.hal_can_node_id); hasCo = true; }
+    if (body.hal_can_baud_rate !== undefined) { co.bitrate = Number(body.hal_can_baud_rate); hasCo = true; }
+    if (body.hal_heartbeat_interval_ms !== undefined) { co.sync_period_ms = Number(body.hal_heartbeat_interval_ms); hasCo = true; }
+    if (body.hal_pdo_mapping_mode !== undefined) { co.pdo_update_rate = Number(body.hal_pdo_mapping_mode); hasCo = true; }
     if (hasCo) halConfig.canopen = co;
 
     // PID

@@ -22,6 +22,7 @@
 #include <atomic>
 #include <Eigen/Dense>
 #include <shared_mutex>
+#include "hal/gamepad_hal/gamepad_input_evdev.h"
 
 namespace astro_mount {
 namespace controllers {
@@ -261,8 +262,13 @@ public:
         hal_interface_ = std::move(hal);
     }
     
+    ~Impl() {
+        stopGamepad();  // must join gamepad thread before destroying members
+    }
+    
     bool initialize(const ControllerConfig& config) {
         config_ = config;
+        hal_config_ = config.hal_config;
         state_ = MountStatus::State::IDLE;
         notifyStatusChanged();  // UNINITIALIZED → IDLE
 
@@ -353,11 +359,11 @@ public:
             canopen_config.library = "mock";
 #endif
             canopen_config.interface_name = config_.canopen_interface; // "can0" from config
-            canopen_config.bitrate = 1000000; // 1 Mbps
+            canopen_config.bitrate = config_.canopen_bitrate;
             canopen_config.node_id = config_.canopen_node_id;
-            canopen_config.use_sync = true;
-            canopen_config.sync_period_ms = 10;
-            canopen_config.sdo_timeout_ms = 1000;
+            canopen_config.use_sync = config_.canopen_use_sync;
+            canopen_config.sync_period_ms = config_.canopen_sync_period_ms;
+            canopen_config.sdo_timeout_ms = config_.canopen_sdo_timeout_ms;
             canopen_config.axis_position_counts_per_degree[0] = config_.ha_axis_params.position_counts_per_degree;
             canopen_config.axis_position_counts_per_degree[1] = config_.dec_axis_params.position_counts_per_degree;
             canopen_config.axis_velocity_counts_per_deg_s[0] = config_.ha_axis_params.velocity_counts_per_deg_s;
@@ -546,6 +552,10 @@ public:
             MOUNT_LOG_DEBUG("DerotatorController created");
         }
         
+        // Gamepad polling is started on demand via UI (gRPC StartGamepad),
+        // not automatically, to avoid unexpected axis movements from
+        // joystick drift or uncalibrated center positions.
+        
         return true;
     }
     
@@ -589,6 +599,7 @@ public:
             hal_interface_->stop();
             hal_interface_->shutdown();
         }
+        stopGamepad();
     }
     
     /**
@@ -4418,9 +4429,16 @@ public:
             setIfStr("network", "grpc_address", config_.grpc_address);
             setIfInt("network", "grpc_port", config_.grpc_port);
 
-            // ── canopen ──────────────────────────────────────────────
-            setIfStr("canopen", "interface", config_.canopen_interface);
-            setIfInt("canopen", "node_id", config_.canopen_node_id);
+            // ── hal.canopen (sync critical params) ────────────────────
+            // The hal.* section is managed externally (SetHALConfig gRPC),
+            // but a few ControllerConfig fields that flow through the main
+            // config path (accel_mode, etc.) must be synced back to
+            // hal.canopen so they survive restarts.
+            if (!j.contains("hal")) j["hal"] = json::object();
+            if (!j["hal"].contains("canopen")) j["hal"]["canopen"] = json::object();
+            auto& hc = j["hal"]["canopen"];
+            if (!config_.canopen_accel_mode.empty())
+                hc["accel_mode"] = config_.canopen_accel_mode;
 
             // ── mount ────────────────────────────────────────────────
             ensureSection("mount");
@@ -4856,9 +4874,9 @@ public:
     // ============================================
     
     bool getHALConfig(::astro_mount::HALConfig& config) const {
-        if (!hal_interface_) {
-            return false;
-        }
+        // Always return the stored HAL configuration, even when no
+        // live HAL interface is active (e.g. during simulated/test runs).
+        // The UI needs this data to populate the Settings → HAL panel.
         // Convert internal hal::HALConfig to proto HALConfig
         switch (hal_config_.type) {
             case hal::HALType::SIMULATED:
@@ -4950,6 +4968,13 @@ public:
         config.mutable_safety()->set_min_voltage(hal_config_.safety.min_voltage);
         config.mutable_safety()->set_max_voltage(hal_config_.safety.max_voltage);
         config.mutable_safety()->set_monitoring_rate(hal_config_.safety.monitoring_rate);
+        
+        // Gamepad config
+        auto* gp = config.mutable_gamepad();
+        gp->set_device_path(hal_config_.gamepad.device_path);
+        gp->set_dead_zone(hal_config_.gamepad.deadzone);
+        gp->set_sensitivity(hal_config_.gamepad.sensitivity);
+        gp->set_read_frequency(hal_config_.gamepad.update_rate_hz);
         
         return true;
     }
@@ -5081,8 +5106,18 @@ public:
     }
     
     bool getHALStatus(::astro_mount::HALStatus& status) const {
+        // Always return basic status even without a live HAL interface,
+        // so the UI can show connection state (e.g. gamepad disconnected).
         if (!hal_interface_) {
-            return false;
+            status.set_initialized(false);
+            status.set_running(false);
+            status.set_type(::astro_mount::HAL_CANOPEN);
+            status.set_platform_name("HAL not active");
+            status.set_hardware_version("N/A");
+            status.set_status_message("No HAL interface loaded");
+            status.set_error_message("");
+            *status.mutable_timestamp() = TimeUtil::GetCurrentTime();
+            return true;
         }
         
         status.set_initialized(hal_interface_->isInitialized());
@@ -5146,6 +5181,34 @@ public:
                 case hal::HALFeature::DEROTATOR_SUPPORT:
                     status.add_supported_features("DEROTATOR_SUPPORT");
                     break;
+            }
+        }
+        
+        // Populate gamepad state from live input
+        {
+            auto* gs = status.mutable_gamepad();
+            if (gamepad_input_ && gamepad_input_->isConnected()) {
+                auto state = gamepad_input_->readState();
+                gs->set_connected(state.connected);
+                gs->set_device_name(gamepad_input_->getDeviceName());
+                gs->set_axis_lx(state.axis_lx);
+                gs->set_axis_ly(state.axis_ly);
+                gs->set_axis_rx(state.axis_rx);
+                gs->set_axis_ry(state.axis_ry);
+                gs->set_axis_trigger_l(state.axis_trigger_l);
+                gs->set_axis_trigger_r(state.axis_trigger_r);
+                gs->set_pov_hat(state.pov_hat);
+                gs->set_button_stop(state.button_stop);
+                gs->set_button_emergency_stop(state.button_emergency_stop);
+                gs->set_button_park(state.button_park);
+                gs->set_button_speed_up(state.button_speed_up);
+                gs->set_button_speed_down(state.button_speed_down);
+                gs->set_button_manual_toggle(state.button_manual_toggle);
+                gs->set_button_home(state.button_home);
+                gs->set_axis_count(gamepad_input_->getAxisCount());
+                gs->set_button_count(gamepad_input_->getButtonCount());
+            } else {
+                gs->set_connected(false);
             }
         }
         
@@ -5584,6 +5647,136 @@ private:
     
     // Protects work_thread_ from concurrent join + assign (data race fix)
     std::unique_ptr<std::mutex> thread_mutex_;
+    
+    // ── Gamepad integration ─────────────────────────────────────────
+    std::unique_ptr<hal::EvdevGamepadInput> gamepad_input_;
+    std::thread gamepad_thread_;
+    std::atomic<bool> gamepad_running_{false};
+    double gamepad_deadzone_{0.15};
+    double gamepad_sensitivity_{1.0};
+    double gamepad_max_velocity_{5.0};
+    
+    void startGamepad() {
+        if (gamepad_running_) return;
+        const auto& gp_cfg = config_.hal_config.gamepad;
+        gamepad_deadzone_ = gp_cfg.deadzone > 0.0 ? gp_cfg.deadzone : 0.15;
+        gamepad_sensitivity_ = gp_cfg.sensitivity > 0.0 ? gp_cfg.sensitivity : 1.0;
+        gamepad_max_velocity_ = gp_cfg.max_velocity_deg_s > 0.0 ? gp_cfg.max_velocity_deg_s : 5.0;
+        
+        gamepad_input_ = std::make_unique<hal::EvdevGamepadInput>();
+        std::string dev = gp_cfg.device_path.empty() ? "" : gp_cfg.device_path;
+        if (!gamepad_input_->initialize(dev)) {
+            MOUNT_LOG_WARN("Gamepad: failed to open device '{}'", dev.empty() ? "(auto)" : dev);
+            gamepad_input_.reset();
+            return;
+        }
+        MOUNT_LOG_INFO("Gamepad: connected '{}'", gamepad_input_->getDeviceName());
+        gamepad_running_ = true;
+        gamepad_thread_ = std::thread(&Impl::gamepadLoop, this);
+    }
+    
+    void stopGamepad() {
+        gamepad_running_ = false;
+        if (gamepad_thread_.joinable()) {
+            gamepad_thread_.join();
+        }
+        if (gamepad_input_) {
+            gamepad_input_->shutdown();
+            gamepad_input_.reset();
+        }
+        MOUNT_LOG_INFO("Gamepad: stopped");
+    }
+    
+    void gamepadLoop() {
+        MOUNT_LOG_INFO("Gamepad: polling started");
+        while (gamepad_running_) {
+            if (!gamepad_input_ || !gamepad_input_->isConnected()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                continue;
+            }
+            auto state = gamepad_input_->readState();
+            if (!state.connected) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
+            }
+            
+            // ── Button actions ──────────────────────────────────
+            if (state.button_emergency_stop) {
+                MOUNT_LOG_WARN("Gamepad: EMERGENCY STOP");
+                if (canopen_interface_) {
+                    canopen_interface_->emergencyStop(0);
+                    canopen_interface_->emergencyStop(1);
+                }
+                state_ = MountStatus::State::ERROR;
+                error_message_ = "Gamepad emergency stop";
+                break;
+            }
+            if (state.button_stop) {
+                if (canopen_interface_) {
+                    canopen_interface_->stopAxis(0);
+                    canopen_interface_->stopAxis(1);
+                }
+                MOUNT_LOG_INFO("Gamepad: STOP");
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
+            }
+            if (state.button_park) {
+                MOUNT_LOG_INFO("Gamepad: PARK");
+                // Trigger park asynchronously
+                if (state_ == MountStatus::State::IDLE) {
+                    park();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                continue;
+            }
+            if (state.button_home) {
+                MOUNT_LOG_INFO("Gamepad: HOME");
+                // Slew to park position as "home"
+                if (state_ == MountStatus::State::IDLE && canopen_interface_) {
+                    canopen_interface_->setPositionTarget(0, config_.park_position_axis1,
+                        gamepad_max_velocity_, config_.slew_acceleration);
+                    canopen_interface_->setPositionTarget(1, config_.park_position_axis2,
+                        gamepad_max_velocity_, config_.slew_acceleration);
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                continue;
+            }
+            
+            // ── Axis control (left stick → axis 0=HA/RA, axis 1=Dec) ──
+            if (canopen_interface_ && canopen_interface_->isConnected()) {
+                double dead = gamepad_deadzone_;
+                
+                auto applyAxis = [&](double raw, double& out) {
+                    if (std::abs(raw) < dead) { out = 0.0; return; }
+                    // Rescale: (raw - dead*sign) / (1 - dead)
+                    double sign = (raw > 0) ? 1.0 : -1.0;
+                    out = sign * (std::abs(raw) - dead) / (1.0 - dead);
+                    out *= gamepad_sensitivity_;
+                };
+                
+                double vel0 = 0.0, vel1 = 0.0;
+                applyAxis(state.axis_lx, vel0);  // Left stick X → axis 0
+                applyAxis(state.axis_ly, vel1);  // Left stick Y → axis 1
+                
+                vel0 *= gamepad_max_velocity_;
+                vel1 *= gamepad_max_velocity_;
+                
+                // Only send when the specific axis drive is enabled
+                if (canopen_interface_->isDriveEnabled(0))
+                    canopen_interface_->setVelocityTarget(0, vel0, config_.slew_acceleration);
+                if (canopen_interface_->isDriveEnabled(1))
+                    canopen_interface_->setVelocityTarget(1, vel1, config_.slew_acceleration);
+            }
+            
+            std::this_thread::sleep_for(std::chrono::milliseconds(20)); // ~50 Hz
+        }
+        // Stop all motion on exit
+        if (canopen_interface_) {
+            canopen_interface_->stopAxis(0);
+            canopen_interface_->stopAxis(1);
+        }
+        MOUNT_LOG_INFO("Gamepad: polling stopped");
+    }
     
     // Internal version: caller must already hold thread_mutex_ lock
     void joinWorkThreadLocked() {

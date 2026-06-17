@@ -58,6 +58,7 @@ struct HALConfig {
         uint32_t sync_period_ms{100};
         uint32_t sdo_timeout_ms{1000};
         uint32_t pdo_update_rate{100}; // Hz
+        std::string accel_mode{"time"}; // "time" or "rate" (CiA 402 acceleration interpretation)
         
         // === Konfiguracja NMT (Network Management) ===
         struct {
@@ -204,6 +205,7 @@ struct HALConfig {
         config.canopen.sync_period_ms = canopen.value("sync_period_ms", 100);
         config.canopen.sdo_timeout_ms = canopen.value("sdo_timeout_ms", 1000);
         config.canopen.pdo_update_rate = canopen.value("pdo_update_rate", 100);
+        config.canopen.accel_mode = canopen.value("accel_mode", "time");
         
         // Parse NMT configuration
         auto nmt_json = canopen.value("nmt", nlohmann::json::object());
@@ -433,6 +435,7 @@ struct HALConfig {
         canopen_json["sync_period_ms"] = canopen.sync_period_ms;
         canopen_json["sdo_timeout_ms"] = canopen.sdo_timeout_ms;
         canopen_json["pdo_update_rate"] = canopen.pdo_update_rate;
+        canopen_json["accel_mode"] = canopen.accel_mode;
         hal["canopen"] = canopen_json;
         
         // Save serial configuration

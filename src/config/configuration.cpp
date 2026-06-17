@@ -291,14 +291,26 @@ public:
     
     CanOpenConfig getCanOpenConfig() const {
         CanOpenConfig config;
+        
+        // ── Source of truth: hal.canopen ──────────────────────────────
+        // The hal.canopen section is the authoritative CANopen configuration.
+        // Top-level "canopen" is a legacy alias kept for backward compatibility.
+        auto hal_json = config_.value("hal", json::object());
+        auto hal_can = hal_json.value("canopen", json::object());
+        
+        // Legacy fallback section (deprecated – prefer hal.canopen)
         auto canopen = config_.value("canopen", json::object());
         
-        config.interface = canopen.value("interface", "can0");
-        config.node_id = canopen.value("node_id", 1);
-        config.baud_rate = canopen.value("baud_rate", 1000000);
-        config.enable_sync = canopen.value("enable_sync", true);
-        config.sync_interval_ms = canopen.value("sync_interval_ms", 100);
-        config.accel_mode = canopen.value("accel_mode", "time");
+        // Read from hal.canopen first, fall back to legacy canopen, then hard defaults
+        config.interface     = hal_can.value("interface_name", canopen.value("interface", "can0"));
+        config.node_id       = hal_can.value("node_id", canopen.value("node_id", 1));
+        config.baud_rate     = hal_can.value("bitrate", canopen.value("baud_rate", 1000000));
+        config.enable_sync   = hal_can.value("use_sync", canopen.value("enable_sync", true));
+        config.sync_interval_ms = hal_can.value("sync_period_ms",
+                                  canopen.value("sync_interval_ms", 100));
+        
+        // accel_mode: prefer hal.canopen, fallback to legacy canopen
+        config.accel_mode = hal_can.value("accel_mode", canopen.value("accel_mode", "time"));
         
         return config;
     }
@@ -370,6 +382,9 @@ public:
         // HA axis parameters
         config.ha_axis_params.position_counts_per_degree = ha_axis.value("position_counts_per_degree", 4000.0 / 360.0);
         config.ha_axis_params.velocity_counts_per_deg_s = ha_axis.value("velocity_counts_per_deg_s", 4000.0 / 360.0);
+        fprintf(stderr, "[CPD-TRACE] configuration.cpp:getMountConfig HA position_counts_per_degree = %.10f (from JSON key present=%s)\n",
+                config.ha_axis_params.position_counts_per_degree,
+                ha_axis.contains("position_counts_per_degree") ? "YES" : "NO");
         config.ha_axis_params.encoder_resolution = ha_axis.value("encoder_resolution", 16384.0);
         config.ha_axis_params.encoder_counts_per_arcsec = ha_axis.value("encoder_counts_per_arcsec", 0.0126);
         config.ha_axis_params.encoder_quantization_error = ha_axis.value("encoder_quantization_error", 39.6);

@@ -1178,6 +1178,17 @@ message HALConfig {
     // Controller parameters
     PIDParams pid_params = 8;
     SafetyConfig safety = 9;
+    
+    // Gamepad configuration (HAL gamepad subsystem)
+    GamepadConfig gamepad = 10;
+}
+
+// Gamepad / joystick configuration for manual mount control
+message GamepadConfig {
+    string device_path = 1;          // e.g. "/dev/input/js0"
+    double dead_zone = 2;            // Dead zone [0..1], default 0.15
+    double sensitivity = 3;          // Sensitivity curve, default 1.0
+    double read_frequency = 4;       // Poll frequency in Hz, default 50
 }
 
 // HAL status
@@ -1191,6 +1202,29 @@ message HALStatus {
     repeated string supported_features = 7;
     string error_message = 8;
     google.protobuf.Timestamp timestamp = 9;
+    GamepadState gamepad = 10;
+}
+
+// Live gamepad state (axes, buttons, connection)
+message GamepadState {
+    bool connected = 1;
+    string device_name = 2;
+    double axis_lx = 3;
+    double axis_ly = 4;
+    double axis_rx = 5;
+    double axis_ry = 6;
+    double axis_trigger_l = 7;
+    double axis_trigger_r = 8;
+    double pov_hat = 9;
+    bool button_stop = 10;
+    bool button_emergency_stop = 11;
+    bool button_park = 12;
+    bool button_speed_up = 13;
+    bool button_speed_down = 14;
+    bool button_manual_toggle = 15;
+    bool button_home = 16;
+    int32 axis_count = 17;
+    int32 button_count = 18;
 }
 
 // HAL configuration request

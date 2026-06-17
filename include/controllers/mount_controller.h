@@ -10,6 +10,7 @@
 #include "proto/mount_controller.pb.h"
 #include "models/ephemeris_tracker.h"
 #include "controllers/icanopen_interface.h"
+#include "hal/hal_config.h"
 
 // Forward declaration for HAL
 namespace astro_mount {
@@ -159,10 +160,14 @@ public:
         // TPOINT parameters
         uint32_t tpoint_enabled_terms{0};
         
-        // Network configuration
+        // CANopen communication parameters (source: hal.canopen)
         std::string canopen_interface;
-        int canopen_node_id;
-        std::string canopen_accel_mode = "time";  // "time" or "rate"
+        int canopen_node_id{1};
+        int canopen_bitrate{1000000};               // CAN bus bitrate (bps)
+        bool canopen_use_sync{true};                // Enable SYNC message generation
+        int canopen_sync_period_ms{100};            // SYNC interval (ms)
+        int canopen_sdo_timeout_ms{1000};           // SDO response timeout (ms)
+        std::string canopen_accel_mode = "time";    // "time" or "rate"
         std::string grpc_address;
         int grpc_port;
         
@@ -221,6 +226,9 @@ public:
         double field_rotation_applied_correction{0.0};
         double field_rotation_temperature{15.0};
         double field_rotation_flexure_correction{0.0};
+
+        // HAL configuration (from JSON "hal" section)
+        hal::HALConfig hal_config;
     };
 
     struct MountStatus {

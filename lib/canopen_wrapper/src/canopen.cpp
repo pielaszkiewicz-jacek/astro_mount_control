@@ -391,64 +391,97 @@ bool canopen_sdo_write_expedited(canopen_ctx_t* ctx, uint8_t node_id,
     if (!ctx || !ctx->connected || !data || len < 1 || len > 4)
         return false;
 
-    /* Lock socket to prevent reader thread from stealing our response */
-    pthread_mutex_lock(&ctx->sock_mutex);
+    /* SDO retry configuration.
+     * Intermittent CAN bus timeouts can occur when the reader thread holds
+     * sock_mutex for up to 100 ms (poll cycle) while SYNC / heartbeat /
+     * PDO traffic is high.  A single retry with a small backoff greatly
+     * improves reliability without adding significant latency (worst case
+     * adds ~150 ms per retry). */
+    const int MAX_RETRIES = 2;      /* 1 initial + 2 retries = 3 total */
+    const int RETRY_BACKOFF_MS = 50; /* wait between retries */
+    const int SDO_TIMEOUT_MS = 1000; /* per-attempt timeout */
 
-    uint32_t cob_id = CANOPEN_COBID_RSDO + node_id;
-    uint8_t cmd;
+    for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        /* Lock socket to prevent reader thread from stealing our response */
+        pthread_mutex_lock(&ctx->sock_mutex);
 
-    switch (len) {
-        case 1: cmd = CANOPEN_SDO_CMD_WRITE_1; break;
-        case 2: cmd = CANOPEN_SDO_CMD_WRITE_2; break;
-        case 3: cmd = CANOPEN_SDO_CMD_WRITE_3; break;
-        case 4: cmd = CANOPEN_SDO_CMD_WRITE_4; break;
-        default: pthread_mutex_unlock(&ctx->sock_mutex); return false;
-    }
+        uint32_t cob_id = CANOPEN_COBID_RSDO + node_id;
+        uint8_t cmd;
 
-    uint8_t sdo_data[8];
-    memset(sdo_data, 0, sizeof(sdo_data));
-    sdo_data[0] = cmd;
-    sdo_data[1] = index & 0xFF;
-    sdo_data[2] = (index >> 8) & 0xFF;
-    sdo_data[3] = subindex;
-    memcpy(&sdo_data[4], data, len);
+        switch (len) {
+            case 1: cmd = CANOPEN_SDO_CMD_WRITE_1; break;
+            case 2: cmd = CANOPEN_SDO_CMD_WRITE_2; break;
+            case 3: cmd = CANOPEN_SDO_CMD_WRITE_3; break;
+            case 4: cmd = CANOPEN_SDO_CMD_WRITE_4; break;
+            default: pthread_mutex_unlock(&ctx->sock_mutex); return false;
+        }
 
-    if (!send_frame(ctx->sock, cob_id, sdo_data, 8)) {
+        uint8_t sdo_data[8];
+        memset(sdo_data, 0, sizeof(sdo_data));
+        sdo_data[0] = cmd;
+        sdo_data[1] = index & 0xFF;
+        sdo_data[2] = (index >> 8) & 0xFF;
+        sdo_data[3] = subindex;
+        memcpy(&sdo_data[4], data, len);
+
+        if (!send_frame(ctx->sock, cob_id, sdo_data, 8)) {
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            if (attempt < MAX_RETRIES) {
+                usleep(RETRY_BACKOFF_MS * 1000);
+                continue;
+            }
+            return false;
+        }
+
+        /* Wait for SDO response with timeout */
+        struct can_frame resp;
+        int ret = recv_frame(ctx->sock, &resp, SDO_TIMEOUT_MS);
+        if (ret <= 0) {
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            if (attempt < MAX_RETRIES) {
+                fprintf(stderr, "SDO timeout 0x%04X:%d (node %d), retry %d/%d\n",
+                        index, subindex, node_id, attempt + 1, MAX_RETRIES);
+                usleep(RETRY_BACKOFF_MS * 1000);
+                continue;
+            }
+            fprintf(stderr, "SDO timeout 0x%04X:%d (node %d), all retries exhausted\n",
+                    index, subindex, node_id);
+            return false;
+        }
+
+        if (resp.can_dlc < 8) {
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            if (attempt < MAX_RETRIES) {
+                usleep(RETRY_BACKOFF_MS * 1000);
+                continue;
+            }
+            return false;
+        }
+
+        /* Check SDO response: bits 7-5 (SCS) = 100 binary means abort (CiA 301 §7.2.10.7).
+         * Valid responses have:
+         *   - Download success: resp.data[0] = 0x60 (SCS=011)
+         *   - Upload response:  resp.data[0] = 0x43..0x4F (SCS=010)
+         * Abort has SCS=100, so (byte & 0xE0) == 0x80 */
+        if ((resp.data[0] & 0xE0) == 0x80) {
+            /* SDO abort — extract and log the 32-bit abort code (bytes 4-7).
+             * SDO aborts from the drive are definitive (not transient bus errors),
+             * so we do NOT retry on abort — it would fail again for the same reason. */
+            uint32_t abort_code = (uint32_t)resp.data[4]
+                                | ((uint32_t)resp.data[5] << 8)
+                                | ((uint32_t)resp.data[6] << 16)
+                                | ((uint32_t)resp.data[7] << 24);
+            log_sdo_abort(abort_code);
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            return false;
+        }
+
         pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
+        return true;
     }
 
-    /* Wait for SDO response with 1s timeout */
-    struct can_frame resp;
-    int ret = recv_frame(ctx->sock, &resp, 1000);
-    if (ret <= 0) {
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
-
-    if (resp.can_dlc < 8) {
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
-
-    /* Check SDO response: bits 7-5 (SCS) = 100 binary means abort (CiA 301 §7.2.10.7).
-     * Valid responses have:
-     *   - Download success: resp.data[0] = 0x60 (SCS=011)
-     *   - Upload response:  resp.data[0] = 0x43..0x4F (SCS=010)
-     * Abort has SCS=100, so (byte & 0xE0) == 0x80 */
-    if ((resp.data[0] & 0xE0) == 0x80) {
-        /* SDO abort — extract and log the 32-bit abort code (bytes 4-7) */
-        uint32_t abort_code = (uint32_t)resp.data[4]
-                            | ((uint32_t)resp.data[5] << 8)
-                            | ((uint32_t)resp.data[6] << 16)
-                            | ((uint32_t)resp.data[7] << 24);
-        log_sdo_abort(abort_code);
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
-
-    pthread_mutex_unlock(&ctx->sock_mutex);
-    return true;
+    /* Unreachable, but keeps compiler happy */
+    return false;
 }
 
 /* ======================================================================

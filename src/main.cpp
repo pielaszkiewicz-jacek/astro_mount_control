@@ -108,11 +108,19 @@ int main(int argc, char* argv[]) {
         auto tpoint_config = config.getTPointConfig();
         controller_config.tpoint_enabled_terms = tpoint_config.enabled_terms;
         
-        // Set CanOpen configuration
+        // Set CanOpen configuration (reads from hal.canopen, legacy canopen as fallback)
         auto canopen_config = config.getCanOpenConfig();
         controller_config.canopen_interface = canopen_config.interface;
         controller_config.canopen_node_id = canopen_config.node_id;
+        controller_config.canopen_bitrate = canopen_config.baud_rate;
+        controller_config.canopen_use_sync = canopen_config.enable_sync;
+        controller_config.canopen_sync_period_ms = canopen_config.sync_interval_ms;
         controller_config.canopen_accel_mode = canopen_config.accel_mode;
+        
+        // HAL-level CANopen parameters (sdo_timeout_ms from hal.canopen)
+        auto hal_config = config.getHALConfig();
+        controller_config.canopen_sdo_timeout_ms = static_cast<int>(hal_config.canopen.sdo_timeout_ms);
+        controller_config.hal_config = hal_config;
         
         // Set servo initialization configuration (custom SDO sequence)
         auto servo_init_config = config.getServoInitConfig();
@@ -164,6 +172,8 @@ int main(int argc, char* argv[]) {
         
         // Set axis physical parameters (copy field by field)
         auto& ha = mount_config.ha_axis_params;
+        controller_config.ha_axis_params.position_counts_per_degree = ha.position_counts_per_degree;
+        controller_config.ha_axis_params.velocity_counts_per_deg_s = ha.velocity_counts_per_deg_s;
         controller_config.ha_axis_params.encoder_resolution = ha.encoder_resolution;
         controller_config.ha_axis_params.encoder_counts_per_arcsec = ha.encoder_counts_per_arcsec;
         controller_config.ha_axis_params.encoder_quantization_error = ha.encoder_quantization_error;
@@ -184,6 +194,8 @@ int main(int argc, char* argv[]) {
         controller_config.ha_axis_params.calibration_temp = ha.calibration_temp;
         
         auto& dec = mount_config.dec_axis_params;
+        controller_config.dec_axis_params.position_counts_per_degree = dec.position_counts_per_degree;
+        controller_config.dec_axis_params.velocity_counts_per_deg_s = dec.velocity_counts_per_deg_s;
         controller_config.dec_axis_params.encoder_resolution = dec.encoder_resolution;
         controller_config.dec_axis_params.encoder_counts_per_arcsec = dec.encoder_counts_per_arcsec;
         controller_config.dec_axis_params.encoder_quantization_error = dec.encoder_quantization_error;
