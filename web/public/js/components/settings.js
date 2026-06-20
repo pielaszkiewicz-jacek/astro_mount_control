@@ -49,6 +49,7 @@ const SettingsComponent = (() => {
         { key: 'canopen_enable_sync', label: 'Enable SYNC', type: 'checkbox' },
         { key: 'canopen_sync_interval_ms', label: 'SYNC Interval (ms)', type: 'number', min: 10, max: 10000 },
         { key: 'canopen_accel_mode', label: 'Accel/Decel Mode', type: 'select', options: ['time', 'rate'] },
+        { key: 'canopen_pdo_config_enabled', label: 'Write PDO Mappings', type: 'checkbox' },
         { key: 'canopen_position_counts_per_degree', label: 'Position Counts/°', type: 'number', min: 0.001, max: 100000, step: 0.001 },
         { key: 'canopen_velocity_counts_per_deg_s', label: 'Velocity Counts per °/s', type: 'number', min: 0.001, max: 100000, step: 0.001 },
       ],
@@ -326,11 +327,21 @@ const SettingsComponent = (() => {
       ],
     },
     {
+      id: 'loop_timing',
+      label: 'Loop Timing',
+      fields: [
+        { key: 'controller_poll_ms', label: 'Main Loop Poll (ms)', type: 'number', min: 10, max: 500, step: 5 },
+        { key: 'tracking_update_ms', label: 'Tracking Update (ms)', type: 'number', min: 5, max: 200, step: 5 },
+      ],
+    },
+    {
       id: 'field_rotation',
       label: 'Field Rotation',
       fields: [
         { key: 'field_rotation_enabled', label: 'Enabled', type: 'checkbox' },
+        { key: 'field_rotation_latitude', label: 'Latitude (°)', type: 'number', angleType: 'deg' },
         { key: 'field_rotation_altitude', label: 'Altitude (°)', type: 'number', angleType: 'deg' },
+        { key: 'field_rotation_azimuth', label: 'Azimuth (°)', type: 'number', angleType: 'deg' },
         { key: 'field_rotation_computed_rate', label: 'Computed Rate (°/s)', type: 'number', min: -10, max: 10, step: 0.000001 },
         { key: 'field_rotation_applied_correction', label: 'Applied Correction (°)', type: 'number', angleType: 'deg' },
         { key: 'field_rotation_temperature', label: 'Temperature (°C)', type: 'number', min: -50, max: 60, step: 0.1 },
@@ -365,6 +376,7 @@ const SettingsComponent = (() => {
         { key: 'hal_gamepad_deadzone', label: 'Deadzone', type: 'number', min: 0, max: 1, step: 0.01 },
         { key: 'hal_gamepad_sensitivity', label: 'Sensitivity', type: 'number', min: 0.1, max: 10, step: 0.1 },
         { key: 'hal_gamepad_poll_interval_ms', label: 'Poll Interval (ms)', type: 'number', min: 5, max: 1000 },
+        { key: 'hal_gamepad_autostart', label: 'Auto-Start After Boot', type: 'checkbox' },
       ],
     },
   ];
@@ -394,6 +406,7 @@ const SettingsComponent = (() => {
     tpoint:           '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="2" x2="12" y2="12"/><line x1="12" y1="12" x2="16" y2="16"/></svg>',
     derotator:        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
     field_rotation:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>',
+    loop_timing:      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     servo_init:       '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>',
     hal:              '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="4" x2="9" y2="9"/><line x1="15" y1="4" x2="15" y2="9"/><line x1="9" y1="15" x2="9" y2="20"/><line x1="15" y1="15" x2="15" y2="20"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="15" y1="9" x2="20" y2="9"/></svg>',
     hal_gamepad:      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>',
@@ -434,6 +447,7 @@ const SettingsComponent = (() => {
     tpoint: 'Model TPoint do korekcji b\u0142\u0119dów systematycznych monta\u017cu: aktywne terminy, pomiary, residua.',
     derotator: 'Derotator pola obrazu: typ, prze\u0142o\u017cenie, pr\u0119dko\u015bci, enkoder, pozycja domowa.',
     field_rotation: 'Obliczona rotacja pola: korekcja flexury, temperatura, parametry geometryczne.',
+    loop_timing: 'Czasy p\u0119tli g\u0142ównej sterownika: interwa\u0142 odpytywania CANopen i cz\u0119stotliwo\u015b\u0107 aktualizacji trackingu.',
     servo_init: 'Sekwencja inicjalizacyjna SDO dla serwonap\u0119dów: w\u0142\u0105czenie/wy\u0142\u0105czenie oraz lista wpisów JSON ({axis, index, subindex, value, description}) wysy\u0142anych podczas startu.',
     hal: 'Warstwa abstrakcji sprz\u0119towej (HAL): typ interfejsu, parametry CAN, heartbeat i mapowanie PDO.',
     hal_gamepad: 'Konfiguracja gamepada: \u015bcie\u017cka urz\u0105dzenia, strefa martwa, czu\u0142o\u015b\u0107, cz\u0119stotliwo\u015b\u0107 odczytu.',
@@ -981,6 +995,27 @@ const SettingsComponent = (() => {
       range: '-360.0 do 360.0',
     },
 
+    canopen_pdo_config_enabled: {
+      description: 'Zapisuje mapowanie PDO (Process Data Objects) do serwonap\u0119du podczas inicjalizacji. Mo\u017ce nadpisa\u0107 parametry fabryczne nap\u0119du.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+
+    // ── Loop Timing ──
+    controller_poll_ms: {
+      description: 'Interwa\u0142 g\u0142ównej p\u0119tli sterownika w milisekundach. Okre\u015bla cz\u0119stotliwo\u015b\u0107 odpytywania enkoderów i CANopen (domy\u015blnie 50 ms = 20 Hz).',
+      defaultValue: '50',
+      type: 'integer',
+      range: '10 – 500',
+    },
+    tracking_update_ms: {
+      description: 'Interwa\u0142 aktualizacji trackingu w milisekundach. Okre\u015bla cz\u0119stotliwo\u015b\u0107 korekcji pozycji podczas \u015bledzenia (domy\u015blnie 20 ms = 50 Hz).',
+      defaultValue: '20',
+      type: 'integer',
+      range: '5 – 200',
+    },
+
     // ── Field Rotation ──
     field_rotation_enabled: {
       description: 'Czy w\u0142\u0105czy\u0107 korekcj\u0119 rotacji pola. Oblicza i kompensuje rotacj\u0119 pola obrazu spowodowan\u0105 ruchem monta\u017cu.',
@@ -988,11 +1023,23 @@ const SettingsComponent = (() => {
       type: 'boolean',
       range: 'true / false',
     },
+    field_rotation_latitude: {
+      description: 'Szeroko\u015b\u0107 geograficzna obserwatora w stopniach dla oblicze\u0144 rotacji pola.',
+      defaultValue: '52.0',
+      type: 'float',
+      range: '-90.0 do 90.0',
+    },
     field_rotation_altitude: {
       description: 'Wysoko\u015b\u0107 (altitude) celu nad horyzontem w stopniach dla obliczenia rotacji pola.',
       defaultValue: '0.0',
       type: 'float',
       range: '-90.0 do 90.0',
+    },
+    field_rotation_azimuth: {
+      description: 'Azymut celu w stopniach dla obliczenia rotacji pola.',
+      defaultValue: '0.0',
+      type: 'float',
+      range: '0.0 do 360.0',
     },
     field_rotation_computed_rate: {
       description: 'Obliczona pr\u0119dko\u015b\u0107 rotacji pola w stopniach na sekund\u0119. Warto\u015b\u0107 wyliczana automatycznie na podstawie pozycji i ruchu monta\u017cu.',
@@ -1081,6 +1128,12 @@ const SettingsComponent = (() => {
       defaultValue: '50',
       type: 'integer',
       range: '5 – 1000',
+    },
+    hal_gamepad_autostart: {
+      description: 'Automatycznie uruchamia p\u0119tl\u0119 gamepada po starcie systemu. Nie wymaga r\u0119cznego w\u0142\u0105czania z poziomu UI.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
     },
 
     // ── Axis Physical Parameters (shared between HA and Dec) ──
@@ -1206,6 +1259,7 @@ const SettingsComponent = (() => {
   let currentConfig = null;
   let isDirty = {};
   let gamepadPollTimer = null;
+  let gamepadControlActive = false;
   const GAMEPAD_POLL_MS = 2000;
 
   async function fetchAndRenderGamepadState() {
@@ -1241,7 +1295,14 @@ const SettingsComponent = (() => {
 
     const povLabel = s.pov_hat >= 0 ? s.pov_hat.toFixed(0) + '\u00B0' : I18n.t('cfg.gamepad.neutral', 'Neutral');
 
+    var ctrlHtml = '<div class="gamepad-ctrl-row">'
+      + '<button id="gamepad-ctrl-btn" class="cfg-btn" style="font-size:0.8rem;padding:4px 12px;">'
+      + (gamepadControlActive ? I18n.t('cfg.gamepad.stop_ctrl', 'Stop Manual Control') : I18n.t('cfg.gamepad.start_ctrl', 'Start Manual Control'))
+      + '</button>'
+      + '</div>';
+
     panel.innerHTML = '<div class="gamepad-state-header"><span class="gamepad-connection-status">' + connIcon + ' ' + connLabel + '</span><span class="gamepad-device-name">' + Utils.escapeHtml(deviceName) + '</span></div>'
+      + ctrlHtml
       + '<div class="gamepad-state-grid">'
       + '<div class="gamepad-state-section"><div class="gamepad-section-title">' + I18n.t('cfg.gamepad.axes', 'Analog Axes') + '</div>'
       + axisBar(s.axis_lx, 'Left X') + axisBar(s.axis_ly, 'Left Y') + axisBar(s.axis_rx, 'Right X') + axisBar(s.axis_ry, 'Right Y')
@@ -1257,6 +1318,12 @@ const SettingsComponent = (() => {
       + '</div>'
       + '<div class="gamepad-info-row"><span>' + I18n.t('cfg.gamepad.axes_count', 'Axes') + ': ' + (s.axis_count || 0) + '</span><span>' + I18n.t('cfg.gamepad.buttons_count', 'Buttons') + ': ' + (s.button_count || 0) + '</span></div>'
       + '</div></div>';
+
+    // Attach click handler after DOM update
+    var btn = document.getElementById('gamepad-ctrl-btn');
+    if (btn) {
+      btn.onclick = toggleGamepadControl;
+    }
   }
 
   function startGamepadPolling() {
@@ -1270,6 +1337,37 @@ const SettingsComponent = (() => {
       clearInterval(gamepadPollTimer);
       gamepadPollTimer = null;
     }
+  }
+
+  async function toggleGamepadControl() {
+    var btn = document.getElementById('gamepad-ctrl-btn');
+    if (!btn) return;
+
+    if (gamepadControlActive) {
+      // Stop
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await Api.stopGamepad();
+        gamepadControlActive = false;
+      } catch (err) {
+        console.error('Failed to stop gamepad control:', err);
+      }
+      btn.disabled = false;
+    } else {
+      // Start
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await Api.startGamepad();
+        gamepadControlActive = true;
+      } catch (err) {
+        console.error('Failed to start gamepad control:', err);
+      }
+      btn.disabled = false;
+    }
+    // Re-render to update button label
+    fetchAndRenderGamepadState();
   }
 
   // ─── Public API ───────────────────────────────────────────────────────────

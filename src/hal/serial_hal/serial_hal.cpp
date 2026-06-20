@@ -660,7 +660,7 @@ EncoderReading SerialHAL::SerialEncoder::readEncoder() const {
     
     uint8_t resp_buf[32];
     size_t bytes_read = 0;
-    if (!parent_->readPort(resp_buf, sizeof(resp_buf), bytes_read, parent_->timeout_ms_)) {
+    if (!parent_->readPort(resp_buf, sizeof(resp_buf), bytes_read, parent_->timeout_ms_.load())) {
         total_readings_++;
         error_count_++;
         reading.data_valid = false;
@@ -676,7 +676,7 @@ EncoderReading SerialHAL::SerialEncoder::readEncoder() const {
                                static_cast<int32_t>(resp_buf[6]);
         
         double position = config_.countsToDegrees(raw_position) - calibration_offset_.load();
-        const_cast<std::atomic<double>&>(actual_position_).store(position);
+        actual_position_.store(position);
         reading.position_deg = position;
         reading.raw_counts = raw_position;
         reading.data_valid = true;
@@ -712,8 +712,8 @@ SerialHAL::SerialHAL(const HALConfig& config)
     , data_bits_(config.serial.data_bits)
     , stop_bits_(config.serial.stop_bits)
     , parity_(config.serial.parity)
-    , timeout_ms_(config.serial.timeout_ms)
 {
+    timeout_ms_.store(config.serial.timeout_ms, std::memory_order_relaxed);
 }
 
 SerialHAL::~SerialHAL() {
@@ -734,7 +734,7 @@ bool SerialHAL::initialize(const HALConfig& config) {
     data_bits_ = config.serial.data_bits;
     stop_bits_ = config.serial.stop_bits;
     parity_ = config.serial.parity;
-    timeout_ms_ = config.serial.timeout_ms;
+    timeout_ms_.store(config.serial.timeout_ms, std::memory_order_relaxed);
     
     // Open and configure serial port
     if (!openPort()) {
@@ -1110,9 +1110,10 @@ bool SerialHAL::sendModbusRequest(uint8_t node_id, uint8_t function_code,
     FD_ZERO(&read_fds);
     FD_SET(fd_, &read_fds);
     
+    uint32_t tmo = timeout_ms_.load(std::memory_order_relaxed);
     struct timeval tv;
-    tv.tv_sec = timeout_ms_ / 1000;
-    tv.tv_usec = (timeout_ms_ % 1000) * 1000;
+    tv.tv_sec = tmo / 1000;
+    tv.tv_usec = (tmo % 1000) * 1000;
     
     int ret = select(fd_ + 1, &read_fds, nullptr, nullptr, &tv);
     if (ret <= 0) {
@@ -1174,21 +1175,25 @@ bool SerialHAL::sendModbusRequest(uint8_t node_id, uint8_t function_code,
 
 void SerialHAL::monitorLoop() {
     while (running_) {
-        // Check serial port health
-        if (fd_ < 0) {
-            // Attempt reconnection
-            if (!openPort() || !configurePort()) {
-                std::this_thread::sleep_for(std::chrono::seconds(1));
-                continue;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            // Check serial port health
+            if (fd_ < 0) {
+                // Attempt reconnection
+                if (!openPort() || !configurePort()) {
+                    // Release lock before sleeping
+                }
             }
-        }
-        
-        // Send keep-alive / health check
-        uint8_t keepalive[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        bool alive = (::write(fd_, keepalive, sizeof(keepalive)) > 0);
-        
-        if (!alive) {
-            closePort();
+            
+            if (fd_ >= 0) {
+                // Send keep-alive / health check
+                uint8_t keepalive[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+                bool alive = (::write(fd_, keepalive, sizeof(keepalive)) > 0);
+                
+                if (!alive) {
+                    closePort();
+                }
+            }
         }
         
         std::this_thread::sleep_for(std::chrono::seconds(5));

@@ -269,6 +269,16 @@ std::unique_ptr<HALInterface> HALFactory::createCanOpenHAL(const HALConfig& conf
         canopen_config.use_sync = config.canopen.use_sync;
         canopen_config.sync_period_ms = config.canopen.sync_period_ms;
         canopen_config.sdo_timeout_ms = config.canopen.sdo_timeout_ms;
+        canopen_config.pdo_config_enabled = config.canopen.pdo_config_enabled;
+
+        // Propagate counts-per-degree from axis encoder config
+        for (int i = 0; i < 2; ++i) {
+            if (i < (int)config.axes.size()) {
+                double cpd = config.axes[i].encoder_config.counts_per_degree;
+                canopen_config.axis_position_counts_per_degree[i] = cpd;
+                canopen_config.axis_velocity_counts_per_deg_s[i] = cpd;
+            }
+        }
         
         auto canopen_interface = CanOpenFactory::create(canopen_config);
         if (!canopen_interface) {

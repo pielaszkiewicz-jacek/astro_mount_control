@@ -30,6 +30,7 @@ public:
         double axis_position_counts_per_degree[2] = {4000.0 / 360.0, 4000.0 / 360.0};  // per-axis counts per degree
         double axis_velocity_counts_per_deg_s[2] = {4000.0 / 360.0, 4000.0 / 360.0};  // per-axis counts per °/s
         std::string accel_mode = "time";  // "time" or "rate"
+        bool pdo_config_enabled = false;  // Write PDO mappings to drive (may overwrite mfgr params)
 
         /** Custom SDO sequence sent to each axis during initialize() */
         bool servo_init_enabled = false;
@@ -375,7 +376,7 @@ public:
 
 private:
     class Impl;
-    std::unique_ptr<Impl> pimpl;
+    std::shared_ptr<Impl> pimpl;
 };
 
 } // namespace controllers

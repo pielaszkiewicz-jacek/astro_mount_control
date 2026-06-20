@@ -749,6 +749,7 @@ app.get('/api/hal/config', async (req, res) => {
       flat.hal_gamepad_deadzone = halConfig.gamepad.dead_zone ?? 0.15;
       flat.hal_gamepad_sensitivity = halConfig.gamepad.sensitivity ?? 1.0;
       flat.hal_gamepad_poll_interval_ms = halConfig.gamepad.read_frequency ?? 50;
+      flat.hal_gamepad_autostart = halConfig.gamepad.autostart ?? false;
     }
 
     // Simulated subsection
@@ -827,6 +828,7 @@ app.post('/api/hal/config', async (req, res) => {
     if (body.hal_gamepad_deadzone !== undefined) { gp.dead_zone = Number(body.hal_gamepad_deadzone); hasGp = true; }
     if (body.hal_gamepad_sensitivity !== undefined) { gp.sensitivity = Number(body.hal_gamepad_sensitivity); hasGp = true; }
     if (body.hal_gamepad_poll_interval_ms !== undefined) { gp.read_frequency = Number(body.hal_gamepad_poll_interval_ms); hasGp = true; }
+    if (body.hal_gamepad_autostart !== undefined) { gp.autostart = body.hal_gamepad_autostart; hasGp = true; }
     if (hasGp) halConfig.gamepad = gp;
 
     // Simulated
@@ -2523,6 +2525,33 @@ app.get('/api/hal/gamepad/state', async (req, res) => {
       button_home: false,
       axis_count: 0, button_count: 0,
     });
+  }
+});
+
+/**
+ * POST /api/hal/gamepad/start
+ * Starts the gamepad manual-control loop (axis velocity commands).
+ * The gamepad input device must already be open (auto-opened on startup).
+ */
+app.post('/api/hal/gamepad/start', async (req, res) => {
+  try {
+    await grpcCall('StartGamepad', {});
+    res.json({ success: true, message: 'Gamepad control loop started' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/hal/gamepad/stop
+ * Stops the gamepad manual-control loop.
+ */
+app.post('/api/hal/gamepad/stop', async (req, res) => {
+  try {
+    await grpcCall('StopGamepad', {});
+    res.json({ success: true, message: 'Gamepad control loop stopped' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

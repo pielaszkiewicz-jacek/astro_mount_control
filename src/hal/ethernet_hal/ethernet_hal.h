@@ -174,7 +174,7 @@ private:
     std::string ip_address_;
     uint16_t port_;
     std::string protocol_;
-    uint32_t timeout_ms_;
+    std::atomic<uint32_t> timeout_ms_{1000};
     uint32_t retry_count_;
     
     // Error tracking

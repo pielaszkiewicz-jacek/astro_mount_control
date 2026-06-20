@@ -74,13 +74,14 @@ bool GamepadHAL::initialize(const HALConfig& config) {
 void GamepadHAL::shutdown() {
     stop();
 
-    // Clear components
+    // Clear raw pointers BEFORE joining the update thread to prevent
+    // use-after-free if the update loop is still running.
     {
         std::lock_guard<std::mutex> lock(motor_mutex_);
         motors_.clear();
         encoders_.clear();
-        safety_monitor_.reset();
-        sensor_interface_.reset();
+        safety_monitor_ = nullptr;
+        sensor_interface_ = nullptr;
     }
 
     if (gamepad_input_) {
@@ -96,42 +97,44 @@ bool GamepadHAL::isInitialized() const {
 
 std::unique_ptr<MotorControl> GamepadHAL::createMotorControl(int axis_id) {
     if (axis_id < 0) return nullptr;
-    auto motor = std::make_shared<GamepadMotorControl>(axis_id, *this);
+    auto motor = std::make_unique<GamepadMotorControl>(axis_id, *this);
+    auto* raw = motor.get();
     {
         std::lock_guard<std::mutex> lock(motor_mutex_);
         // Ensure vector is large enough
         while ((int)motors_.size() <= axis_id) {
             motors_.push_back(nullptr);
         }
-        motors_[axis_id] = motor;
+        motors_[axis_id] = raw;
     }
-    return std::unique_ptr<MotorControl>(new GamepadMotorControl(axis_id, *this));
+    return motor;
 }
 
 std::unique_ptr<EncoderReader> GamepadHAL::createEncoderReader(int axis_id) {
     if (axis_id < 0) return nullptr;
-    auto motor = getMotor(axis_id);
-    auto encoder = std::make_shared<GamepadEncoderReader>(motor);
+    auto* motor = getMotor(axis_id);
+    auto encoder = std::make_unique<GamepadEncoderReader>(motor);
+    auto* raw = encoder.get();
     {
         std::lock_guard<std::mutex> lock(motor_mutex_);
         while ((int)encoders_.size() <= axis_id) {
             encoders_.push_back(nullptr);
         }
-        encoders_[axis_id] = encoder;
+        encoders_[axis_id] = raw;
     }
-    return std::unique_ptr<EncoderReader>(new GamepadEncoderReader(motor));
+    return encoder;
 }
 
 std::unique_ptr<SafetyMonitor> GamepadHAL::createSafetyMonitor() {
-    auto monitor = std::make_shared<GamepadSafetyMonitor>();
-    safety_monitor_ = monitor;
-    return std::unique_ptr<SafetyMonitor>(new GamepadSafetyMonitor());
+    auto monitor = std::make_unique<GamepadSafetyMonitor>();
+    safety_monitor_ = monitor.get();
+    return monitor;
 }
 
 std::unique_ptr<SensorInterface> GamepadHAL::createSensorInterface() {
-    auto si = std::make_shared<GamepadSensorInterface>();
-    sensor_interface_ = si;
-    return std::unique_ptr<SensorInterface>(new GamepadSensorInterface());
+    auto si = std::make_unique<GamepadSensorInterface>();
+    sensor_interface_ = si.get();
+    return si;
 }
 
 std::string GamepadHAL::getPlatformName() const {
@@ -231,7 +234,7 @@ void GamepadHAL::cycleSpeedDown() {
     logging::Logger::get("gamepad")->info("[GamepadHAL] Speed preset: {} deg/s", getCurrentSpeedPreset());
 }
 
-std::shared_ptr<GamepadMotorControl> GamepadHAL::getMotor(int axis_id) {
+GamepadMotorControl* GamepadHAL::getMotor(int axis_id) {
     std::lock_guard<std::mutex> lock(motor_mutex_);
     if (axis_id >= 0 && axis_id < (int)motors_.size()) {
         return motors_[axis_id];
@@ -487,9 +490,8 @@ void GamepadMotorControl::integratePosition(double dt) {
     // Integrate velocity to position
     actual_position_ += actual_velocity_ * dt;
 
-    // Normalize position to reasonable range
-    if (actual_position_ > 1000000.0) actual_position_ = 0.0;
-    if (actual_position_ < -1000000.0) actual_position_ = 0.0;
+    // Normalize position with wrap-around (avoids drift in long sessions)
+    actual_position_ = std::fmod(actual_position_, 360.0);
 
     // Update operation time
     operation_time_ += static_cast<uint32_t>(dt);
@@ -514,7 +516,7 @@ void GamepadMotorControl::setCommandedVelocity(double vel) {
 // GamepadEncoderReader
 // ============================================================================
 
-GamepadEncoderReader::GamepadEncoderReader(std::shared_ptr<GamepadMotorControl> motor)
+GamepadEncoderReader::GamepadEncoderReader(GamepadMotorControl* motor)
     : motor_(motor) {}
 
 GamepadEncoderReader::~GamepadEncoderReader() = default;

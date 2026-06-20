@@ -327,6 +327,8 @@ public:
         config.max_tracking_rate = mount.value("max_tracking_rate", 1.504);
         config.slew_acceleration = mount.value("slew_acceleration", 1.0);
         config.tracking_acceleration = mount.value("tracking_acceleration", 0.001);
+        config.controller_poll_ms = mount.value("controller_poll_ms", 50);
+        config.tracking_update_ms = mount.value("tracking_update_ms", 20);
         
         // Load additional mount parameters from JSON
         config.mount_height = mount.value("mount_height", 1.5);
@@ -737,7 +739,9 @@ public:
         auto field_rotation = config_.value("field_rotation", json::object());
         
         config.enabled = field_rotation.value("enabled", false);
+        config.latitude = field_rotation.value("latitude", 52.0);
         config.altitude = field_rotation.value("altitude", 100.0);
+        config.azimuth = field_rotation.value("azimuth", 0.0);
         config.computed_rate = field_rotation.value("computed_rate", 0.0);
         config.applied_correction = field_rotation.value("applied_correction", 0.0);
         config.temperature = field_rotation.value("temperature", 15.0);
@@ -809,7 +813,9 @@ public:
     void setFieldRotationParams(const FieldRotationParams& config) {
         json field_rotation;
         field_rotation["enabled"] = config.enabled;
+        field_rotation["latitude"] = config.latitude;
         field_rotation["altitude"] = config.altitude;
+        field_rotation["azimuth"] = config.azimuth;
         field_rotation["computed_rate"] = config.computed_rate;
         field_rotation["applied_correction"] = config.applied_correction;
         field_rotation["temperature"] = config.temperature;

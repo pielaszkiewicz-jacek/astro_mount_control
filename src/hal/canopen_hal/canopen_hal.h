@@ -79,8 +79,12 @@ private:
         bool readStatusWord();
         bool configureCiA402();
         
+        // Set the CANopen node ID for NMT commands (called by createMotorControl)
+        void setCanNodeId(uint8_t id) { can_node_id_ = id; }
+        
     private:
         int axis_id_;
+        uint8_t can_node_id_;  // CANopen node ID (1-127), set by createMotorControl()
         controllers::ICanOpenInterface& canopen_;
         MotorConfig config_;
         std::atomic<bool> enabled_{false};
@@ -101,6 +105,7 @@ private:
         
         // PID controller for position/velocity control
         PIDController pid_controller_;
+        std::chrono::steady_clock::time_point start_time_;
         std::thread control_thread_;
         std::atomic<bool> control_running_{false};
         
@@ -196,6 +201,7 @@ private:
         std::atomic<bool> initialized_{false};
         std::thread monitoring_thread_;
         std::atomic<bool> monitoring_running_{false};
+        mutable std::mutex mutex_;
         
         LimitCallback limit_callback_;
         ErrorCallback error_callback_;
@@ -223,8 +229,6 @@ private:
         void setErrorCallback(ErrorCallback callback) override;
         
         std::string getDiagnostics() const override;
-        
-        void handleSensorReading(int sensor_id);
         
     private:
         controllers::ICanOpenInterface& canopen_;

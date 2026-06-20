@@ -887,6 +887,24 @@ const Api = (() => {
     return request('/hal/gamepad/state', { timeout: 3000 });
   }
 
+  /**
+   * Start the gamepad manual-control loop (axis velocity commands).
+   * POST /api/hal/gamepad/start
+   * @returns {Promise<object>}
+   */
+  async function startGamepad() {
+    return request('/hal/gamepad/start', { method: 'POST', timeout: 5000 });
+  }
+
+  /**
+   * Stop the gamepad manual-control loop.
+   * POST /api/hal/gamepad/stop
+   * @returns {Promise<object>}
+   */
+  async function stopGamepad() {
+    return request('/hal/gamepad/stop', { method: 'POST', timeout: 5000 });
+  }
+
   // Public API
   return {
     getStatus,
@@ -957,5 +975,7 @@ const Api = (() => {
     enableFieldRotation,
     // Gamepad
     getGamepadState,
+    startGamepad,
+    stopGamepad,
   };
 })();

@@ -439,6 +439,10 @@ service MountControllerService {
     // Reinitialize HAL with current or new configuration
     rpc ReinitializeHAL(HALReinitRequest) returns (google.protobuf.Empty);
     
+    // Start / stop the gamepad manual-control loop (axis commands)
+    rpc StartGamepad(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc StopGamepad(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
     // ============================================
     // CASUAL mount orientation
     // ============================================
@@ -652,12 +656,20 @@ message Configuration {
 
     // CANopen acceleration interpretation mode
     string canopen_accel_mode = 54;           // "time" (0x6083 = ramp time) or "rate" (0x6083 = acceleration rate)
+    bool canopen_pdo_config_enabled = 70;     // Write PDO mappings to drive during init
+    int32 controller_poll_ms = 71;            // Main loop poll interval [ms], default 50 (20 Hz)
+    int32 tracking_update_ms = 72;            // Tracking update interval [ms], default 20 (50 Hz)
+
+    // Meridian flip timeout
+    double meridian_flip_timeout_seconds = 73;  // Max time for flip slew before ERROR state [s]
 
     reserved 55, 56;
 
     // Field rotation parameters
     bool field_rotation_enabled = 57;
+    double field_rotation_latitude = 63;       // Observer latitude for field rotation [deg]
     double field_rotation_altitude = 58;
+    double field_rotation_azimuth = 64;        // Current azimuth for field rotation [deg]
     double field_rotation_computed_rate = 59;
     double field_rotation_applied_correction = 60;
     double field_rotation_temperature = 61;
@@ -1189,6 +1201,7 @@ message GamepadConfig {
     double dead_zone = 2;            // Dead zone [0..1], default 0.15
     double sensitivity = 3;          // Sensitivity curve, default 1.0
     double read_frequency = 4;       // Poll frequency in Hz, default 50
+    bool autostart = 5;              // Auto-start gamepad loop after boot
 }
 
 // HAL status

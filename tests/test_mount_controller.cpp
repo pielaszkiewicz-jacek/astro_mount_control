@@ -1316,7 +1316,7 @@ TEST_F(MountControllerTest, GetEphemerisMetrics) {
 TEST_F(MountControllerTest, GetCanOpenInterfaceThrowsBeforeInit) {
     controller_->initialize(config_);
     // Should not throw after initialization (mock interface)
-    auto& canopen = controller_->getCanOpenInterface();
+    auto canopen = controller_->getCanOpenInterface();
     // Verify it's usable
     SUCCEED();
 }

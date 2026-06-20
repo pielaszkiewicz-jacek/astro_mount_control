@@ -8,6 +8,9 @@
 #include <chrono>
 #include <string>
 #include <functional>
+#include <cstdio>
+#include <unistd.h>
+#include <sys/syscall.h>
 
 namespace astro_mount {
 namespace controllers {
@@ -289,9 +292,12 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
         // Create adapter for existing CanOpenInterface
         class CanOpenInterfaceAdapter : public ICanOpenInterface {
         public:
-            CanOpenInterfaceAdapter() : impl_(std::make_unique<CanOpenInterface>()) {}
+            CanOpenInterfaceAdapter() : impl_(std::make_shared<CanOpenInterface>()) {}
+            ~CanOpenInterfaceAdapter() = default;
             
             bool initialize(const Config& config) override {
+                auto impl = impl_;
+                if (!impl) return false;
                 // Convert Config to CanOpenInterface::CanOpenConfig
                 CanOpenInterface::CanOpenConfig canopen_config;
                 canopen_config.interface_name = config.interface_name;
@@ -308,65 +314,92 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                 canopen_config.axis_velocity_counts_per_deg_s[0] = config.axis_velocity_counts_per_deg_s[0];
                 canopen_config.axis_velocity_counts_per_deg_s[1] = config.axis_velocity_counts_per_deg_s[1];
                 canopen_config.accel_mode = config.accel_mode;
+                canopen_config.pdo_config_enabled = config.pdo_config_enabled;
                 
                 // Propagate servo initialization sequence from ICanOpenInterface::Config
                 canopen_config.servo_init_enabled = config.servo_init_enabled;
                 canopen_config.servo_init_sequence = config.servo_init_sequence;
                 
                 config_ = config;
-                return impl_->initialize(canopen_config);
+                return impl->initialize(canopen_config);
             }
             
             void shutdown() override {
-                impl_->shutdown();
+                auto impl = impl_;
+                if (!impl) return;
+                impl->shutdown();
             }
             
             bool connect() override {
-                return impl_->connect();
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->connect();
             }
             
             void disconnect() override {
-                impl_->disconnect();
+                auto impl = impl_;
+                if (!impl) return;
+                impl->disconnect();
             }
             
             bool isConnected() const override {
-                return impl_->isConnected();
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->isConnected();
             }
             
             bool configureDrive(int axis_id, const std::string& config_string) override {
-                return impl_->configureDrive(axis_id, config_string);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->configureDrive(axis_id, config_string);
             }
             
             bool enableDrive(int axis_id) override {
-                return impl_->enableDrive(axis_id);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->enableDrive(axis_id);
             }
             
             void disableDrive(int axis_id) override {
-                impl_->disableDrive(axis_id);
+                auto impl = impl_;
+                if (!impl) return;
+                impl->disableDrive(axis_id);
             }
             
             bool setPositionTarget(int axis_id, double position, double velocity, double acceleration) override {
-                return impl_->setPositionTarget(axis_id, position, velocity, acceleration);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->setPositionTarget(axis_id, position, velocity, acceleration);
             }
             
             bool setVelocityTarget(int axis_id, double velocity, double acceleration) override {
-                return impl_->setVelocityTarget(axis_id, velocity, acceleration);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->setVelocityTarget(axis_id, velocity, acceleration);
             }
             
             void stopAxis(int axis_id) override {
-                impl_->stopAxis(axis_id);
+                auto impl = impl_;
+                if (!impl) return;
+                impl->stopAxis(axis_id);
             }
             
             void emergencyStop(int axis_id) override {
-                impl_->emergencyStop(axis_id);
+                auto impl = impl_;
+                if (!impl) return;
+                impl->emergencyStop(axis_id);
             }
             
             bool clearErrors(int axis_id) override {
-                return impl_->clearErrors(axis_id);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->clearErrors(axis_id);
             }
             
             DriveStatus getDriveStatus(int axis_id) const override {
-                auto status = impl_->getDriveStatus(axis_id);
+                auto impl = impl_;
+                if (!impl) return DriveStatus{};
+                auto status = impl->getDriveStatus(axis_id);
                 DriveStatus result;
                 result.operational = status.operational;
                 result.enabled = status.enabled;
@@ -382,7 +415,9 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
             }
             
             PositionData getPositionData(int axis_id) const override {
-                auto pos = impl_->getPositionData(axis_id);
+                auto impl = impl_;
+                if (!impl) return PositionData{};
+                auto pos = impl->getPositionData(axis_id);
                 PositionData result;
                 result.actual_position = pos.actual_position;
                 result.actual_velocity = pos.actual_velocity;
@@ -394,7 +429,9 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
             }
             
             EncoderData getEncoderData(int axis_id) const override {
-                auto enc = impl_->getEncoderData(axis_id);
+                auto impl = impl_;
+                if (!impl) return EncoderData{};
+                auto enc = impl->getEncoderData(axis_id);
                 EncoderData result;
                 result.raw_position = enc.raw_position;
                 result.raw_velocity = enc.raw_velocity;
@@ -406,8 +443,10 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
             }
             
             void setStatusCallback(StatusCallback callback) override {
+                auto impl = impl_;
+                if (!impl) return;
                 // Convert callback
-                CanOpenInterface::StatusCallback canopen_callback = 
+                CanOpenInterface::StatusCallback canopen_callback =
                     [callback](int axis_id, const CanOpenInterface::DriveStatus& status) {
                         DriveStatus result;
                         result.operational = status.operational;
@@ -422,12 +461,14 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                         result.timestamp = status.timestamp;
                         callback(axis_id, result);
                     };
-                impl_->setStatusCallback(canopen_callback);
+                impl->setStatusCallback(canopen_callback);
             }
             
             void setPositionCallback(PositionCallback callback) override {
+                auto impl = impl_;
+                if (!impl) return;
                 // Convert callback
-                CanOpenInterface::PositionCallback canopen_callback = 
+                CanOpenInterface::PositionCallback canopen_callback =
                     [callback](int axis_id, const CanOpenInterface::PositionData& pos) {
                         PositionData result;
                         result.actual_position = pos.actual_position;
@@ -438,12 +479,14 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                         result.timestamp = pos.timestamp;
                         callback(axis_id, result);
                     };
-                impl_->setPositionCallback(canopen_callback);
+                impl->setPositionCallback(canopen_callback);
             }
             
             void setEncoderCallback(EncoderCallback callback) override {
+                auto impl = impl_;
+                if (!impl) return;
                 // Convert callback
-                CanOpenInterface::EncoderCallback canopen_callback = 
+                CanOpenInterface::EncoderCallback canopen_callback =
                     [callback](int axis_id, const CanOpenInterface::EncoderData& enc) {
                         EncoderData result;
                         result.raw_position = enc.raw_position;
@@ -454,52 +497,72 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                         result.timestamp = enc.timestamp;
                         callback(axis_id, result);
                     };
-                impl_->setEncoderCallback(canopen_callback);
+                impl->setEncoderCallback(canopen_callback);
             }
             
             void setErrorCallback(ErrorCallback callback) override {
-                impl_->setErrorCallback(callback);
+                auto impl = impl_;
+                if (!impl) return;
+                impl->setErrorCallback(callback);
             }
             
-            bool sendSDO(int axis_id, uint16_t index, uint8_t subindex, 
+            bool sendSDO(int axis_id, uint16_t index, uint8_t subindex,
                          const void* data, size_t data_size) override {
-                return impl_->sendSDO(axis_id, index, subindex, data, data_size);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->sendSDO(axis_id, index, subindex, data, data_size);
             }
             
             int receiveSDO(int axis_id, uint16_t index, uint8_t subindex,
                            void* data, size_t data_size) override {
-                return impl_->receiveSDO(axis_id, index, subindex, data, data_size);
+                auto impl = impl_;
+                if (!impl) return -1;
+                return impl->receiveSDO(axis_id, index, subindex, data, data_size);
             }
             
             bool configurePDO(int axis_id, int pdo_number, const std::vector<uint32_t>& mapping) override {
-                return impl_->configurePDO(axis_id, pdo_number, mapping);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->configurePDO(axis_id, pdo_number, mapping);
             }
             
             void enablePDO(int axis_id, int pdo_number, bool enable) override {
-                impl_->enablePDO(axis_id, pdo_number, enable);
+                auto impl = impl_;
+                if (!impl) return;
+                impl->enablePDO(axis_id, pdo_number, enable);
             }
             
             bool sendNMT(uint8_t node_id, uint8_t command) override {
+                auto impl = impl_;
+                if (!impl) return false;
                 // In real implementation, send NMT CAN frame with COB-ID 0x000 + node_id
                 // (NMT uses CAN ID 0x000 for all nodes, data byte 0 = command, byte 1 = node_id)
                 // Delegate to underlying implementation
-                return impl_->sendNMT(node_id, command);
+                return impl->sendNMT(node_id, command);
             }
             
             void sendSync() override {
-                impl_->sendSync();
+                auto impl = impl_;
+                if (!impl) return;
+                impl->sendSync();
             }
             
             std::string getStatistics() const override {
-                return impl_->getStatistics();
+                auto impl = impl_;
+                if (!impl) return "CANopen interface not available";
+                return impl->getStatistics();
             }
             
             bool saveConfiguration(const std::string& filename) const override {
-                return impl_->saveConfiguration(filename);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->saveConfiguration(filename);
             }
             
             bool loadConfiguration(const std::string& filename) override {
-                return impl_->loadConfiguration(filename);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->loadConfiguration(filename);
             }
             
             std::string getImplementationType() const override {
@@ -512,6 +575,8 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
 
             // Trajectory methods for adapter
             std::vector<TrajectoryPoint> generateTrajectory(const TrajectoryParams& params) override {
+                auto impl = impl_;
+                if (!impl) return {};
                 // Delegate to CanOpenInterface
                 CanOpenInterface::TrajectoryParams canopen_params;
                 canopen_params.type = static_cast<CanOpenInterface::TrajectoryType>(params.type);
@@ -522,7 +587,7 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                 canopen_params.target_position = params.target_position;
                 canopen_params.update_rate = params.update_rate;
                 
-                auto canopen_trajectory = impl_->generateTrajectory(canopen_params);
+                auto canopen_trajectory = impl->generateTrajectory(canopen_params);
                 
                 // Convert back to ICanOpenInterface::TrajectoryPoint
                 std::vector<TrajectoryPoint> trajectory;
@@ -540,6 +605,8 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
 
             bool executeTrajectory(int axis_id, const std::vector<TrajectoryPoint>& trajectory,
                                   std::function<void(const TrajectoryPoint&)> callback = nullptr) override {
+                auto impl = impl_;
+                if (!impl) return false;
                 // Convert trajectory to CanOpenInterface format
                 std::vector<CanOpenInterface::TrajectoryPoint> canopen_trajectory;
                 for (const auto& point : trajectory) {
@@ -566,23 +633,29 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                     };
                 }
                 
-                return impl_->executeTrajectory(axis_id, canopen_trajectory, canopen_callback);
+                return impl->executeTrajectory(axis_id, canopen_trajectory, canopen_callback);
             }
 
             uint8_t getNodeNMTState(int axis_id) const override {
-                return impl_->getNodeNMTState(axis_id);
+                auto impl = impl_;
+                if (!impl) return 0x00;
+                return impl->getNodeNMTState(axis_id);
             }
 
             bool isHeartbeatRecent(int axis_id, int max_age_ms) const override {
-                return impl_->isHeartbeatRecent(axis_id, max_age_ms);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->isHeartbeatRecent(axis_id, max_age_ms);
             }
 
             bool isDriveEnabled(int axis_id) const override {
-                return impl_->isDriveEnabled(axis_id);
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->isDriveEnabled(axis_id);
             }
             
         private:
-            std::unique_ptr<CanOpenInterface> impl_;
+            std::shared_ptr<CanOpenInterface> impl_;
             Config config_;
         };
         

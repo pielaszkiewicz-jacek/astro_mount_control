@@ -64,7 +64,6 @@ private:
     // Internal service implementation
     class ServiceImpl;
     
-    std::unique_ptr<controllers::ICanOpenInterface> canopen_interface_;
     std::unique_ptr<ServiceImpl> service_impl_;
     std::unique_ptr<grpc::Server> server_;
     std::string address_;

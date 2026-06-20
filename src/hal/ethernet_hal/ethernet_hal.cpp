@@ -597,7 +597,7 @@ EncoderReading EthernetHAL::EthernetEncoder::readEncoder() const {
                                static_cast<int32_t>(response[3]);
         
         double position = config_.countsToDegrees(raw_position) - calibration_offset_.load();
-        const_cast<std::atomic<double>&>(actual_position_).store(position);
+        actual_position_.store(position);
         reading.position_deg = position;
         reading.raw_counts = raw_position;
         reading.data_valid = true;
@@ -630,9 +630,9 @@ EthernetHAL::EthernetHAL(const HALConfig& config)
     , ip_address_(config.ethernet.ip_address)
     , port_(config.ethernet.port)
     , protocol_(config.ethernet.protocol)
-    , timeout_ms_(config.ethernet.timeout_ms)
     , retry_count_(config.ethernet.retry_count)
 {
+    timeout_ms_.store(config.ethernet.timeout_ms, std::memory_order_relaxed);
 }
 
 EthernetHAL::~EthernetHAL() {
@@ -650,7 +650,7 @@ bool EthernetHAL::initialize(const HALConfig& config) {
     ip_address_ = config.ethernet.ip_address;
     port_ = config.ethernet.port;
     protocol_ = config.ethernet.protocol;
-    timeout_ms_ = config.ethernet.timeout_ms;
+    timeout_ms_.store(config.ethernet.timeout_ms, std::memory_order_relaxed);
     retry_count_ = config.ethernet.retry_count;
     
     // Attempt initial connection
@@ -810,9 +810,10 @@ bool EthernetHAL::connectSocket() {
     }
     
     // Set socket timeout
+    uint32_t tmo = timeout_ms_.load(std::memory_order_relaxed);
     struct timeval tv;
-    tv.tv_sec = timeout_ms_ / 1000;
-    tv.tv_usec = (timeout_ms_ % 1000) * 1000;
+    tv.tv_sec = tmo / 1000;
+    tv.tv_usec = (tmo % 1000) * 1000;
     
     if (setsockopt(sock_fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0) {
         last_error_ = "Failed to set socket receive timeout";
@@ -1014,9 +1015,10 @@ bool EthernetHAL::sendModbusTCPRequest(uint8_t unit_id, uint8_t function_code,
         FD_ZERO(&read_fds);
         FD_SET(sock_fd_, &read_fds);
         
+        uint32_t tmo2 = timeout_ms_.load(std::memory_order_relaxed);
         struct timeval tv;
-        tv.tv_sec = timeout_ms_ / 1000;
-        tv.tv_usec = (timeout_ms_ % 1000) * 1000;
+        tv.tv_sec = tmo2 / 1000;
+        tv.tv_usec = (tmo2 % 1000) * 1000;
         
         int ret = select(sock_fd_ + 1, &read_fds, nullptr, nullptr, &tv);
         if (ret <= 0) {
@@ -1037,7 +1039,7 @@ bool EthernetHAL::sendModbusTCPRequest(uint8_t unit_id, uint8_t function_code,
         header_read += static_cast<size_t>(n);
         
         auto elapsed = std::chrono::steady_clock::now() - start_time;
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() > timeout_ms_) {
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() > timeout_ms_.load(std::memory_order_relaxed)) {
             error_count_++;
             last_error_ = "Modbus TCP response timeout (header)";
             disconnectSocket();
@@ -1078,9 +1080,10 @@ bool EthernetHAL::sendModbusTCPRequest(uint8_t unit_id, uint8_t function_code,
             FD_ZERO(&read_fds);
             FD_SET(sock_fd_, &read_fds);
             
+            uint32_t tmo3 = timeout_ms_.load(std::memory_order_relaxed);
             struct timeval tv;
-            tv.tv_sec = timeout_ms_ / 1000;
-            tv.tv_usec = (timeout_ms_ % 1000) * 1000;
+            tv.tv_sec = tmo3 / 1000;
+            tv.tv_usec = (tmo3 % 1000) * 1000;
             
             int ret = select(sock_fd_ + 1, &read_fds, nullptr, nullptr, &tv);
             if (ret <= 0) {
@@ -1111,14 +1114,17 @@ bool EthernetHAL::sendModbusTCPRequest(uint8_t unit_id, uint8_t function_code,
 
 void EthernetHAL::monitorLoop() {
     while (running_) {
-        // Check socket health
-        if (sock_fd_ < 0) {
-            reconnectSocket();
-        } else {
-            // Send keep-alive ping
-            uint8_t ping[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00};
-            if (::write(sock_fd_, ping, sizeof(ping)) < 0) {
-                disconnectSocket();
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            // Check socket health
+            if (sock_fd_ < 0) {
+                reconnectSocket();
+            } else {
+                // Send keep-alive ping
+                uint8_t ping[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00};
+                if (::write(sock_fd_, ping, sizeof(ping)) < 0) {
+                    disconnectSocket();
+                }
             }
         }
         

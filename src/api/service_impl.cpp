@@ -855,9 +855,18 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
             response->set_servo_init_sequence(seq_array.dump());
         }
         
+        // CANopen PDO config
+        response->set_canopen_pdo_config_enabled(config.canopen_pdo_config_enabled);
+        
+        // Loop timing
+        response->set_controller_poll_ms(config.controller_poll_ms);
+        response->set_tracking_update_ms(config.tracking_update_ms);
+        
         // Field rotation parameters
         response->set_field_rotation_enabled(config.field_rotation_enabled);
+        response->set_field_rotation_latitude(config.field_rotation_latitude);
         response->set_field_rotation_altitude(config.field_rotation_altitude);
+        response->set_field_rotation_azimuth(config.field_rotation_azimuth);
         response->set_field_rotation_computed_rate(config.field_rotation_computed_rate);
         response->set_field_rotation_applied_correction(config.field_rotation_applied_correction);
         response->set_field_rotation_temperature(config.field_rotation_temperature);
@@ -871,6 +880,7 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_meridian_flip_enabled(config.meridian_flip_enabled);
         response->set_meridian_flip_delay_minutes(config.meridian_flip_delay_minutes);
         response->set_meridian_flip_hysteresis_degrees(config.meridian_flip_hysteresis_degrees);
+        response->set_meridian_flip_timeout_seconds(config.meridian_flip_timeout_seconds);
         
         // Soft limits configuration
         response->set_soft_limits_enabled(config.soft_limits_enabled);
@@ -1061,9 +1071,18 @@ try {
         }
     }
     
+    // ── CANopen PDO config ────────────────────────────────────────
+    if (request->canopen_pdo_config_enabled()) config.canopen_pdo_config_enabled = true;
+    
+    // ── Loop timing ───────────────────────────────────────────────
+    if (request->controller_poll_ms() != 0) config.controller_poll_ms = request->controller_poll_ms();
+    if (request->tracking_update_ms() != 0) config.tracking_update_ms = request->tracking_update_ms();
+    
     // ── Field rotation parameters ─────────────────────────────────
     if (request->field_rotation_enabled()) config.field_rotation_enabled = true;
+    if (request->field_rotation_latitude() != 0.0) config.field_rotation_latitude = request->field_rotation_latitude();
     if (request->field_rotation_altitude() != 0.0) config.field_rotation_altitude = request->field_rotation_altitude();
+    if (request->field_rotation_azimuth() != 0.0) config.field_rotation_azimuth = request->field_rotation_azimuth();
     if (request->field_rotation_computed_rate() != 0.0) config.field_rotation_computed_rate = request->field_rotation_computed_rate();
     if (request->field_rotation_applied_correction() != 0.0) config.field_rotation_applied_correction = request->field_rotation_applied_correction();
     if (request->field_rotation_temperature() != 0.0) config.field_rotation_temperature = request->field_rotation_temperature();
@@ -1073,6 +1092,7 @@ try {
     if (request->meridian_flip_enabled()) config.meridian_flip_enabled = true;
     if (request->meridian_flip_delay_minutes() != 0.0) config.meridian_flip_delay_minutes = request->meridian_flip_delay_minutes();
     if (request->meridian_flip_hysteresis_degrees() != 0.0) config.meridian_flip_hysteresis_degrees = request->meridian_flip_hysteresis_degrees();
+    if (request->meridian_flip_timeout_seconds() != 0.0) config.meridian_flip_timeout_seconds = request->meridian_flip_timeout_seconds();
     
     // ── Soft limits configuration ────────────────────────────────
     if (request->soft_limits_enabled()) config.soft_limits_enabled = true;
@@ -1252,7 +1272,7 @@ grpc::Status MountControllerServiceImpl::GenerateTrajectory(grpc::ServerContext*
         params.update_rate = request->update_rate();
         
         // Generate trajectory using CanOpenInterface
-        auto trajectory_points = controller_.getCanOpenInterface().generateTrajectory(params);
+        auto trajectory_points = controller_.getCanOpenInterface()->generateTrajectory(params);
         
         // Fill response
         *response->mutable_params() = *request;
@@ -1292,7 +1312,7 @@ grpc::Status MountControllerServiceImpl::ExecuteTrajectory(grpc::ServerContext* 
         
         // Execute trajectory on axis 0 (RA/Azimuth) - in real implementation, 
         // we would determine which axis based on trajectory parameters
-        bool success = controller_.getCanOpenInterface().executeTrajectory(0, trajectory);
+        bool success = controller_.getCanOpenInterface()->executeTrajectory(0, trajectory);
         
         if (!success) {
             return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to execute trajectory");
@@ -1309,8 +1329,8 @@ grpc::Status MountControllerServiceImpl::StopTrajectory(grpc::ServerContext* con
                                                        google::protobuf::Empty* response) {
     try {
         // Stop trajectory execution on all axes
-        controller_.getCanOpenInterface().stopAxis(0); // RA/Azimuth
-        controller_.getCanOpenInterface().stopAxis(1); // Dec/Altitude
+        controller_.getCanOpenInterface()->stopAxis(0); // RA/Azimuth
+        controller_.getCanOpenInterface()->stopAxis(1); // Dec/Altitude
         
         return grpc::Status::OK;
     } catch (const std::exception& e) {
@@ -1967,7 +1987,7 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
                      (int)request->relative());
         
         // Get CANopen interface
-        auto& canopen = controller_.getCanOpenInterface();
+        auto canopen = controller_.getCanOpenInterface();
         
         // Validate axis ID
         int axis_id = request->axis_id();
@@ -1994,7 +2014,7 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
             double final_position = target_position;
             bool use_relative = request->relative();
             if (use_relative) {
-                auto current_pos = canopen.getPositionData(axis_id);
+                auto current_pos = canopen->getPositionData(axis_id);
                 final_position = current_pos.actual_position + target_position;
                 API_LOG_INFO("Relative mode: current={:.4f}° + offset={:.4f}° = target={:.4f}°",
                             current_pos.actual_position, target_position, final_position);
@@ -2003,7 +2023,7 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
             API_LOG_INFO("Setting position target: axis={}, position={}°, velocity={}°/s, acceleration={}°/s²",
                         axis_id, final_position, max_velocity, acceleration);
             
-            if (!canopen.setPositionTarget(axis_id, final_position, max_velocity, acceleration)) {
+            if (!canopen->setPositionTarget(axis_id, final_position, max_velocity, acceleration)) {
                 return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to set position target");
             }
             
@@ -2022,14 +2042,14 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
             // If relative mode, get current velocity and add offset
             double final_velocity = target_velocity;
             if (request->relative()) {
-                auto current_pos = canopen.getPositionData(axis_id);
+                auto current_pos = canopen->getPositionData(axis_id);
                 final_velocity = current_pos.actual_velocity + target_velocity;
             }
             
             API_LOG_INFO("Setting velocity target: axis={}, velocity={}°/s, acceleration={}°/s²",
                         axis_id, final_velocity, acceleration);
             
-            if (!canopen.setVelocityTarget(axis_id, final_velocity, acceleration)) {
+            if (!canopen->setVelocityTarget(axis_id, final_velocity, acceleration)) {
                 return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to set velocity target");
             }
         }
@@ -2053,7 +2073,7 @@ grpc::Status MountControllerServiceImpl::StopAxis(
                      request->axis_id(), request->decelerate());
         
         // Get CANopen interface
-        auto& canopen = controller_.getCanOpenInterface();
+        auto canopen = controller_.getCanOpenInterface();
         
         // Validate axis ID
         int axis_id = request->axis_id();
@@ -2067,23 +2087,23 @@ grpc::Status MountControllerServiceImpl::StopAxis(
             double deceleration = request->deceleration() > 0 ? request->deceleration() : 2.0; // default 2°/s²
             
             // Get current velocity
-            auto current_pos = canopen.getPositionData(axis_id);
+            auto current_pos = canopen->getPositionData(axis_id);
             double current_velocity = current_pos.actual_velocity;
             
             if (std::abs(current_velocity) > 0.001) {
                 // Set velocity to 0 with deceleration
-                if (!canopen.setVelocityTarget(axis_id, 0.0, deceleration)) {
+                if (!canopen->setVelocityTarget(axis_id, 0.0, deceleration)) {
                     return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to decelerate axis");
                 }
                 API_LOG_INFO("Axis {} decelerating from {}°/s with {}°/s²", 
                             axis_id, current_velocity, deceleration);
             } else {
                 // Already stopped, just call stop
-                canopen.stopAxis(axis_id);
+                canopen->stopAxis(axis_id);
             }
         } else {
             // Immediate stop
-            canopen.stopAxis(axis_id);
+            canopen->stopAxis(axis_id);
             API_LOG_INFO("Axis {} stopped immediately", axis_id);
         }
         
@@ -2106,7 +2126,7 @@ grpc::Status MountControllerServiceImpl::EmergencyStop(
                      request->axis_id(), request->reset_after());
         
         // Get CANopen interface
-        auto& canopen = controller_.getCanOpenInterface();
+        auto canopen = controller_.getCanOpenInterface();
         
         // Validate axis ID
         int axis_id = request->axis_id();
@@ -2117,12 +2137,12 @@ grpc::Status MountControllerServiceImpl::EmergencyStop(
         
         if (axis_id == -1) {
             // Emergency stop all axes
-            canopen.emergencyStop(0);
-            canopen.emergencyStop(1);
+            canopen->emergencyStop(0);
+            canopen->emergencyStop(1);
             API_LOG_WARN("Emergency stop on all axes");
         } else {
             // Emergency stop specific axis
-            canopen.emergencyStop(axis_id);
+            canopen->emergencyStop(axis_id);
             API_LOG_WARN("Emergency stop on axis {}", axis_id);
         }
         
@@ -2131,10 +2151,10 @@ grpc::Status MountControllerServiceImpl::EmergencyStop(
             // Re-enable drives after emergency stop
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             if (axis_id == -1) {
-                canopen.clearErrors(0);
-                canopen.clearErrors(1);
+                canopen->clearErrors(0);
+                canopen->clearErrors(1);
             } else {
-                canopen.clearErrors(axis_id);
+                canopen->clearErrors(axis_id);
             }
             API_LOG_INFO("Controller reset after emergency stop");
         }
@@ -2157,14 +2177,14 @@ grpc::Status MountControllerServiceImpl::GetAxisStatus(
         API_LOG_INFO("GetAxisStatus called");
         
         // Get CANopen interface
-        auto& canopen = controller_.getCanOpenInterface();
+        auto canopen = controller_.getCanOpenInterface();
         
         // The AxisStatus proto is a single-axis message (no repeated field), so we
         // return axis 0 (HA/RA) status. For axis 1 (Dec) status, the proto could
         // be extended with an axis_id request field in the future.
         const int axis_id = 0;
-        auto pos_data = canopen.getPositionData(axis_id);
-        auto drive_status = canopen.getDriveStatus(axis_id);
+        auto pos_data = canopen->getPositionData(axis_id);
+        auto drive_status = canopen->getDriveStatus(axis_id);
         
         response->set_axis_id(axis_id);
         response->set_current_position(pos_data.actual_position);
@@ -2413,6 +2433,38 @@ grpc::Status MountControllerServiceImpl::ReinitializeHAL(
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("ReinitializeHAL failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                           std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::StartGamepad(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    google::protobuf::Empty* response) {
+    
+    try {
+        API_LOG_INFO("StartGamepad called");
+        controller_.startGamepadLoop();
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("StartGamepad failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                           std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::StopGamepad(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    google::protobuf::Empty* response) {
+    
+    try {
+        API_LOG_INFO("StopGamepad called");
+        controller_.stopGamepad();
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("StopGamepad failed: {}", e.what());
         return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }

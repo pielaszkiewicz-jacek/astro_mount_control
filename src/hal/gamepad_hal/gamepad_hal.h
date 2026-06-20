@@ -102,7 +102,7 @@ public:
     void cycleSpeedDown();
 
     /// Get mutable MotorControl for direct velocity injection.
-    std::shared_ptr<GamepadMotorControl> getMotor(int axis_id);
+    GamepadMotorControl* getMotor(int axis_id);
 
 private:
     HALConfig config_;
@@ -122,11 +122,12 @@ private:
     // Speed preset index
     std::atomic<int> speed_preset_idx_{2};  // Default: middle preset
 
-    // Component instances created via factory methods
-    std::vector<std::shared_ptr<GamepadMotorControl>> motors_;
-    std::vector<std::shared_ptr<GamepadEncoderReader>> encoders_;
-    std::shared_ptr<GamepadSafetyMonitor> safety_monitor_;
-    std::shared_ptr<GamepadSensorInterface> sensor_interface_;
+    // Component instances created via factory methods.
+    // Raw pointers are observed by updateLoop(); the caller owns returned unique_ptrs.
+    std::vector<GamepadMotorControl*> motors_;
+    std::vector<GamepadEncoderReader*> encoders_;
+    GamepadSafetyMonitor* safety_monitor_{nullptr};
+    GamepadSensorInterface* sensor_interface_{nullptr};
 
     // Update thread
     std::thread update_thread_;
@@ -224,7 +225,7 @@ private:
  */
 class GamepadEncoderReader : public EncoderReader {
 public:
-    explicit GamepadEncoderReader(std::shared_ptr<GamepadMotorControl> motor);
+    explicit GamepadEncoderReader(GamepadMotorControl* motor);
     ~GamepadEncoderReader() override;
 
     bool initialize(const EncoderConfig& config) override;
@@ -259,7 +260,7 @@ public:
     bool isSynchronized() const override;
 
 private:
-    std::shared_ptr<GamepadMotorControl> motor_;
+    GamepadMotorControl* motor_;
     EncoderConfig config_;
     bool initialized_{false};
     double calibration_offset_{0.0};

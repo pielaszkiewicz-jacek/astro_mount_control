@@ -235,6 +235,7 @@ bool canopen_init(canopen_ctx_t* ctx, const char* interface,
 
     ctx->node_id = node_id;
     strncpy(ctx->ifname, interface, sizeof(ctx->ifname) - 1);
+    ctx->ifname[sizeof(ctx->ifname) - 1] = '\0';
 
     /* Create SocketCAN socket */
     ctx->sock = socket(PF_CAN, SOCK_RAW, CAN_RAW);
@@ -493,85 +494,113 @@ bool canopen_sdo_read_expedited(canopen_ctx_t* ctx, uint8_t node_id,
                                 void* data, size_t* len) {
     if (!ctx || !ctx->connected || !data || !len) return false;
 
-    /* Lock socket to prevent reader thread from stealing our response */
-    pthread_mutex_lock(&ctx->sock_mutex);
+    /* SDO retry configuration — matches write retry for consistency.
+     * Intermittent CAN bus timeouts can occur when the reader thread
+     * holds sock_mutex for up to 100 ms. */
+    const int MAX_RETRIES = 2;
+    const int RETRY_BACKOFF_MS = 50;
+    const int SDO_TIMEOUT_MS = 1000;
 
-    uint32_t cob_id = CANOPEN_COBID_RSDO + node_id;
-    uint8_t sdo_data[8];
+    for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        /* Lock socket to prevent reader thread from stealing our response */
+        pthread_mutex_lock(&ctx->sock_mutex);
 
-    memset(sdo_data, 0, sizeof(sdo_data));
-    sdo_data[0] = CANOPEN_SDO_CMD_READ;
-    sdo_data[1] = index & 0xFF;
-    sdo_data[2] = (index >> 8) & 0xFF;
-    sdo_data[3] = subindex;
+        uint32_t cob_id = CANOPEN_COBID_RSDO + node_id;
+        uint8_t sdo_data[8];
 
-    if (!send_frame(ctx->sock, cob_id, sdo_data, 8)) {
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
+        memset(sdo_data, 0, sizeof(sdo_data));
+        sdo_data[0] = CANOPEN_SDO_CMD_READ;
+        sdo_data[1] = index & 0xFF;
+        sdo_data[2] = (index >> 8) & 0xFF;
+        sdo_data[3] = subindex;
 
-    /* Wait for response with 1s timeout */
-    struct can_frame resp;
-    int ret = recv_frame(ctx->sock, &resp, 1000);
-    if (ret <= 0) {
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
-    if (resp.can_dlc < 8) {
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
+        if (!send_frame(ctx->sock, cob_id, sdo_data, 8)) {
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            if (attempt < MAX_RETRIES) {
+                usleep(RETRY_BACKOFF_MS * 1000);
+                continue;
+            }
+            return false;
+        }
 
-    /* Check SDO response: bits 7-5 (SCS) = 100 binary means abort (CiA 301 §7.2.10.7).
-     * Valid responses have:
-     *   - Upload response:  resp.data[0] = 0x43..0x4F (SCS=010)
-     * Abort has SCS=100, so (byte & 0xE0) == 0x80
-     */
-    if ((resp.data[0] & 0xE0) == 0x80) {
-        uint32_t abort_code = (uint32_t)resp.data[4]
-                            | ((uint32_t)resp.data[5] << 8)
-                            | ((uint32_t)resp.data[6] << 16)
-                            | ((uint32_t)resp.data[7] << 24);
-        log_sdo_abort(abort_code);
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
+        /* Wait for response with timeout */
+        struct can_frame resp;
+        int ret = recv_frame(ctx->sock, &resp, SDO_TIMEOUT_MS);
+        if (ret <= 0) {
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            if (attempt < MAX_RETRIES) {
+                fprintf(stderr, "SDO read timeout 0x%04X:%d (node %d), retry %d/%d\n",
+                        index, subindex, node_id, attempt + 1, MAX_RETRIES);
+                usleep(RETRY_BACKOFF_MS * 1000);
+                continue;
+            }
+            fprintf(stderr, "SDO read timeout 0x%04X:%d (node %d), all retries exhausted\n",
+                    index, subindex, node_id);
+            return false;
+        }
+        if (resp.can_dlc < 8) {
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            if (attempt < MAX_RETRIES) {
+                usleep(RETRY_BACKOFF_MS * 1000);
+                continue;
+            }
+            return false;
+        }
 
-    /* Validate expedited transfer flags (CiA 301 §7.2.10.3):
-     *   e-bit (bit 1) = 1 means expedited
-     *   s-bit (bit 0) = 0 means data size is specified by SCS nibble
-     */
-    uint8_t resp_byte0 = resp.data[0];
-    uint8_t scs = resp_byte0 & 0x0F; /* SDO Command Specifier */
-
-    /* If not expedited (e-bit = 0), we cannot process it here */
-    if (!(resp_byte0 & 0x02)) {
-        fprintf(stderr, "SDO: Server returned segmented transfer (not expedited) for 0x%04X sub 0x%02X\n",
-                index, subindex);
-        pthread_mutex_unlock(&ctx->sock_mutex);
-        return false;
-    }
-
-    /* Determine data size from SCS nibble */
-    switch (scs) {
-        case CANOPEN_SDO_CMD_READ_RESP_1 & 0x0F:
-            *len = 1; break;
-        case CANOPEN_SDO_CMD_READ_RESP_2 & 0x0F:
-            *len = 2; break;
-        case CANOPEN_SDO_CMD_READ_RESP_3 & 0x0F:
-            *len = 3; break;
-        case CANOPEN_SDO_CMD_READ_RESP_4 & 0x0F:
-            *len = 4; break;
-        default:
-            fprintf(stderr, "SDO: Unknown response SCS 0x%02X for 0x%04X sub 0x%02X\n",
-                    scs, index, subindex);
+        /* Check SDO response: bits 7-5 (SCS) = 100 binary means abort (CiA 301 §7.2.10.7).
+         * Valid responses have:
+         *   - Upload response:  resp.data[0] = 0x43..0x4F (SCS=010)
+         * Abort has SCS=100, so (byte & 0xE0) == 0x80
+         * SDO aborts are definitive — do not retry. */
+        if ((resp.data[0] & 0xE0) == 0x80) {
+            uint32_t abort_code = (uint32_t)resp.data[4]
+                                | ((uint32_t)resp.data[5] << 8)
+                                | ((uint32_t)resp.data[6] << 16)
+                                | ((uint32_t)resp.data[7] << 24);
+            log_sdo_abort(abort_code);
             pthread_mutex_unlock(&ctx->sock_mutex);
             return false;
+        }
+
+        /* Validate expedited transfer flags (CiA 301 §7.2.10.3):
+         *   e-bit (bit 1) = 1 means expedited
+         *   s-bit (bit 0) = 0 means data size is specified by SCS nibble
+         */
+        uint8_t resp_byte0 = resp.data[0];
+        uint8_t scs = resp_byte0 & 0x0F; /* SDO Command Specifier */
+
+        /* If not expedited (e-bit = 0), we cannot process it here */
+        if (!(resp_byte0 & 0x02)) {
+            fprintf(stderr, "SDO: Server returned segmented transfer (not expedited) for 0x%04X sub 0x%02X\n",
+                    index, subindex);
+            pthread_mutex_unlock(&ctx->sock_mutex);
+            return false;
+        }
+
+        /* Determine data size from SCS nibble */
+        switch (scs) {
+            case CANOPEN_SDO_CMD_READ_RESP_1 & 0x0F:
+                *len = 1; break;
+            case CANOPEN_SDO_CMD_READ_RESP_2 & 0x0F:
+                *len = 2; break;
+            case CANOPEN_SDO_CMD_READ_RESP_3 & 0x0F:
+                *len = 3; break;
+            case CANOPEN_SDO_CMD_READ_RESP_4 & 0x0F:
+                *len = 4; break;
+            default:
+                fprintf(stderr, "SDO: Unknown response SCS 0x%02X for 0x%04X sub 0x%02X\n",
+                        scs, index, subindex);
+                pthread_mutex_unlock(&ctx->sock_mutex);
+                return false;
+        }
+
+        memcpy(data, &resp.data[4], *len);
+        pthread_mutex_unlock(&ctx->sock_mutex);
+        return true;
     }
 
-    memcpy(data, &resp.data[4], *len);
-    pthread_mutex_unlock(&ctx->sock_mutex);
-    return true;
+    /* Unreachable */
+    return false;
 }
 
 /* ======================================================================
@@ -587,8 +616,14 @@ bool canopen_402_set_control_word(canopen_ctx_t* ctx, uint8_t node_id,
 uint16_t canopen_402_get_status_word(canopen_ctx_t* ctx, uint8_t node_id) {
     uint16_t sw = 0;
     size_t len = 2;
-    canopen_sdo_read_expedited(ctx, node_id,
-                                OD_INDEX_STATUS_WORD, 0, &sw, &len);
+    if (!canopen_sdo_read_expedited(ctx, node_id,
+                                     OD_INDEX_STATUS_WORD, 0, &sw, &len)) {
+        /* SDO read failed — the drive is not responding.
+         * Return 0 so the caller sees (status & OP_ENABLED) == 0 and
+         * attempts re-enable.  The re-enable will also fail if the
+         * drive is truly offline, producing a clear error message. */
+        return 0;
+    }
     return sw;
 }
 

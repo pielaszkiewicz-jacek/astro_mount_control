@@ -90,6 +90,10 @@ int main(int argc, char* argv[]) {
         controller_config.default_pressure = mount_config.default_pressure;
         controller_config.default_humidity = mount_config.default_humidity;
         
+        // Set loop timing parameters
+        controller_config.controller_poll_ms = mount_config.controller_poll_ms;
+        controller_config.tracking_update_ms = mount_config.tracking_update_ms;
+        
         // Set position/rate tolerance from config
         controller_config.position_tolerance = mount_config.position_tolerance;
         controller_config.rate_tolerance = mount_config.rate_tolerance;
@@ -117,9 +121,10 @@ int main(int argc, char* argv[]) {
         controller_config.canopen_sync_period_ms = canopen_config.sync_interval_ms;
         controller_config.canopen_accel_mode = canopen_config.accel_mode;
         
-        // HAL-level CANopen parameters (sdo_timeout_ms from hal.canopen)
+        // HAL-level CANopen parameters (sdo_timeout_ms, pdo_config from hal.canopen)
         auto hal_config = config.getHALConfig();
         controller_config.canopen_sdo_timeout_ms = static_cast<int>(hal_config.canopen.sdo_timeout_ms);
+        controller_config.canopen_pdo_config_enabled = hal_config.canopen.pdo_config_enabled;
         controller_config.hal_config = hal_config;
         
         // Set servo initialization configuration (custom SDO sequence)
@@ -259,13 +264,17 @@ int main(int argc, char* argv[]) {
             auto fr_params = config.getFieldRotationParams();
             ::astro_mount::FieldRotationParams proto_params;
             proto_params.set_enabled(fr_params.enabled);
+            proto_params.set_latitude(fr_params.latitude);
             proto_params.set_altitude(fr_params.altitude);
+            proto_params.set_azimuth(fr_params.azimuth);
             proto_params.set_computed_rate(fr_params.computed_rate);
             proto_params.set_applied_correction(fr_params.applied_correction);
             proto_params.set_temperature(fr_params.temperature);
             proto_params.set_flexure_correction(fr_params.flexure_correction);
             controller_config.field_rotation_enabled = fr_params.enabled;
+            controller_config.field_rotation_latitude = fr_params.latitude;
             controller_config.field_rotation_altitude = fr_params.altitude;
+            controller_config.field_rotation_azimuth = fr_params.azimuth;
             controller_config.field_rotation_computed_rate = fr_params.computed_rate;
             controller_config.field_rotation_applied_correction = fr_params.applied_correction;
             controller_config.field_rotation_temperature = fr_params.temperature;
@@ -276,6 +285,12 @@ int main(int argc, char* argv[]) {
             } else {
                 logger->info("Field rotation configured from config file");
             }
+        }
+        
+        // Auto-start gamepad loop if configured
+        if (hal_config.gamepad.autostart) {
+            logger->info("Gamepad autostart enabled — starting gamepad loop");
+            mount_controller->startGamepadLoop();
         }
         
         // Create and start gRPC server
@@ -329,7 +344,25 @@ int main(int argc, char* argv[]) {
         // Shutdown
         logger->info("Shutting down...");
         
+        // Stop background threads that access CANopen before stopping gRPC.
+        // The gamepad loop runs in its own thread inside MountController::Impl
+        // and calls canopen_interface_->setVelocityTarget() directly.
+        // Stopping it first prevents a race between the gamepad thread and
+        // in-flight gRPC handlers during the gRPC server shutdown.
+        mount_controller->stopGamepad();
+        logger->info("Gamepad loop stopped, proceeding with gRPC server shutdown");
+        
+        // Shut down gRPC server: Shutdown() stops accepting new requests,
+        // Wait() blocks until all in-flight handlers complete.
         grpc_server_instance->stop();
+        logger->info("gRPC server stopped, waiting for handler drain...");
+        
+        // Safety margin: sleep briefly to ensure any gRPC handler threads
+        // that may have escaped the Wait() barrier have fully unwound.
+        // Without this, a gRPC handler accessing canopen_interface_ could
+        // race with the MountController destruction below (SIGSEGV this=0x0).
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        
         grpc_server_instance.reset();  // Release before global destruction to prevent double-free
         
         mount_controller->shutdown();

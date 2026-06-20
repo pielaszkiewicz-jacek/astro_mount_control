@@ -6,6 +6,8 @@
 #include <dirent.h>
 #include "logging/logger.h"
 #include <sys/stat.h>
+#include <sys/inotify.h>
+#include <poll.h>
 #include <linux/joystick.h>
 #include <linux/input.h>
 #include <sys/ioctl.h>
@@ -64,6 +66,7 @@ void EvdevGamepadInput::shutdown() {
             poll_thread_.join();
         }
     }
+    stopInotifyWatch();
     if (fd_ >= 0) {
         ::close(fd_);
         fd_ = -1;
@@ -297,43 +300,151 @@ std::string EvdevGamepadInput::autoDetect() {
 // ============================================================================
 
 void EvdevGamepadInput::pollLoop() {
-    if (use_evdev_) {
-        struct input_event ev;
-        while (running_) {
-            ssize_t n = ::read(fd_, &ev, sizeof(ev));
-            if (n < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                    continue;
+    auto logger = logging::Logger::get("gamepad");
+
+    while (running_) {
+        // ── Normal polling loop ──────────────────────────────────
+        bool disconnected = false;
+
+        if (use_evdev_) {
+            struct input_event ev;
+            while (running_ && !disconnected) {
+                ssize_t n = ::read(fd_, &ev, sizeof(ev));
+                if (n < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        continue;
+                    }
+                    // Device disconnected
+                    disconnected = true;
+                } else if (n == (ssize_t)sizeof(ev)) {
+                    processEvdevEvent(ev);
                 }
-                // Device disconnected
-                std::lock_guard<std::mutex> lock(state_mutex_);
-                state_.connected = false;
-                break;
             }
-            if (n == (ssize_t)sizeof(ev)) {
-                processEvdevEvent(ev);
+        } else {
+            struct js_event ev;
+            while (running_ && !disconnected) {
+                ssize_t n = ::read(fd_, &ev, sizeof(ev));
+                if (n < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                        continue;
+                    }
+                    // Device disconnected
+                    disconnected = true;
+                } else if (n == (ssize_t)sizeof(ev)) {
+                    processJoystickEvent(ev);
+                }
             }
         }
-    } else {
-        struct js_event ev;
-        while (running_) {
-            ssize_t n = ::read(fd_, &ev, sizeof(ev));
-            if (n < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                    continue;
-                }
-                // Device disconnected
+
+        if (!running_) break;
+
+        // ── Disconnection detected ──────────────────────────────
+        if (disconnected) {
+            {
                 std::lock_guard<std::mutex> lock(state_mutex_);
                 state_.connected = false;
-                break;
             }
-            if (n == (ssize_t)sizeof(ev)) {
-                processJoystickEvent(ev);
+            logger->warn("[EvdevGamepadInput] Gamepad disconnected '{}' — entering hotplug wait",
+                         device_name_);
+
+            // Close the old device
+            if (fd_ >= 0) {
+                ::close(fd_);
+                fd_ = -1;
             }
+            device_path_.clear();
+            device_name_.clear();
+
+            // Start inotify watch for /dev/input
+            if (!startInotifyWatch()) {
+                logger->error("[EvdevGamepadInput] Failed to start inotify watch, retrying in 2s");
+                std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+                continue;
+            }
+
+            // Wait for a new device to be plugged in (with periodic timeout
+            // so we can still check running_)
+            while (running_) {
+                std::string new_path = waitForDevicePlug(3000); // 3s timeout
+                if (!running_) break;
+
+                if (!new_path.empty()) {
+                    // Try to open the newly detected device
+                    if (openDevice(new_path)) {
+                        device_path_ = new_path;
+                        {
+                            std::lock_guard<std::mutex> lock(state_mutex_);
+                            state_.connected = true;
+                        }
+                        logger->info("[EvdevGamepadInput] Hotplug reconnected: '{}' ({})",
+                                     device_name_, new_path);
+                        break; // Resume normal polling
+                    }
+                }
+            }
+
+            stopInotifyWatch();
         }
     }
+}
+
+// ============================================================================
+// Hotplug helpers — inotify-based /dev/input monitoring
+// ============================================================================
+
+bool EvdevGamepadInput::startInotifyWatch() {
+    stopInotifyWatch(); // ensure clean state
+
+    inotify_fd_ = ::inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    if (inotify_fd_ < 0) {
+        return false;
+    }
+
+    // Watch /dev/input for file creation (gamepad appears)
+    inotify_wd_ = ::inotify_add_watch(inotify_fd_, "/dev/input",
+                                       IN_CREATE | IN_MOVED_TO);
+    if (inotify_wd_ < 0) {
+        ::close(inotify_fd_);
+        inotify_fd_ = -1;
+        return false;
+    }
+
+    return true;
+}
+
+void EvdevGamepadInput::stopInotifyWatch() {
+    if (inotify_wd_ >= 0) {
+        ::inotify_rm_watch(inotify_fd_, inotify_wd_);
+        inotify_wd_ = -1;
+    }
+    if (inotify_fd_ >= 0) {
+        ::close(inotify_fd_);
+        inotify_fd_ = -1;
+    }
+}
+
+std::string EvdevGamepadInput::waitForDevicePlug(int timeout_ms) {
+    if (inotify_fd_ < 0) return "";
+
+    struct pollfd pfd;
+    pfd.fd = inotify_fd_;
+    pfd.events = POLLIN;
+
+    int ret = ::poll(&pfd, 1, timeout_ms);
+    if (ret <= 0) return ""; // timeout or error
+
+    // Read inotify events (drain the buffer)
+    char buf[4096];
+    ssize_t len = ::read(inotify_fd_, buf, sizeof(buf));
+    if (len <= 0) return "";
+
+    // After any event in /dev/input, try auto-detection
+    // Small delay to let the kernel finish creating device nodes
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    return autoDetect();
 }
 
 // ============================================================================

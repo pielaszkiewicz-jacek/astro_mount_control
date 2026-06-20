@@ -262,8 +262,16 @@ public:
                                astro_mount::HALStatus* response) override;
     
     grpc::Status ReinitializeHAL(grpc::ServerContext* context,
-                                  const astro_mount::HALReinitRequest* request,
-                                  google::protobuf::Empty* response) override;
+                                   const astro_mount::HALReinitRequest* request,
+                                   google::protobuf::Empty* response) override;
+    
+    grpc::Status StartGamepad(grpc::ServerContext* context,
+                              const google::protobuf::Empty* request,
+                              google::protobuf::Empty* response) override;
+    
+    grpc::Status StopGamepad(grpc::ServerContext* context,
+                             const google::protobuf::Empty* request,
+                             google::protobuf::Empty* response) override;
     
     // ============================================
     // Mount orientation (CASUAL mount type)

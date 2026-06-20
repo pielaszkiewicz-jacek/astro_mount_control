@@ -23,6 +23,10 @@ namespace hal {
  *
  * Auto-detection tries /dev/input/js0 … js3 and /dev/input/event*
  * devices with EV_ABS capability.
+ *
+ * Hotplug detection: when the device is disconnected, the polling
+ * loop uses inotify to watch /dev/input/ for new devices and
+ * automatically reconnects when a gamepad is plugged in.
  */
 class EvdevGamepadInput : public GamepadInput {
 public:
@@ -43,6 +47,8 @@ public:
 private:
     // Internal state
     int fd_{-1};
+    int inotify_fd_{-1};             ///< inotify fd for hotplug detection
+    int inotify_wd_{-1};             ///< inotify watch descriptor for /dev/input
     std::string device_path_;
     std::string device_name_;
     int axis_count_{0};
@@ -111,6 +117,11 @@ private:
     double normalizeAxis(int raw, int axis_min, int axis_max) const;
     double applyDeadzone(double value) const;
     void setupDefaultMappings();
+
+    // Hotplug helpers
+    bool startInotifyWatch();
+    void stopInotifyWatch();
+    std::string waitForDevicePlug(int timeout_ms = -1);
 };
 
 } // namespace hal

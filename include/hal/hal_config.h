@@ -59,6 +59,7 @@ struct HALConfig {
         uint32_t sdo_timeout_ms{1000};
         uint32_t pdo_update_rate{100}; // Hz
         std::string accel_mode{"time"}; // "time" or "rate" (CiA 402 acceleration interpretation)
+        bool pdo_config_enabled{false}; // Write PDO mappings to drive (may overwrite mfgr params)
         
         // === Konfiguracja NMT (Network Management) ===
         struct {
@@ -115,6 +116,7 @@ struct HALConfig {
         bool invert_axis2{false};              // Inwersja osi 2 (LY)
         std::vector<double> speed_presets;     // Predefiniowane poziomy prędkości
         double update_rate_hz{50.0};           // Częstotliwość odpytywania
+        bool autostart{false};                 // Automatycznie uruchom gamepad po starcie
         
         // Mapowanie przycisków: physical_index → nazwa akcji
         // Akcje: "home", "stop", "emergency_stop", "park",
@@ -206,6 +208,7 @@ struct HALConfig {
         config.canopen.sdo_timeout_ms = canopen.value("sdo_timeout_ms", 1000);
         config.canopen.pdo_update_rate = canopen.value("pdo_update_rate", 100);
         config.canopen.accel_mode = canopen.value("accel_mode", "time");
+        config.canopen.pdo_config_enabled = canopen.value("pdo_config_enabled", false);
         
         // Parse NMT configuration
         auto nmt_json = canopen.value("nmt", nlohmann::json::object());
@@ -247,6 +250,7 @@ struct HALConfig {
         config.gamepad.invert_axis1 = gamepad.value("invert_axis1", false);
         config.gamepad.invert_axis2 = gamepad.value("invert_axis2", false);
         config.gamepad.update_rate_hz = gamepad.value("update_rate_hz", 50.0);
+        config.gamepad.autostart = gamepad.value("autostart", false);
         
         auto speed_presets = gamepad.value("speed_presets", nlohmann::json::array());
         config.gamepad.speed_presets.clear();
@@ -467,6 +471,7 @@ struct HALConfig {
         gamepad_json["invert_axis1"] = gamepad.invert_axis1;
         gamepad_json["invert_axis2"] = gamepad.invert_axis2;
         gamepad_json["update_rate_hz"] = gamepad.update_rate_hz;
+        gamepad_json["autostart"] = gamepad.autostart;
         nlohmann::json presets_array = nlohmann::json::array();
         for (const auto& val : gamepad.speed_presets) {
             presets_array.push_back(val);

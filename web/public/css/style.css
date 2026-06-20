@@ -2860,6 +2860,17 @@ input[type="file"].form-input::file-selector-button:hover {
   font-style: italic;
 }
 
+.gamepad-ctrl-row {
+  margin: 8px 0 4px 0;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.gamepad-ctrl-row .cfg-btn {
+  padding: 4px 14px;
+  font-size: 0.8rem;
+}
+
 .gamepad-state-error {
   color: var(--color-danger, #e74c3c);
   font-size: 0.8rem;

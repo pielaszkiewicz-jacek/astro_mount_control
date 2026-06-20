@@ -71,12 +71,12 @@ std::tuple<double, double, double> PIDController::getParameters() const {
 
 CanOpenHAL::CanOpenMotor::CanOpenMotor(int axis_id, controllers::ICanOpenInterface& canopen)
     : axis_id_(axis_id),
+      can_node_id_(static_cast<uint8_t>(axis_id + 1)),  // safe default, overridden by createMotorControl()
       canopen_(canopen),
-      pid_controller_(1.5, 0.2, 0.05, 1000.0, 100.0) {
-    
-    // Start control thread
-    control_running_ = true;
-    control_thread_ = std::thread(&CanOpenMotor::controlLoop, this);
+      pid_controller_(1.5, 0.2, 0.05, 1000.0, 100.0),
+      start_time_(std::chrono::steady_clock::now()) {
+    // Control thread is started lazily in enable() to avoid
+    // accessing unconfigured CANopen interfaces.
 }
 
 CanOpenHAL::CanOpenMotor::~CanOpenMotor() {
@@ -90,12 +90,19 @@ bool CanOpenHAL::CanOpenMotor::enable() {
     std::lock_guard<std::mutex> lock(mutex_);
     
     try {
+        // Lazy-start control thread on first enable (see M6 fix).
+        if (!control_running_.exchange(true)) {
+            control_thread_ = std::thread(&CanOpenMotor::controlLoop, this);
+        }
+
         // CiA 301 §9.2.1: Send NMT Start Remote Node to ensure the node is
         // in Operational state before attempting CiA 402 enable sequence.
         // Some drives reject control word writes when in NMT Pre-Operational state.
-        if (!canopen_.sendNMT(axis_id_, 0x01)) {
+        // Use the proper CANopen node ID (set by createMotorControl), not axis_id.
+        if (!canopen_.sendNMT(can_node_id_, 0x01)) {
             astro_mount::logging::Logger::get("canopen")->warn(
-                "Motor {}: NMT Start command failed (node may already be operational)", axis_id_);
+                "Motor {} (node {}): NMT Start command failed (node may already be operational)",
+                axis_id_, can_node_id_);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         
@@ -172,12 +179,9 @@ bool CanOpenHAL::CanOpenMotor::setPosition(double position_deg, double velocity_
     }
     
     try {
-        // Convert degrees to encoder counts
-        double counts_per_degree = config_.encoder_counts_per_degree;
-        int32_t target_counts = static_cast<int32_t>(position_deg * counts_per_degree);
-        
-        // Set position target via CANopen
-        if (!canopen_.setPositionTarget(axis_id_, target_counts, velocity_deg_s, acceleration_deg_s2)) {
+        // Pass degrees directly — setPositionTarget() does its own
+        // conversion using config_.axis_position_counts_per_degree[].
+        if (!canopen_.setPositionTarget(axis_id_, position_deg, velocity_deg_s, acceleration_deg_s2)) {
             error_message_ = "Failed to set position target";
             return false;
         }
@@ -203,34 +207,14 @@ bool CanOpenHAL::CanOpenMotor::setVelocity(double velocity_deg_s,
     }
     
     try {
-        // Switch to Profile Velocity Mode (CiA 402: Modes of Operation = 0x6060, pv=3)
-        // This is consistent with canopen_interface.cpp which also uses mode 3 (pv).
-        // Mode 3 provides profile acceleration/deceleration via separate OD entries.
-        int8_t velocity_mode = 3; // Profile Velocity mode (pv)
-        if (!canopen_.sendSDO(axis_id_, 0x6060, 0x00, &velocity_mode, sizeof(velocity_mode))) {
-            error_message_ = "Failed to switch to velocity mode";
-            return false;
-        }
-        
-        // Convert °/s to drive units (counts/s)
-        double counts_per_degree = config_.encoder_counts_per_degree;
-        int32_t velocity_counts = static_cast<int32_t>(velocity_deg_s * counts_per_degree);
-        
-        // Set target velocity via SDO (0x60FF: Target Velocity for Profile Velocity mode)
-        if (!canopen_.sendSDO(axis_id_, 0x60FF, 0x00, &velocity_counts, sizeof(velocity_counts))) {
+        // Delegate to the CanOpenInterface which handles mode switching,
+        // re-enable logic, and accel/decel caching internally.
+        // This avoids flooding the CAN bus with 4 raw SDO writes per call
+        // (mode + velocity + accel + decel), which caused reader-thread
+        // starvation and heartbeat loss at gamepad update rates (50 Hz).
+        if (!canopen_.setVelocityTarget(axis_id_, velocity_deg_s, acceleration_deg_s2)) {
             error_message_ = "Failed to set velocity target";
             return false;
-        }
-        
-        // Set profile acceleration (0x6083: Profile Acceleration)
-        int32_t accel_counts = static_cast<int32_t>(acceleration_deg_s2 * counts_per_degree);
-        if (!canopen_.sendSDO(axis_id_, 0x6083, 0x00, &accel_counts, sizeof(accel_counts))) {
-            // Acceleration write is non-critical for operation — log and continue
-        }
-        
-        // Set profile deceleration (0x6084: Profile Deceleration)
-        if (!canopen_.sendSDO(axis_id_, 0x6084, 0x00, &accel_counts, sizeof(accel_counts))) {
-            // Deceleration write is non-critical for operation — log and continue
         }
         
         target_position_ = velocity_deg_s; // store velocity as pseudo-target
@@ -454,11 +438,9 @@ double CanOpenHAL::CanOpenMotor::getVoltage() const {
 }
 
 uint32_t CanOpenHAL::CanOpenMotor::getOperationTime() const {
-    // Operation time in hours (simulated)
-    static auto start_time = std::chrono::steady_clock::now();
     auto now = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::hours>(now - start_time);
-    return duration.count();
+    auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_);
+    return static_cast<uint32_t>(duration.count());
 }
 
 bool CanOpenHAL::CanOpenMotor::sendControlWord(uint16_t controlword) {
@@ -532,6 +514,9 @@ bool CanOpenHAL::CanOpenMotor::configureCiA402() {
 }
 
 void CanOpenHAL::CanOpenMotor::controlLoop() {
+    // Position and status are now updated via PDO callbacks (TPDO1)
+    // in the CAN reader thread — zero additional CAN bus traffic.
+    // This loop only dispatches callbacks and checks target-reached.
     auto last_update = std::chrono::steady_clock::now();
     
     while (control_running_) {
@@ -540,23 +525,28 @@ void CanOpenHAL::CanOpenMotor::controlLoop() {
         last_update = now;
         
         if (enabled_ && moving_) {
-            // Update actual position from encoder
-            double new_position = getActualPosition();
-            double new_velocity = getActualVelocity();
+            // Read cached position/velocity (updated by PDO, ~µs, no CAN traffic)
+            actual_position_ = getActualPosition();
+            actual_velocity_ = getActualVelocity();
             
-            actual_position_ = new_position;
-            actual_velocity_ = new_velocity;
+            // Copy callbacks under the mutex to avoid data races.
+            PositionCallback pos_cb_copy;
+            StateChangeCallback state_cb_copy;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                pos_cb_copy = position_callback_;
+                state_cb_copy = state_change_callback_;
+            }
             
-            // Call position callback if set (MotorControl callback sign: position, velocity, torque)
-            if (position_callback_) {
-                position_callback_(new_position, new_velocity, actual_torque_.load());
+            if (pos_cb_copy) {
+                pos_cb_copy(actual_position_.load(), actual_velocity_.load(), actual_torque_.load());
             }
             
             // Check if target reached
             if (targetReached()) {
                 moving_ = false;
-                if (state_change_callback_) {
-                    state_change_callback_(enabled_, moving_);
+                if (state_cb_copy) {
+                    state_cb_copy(enabled_, moving_);
                 }
             }
         }
@@ -588,6 +578,12 @@ CanOpenHAL::CanOpenEncoder::CanOpenEncoder(int axis_id, controllers::ICanOpenInt
 }
 
 CanOpenHAL::CanOpenEncoder::~CanOpenEncoder() {
+    // Unregister the encoder callback from the CANopen interface BEFORE
+    // destroying the object.  The callback captures a raw 'this' pointer;
+    // leaving it registered after destruction would cause a dangling-pointer
+    // invocation when the next PDO/encoder frame arrives.
+    canopen_.setEncoderCallback(nullptr);
+
     if (pdo_running_) {
         pdo_running_ = false;
         if (pdo_thread_.joinable()) {
@@ -629,6 +625,12 @@ bool CanOpenHAL::CanOpenEncoder::initialize(const EncoderConfig& config) {
 void CanOpenHAL::CanOpenEncoder::shutdown() {
     initialized_ = false;
     pdo_running_ = false;
+
+    // Unregister the encoder callback BEFORE joining the PDO thread.
+    // The callback captures raw 'this'; leaving it registered after
+    // shutdown would cause it to fire on a disabled encoder if the
+    // CANopen interface is still alive.
+    canopen_.setEncoderCallback(nullptr);
     
     if (pdo_thread_.joinable()) {
         pdo_thread_.join();
@@ -811,6 +813,8 @@ void CanOpenHAL::CanOpenEncoder::pdoReceiveThread() {
             auto encoder_data = canopen_.getEncoderData(axis_id_);
             
             // === Krok 2: Przelicz na EncoderReading z cache przez mutex ===
+            EncoderReading reading_copy;
+            ReadingCallback cb_copy;
             {
                 std::lock_guard<std::mutex> lock(mutex_);
                 
@@ -827,19 +831,32 @@ void CanOpenHAL::CanOpenEncoder::pdoReceiveThread() {
                 
                 total_readings_.fetch_add(1);
                 
-                // Callback notyfikacji odczytu dla zewnętrznych subskrybentów
-                if (reading_callback_) {
-                    reading_callback_(latest_reading_);
-                }
+                // Copy callback and reading under the lock to avoid
+                // data races with setReadingCallback() and to avoid
+                // invoking an external callback while holding the mutex.
+                reading_copy = latest_reading_;
+                cb_copy = reading_callback_;
+            }
+            
+            // Invoke callback OUTSIDE the mutex to prevent deadlocks
+            // if the callback tries to call back into the encoder.
+            if (cb_copy) {
+                cb_copy(reading_copy);
             }
             
         } catch (const std::exception& e) {
-            std::lock_guard<std::mutex> lock(mutex_);
-            error_count_.fetch_add(1);
-            latest_reading_.data_valid = false;
+            ErrorCallback err_cb_copy;
+            uint32_t err_count;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                error_count_.fetch_add(1);
+                latest_reading_.data_valid = false;
+                err_count = error_count_.load();
+                err_cb_copy = error_callback_;
+            }
             
-            if (error_callback_) {
-                error_callback_(std::string("PDO receive error: ") + e.what(), error_count_.load());
+            if (err_cb_copy) {
+                err_cb_copy(std::string("PDO receive error: ") + e.what(), err_count);
             }
         }
         
@@ -948,8 +965,13 @@ bool CanOpenHAL::CanOpenSafetyMonitor::checkLimits(int axis_id) {
         
         const auto& limits = config_.axes_limits[axis_id];
         if (position < limits.min_position_deg || position > limits.max_position_deg) {
-            if (limit_callback_) {
-                limit_callback_(axis_id, "position_limit", position);
+            LimitCallback cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                cb = limit_callback_;
+            }
+            if (cb) {
+                cb(axis_id, "position_limit", position);
             }
             return false;
         }
@@ -957,24 +979,39 @@ bool CanOpenHAL::CanOpenSafetyMonitor::checkLimits(int axis_id) {
         // Check velocity
         double velocity = position_data.actual_velocity;
         if (std::abs(velocity) > limits.max_velocity_deg_s) {
-            if (limit_callback_) {
-                limit_callback_(axis_id, "velocity_limit", velocity);
+            LimitCallback cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                cb = limit_callback_;
+            }
+            if (cb) {
+                cb(axis_id, "velocity_limit", velocity);
             }
             return false;
         }
         
         // Check temperature
         if (drive_status.temperature > limits.max_temperature_c) {
-            if (limit_callback_) {
-                limit_callback_(axis_id, "temperature_limit", drive_status.temperature);
+            LimitCallback cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                cb = limit_callback_;
+            }
+            if (cb) {
+                cb(axis_id, "temperature_limit", drive_status.temperature);
             }
             return false;
         }
         
         // Check current
         if (drive_status.current > limits.max_current_a) {
-            if (limit_callback_) {
-                limit_callback_(axis_id, "current_limit", drive_status.current);
+            LimitCallback cb;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                cb = limit_callback_;
+            }
+            if (cb) {
+                cb(axis_id, "current_limit", drive_status.current);
             }
             return false;
         }
@@ -982,8 +1019,13 @@ bool CanOpenHAL::CanOpenSafetyMonitor::checkLimits(int axis_id) {
         return true;
         
     } catch (const std::exception& e) {
-        if (error_callback_) {
-            error_callback_(axis_id, std::string("Limit check failed: ") + e.what());
+        ErrorCallback cb;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            cb = error_callback_;
+        }
+        if (cb) {
+            cb(axis_id, std::string("Limit check failed: ") + e.what());
         }
         return false;
     }
@@ -1014,11 +1056,13 @@ bool CanOpenHAL::CanOpenSafetyMonitor::clearErrors(int axis_id) {
 }
 
 void CanOpenHAL::CanOpenSafetyMonitor::setLimitCallback(LimitCallback callback) {
-    limit_callback_ = callback;
+    std::lock_guard<std::mutex> lock(mutex_);
+    limit_callback_ = std::move(callback);
 }
 
 void CanOpenHAL::CanOpenSafetyMonitor::setErrorCallback(ErrorCallback callback) {
-    error_callback_ = callback;
+    std::lock_guard<std::mutex> lock(mutex_);
+    error_callback_ = std::move(callback);
 }
 
 std::string CanOpenHAL::CanOpenSafetyMonitor::getDiagnostics() const {
@@ -1136,11 +1180,11 @@ bool CanOpenHAL::CanOpenSensorInterface::autoCalibrate(int sensor_id) {
 }
 
 void CanOpenHAL::CanOpenSensorInterface::setReadingCallback(ReadingCallback callback) {
-    // Store callback (simplified)
+    reading_callback_ = std::move(callback);
 }
 
 void CanOpenHAL::CanOpenSensorInterface::setErrorCallback(ErrorCallback callback) {
-    // Store callback (simplified)
+    error_callback_ = std::move(callback);
 }
 
 std::string CanOpenHAL::CanOpenSensorInterface::getDiagnostics() const {
@@ -1177,6 +1221,17 @@ bool CanOpenHAL::initialize(const HALConfig& config) {
         canopen_config.node_id = config.canopen.node_id;
         canopen_config.use_sync = config.canopen.use_sync;
         canopen_config.sync_period_ms = config.canopen.sync_period_ms;
+        canopen_config.pdo_config_enabled = config.canopen.pdo_config_enabled;
+
+        // Propagate counts-per-degree from axis encoder config.
+        // The defaults (4000/360 ≈ 11.111) don't match real drives.
+        for (int i = 0; i < 2; ++i) {
+            if (i < (int)config.axes.size()) {
+                double cpd = config.axes[i].encoder_config.counts_per_degree;
+                canopen_config.axis_position_counts_per_degree[i] = cpd;
+                canopen_config.axis_velocity_counts_per_deg_s[i] = cpd;
+            }
+        }
         
         if (!canopen_interface_->initialize(canopen_config)) {
             astro_mount::logging::Logger::get("canopen")->error("Failed to initialize CANopen interface");
@@ -1234,6 +1289,12 @@ std::unique_ptr<MotorControl> CanOpenHAL::createMotorControl(int axis_id) {
     // The caller (MountController) takes ownership and manages lifecycle.
     auto motor = std::make_unique<CanOpenMotor>(axis_id, *canopen_interface_);
     if (!config_.axes.empty() && axis_id < config_.axes.size()) {
+        // Set the proper CANopen node ID from axis config (0 = auto: axis_id + 1)
+        uint8_t node_id = config_.axes[axis_id].can_node_id;
+        if (node_id == 0) {
+            node_id = static_cast<uint8_t>(config_.canopen.node_id + axis_id);
+        }
+        motor->setCanNodeId(node_id);
         motor->configure(config_.axes[axis_id].motor_config);
     }
     return motor;

@@ -52,6 +52,7 @@ public:
         double axis_position_counts_per_degree[2] = {4000.0 / 360.0, 4000.0 / 360.0};
         double axis_velocity_counts_per_deg_s[2] = {4000.0 / 360.0, 4000.0 / 360.0};
         std::string accel_mode = "time";  // "time" or "rate"
+        bool pdo_config_enabled = false;  // Write PDO mappings to drive
 
         /** Custom SDO sequence sent to each axis during initialization */
         bool servo_init_enabled = false;

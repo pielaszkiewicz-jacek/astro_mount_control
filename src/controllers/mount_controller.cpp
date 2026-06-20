@@ -369,6 +369,7 @@ public:
             canopen_config.axis_velocity_counts_per_deg_s[0] = config_.ha_axis_params.velocity_counts_per_deg_s;
             canopen_config.axis_velocity_counts_per_deg_s[1] = config_.dec_axis_params.velocity_counts_per_deg_s;
             canopen_config.accel_mode = config_.canopen_accel_mode;
+            canopen_config.pdo_config_enabled = true;
             
             // Propagate servo initialization sequence from ControllerConfig
             canopen_config.servo_init_enabled = config_.servo_init_enabled;
@@ -552,9 +553,12 @@ public:
             MOUNT_LOG_DEBUG("DerotatorController created");
         }
         
-        // Gamepad polling is started on demand via UI (gRPC StartGamepad),
-        // not automatically, to avoid unexpected axis movements from
-        // joystick drift or uncalibrated center positions.
+        // Open the gamepad device for live state reporting (UI) only.
+        // The axis-control loop (gamepadLoop) is NEVER auto-started —
+        // it would flood CANopen with velocity commands and fight
+        // normal slewing/tracking.  UI shows live axes/buttons but
+        // the mount is never driven by the gamepad.
+        initGamepadInput();
         
         return true;
     }
@@ -806,7 +810,7 @@ public:
             // Background monitoring thread – waits for axes to reach target
             work_thread_ = std::thread([this]() {
             // Poll CANopen axes until both reach target (or slewing is cancelled)
-            const int POLL_MS = 100;
+            const int POLL_MS = config_.controller_poll_ms;
             const double POSITION_TOLERANCE_DEG = config_.position_tolerance;
             
             // Simulated timeout tracking - declared OUTSIDE the while loop
@@ -1132,7 +1136,7 @@ public:
             }
             
             work_thread_ = std::thread([this]() {
-            const int POLL_MS = 100;
+            const int POLL_MS = config_.controller_poll_ms;
             const double POSITION_TOLERANCE_DEG = config_.position_tolerance;
             
             // Simulated timeout tracking - declared outside the while loop
@@ -1484,7 +1488,7 @@ public:
             // using a hardcoded dt causes position under/over-correction.
             auto last_iteration = std::chrono::steady_clock::now();
             while (tracking_active_) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                std::this_thread::sleep_for(std::chrono::milliseconds(config_.tracking_update_ms));
                 
                 // Measure actual elapsed time since last iteration
                 auto now = std::chrono::steady_clock::now();
@@ -4429,17 +4433,6 @@ public:
             setIfStr("network", "grpc_address", config_.grpc_address);
             setIfInt("network", "grpc_port", config_.grpc_port);
 
-            // ── hal.canopen (sync critical params) ────────────────────
-            // The hal.* section is managed externally (SetHALConfig gRPC),
-            // but a few ControllerConfig fields that flow through the main
-            // config path (accel_mode, etc.) must be synced back to
-            // hal.canopen so they survive restarts.
-            if (!j.contains("hal")) j["hal"] = json::object();
-            if (!j["hal"].contains("canopen")) j["hal"]["canopen"] = json::object();
-            auto& hc = j["hal"]["canopen"];
-            if (!config_.canopen_accel_mode.empty())
-                hc["accel_mode"] = config_.canopen_accel_mode;
-
             // ── mount ────────────────────────────────────────────────
             ensureSection("mount");
             auto& m = j["mount"];
@@ -4594,6 +4587,11 @@ public:
                 ensureSection("kalman");
                 j["kalman"]["measurement_noise"] = config_.measurement_noise;
             }
+
+            // ── hal (gamepad, PID, safety, canopen) ─────────────────
+            // Serialize the HAL config (which includes gamepad, PID, safety)
+            // using its built-in JSON serializer.
+            j["hal"] = hal_config_.toJson();
 
             // ── tpoint ───────────────────────────────────────────────
             if (config_.tpoint_enabled_terms != 0) {
@@ -4862,11 +4860,11 @@ public:
         return canopen_interface_.get();
     }
     
-    ICanOpenInterface& getCanOpenInterfaceRef() {
+    std::shared_ptr<ICanOpenInterface> getCanOpenInterfaceShared() {
         if (!canopen_interface_) {
             throw std::runtime_error("CANopen interface not initialized");
         }
-        return *canopen_interface_;
+        return canopen_interface_;
     }
     
     // ============================================
@@ -4975,41 +4973,102 @@ public:
         gp->set_dead_zone(hal_config_.gamepad.deadzone);
         gp->set_sensitivity(hal_config_.gamepad.sensitivity);
         gp->set_read_frequency(hal_config_.gamepad.update_rate_hz);
+        gp->set_autostart(hal_config_.gamepad.autostart);
         
         return true;
     }
     
     bool setHALConfig(const ::astro_mount::HALConfigRequest& request) {
+        // When there is no HAL interface (simulated mode, default constructor),
+        // we can still update the config in memory for gamepad, PID, safety etc.
         if (!hal_interface_) {
-            return false;
+            MOUNT_LOG_INFO("setHALConfig: no HAL interface, updating config in memory only");
+            const auto& req_config = request.config();
+            
+            // Update gamepad config in place
+            if (req_config.has_gamepad()) {
+                const auto& gp = req_config.gamepad();
+                if (!gp.device_path().empty())
+                    hal_config_.gamepad.device_path = gp.device_path();
+                if (gp.dead_zone() != 0.0)
+                    hal_config_.gamepad.deadzone = gp.dead_zone();
+                if (gp.sensitivity() != 0.0)
+                    hal_config_.gamepad.sensitivity = gp.sensitivity();
+                if (gp.read_frequency() != 0.0)
+                    hal_config_.gamepad.update_rate_hz = gp.read_frequency();
+                hal_config_.gamepad.autostart = gp.autostart();
+            }
+            
+            // Update PID config in place
+            if (req_config.has_pid_params()) {
+                const auto& pid = req_config.pid_params();
+                if (pid.kp() != 0.0) hal_config_.pid_params.kp = pid.kp();
+                if (pid.ki() != 0.0) hal_config_.pid_params.ki = pid.ki();
+                if (pid.kd() != 0.0) hal_config_.pid_params.kd = pid.kd();
+                if (pid.integral_limit() != 0.0) hal_config_.pid_params.integral_limit = pid.integral_limit();
+                if (pid.output_limit() != 0.0) hal_config_.pid_params.output_limit = pid.output_limit();
+                if (pid.anti_windup_gain() != 0.0) hal_config_.pid_params.anti_windup_gain = pid.anti_windup_gain();
+                hal_config_.pid_params.enable_anti_windup = pid.enable_anti_windup();
+            }
+            
+            // Update safety config in place
+            if (req_config.has_safety()) {
+                const auto& saf = req_config.safety();
+                hal_config_.safety.enable_limits = saf.enable_limits();
+                hal_config_.safety.enable_emergency_stop = saf.enable_emergency_stop();
+                if (saf.emergency_stop_timeout_ms() != 0)
+                    hal_config_.safety.emergency_stop_timeout_ms = saf.emergency_stop_timeout_ms();
+                hal_config_.safety.enable_temperature_monitoring = saf.enable_temperature_monitoring();
+                hal_config_.safety.enable_current_monitoring = saf.enable_current_monitoring();
+                hal_config_.safety.enable_voltage_monitoring = saf.enable_voltage_monitoring();
+                if (saf.min_voltage() != 0.0) hal_config_.safety.min_voltage = saf.min_voltage();
+                if (saf.max_voltage() != 0.0) hal_config_.safety.max_voltage = saf.max_voltage();
+                if (saf.monitoring_rate() != 0) hal_config_.safety.monitoring_rate = saf.monitoring_rate();
+            }
+            
+            // Persist to disk if a config file path has been set
+            if (!config_file_path_.empty()) {
+                saveConfigToFile();
+            }
+            
+            return true;
         }
+        
         const auto& req_config = request.config();
+        MOUNT_LOG_INFO("setHALConfig: has_gamepad={} has_simulated={} has_canopen={} has_safety={} has_pid={}",
+                       req_config.has_gamepad(), req_config.has_simulated(),
+                       req_config.has_canopen(), req_config.has_safety(),
+                       req_config.has_pid_params());
         
-        // Convert proto HALConfig to internal hal::HALConfig
-        hal::HALConfig new_config;
+        // Start from the CURRENT config so that partial updates don't
+        // overwrite untouched fields with defaults
+        hal::HALConfig new_config = hal_config_;
         
-        // Map HAL type
-        switch (req_config.type()) {
-            case ::astro_mount::HAL_SIMULATED:
-                new_config.type = hal::HALType::SIMULATED;
-                break;
-            case ::astro_mount::HAL_CANOPEN:
-                new_config.type = hal::HALType::CANOPEN;
-                break;
-            case ::astro_mount::HAL_SERIAL:
-                new_config.type = hal::HALType::SERIAL;
-                break;
-            case ::astro_mount::HAL_ETHERNET:
-                new_config.type = hal::HALType::ETHERNET;
-                break;
-            case ::astro_mount::HAL_CUSTOM:
-                new_config.type = hal::HALType::CUSTOM;
-                break;
-            default:
-                new_config.type = hal::HALType::SIMULATED;
-                break;
+        // Map HAL type (only if explicitly set — proto3 default is HAL_SIMULATED=0)
+        if (req_config.type() != ::astro_mount::HAL_SIMULATED || req_config.name() != "") {
+            switch (req_config.type()) {
+                case ::astro_mount::HAL_SIMULATED:
+                    new_config.type = hal::HALType::SIMULATED;
+                    break;
+                case ::astro_mount::HAL_CANOPEN:
+                    new_config.type = hal::HALType::CANOPEN;
+                    break;
+                case ::astro_mount::HAL_SERIAL:
+                    new_config.type = hal::HALType::SERIAL;
+                    break;
+                case ::astro_mount::HAL_ETHERNET:
+                    new_config.type = hal::HALType::ETHERNET;
+                    break;
+                case ::astro_mount::HAL_CUSTOM:
+                    new_config.type = hal::HALType::CUSTOM;
+                    break;
+                default:
+                    break;
+            }
         }
-        new_config.name = req_config.name();
+        if (!req_config.name().empty()) {
+            new_config.name = req_config.name();
+        }
         
         // Simulated config
         if (req_config.has_simulated()) {
@@ -5053,6 +5112,66 @@ public:
             new_config.ethernet.retry_count = req_config.ethernet().retry_count();
         }
         
+        // Gamepad config
+        if (req_config.has_gamepad()) {
+            const auto& gp = req_config.gamepad();
+            if (!gp.device_path().empty())
+                new_config.gamepad.device_path = gp.device_path();
+            if (gp.dead_zone() != 0.0)
+                new_config.gamepad.deadzone = gp.dead_zone();
+            if (gp.sensitivity() != 0.0)
+                new_config.gamepad.sensitivity = gp.sensitivity();
+            if (gp.read_frequency() != 0.0)
+                new_config.gamepad.update_rate_hz = gp.read_frequency();
+            // autostart is a boolean – proto3 default is false, so we always apply it
+            new_config.gamepad.autostart = gp.autostart();
+        }
+        
+        // PID config
+        if (req_config.has_pid_params()) {
+            const auto& pid = req_config.pid_params();
+            if (pid.kp() != 0.0) new_config.pid_params.kp = pid.kp();
+            if (pid.ki() != 0.0) new_config.pid_params.ki = pid.ki();
+            if (pid.kd() != 0.0) new_config.pid_params.kd = pid.kd();
+            if (pid.integral_limit() != 0.0) new_config.pid_params.integral_limit = pid.integral_limit();
+            if (pid.output_limit() != 0.0) new_config.pid_params.output_limit = pid.output_limit();
+            if (pid.anti_windup_gain() != 0.0) new_config.pid_params.anti_windup_gain = pid.anti_windup_gain();
+            new_config.pid_params.enable_anti_windup = pid.enable_anti_windup();
+        }
+        
+        // Safety config
+        if (req_config.has_safety()) {
+            const auto& saf = req_config.safety();
+            new_config.safety.enable_limits = saf.enable_limits();
+            new_config.safety.enable_emergency_stop = saf.enable_emergency_stop();
+            if (saf.emergency_stop_timeout_ms() != 0)
+                new_config.safety.emergency_stop_timeout_ms = saf.emergency_stop_timeout_ms();
+            new_config.safety.enable_temperature_monitoring = saf.enable_temperature_monitoring();
+            new_config.safety.enable_current_monitoring = saf.enable_current_monitoring();
+            new_config.safety.enable_voltage_monitoring = saf.enable_voltage_monitoring();
+            if (saf.min_voltage() != 0.0) new_config.safety.min_voltage = saf.min_voltage();
+            if (saf.max_voltage() != 0.0) new_config.safety.max_voltage = saf.max_voltage();
+            if (saf.monitoring_rate() != 0) new_config.safety.monitoring_rate = saf.monitoring_rate();
+        }
+        
+        // Check if the config actually changed before doing a full reinit
+        // For gamepad-only changes, we can just update the config in place
+        bool needs_reinit = (new_config.type != hal_config_.type ||
+                            new_config.canopen.library != hal_config_.canopen.library ||
+                            new_config.canopen.interface_name != hal_config_.canopen.interface_name ||
+                            new_config.canopen.bitrate != hal_config_.canopen.bitrate);
+        
+        if (!needs_reinit) {
+            // Just update config in memory — no HAL restart needed
+            hal_config_ = new_config;
+            MOUNT_LOG_INFO("setHALConfig: config updated in place (no reinit required)");
+            // Persist to disk
+            if (!config_file_path_.empty()) {
+                saveConfigToFile();
+            }
+            return true;
+        }
+        
         // Shutdown current HAL and re-initialize with new config
         // First disable and reset component instances
         if (hal_axis1_motor_) hal_axis1_motor_->disable();
@@ -5076,6 +5195,7 @@ public:
         
         // Initialize with new config
         if (!hal_interface_->initialize(new_config)) {
+            MOUNT_LOG_ERROR("setHALConfig: hal_interface_->initialize() failed");
             // Restore old config on failure
             hal_interface_->initialize(hal_config_);
             return false;
@@ -5095,17 +5215,53 @@ public:
         
         if (hal_interface_->start()) {
             hal_config_ = new_config;
+            MOUNT_LOG_INFO("setHALConfig: HAL reinit successful");
             // Recreate DerotatorController with new HAL components
             if (!recreateDerotator()) {
                 MOUNT_LOG_WARN("setHALConfig: failed to recreate DerotatorController, continuing without derotator");
             }
+            // Persist to disk
+            if (!config_file_path_.empty()) {
+                saveConfigToFile();
+            }
             return true;
         }
         
+        MOUNT_LOG_ERROR("setHALConfig: hal_interface_->start() failed");
         return false;
     }
     
     bool getHALStatus(::astro_mount::HALStatus& status) const {
+        // Populate gamepad state first — it's independent of the HAL
+        // interface and must always be reported so the UI can show the
+        // connection status even when no CANopen / serial HAL is loaded.
+        auto populateGamepad = [&]() {
+            auto* gs = status.mutable_gamepad();
+            if (gamepad_input_ && gamepad_input_->isConnected()) {
+                auto state = gamepad_input_->readState();
+                gs->set_connected(state.connected);
+                gs->set_device_name(gamepad_input_->getDeviceName());
+                gs->set_axis_lx(state.axis_lx);
+                gs->set_axis_ly(state.axis_ly);
+                gs->set_axis_rx(state.axis_rx);
+                gs->set_axis_ry(state.axis_ry);
+                gs->set_axis_trigger_l(state.axis_trigger_l);
+                gs->set_axis_trigger_r(state.axis_trigger_r);
+                gs->set_pov_hat(state.pov_hat);
+                gs->set_button_stop(state.button_stop);
+                gs->set_button_emergency_stop(state.button_emergency_stop);
+                gs->set_button_park(state.button_park);
+                gs->set_button_speed_up(state.button_speed_up);
+                gs->set_button_speed_down(state.button_speed_down);
+                gs->set_button_manual_toggle(state.button_manual_toggle);
+                gs->set_button_home(state.button_home);
+                gs->set_axis_count(gamepad_input_->getAxisCount());
+                gs->set_button_count(gamepad_input_->getButtonCount());
+            } else {
+                gs->set_connected(false);
+            }
+        };
+
         // Always return basic status even without a live HAL interface,
         // so the UI can show connection state (e.g. gamepad disconnected).
         if (!hal_interface_) {
@@ -5117,6 +5273,7 @@ public:
             status.set_status_message("No HAL interface loaded");
             status.set_error_message("");
             *status.mutable_timestamp() = TimeUtil::GetCurrentTime();
+            populateGamepad();
             return true;
         }
         
@@ -5184,33 +5341,7 @@ public:
             }
         }
         
-        // Populate gamepad state from live input
-        {
-            auto* gs = status.mutable_gamepad();
-            if (gamepad_input_ && gamepad_input_->isConnected()) {
-                auto state = gamepad_input_->readState();
-                gs->set_connected(state.connected);
-                gs->set_device_name(gamepad_input_->getDeviceName());
-                gs->set_axis_lx(state.axis_lx);
-                gs->set_axis_ly(state.axis_ly);
-                gs->set_axis_rx(state.axis_rx);
-                gs->set_axis_ry(state.axis_ry);
-                gs->set_axis_trigger_l(state.axis_trigger_l);
-                gs->set_axis_trigger_r(state.axis_trigger_r);
-                gs->set_pov_hat(state.pov_hat);
-                gs->set_button_stop(state.button_stop);
-                gs->set_button_emergency_stop(state.button_emergency_stop);
-                gs->set_button_park(state.button_park);
-                gs->set_button_speed_up(state.button_speed_up);
-                gs->set_button_speed_down(state.button_speed_down);
-                gs->set_button_manual_toggle(state.button_manual_toggle);
-                gs->set_button_home(state.button_home);
-                gs->set_axis_count(gamepad_input_->getAxisCount());
-                gs->set_button_count(gamepad_input_->getButtonCount());
-            } else {
-                gs->set_connected(false);
-            }
-        }
+        populateGamepad();
         
         // Set timestamp
         *status.mutable_timestamp() = google::protobuf::util::TimeUtil::GetCurrentTime();
@@ -5652,12 +5783,16 @@ private:
     std::unique_ptr<hal::EvdevGamepadInput> gamepad_input_;
     std::thread gamepad_thread_;
     std::atomic<bool> gamepad_running_{false};
+    std::atomic<bool> gamepad_control_enabled_{false};  ///< explicit user consent
     double gamepad_deadzone_{0.15};
     double gamepad_sensitivity_{1.0};
     double gamepad_max_velocity_{5.0};
+    bool gamepad_axis0_active_{false};  ///< true when stick was deflected last cycle
+    bool gamepad_axis1_active_{false};
     
-    void startGamepad() {
-        if (gamepad_running_) return;
+  public:
+    void initGamepadInput() {
+        if (gamepad_input_) return;
         const auto& gp_cfg = config_.hal_config.gamepad;
         gamepad_deadzone_ = gp_cfg.deadzone > 0.0 ? gp_cfg.deadzone : 0.15;
         gamepad_sensitivity_ = gp_cfg.sensitivity > 0.0 ? gp_cfg.sensitivity : 1.0;
@@ -5671,11 +5806,22 @@ private:
             return;
         }
         MOUNT_LOG_INFO("Gamepad: connected '{}'", gamepad_input_->getDeviceName());
+    }
+    
+    void startGamepadLoop() {
+        if (gamepad_running_) return;
+        initGamepadInput();  // ensure device is open (no-op if already)
+        if (!gamepad_input_) {
+            MOUNT_LOG_WARN("Gamepad: cannot start loop, input not initialised");
+            return;
+        }
+        gamepad_control_enabled_ = true;
         gamepad_running_ = true;
         gamepad_thread_ = std::thread(&Impl::gamepadLoop, this);
     }
     
     void stopGamepad() {
+        gamepad_control_enabled_ = false;
         gamepad_running_ = false;
         if (gamepad_thread_.joinable()) {
             gamepad_thread_.join();
@@ -5700,16 +5846,36 @@ private:
                 continue;
             }
             
+            // If the user hasn't explicitly enabled manual control
+            // via the UI button, do NOT send any CANopen commands.
+            // This prevents race conditions with node state transitions
+            // during startup.
+            if (!gamepad_control_enabled_) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
+            }
+            
             // ── Button actions ──────────────────────────────────
             if (state.button_emergency_stop) {
-                MOUNT_LOG_WARN("Gamepad: EMERGENCY STOP");
+                static auto last_emergency_stop = std::chrono::steady_clock::now();
+                auto now_es = std::chrono::steady_clock::now();
+                // Debounce: only trigger once per 3 seconds to avoid
+                // flooding the log and bouncing on noisy buttons.
+                if (std::chrono::duration_cast<std::chrono::seconds>(now_es - last_emergency_stop).count() >= 3) {
+                    MOUNT_LOG_WARN("Gamepad: EMERGENCY STOP");
+                    last_emergency_stop = now_es;
+                }
                 if (canopen_interface_) {
                     canopen_interface_->emergencyStop(0);
                     canopen_interface_->emergencyStop(1);
                 }
                 state_ = MountStatus::State::ERROR;
                 error_message_ = "Gamepad emergency stop";
-                break;
+                // Do NOT break — the loop continues running so that
+                // after clearErrors() returns to IDLE, gamepad control
+                // resumes without needing to call StartGamepad again.
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
             }
             if (state.button_stop) {
                 if (canopen_interface_) {
@@ -5742,7 +5908,19 @@ private:
                 continue;
             }
             
+            // Skip axis control when in ERROR state (emergency stop active).
+            // The loop continues running so that after clearErrors() transitions
+            // back to IDLE, gamepad control resumes automatically.
+            if (state_ == MountStatus::State::ERROR) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                continue;
+            }
+            
             // ── Axis control (left stick → axis 0=HA/RA, axis 1=Dec) ──
+            // Only send velocity commands when the stick is actively
+            // deflected. When the stick returns to centre we issue a
+            // single zero-velocity stop and then go silent so that
+            // position-mode slewing / tracking is not disrupted.
             if (canopen_interface_ && canopen_interface_->isConnected()) {
                 double dead = gamepad_deadzone_;
                 
@@ -5761,11 +5939,24 @@ private:
                 vel0 *= gamepad_max_velocity_;
                 vel1 *= gamepad_max_velocity_;
                 
-                // Only send when the specific axis drive is enabled
-                if (canopen_interface_->isDriveEnabled(0))
-                    canopen_interface_->setVelocityTarget(0, vel0, config_.slew_acceleration);
-                if (canopen_interface_->isDriveEnabled(1))
-                    canopen_interface_->setVelocityTarget(1, vel1, config_.slew_acceleration);
+                // Axis 0: send velocity only when stick is deflected,
+                //         or once to stop after the stick is released.
+                bool axis0_deflected = (std::abs(vel0) > 0.001);
+                if (canopen_interface_->isDriveEnabled(0)) {
+                    if (axis0_deflected || gamepad_axis0_active_) {
+                        canopen_interface_->setVelocityTarget(0, vel0, config_.slew_acceleration);
+                    }
+                }
+                gamepad_axis0_active_ = axis0_deflected;
+                
+                // Axis 1: same logic
+                bool axis1_deflected = (std::abs(vel1) > 0.001);
+                if (canopen_interface_->isDriveEnabled(1)) {
+                    if (axis1_deflected || gamepad_axis1_active_) {
+                        canopen_interface_->setVelocityTarget(1, vel1, config_.slew_acceleration);
+                    }
+                }
+                gamepad_axis1_active_ = axis1_deflected;
             }
             
             std::this_thread::sleep_for(std::chrono::milliseconds(20)); // ~50 Hz
@@ -5798,7 +5989,7 @@ private:
     std::unique_ptr<models::TPointModel> tpoint_model_;
     std::unique_ptr<core::AstronomicalCalculations> astro_calc_;
     std::unique_ptr<models::EphemerisTrackerManager> ephemeris_manager_;
-    std::unique_ptr<ICanOpenInterface> canopen_interface_;
+    std::shared_ptr<ICanOpenInterface> canopen_interface_;
     std::unique_ptr<hal::HALInterface> hal_interface_;
     hal::HALConfig hal_config_;
     std::unique_ptr<PositionKalmanFilter> position_kf_;
@@ -6209,9 +6400,9 @@ bool MountController::homeDerotator(const ::astro_mount::DerotatorHomingRequest&
     return pimpl->getFieldRotationParams();
 }
 
-ICanOpenInterface& MountController::getCanOpenInterface() {
+std::shared_ptr<ICanOpenInterface> MountController::getCanOpenInterface() {
     // Use helper method from Impl
-    return pimpl->getCanOpenInterfaceRef();
+    return pimpl->getCanOpenInterfaceShared();
 }
 
 // ============================================
@@ -6254,5 +6445,14 @@ bool MountController::reinitializeHAL(const ::astro_mount::HALReinitRequest& req
     return pimpl->reinitializeHAL(request);
 }
 
+void MountController::startGamepadLoop() {
+    pimpl->startGamepadLoop();
+}
+
+void MountController::stopGamepad() {
+    pimpl->stopGamepad();
+}
+
 } // namespace controllers
 } // namespace astro_mount
+

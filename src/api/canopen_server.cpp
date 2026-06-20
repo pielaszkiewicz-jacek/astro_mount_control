@@ -28,13 +28,9 @@ class CanOpenServer::ServiceImpl final
 public:
     explicit ServiceImpl(std::unique_ptr<controllers::ICanOpenInterface> interface)
         : canopen_interface_(std::move(interface)) {
-        // Initialize with default configuration
-        controllers::ICanOpenInterface::Config config;
-        config.library = "mock";
-        config.interface_name = "mock";
-        config.bitrate = 1000000;
-        config.node_id = 1;
-        canopen_interface_->initialize(config);
+        // Defer initialization — the caller is responsible for calling
+        // initialize() on the ICanOpenInterface before passing it here.
+        // This avoids hardcoding "mock" and allows real CANopen hardware.
     }
 
     // Connection management
@@ -372,9 +368,8 @@ CanOpenServer::CanOpenServer(const std::string& address, int port,
                            std::unique_ptr<controllers::ICanOpenInterface> canopen_interface)
     : address_(address)
     , port_(port)
-    , running_(false)
-    , canopen_interface_(std::move(canopen_interface)) {
-    service_impl_ = std::make_unique<ServiceImpl>(std::move(canopen_interface_));
+    , running_(false) {
+    service_impl_ = std::make_unique<ServiceImpl>(std::move(canopen_interface));
 }
 
 CanOpenServer::~CanOpenServer() {

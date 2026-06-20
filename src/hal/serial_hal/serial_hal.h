@@ -116,7 +116,7 @@ private:
         EncoderConfig config_;
         std::atomic<bool> initialized_{false};
         std::atomic<double> calibration_offset_{0.0};
-        std::atomic<double> actual_position_{0.0};
+        mutable std::atomic<double> actual_position_{0.0};
         mutable std::mt19937 rng_;
         std::chrono::steady_clock::time_point start_time_;
         mutable std::atomic<uint32_t> total_readings_{0};
@@ -177,7 +177,7 @@ private:
     uint8_t data_bits_;
     uint8_t stop_bits_;
     std::string parity_;
-    uint32_t timeout_ms_;
+    std::atomic<uint32_t> timeout_ms_{1000};
     
     // Error tracking
     std::string last_error_;

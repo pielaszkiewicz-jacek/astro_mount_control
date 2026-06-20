@@ -168,6 +168,9 @@ public:
         int canopen_sync_period_ms{100};            // SYNC interval (ms)
         int canopen_sdo_timeout_ms{1000};           // SDO response timeout (ms)
         std::string canopen_accel_mode = "time";    // "time" or "rate"
+        bool canopen_pdo_config_enabled{false};     // Write PDO mappings to drive
+        int controller_poll_ms{50};                  // Main loop poll interval (ms), default 20Hz
+        int tracking_update_ms{20};                  // Tracking update interval (ms), default 50Hz
         std::string grpc_address;
         int grpc_port;
         
@@ -221,7 +224,9 @@ public:
 
         // Field rotation parameters (initial values from config)
         bool field_rotation_enabled{false};
+        double field_rotation_latitude{52.0};
         double field_rotation_altitude{0.0};
+        double field_rotation_azimuth{0.0};
         double field_rotation_computed_rate{0.0};
         double field_rotation_applied_correction{0.0};
         double field_rotation_temperature{15.0};
@@ -789,7 +794,7 @@ public:
      * @brief Get CanOpen interface reference
      * @return Reference to ICanOpenInterface (abstract interface)
      */
-    ICanOpenInterface& getCanOpenInterface();
+    std::shared_ptr<ICanOpenInterface> getCanOpenInterface();
     
     /**
      * @brief Upload ephemeris data for moving object tracking
@@ -957,6 +962,18 @@ public:
      * @return True if reinitialization was successful
      */
     bool reinitializeHAL(const ::astro_mount::HALReinitRequest& request);
+    
+    /**
+     * @brief Start the gamepad manual-control loop (axis velocity commands).
+     * The gamepad input device must already be open (initGamepadInput).
+     * Safe to call only after CANopen is fully initialised.
+     */
+    void startGamepadLoop();
+    
+    /**
+     * @brief Stop the gamepad manual-control loop.
+     */
+    void stopGamepad();
     
 private:
     class Impl;

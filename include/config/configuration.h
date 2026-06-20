@@ -132,6 +132,10 @@ public:
         // Atmospheric refraction correction
         bool enable_refraction_correction{true};
         
+        // Loop timing
+        int controller_poll_ms{50};
+        int tracking_update_ms{20};
+        
         // Mount orientation quaternion (for CASUAL mount type)
         std::array<double, 4> orientation_quaternion{1.0, 0.0, 0.0, 0.0};  // [qx, qy, qz, qw]
         
@@ -198,7 +202,9 @@ public:
 
     struct FieldRotationParams {
         bool enabled;
+        double latitude;
         double altitude;
+        double azimuth;
         double computed_rate;
         double applied_correction;
         double temperature;
