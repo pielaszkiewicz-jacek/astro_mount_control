@@ -87,7 +87,8 @@ function createGrpcClient() {
 
   grpcClient = new mountProto.MountControllerService(address, credentials);
 
-  console.log(`[gRPC] Connected to mount controller at ${address}`);
+  const sslStatus = config.ssl.enabled ? ' (TLS)' : ' (insecure)';
+  console.log(`[gRPC] Connected to mount controller at ${address}${sslStatus}`);
   return grpcClient;
 }
 
@@ -221,6 +222,7 @@ app.get('/api/config/addresses', (req, res) => {
     controller: {
       host: config.grpc.host,
       port: config.grpc.port,
+      ssl: config.ssl.enabled,
     },
     database: {
       host: config.db.host,
@@ -242,6 +244,7 @@ app.post('/api/config/addresses', async (req, res) => {
     if (controller) {
       const host = controller.host || config.grpc.host;
       const port = controller.port || config.grpc.port;
+      const ssl = controller.ssl !== undefined ? controller.ssl : config.ssl.enabled;
 
       if (typeof host !== 'string' || host.length === 0) {
         return res.status(400).json({ error: 'Invalid controller host' });
@@ -252,6 +255,8 @@ app.post('/api/config/addresses', async (req, res) => {
 
       config.grpc.host = host;
       config.grpc.port = port;
+      config.ssl.enabled = ssl;
+      console.log(`[ssl] Proxy SSL ${ssl ? 'ENABLED' : 'DISABLED'} for gRPC connection to ${host}:${port}`);
       createGrpcClient();
       reconnected.push('controller');
     }
@@ -277,7 +282,7 @@ app.post('/api/config/addresses', async (req, res) => {
       success: true,
       message: `Reconnected: ${reconnected.join(', ')}`,
       addresses: {
-        controller: { host: config.grpc.host, port: config.grpc.port },
+        controller: { host: config.grpc.host, port: config.grpc.port, ssl: config.ssl.enabled },
         database: { host: config.db.host, port: config.db.port },
       },
     });
@@ -514,6 +519,27 @@ app.post('/api/config', async (req, res) => {
     }
 
     await grpcCall('UpdateConfiguration', configData);
+
+    // If network SSL settings were changed, sync the proxy's gRPC client.
+    // The controller needs a restart to apply SSL on the server side, but
+    // the proxy's client-side SSL can be toggled immediately so it's ready
+    // when the controller restarts with SSL enabled.
+    let sslToggled = false;
+    if (configData.network_enable_ssl !== undefined) {
+      config.ssl.enabled = !!configData.network_enable_ssl;
+      sslToggled = true;
+    }
+    if (configData.grpc_address !== undefined) {
+      config.grpc.host = configData.grpc_address;
+    }
+    if (configData.grpc_port !== undefined) {
+      config.grpc.port = configData.grpc_port;
+    }
+    if (sslToggled) {
+      console.log(`[ssl] Proxy SSL ${config.ssl.enabled ? 'ENABLED' : 'DISABLED'} (synced from controller config)`);
+      createGrpcClient();
+    }
+
     res.json({ success: true, message: 'Configuration updated successfully' });
   } catch (err) {
     res.status(502).json({ error: 'Failed to update configuration', details: err.message });
@@ -2507,6 +2533,11 @@ app.get('/api/hal/gamepad/state', async (req, res) => {
       // Axis and button counts
       axis_count: halStatus.gamepad ? (halStatus.gamepad.axis_count || 0) : 0,
       button_count: halStatus.gamepad ? (halStatus.gamepad.button_count || 0) : 0,
+      // Navigation mode and calibration status
+      gamepad_mode: halStatus.gamepad ? (halStatus.gamepad.gamepad_mode !== undefined ? halStatus.gamepad.gamepad_mode : 0) : 0,
+      bootstrap_calibrated: halStatus.gamepad ? (halStatus.gamepad.bootstrap_calibrated || false) : false,
+      tpoint_calibrated: halStatus.gamepad ? (halStatus.gamepad.tpoint_calibrated || false) : false,
+      max_velocity: halStatus.gamepad ? (halStatus.gamepad.max_velocity || 5.0) : 5.0,
     };
 
     res.json(gamepadState);
@@ -2524,6 +2555,7 @@ app.get('/api/hal/gamepad/state', async (req, res) => {
       button_speed_down: false, button_manual_toggle: false,
       button_home: false,
       axis_count: 0, button_count: 0,
+      max_velocity: 5.0,
     });
   }
 });
@@ -2550,6 +2582,24 @@ app.post('/api/hal/gamepad/stop', async (req, res) => {
   try {
     await grpcCall('StopGamepad', {});
     res.json({ success: true, message: 'Gamepad control loop stopped' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/hal/gamepad/mode
+ * Sets the gamepad navigation mode (RAW=0, CELESTIAL=1, ALT_AZ=2).
+ * Body: { mode: 0|1|2 }
+ */
+app.post('/api/hal/gamepad/mode', async (req, res) => {
+  try {
+    const mode = parseInt(req.body.mode, 10);
+    if (isNaN(mode) || mode < 0 || mode > 2) {
+      return res.status(400).json({ error: 'Invalid mode. Must be 0 (RAW), 1 (CELESTIAL), or 2 (ALT_AZ).' });
+    }
+    await grpcCall('SetGamepadMode', { mode: mode });
+    res.json({ success: true, message: 'Gamepad mode set to ' + mode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

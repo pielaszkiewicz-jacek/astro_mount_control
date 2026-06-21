@@ -118,6 +118,7 @@ const I18n = (() => {
       'cfg.status.saving': 'Saving...',
       'cfg.status.resetting': 'Resetting...',
       'cfg.status.reloading': 'Reloading...',
+      'cfg.status.restart_hint': 'This change requires a controller restart to take effect',
 
       // Calibration Panel
       'card.cal_help': 'How to Calibrate the Mount',
@@ -511,6 +512,13 @@ const I18n = (() => {
       'cfg.gamepad.buttons_count': 'Buttons',
       'cfg.gamepad.start_ctrl': 'Start Manual Control',
       'cfg.gamepad.stop_ctrl': 'Stop Manual Control',
+      'cfg.gamepad.mode_label': 'Nav Mode',
+      'cfg.gamepad.mode_raw': 'Raw Axes',
+      'cfg.gamepad.mode_celestial': 'Celestial (RA/Dec)',
+      'cfg.gamepad.mode_alt_az': 'Alt-Az',
+      'cfg.gamepad.mode_precision': 'Precision (RA/Dec, slow)',
+      'cfg.gamepad.needs_cal': 'needs calibration',
+      'cfg.gamepad.speed': 'Speed',
       'cfg.help.ha_encoder': 'HA axis encoder: resolution, pulse count, quantization error.',
       'cfg.help.ha_gear': 'HA axis mechanical gearing: total ratio, worm ratio, tooth counts.',
       'cfg.help.ha_cyclic_error': 'HA axis cyclic error: amplitude, period, harmonics.',
@@ -741,6 +749,7 @@ const I18n = (() => {
       'cfg.status.saving': 'Zapisywanie...',
       'cfg.status.resetting': 'Resetowanie...',
       'cfg.status.reloading': 'Przeładowywanie...',
+      'cfg.status.restart_hint': 'Ta zmiana wymaga restartu kontrolera',
 
       // Panel Kalibracji
       'card.cal_help': 'Jak Kalibrować Montaż',
@@ -1245,6 +1254,13 @@ const I18n = (() => {
       'cfg.gamepad.buttons_count': 'Przyciski',
       'cfg.gamepad.start_ctrl': 'Uruchom sterowanie ręczne',
       'cfg.gamepad.stop_ctrl': 'Zatrzymaj sterowanie ręczne',
+      'cfg.gamepad.mode_label': 'Tryb nawigacji',
+      'cfg.gamepad.mode_raw': 'Surowe osie',
+      'cfg.gamepad.mode_celestial': 'Niebieski (RA/Dec)',
+      'cfg.gamepad.mode_alt_az': 'Alt-Az',
+      'cfg.gamepad.mode_precision': 'Precyzyjny (RA/Dec, wolno)',
+      'cfg.gamepad.needs_cal': 'wymaga kalibracji',
+      'cfg.gamepad.speed': 'Prędkość',
       'cfg.help.ha_encoder': 'Konfiguracja enkodera osi HA: rozdzielczość, liczba impulsów, błąd kwantyzacji.',
       'cfg.help.ha_gear': 'Przekładnia mechaniczna osi HA: przełożenie całkowite, ślimakowe, liczba zębów.',
       'cfg.help.ha_cyclic_error': 'Błąd cykliczny osi HA: amplituda, okres, harmoniczne.',

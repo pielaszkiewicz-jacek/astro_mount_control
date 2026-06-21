@@ -173,6 +173,7 @@ HALConfig HALFactory::getDefaultConfig(HALType type) {
             config.gamepad.invert_axis2 = false;
             config.gamepad.speed_presets = {0.5, 1.0, 2.0, 3.0, 5.0};
             config.gamepad.update_rate_hz = 50.0;
+            config.gamepad.gamepad_mode = 0;  // RAW
             break;
             
         default:

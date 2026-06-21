@@ -52,6 +52,16 @@ public:
     };
 
     /**
+     * @brief Gamepad navigation mode — how joystick axes map to mount motion
+     */
+    enum class GamepadMode {
+        RAW = 0,           ///< Raw axis velocity control (always available)
+        CELESTIAL = 1,     ///< Navigate in RA/Dec (requires bootstrap calibration)
+        ALT_AZ = 2,        ///< Navigate in Alt/Az (requires bootstrap calibration)
+        PRECISION = 3      ///< Fine RA/Dec control at low speed (requires TPOINT calibration)
+    };
+
+    /**
      * @brief Mount orientation represented as a unit quaternion
      *
      * Describes the rotation from the local horizontal frame (ENU: East, North, Up)
@@ -173,11 +183,17 @@ public:
         int tracking_update_ms{20};                  // Tracking update interval (ms), default 50Hz
         std::string grpc_address;
         int grpc_port;
+        int network_max_connections{10};
+        bool network_enable_ssl{false};
+        std::string network_ssl_cert_path;
+        std::string network_ssl_key_path;
         
         // Logging configuration
         std::string log_level;
         std::string log_directory;
         int log_rotation_days;
+        int log_max_file_size_mb{100};
+        bool log_console_output{true};
         
         // Telescope parameters
         double focal_length;
@@ -974,6 +990,12 @@ public:
      * @brief Stop the gamepad manual-control loop.
      */
     void stopGamepad();
+    
+    /**
+     * @brief Set the gamepad navigation mode.
+     * @param mode GamepadMode (RAW=0, CELESTIAL=1, ALT_AZ=2)
+     */
+    void setGamepadMode(GamepadMode mode);
     
 private:
     class Impl;

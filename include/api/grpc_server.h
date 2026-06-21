@@ -24,9 +24,15 @@ public:
      * @param address Network address to bind to
      * @param port Port to listen on
      * @param controller Reference to mount controller
+     * @param enable_ssl Enable TLS encryption
+     * @param ssl_cert_path Path to SSL certificate file (PEM)
+     * @param ssl_key_path Path to SSL private key file (PEM)
      */
-    GrpcServer(const std::string& address, int port, 
-               controllers::MountController& controller);
+    GrpcServer(const std::string& address, int port,
+               controllers::MountController& controller,
+               bool enable_ssl = false,
+               const std::string& ssl_cert_path = "",
+               const std::string& ssl_key_path = "");
     
     ~GrpcServer();
     

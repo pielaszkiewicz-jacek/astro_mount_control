@@ -792,10 +792,19 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_log_level(config.log_level);
         response->set_log_directory(config.log_directory);
         response->set_log_rotation_days(config.log_rotation_days);
+        response->set_log_max_file_size_mb(config.log_max_file_size_mb);
+        response->set_log_console_output(config.log_console_output);
         response->set_grpc_address(config.grpc_address);
         response->set_grpc_port(config.grpc_port);
+        response->set_network_max_connections(config.network_max_connections);
+        response->set_network_enable_ssl(config.network_enable_ssl);
+        response->set_network_ssl_cert_path(config.network_ssl_cert_path);
+        response->set_network_ssl_key_path(config.network_ssl_key_path);
         response->set_canopen_interface(config.canopen_interface);
         response->set_canopen_node_id(config.canopen_node_id);
+        response->set_canopen_baud_rate(config.canopen_bitrate);
+        response->set_canopen_enable_sync(config.canopen_use_sync);
+        response->set_canopen_sync_interval_ms(config.canopen_sync_period_ms);
         response->set_canopen_accel_mode(config.canopen_accel_mode);
         
         // Mount control parameters
@@ -965,14 +974,18 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
 grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext* context,
                                                        const astro_mount::Configuration* request,
                                                        google::protobuf::Empty* response) {
-try {
-    // Start from the EXISTING configuration to prevent partial updates
-    // from overwriting untouched fields with proto3 defaults (0, false, "").
-    // The previous approach created a fresh ControllerConfig and only filled
-    // fields present in the request, causing all other fields to revert to
-    // defaults — this was the root cause of config corruption where
-    // gear_ratio and other axis parameters got overwritten with garbage.
-    auto config = controller_.getConfiguration();
+                                                   try {
+                                                       API_LOG_INFO("UpdateConfiguration called: log_level='{}' log_console_output={}",
+                                                                    request->log_level(),
+                                                                    request->log_console_output() ? "true" : "false");
+                                                   
+                                                       // Start from the EXISTING configuration to prevent partial updates
+                                                       // from overwriting untouched fields with proto3 defaults (0, false, "").
+                                                       // The previous approach created a fresh ControllerConfig and only filled
+                                                       // fields present in the request, causing all other fields to revert to
+                                                       // defaults — this was the root cause of config corruption where
+                                                       // gear_ratio and other axis parameters got overwritten with garbage.
+                                                       auto config = controller_.getConfiguration();
     
     // ── Basic configuration ──────────────────────────────────────
     // Only override if the request provides a non-default value.
@@ -990,12 +1003,25 @@ try {
     if (request->measurement_noise() != 0.0) config.measurement_noise = request->measurement_noise();
     if (!request->canopen_interface().empty()) config.canopen_interface = request->canopen_interface();
     if (request->canopen_node_id() != 0) config.canopen_node_id = request->canopen_node_id();
+    if (request->canopen_baud_rate() != 0) config.canopen_bitrate = request->canopen_baud_rate();
+    if (request->has_canopen_enable_sync()) config.canopen_use_sync = request->canopen_enable_sync();
+    if (request->canopen_sync_interval_ms() != 0) config.canopen_sync_period_ms = request->canopen_sync_interval_ms();
     if (!request->canopen_accel_mode().empty()) config.canopen_accel_mode = request->canopen_accel_mode();
     if (!request->grpc_address().empty()) config.grpc_address = request->grpc_address();
     if (request->grpc_port() != 0) config.grpc_port = request->grpc_port();
-    if (!request->log_level().empty()) config.log_level = request->log_level();
+    if (request->network_max_connections() != 0) config.network_max_connections = request->network_max_connections();
+    if (request->has_network_enable_ssl()) config.network_enable_ssl = request->network_enable_ssl();
+    if (!request->network_ssl_cert_path().empty()) config.network_ssl_cert_path = request->network_ssl_cert_path();
+    if (!request->network_ssl_key_path().empty()) config.network_ssl_key_path = request->network_ssl_key_path();
+    if (!request->log_level().empty()) {
+        API_LOG_INFO("UpdateConfiguration: log_level '{}' -> '{}'",
+                     config.log_level, request->log_level());
+        config.log_level = request->log_level();
+    }
     if (!request->log_directory().empty()) config.log_directory = request->log_directory();
     if (request->log_rotation_days() != 0) config.log_rotation_days = request->log_rotation_days();
+    if (request->log_max_file_size_mb() != 0) config.log_max_file_size_mb = request->log_max_file_size_mb();
+    if (request->has_log_console_output()) config.log_console_output = request->log_console_output();
     if (request->focal_length() != 0.0) config.focal_length = request->focal_length();
     if (request->aperture() != 0.0) config.aperture = request->aperture();
     
@@ -1017,22 +1043,20 @@ try {
     if (request->rate_tolerance() != 0.0) config.rate_tolerance = request->rate_tolerance();
     
     // ── Encoder configuration ────────────────────────────────────
-    // Booleans: only update if true (proto3 default is false).
-    // A false value means "not provided" rather than "set to false".
-    if (request->use_encoders()) config.use_encoders = true;
-    if (request->encoders_absolute()) config.encoders_absolute = true;
+    if (request->has_use_encoders()) config.use_encoders = request->use_encoders();
+    if (request->has_encoders_absolute()) config.encoders_absolute = request->encoders_absolute();
     if (request->encoder_resolution_config() != 0.0) config.encoder_resolution = request->encoder_resolution_config();
     
     // ── TPOINT configuration ─────────────────────────────────────
     if (request->tpoint_enabled_terms() != 0) config.tpoint_enabled_terms = request->tpoint_enabled_terms();
     
     // ── Guider configuration ─────────────────────────────────────
-    if (request->enable_guider()) config.enable_guider = true;
+    if (request->has_enable_guider()) config.enable_guider = request->enable_guider();
     if (request->guider_max_correction() != 0.0) config.guider_max_correction = request->guider_max_correction();
     if (request->guider_aggression() != 0.0) config.guider_aggression = request->guider_aggression();
     
     // ── Atmospheric refraction correction ────────────────────────
-    if (request->enable_refraction_correction()) config.enable_refraction_correction = true;
+    if (request->has_enable_refraction_correction()) config.enable_refraction_correction = request->enable_refraction_correction();
     
     // ── Mount type ───────────────────────────────────────────────
     if (request->mount_type() != astro_mount::MountType::EQUATORIAL) {
@@ -1049,7 +1073,7 @@ try {
     }
     
     // ── Servo initialization configuration ────────────────────────
-    if (request->servo_init_enabled()) config.servo_init_enabled = true;
+    if (request->has_servo_init_enabled()) config.servo_init_enabled = request->servo_init_enabled();
     if (!request->servo_init_sequence().empty()) {
         try {
             json seq = json::parse(request->servo_init_sequence());
@@ -1072,14 +1096,14 @@ try {
     }
     
     // ── CANopen PDO config ────────────────────────────────────────
-    if (request->canopen_pdo_config_enabled()) config.canopen_pdo_config_enabled = true;
+    if (request->has_canopen_pdo_config_enabled()) config.canopen_pdo_config_enabled = request->canopen_pdo_config_enabled();
     
     // ── Loop timing ───────────────────────────────────────────────
     if (request->controller_poll_ms() != 0) config.controller_poll_ms = request->controller_poll_ms();
     if (request->tracking_update_ms() != 0) config.tracking_update_ms = request->tracking_update_ms();
     
     // ── Field rotation parameters ─────────────────────────────────
-    if (request->field_rotation_enabled()) config.field_rotation_enabled = true;
+    if (request->has_field_rotation_enabled()) config.field_rotation_enabled = request->field_rotation_enabled();
     if (request->field_rotation_latitude() != 0.0) config.field_rotation_latitude = request->field_rotation_latitude();
     if (request->field_rotation_altitude() != 0.0) config.field_rotation_altitude = request->field_rotation_altitude();
     if (request->field_rotation_azimuth() != 0.0) config.field_rotation_azimuth = request->field_rotation_azimuth();
@@ -1089,13 +1113,13 @@ try {
     if (request->field_rotation_flexure_correction() != 0.0) config.field_rotation_flexure_correction = request->field_rotation_flexure_correction();
     
     // ── Meridian flip configuration ──────────────────────────────
-    if (request->meridian_flip_enabled()) config.meridian_flip_enabled = true;
+    if (request->has_meridian_flip_enabled()) config.meridian_flip_enabled = request->meridian_flip_enabled();
     if (request->meridian_flip_delay_minutes() != 0.0) config.meridian_flip_delay_minutes = request->meridian_flip_delay_minutes();
     if (request->meridian_flip_hysteresis_degrees() != 0.0) config.meridian_flip_hysteresis_degrees = request->meridian_flip_hysteresis_degrees();
     if (request->meridian_flip_timeout_seconds() != 0.0) config.meridian_flip_timeout_seconds = request->meridian_flip_timeout_seconds();
     
     // ── Soft limits configuration ────────────────────────────────
-    if (request->soft_limits_enabled()) config.soft_limits_enabled = true;
+    if (request->has_soft_limits_enabled()) config.soft_limits_enabled = request->soft_limits_enabled();
     // Always apply soft limit axis values if any of them is non-zero
     // (proto3 defaults to 0.0, so non-zero means intentionally set)
     if (request->soft_limit_axis1_min() != 0.0) config.soft_limit_axis1_min = request->soft_limit_axis1_min();
@@ -2465,6 +2489,23 @@ grpc::Status MountControllerServiceImpl::StopGamepad(
         return grpc::Status::OK;
     } catch (const std::exception& e) {
         API_LOG_ERROR("StopGamepad failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                           std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::SetGamepadMode(
+    grpc::ServerContext* context,
+    const astro_mount::GamepadModeRequest* request,
+    google::protobuf::Empty* response) {
+    
+    try {
+        API_LOG_INFO("SetGamepadMode called with mode={}", static_cast<int>(request->mode()));
+        auto mode = static_cast<controllers::MountController::GamepadMode>(request->mode());
+        controller_.setGamepadMode(mode);
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("SetGamepadMode failed: {}", e.what());
         return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }

@@ -272,10 +272,14 @@ public:
     grpc::Status StopGamepad(grpc::ServerContext* context,
                              const google::protobuf::Empty* request,
                              google::protobuf::Empty* response) override;
-    
-    // ============================================
-    // Mount orientation (CASUAL mount type)
-    // ============================================
+   
+   grpc::Status SetGamepadMode(grpc::ServerContext* context,
+                               const astro_mount::GamepadModeRequest* request,
+                               google::protobuf::Empty* response) override;
+   
+   // ============================================
+   // Mount orientation (CASUAL mount type)
+   // ============================================
     
     grpc::Status SetMountOrientation(grpc::ServerContext* context,
                                      const astro_mount::MountOrientation* request,

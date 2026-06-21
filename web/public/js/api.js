@@ -905,6 +905,16 @@ const Api = (() => {
     return request('/hal/gamepad/stop', { method: 'POST', timeout: 5000 });
   }
 
+  /**
+   * Set the gamepad navigation mode.
+   * POST /api/hal/gamepad/mode
+   * @param {number} mode - 0=RAW, 1=CELESTIAL, 2=ALT_AZ
+   * @returns {Promise<object>}
+   */
+  async function setGamepadMode(mode) {
+    return request('/hal/gamepad/mode', { method: 'POST', body: JSON.stringify({ mode: mode }), timeout: 5000 });
+  }
+
   // Public API
   return {
     getStatus,
@@ -977,5 +987,6 @@ const Api = (() => {
     getGamepadState,
     startGamepad,
     stopGamepad,
+    setGamepadMode,
   };
 })();

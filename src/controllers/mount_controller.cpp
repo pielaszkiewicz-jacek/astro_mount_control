@@ -315,14 +315,16 @@ public:
         
         // Initialize HAL interface if available
         if (hal_interface_) {
-            astro_mount::hal::HALConfig hal_cfg;
             // HALType enum describes the hardware interface (CANopen, Serial, etc.),
             // not the mount geometry (equatorial vs alt-az). Both mount types
             // can use CANopen hardware, so both map to CANOPEN here.
-            hal_cfg.type = astro_mount::hal::HALType::CANOPEN;
-            hal_cfg.name = "MountController_HAL";
-            hal_config_ = hal_cfg;
-            if (!hal_interface_->initialize(hal_cfg)) {
+            // IMPORTANT: Do NOT overwrite hal_config_ — it was loaded from
+            // config.hal_config at line 271 and contains all fields from the
+            // JSON config file (canopen.library, canopen.bitrate, canopen.pdo_config_enabled, etc.).
+            // Creating a new HALConfig and assigning would lose all those values.
+            hal_config_.type = astro_mount::hal::HALType::CANOPEN;
+            hal_config_.name = "MountController_HAL";
+            if (!hal_interface_->initialize(hal_config_)) {
                 MOUNT_LOG_ERROR("Failed to initialize HAL interface");
                 return false;
             }
@@ -369,7 +371,7 @@ public:
             canopen_config.axis_velocity_counts_per_deg_s[0] = config_.ha_axis_params.velocity_counts_per_deg_s;
             canopen_config.axis_velocity_counts_per_deg_s[1] = config_.dec_axis_params.velocity_counts_per_deg_s;
             canopen_config.accel_mode = config_.canopen_accel_mode;
-            canopen_config.pdo_config_enabled = true;
+            canopen_config.pdo_config_enabled = config_.canopen_pdo_config_enabled;
             
             // Propagate servo initialization sequence from ControllerConfig
             canopen_config.servo_init_enabled = config_.servo_init_enabled;
@@ -3242,6 +3244,11 @@ public:
                      bootstrap_estimated_quaternion_error_arcsec_);
             
             bootstrap_calibrated_ = true;
+            // Auto-switch gamepad to CELESTIAL mode after successful calibration
+            if (gamepad_mode_ == 0) {
+                setGamepadMode(1);
+                MOUNT_LOG_INFO("Gamepad: auto-switched to CELESTIAL mode after bootstrap calibration");
+            }
             return true;
             
         } catch (const std::exception& e) {
@@ -4360,9 +4367,39 @@ public:
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         config_ = config;
 
+        // Sync CANopen pdo_config_enabled into hal_config_ so that
+        // saveConfigToFile→hal_config_.toJson() preserves it.
+        hal_config_.canopen.pdo_config_enabled = config_.canopen_pdo_config_enabled;
+
         // Persist to disk if a config file path has been set
         if (!config_file_path_.empty()) {
             saveConfigToFile();
+        }
+
+        // ── Apply logging changes in real-time ──────────────────────────
+        // Log level takes effect immediately without requiring a restart.
+        {
+            auto new_level = logging::Logger::levelFromString(config_.log_level);
+            MOUNT_LOG_INFO("updateConfiguration: applying log level '{}' (enum={})",
+                           config_.log_level, static_cast<int>(new_level));
+            logging::Logger::setLevel(new_level);
+            MOUNT_LOG_INFO("updateConfiguration: log level changed to '{}'",
+                           config_.log_level);
+            MOUNT_LOG_DEBUG("updateConfiguration: THIS IS A DEBUG-LEVEL TEST MESSAGE — "
+                           "if you see this, DEBUG logging is working!");
+        }
+
+        // Console output toggling: set console sink level to OFF when disabled,
+        // restore to current log level when enabled.
+        {
+            if (config_.log_console_output) {
+                auto current_level = logging::Logger::getLevel();
+                logging::Logger::setConsoleLevel(current_level);
+            } else {
+                logging::Logger::setConsoleLevel(logging::LogLevel::OFF);
+            }
+            MOUNT_LOG_INFO("updateConfiguration: console_output={}",
+                           config_.log_console_output ? "true" : "false");
         }
 
         return true;
@@ -4428,10 +4465,31 @@ public:
             setIfStr("logging", "level", config_.log_level);
             setIfStr("logging", "directory", config_.log_directory);
             setIfInt("logging", "rotation_days", config_.log_rotation_days);
+            setIfInt("logging", "max_file_size_mb", config_.log_max_file_size_mb);
+            setAlways("logging", "console_output", config_.log_console_output);
 
             // ── network ──────────────────────────────────────────────
             setIfStr("network", "grpc_address", config_.grpc_address);
             setIfInt("network", "grpc_port", config_.grpc_port);
+            setIfInt("network", "max_connections", config_.network_max_connections);
+            setAlways("network", "enable_ssl", config_.network_enable_ssl);
+            setIfStr("network", "ssl_cert_path", config_.network_ssl_cert_path);
+            setIfStr("network", "ssl_key_path", config_.network_ssl_key_path);
+
+            // ── canopen (hal.canopen – single source of truth) ───────
+            ensureSection("hal");
+            if (!j["hal"].contains("canopen")) j["hal"]["canopen"] = json::object();
+            auto& hc = j["hal"]["canopen"];
+            setIfStr("canopen", "interface_name", config_.canopen_interface);  // legacy compat
+            hc["interface_name"] = config_.canopen_interface;
+            setIfInt("canopen", "node_id", config_.canopen_node_id);           // legacy compat
+            hc["node_id"] = config_.canopen_node_id;
+            hc["bitrate"] = config_.canopen_bitrate;
+            hc["use_sync"] = config_.canopen_use_sync;
+            hc["sync_period_ms"] = config_.canopen_sync_period_ms;
+            setIfStr("canopen", "accel_mode", config_.canopen_accel_mode);     // legacy compat
+            hc["accel_mode"] = config_.canopen_accel_mode;
+            hc["pdo_config_enabled"] = config_.canopen_pdo_config_enabled;
 
             // ── mount ────────────────────────────────────────────────
             ensureSection("mount");
@@ -4974,6 +5032,7 @@ public:
         gp->set_sensitivity(hal_config_.gamepad.sensitivity);
         gp->set_read_frequency(hal_config_.gamepad.update_rate_hz);
         gp->set_autostart(hal_config_.gamepad.autostart);
+        gp->set_gamepad_mode(static_cast<::astro_mount::GamepadMode>(hal_config_.gamepad.gamepad_mode));
         
         return true;
     }
@@ -4997,6 +5056,8 @@ public:
                 if (gp.read_frequency() != 0.0)
                     hal_config_.gamepad.update_rate_hz = gp.read_frequency();
                 hal_config_.gamepad.autostart = gp.autostart();
+                hal_config_.gamepad.gamepad_mode = static_cast<int>(gp.gamepad_mode());
+                gamepad_mode_ = hal_config_.gamepad.gamepad_mode;
             }
             
             // Update PID config in place
@@ -5125,6 +5186,8 @@ public:
                 new_config.gamepad.update_rate_hz = gp.read_frequency();
             // autostart is a boolean – proto3 default is false, so we always apply it
             new_config.gamepad.autostart = gp.autostart();
+            // gamepad_mode: proto3 default is GAMEPAD_RAW=0, always apply
+            new_config.gamepad.gamepad_mode = static_cast<int>(gp.gamepad_mode());
         }
         
         // PID config
@@ -5257,8 +5320,16 @@ public:
                 gs->set_button_home(state.button_home);
                 gs->set_axis_count(gamepad_input_->getAxisCount());
                 gs->set_button_count(gamepad_input_->getButtonCount());
+                gs->set_gamepad_mode(static_cast<::astro_mount::GamepadMode>(gamepad_mode_));
+                gs->set_bootstrap_calibrated(bootstrap_calibrated_);
+                gs->set_tpoint_calibrated(tpoint_calibrated_);
+                gs->set_max_velocity(gamepad_max_velocity_);
             } else {
                 gs->set_connected(false);
+                gs->set_gamepad_mode(static_cast<::astro_mount::GamepadMode>(gamepad_mode_));
+                gs->set_bootstrap_calibrated(bootstrap_calibrated_);
+                gs->set_tpoint_calibrated(tpoint_calibrated_);
+                gs->set_max_velocity(gamepad_max_velocity_);
             }
         };
 
@@ -5789,6 +5860,12 @@ private:
     double gamepad_max_velocity_{5.0};
     bool gamepad_axis0_active_{false};  ///< true when stick was deflected last cycle
     bool gamepad_axis1_active_{false};
+    int gamepad_mode_{0};  ///< 0=RAW, 1=CELESTIAL, 2=ALT_AZ, 3=PRECISION
+    
+    // Speed adjustment via gamepad buttons
+    double gamepad_speed_step_{0.5};       ///< Velocity step per speed-up/down button press
+    double gamepad_min_velocity_{0.1};     ///< Minimum allowed max velocity
+    double gamepad_max_velocity_limit_{20.0}; ///< Maximum allowed max velocity
     
   public:
     void initGamepadInput() {
@@ -5797,6 +5874,8 @@ private:
         gamepad_deadzone_ = gp_cfg.deadzone > 0.0 ? gp_cfg.deadzone : 0.15;
         gamepad_sensitivity_ = gp_cfg.sensitivity > 0.0 ? gp_cfg.sensitivity : 1.0;
         gamepad_max_velocity_ = gp_cfg.max_velocity_deg_s > 0.0 ? gp_cfg.max_velocity_deg_s : 5.0;
+        
+        gamepad_mode_ = gp_cfg.gamepad_mode;
         
         gamepad_input_ = std::make_unique<hal::EvdevGamepadInput>();
         std::string dev = gp_cfg.device_path.empty() ? "" : gp_cfg.device_path;
@@ -5831,6 +5910,20 @@ private:
             gamepad_input_.reset();
         }
         MOUNT_LOG_INFO("Gamepad: stopped");
+    }
+    
+    void setGamepadMode(int mode) {
+        if (mode < 0 || mode > 3) {
+            MOUNT_LOG_WARN("Gamepad: invalid mode {}, ignoring", mode);
+            return;
+        }
+        if (mode == gamepad_mode_) return;
+        
+        gamepad_mode_ = mode;
+        hal_config_.gamepad.gamepad_mode = mode;
+        
+        const char* mode_names[] = {"RAW", "CELESTIAL", "ALT_AZ", "PRECISION"};
+        MOUNT_LOG_INFO("Gamepad: mode set to {}", mode_names[mode]);
     }
     
     void gamepadLoop() {
@@ -5907,6 +6000,23 @@ private:
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 continue;
             }
+            if (state.button_speed_up || state.button_speed_down) {
+                static auto last_speed_change = std::chrono::steady_clock::now();
+                auto now_sc = std::chrono::steady_clock::now();
+                // Debounce: 300ms between speed changes
+                if (std::chrono::duration_cast<std::chrono::milliseconds>(now_sc - last_speed_change).count() >= 300) {
+                    double step = gamepad_speed_step_;
+                    if (state.button_speed_down) step = -step;
+                    double new_vel = gamepad_max_velocity_ + step;
+                    new_vel = std::clamp(new_vel, gamepad_min_velocity_, gamepad_max_velocity_limit_);
+                    if (std::abs(new_vel - gamepad_max_velocity_) > 0.001) {
+                        gamepad_max_velocity_ = new_vel;
+                        MOUNT_LOG_INFO("Gamepad: max velocity adjusted to {:.1f} deg/s", gamepad_max_velocity_);
+                        last_speed_change = now_sc;
+                    }
+                }
+                // Don't continue – allow simultaneous axis control
+            }
             
             // Skip axis control when in ERROR state (emergency stop active).
             // The loop continues running so that after clearErrors() transitions
@@ -5936,27 +6046,101 @@ private:
                 applyAxis(state.axis_lx, vel0);  // Left stick X → axis 0
                 applyAxis(state.axis_ly, vel1);  // Left stick Y → axis 1
                 
-                vel0 *= gamepad_max_velocity_;
-                vel1 *= gamepad_max_velocity_;
-                
-                // Axis 0: send velocity only when stick is deflected,
-                //         or once to stop after the stick is released.
                 bool axis0_deflected = (std::abs(vel0) > 0.001);
-                if (canopen_interface_->isDriveEnabled(0)) {
-                    if (axis0_deflected || gamepad_axis0_active_) {
-                        canopen_interface_->setVelocityTarget(0, vel0, config_.slew_acceleration);
-                    }
-                }
-                gamepad_axis0_active_ = axis0_deflected;
-                
-                // Axis 1: same logic
                 bool axis1_deflected = (std::abs(vel1) > 0.001);
-                if (canopen_interface_->isDriveEnabled(1)) {
-                    if (axis1_deflected || gamepad_axis1_active_) {
-                        canopen_interface_->setVelocityTarget(1, vel1, config_.slew_acceleration);
+                
+                if (gamepad_mode_ == 0 || !bootstrap_calibrated_ || !astro_calc_ || (gamepad_mode_ == 3 && !tpoint_calibrated_)) {
+                    // ── RAW mode (or fallback when uncalibrated) ──
+                    vel0 *= gamepad_max_velocity_;
+                    vel1 *= gamepad_max_velocity_;
+                    
+                    if (canopen_interface_->isDriveEnabled(0)) {
+                        if (axis0_deflected || gamepad_axis0_active_) {
+                            canopen_interface_->setVelocityTarget(0, vel0, config_.slew_acceleration);
+                        }
+                    }
+                    gamepad_axis0_active_ = axis0_deflected;
+                    
+                    if (canopen_interface_->isDriveEnabled(1)) {
+                        if (axis1_deflected || gamepad_axis1_active_) {
+                            canopen_interface_->setVelocityTarget(1, vel1, config_.slew_acceleration);
+                        }
+                    }
+                    gamepad_axis1_active_ = axis1_deflected;
+                } else if (axis0_deflected || axis1_deflected) {
+                    // ── Coordinate-based navigation (CELESTIAL or ALT_AZ) ──
+                    const double dt = 0.02;  // ~50 Hz poll rate
+                    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                    double axis1_target = axis1_position_;
+                    double axis2_target = axis2_position_;
+                    
+                    if (gamepad_mode_ == 1 || gamepad_mode_ == 3) {
+                        // CELESTIAL / PRECISION: LX → dRA/dt, LY → dDec/dt
+                        double speed_factor = (gamepad_mode_ == 3) ? 0.1 : 1.0;  // PRECISION = 1/10th speed
+                        auto [current_ra, current_dec] = astro_calc_->mountOrientationToEquatorial(
+                            axis1_position_, axis2_position_, jd, mount_orientation_.quaternion);
+                        
+                        double dRA = vel0 * gamepad_max_velocity_ * speed_factor * dt / 15.0;
+                        double dDec = vel1 * gamepad_max_velocity_ * speed_factor * dt;
+                        double new_ra = current_ra + dRA;
+                        double new_dec = std::clamp(current_dec + dDec, -90.0, 90.0);
+                        
+                        auto [new_axis1, new_axis2] = astro_calc_->equatorialToMountOrientation(
+                            new_ra, new_dec, jd, mount_orientation_.quaternion);
+                        axis1_target = new_axis1;
+                        axis2_target = new_axis2;
+                    } else if (gamepad_mode_ == 2) {
+                        // ALT_AZ: LY → dAlt/dt (deg/s), LX → dAz/dt (deg/s)
+                        auto [current_ra, current_dec] = astro_calc_->mountOrientationToEquatorial(
+                            axis1_position_, axis2_position_, jd, mount_orientation_.quaternion);
+                        auto [current_alt, current_az] = astro_calc_->equatorialToHorizontal(
+                            current_ra, current_dec, jd, false);
+                        
+                        double dAlt = vel1 * gamepad_max_velocity_ * dt;
+                        double dAz = vel0 * gamepad_max_velocity_ * dt;
+                        double new_alt = std::clamp(current_alt + dAlt, 0.0, 90.0);
+                        double new_az = std::fmod(current_az + dAz + 360.0, 360.0);
+                        
+                        auto [new_ra, new_dec] = astro_calc_->horizontalToEquatorial(
+                            new_alt, new_az, jd, false);
+                        auto [new_axis1, new_axis2] = astro_calc_->equatorialToMountOrientation(
+                            new_ra, new_dec, jd, mount_orientation_.quaternion);
+                        axis1_target = new_axis1;
+                        axis2_target = new_axis2;
+                    }
+                    
+                    // Convert position delta to velocity and send
+                    double mount_vel0 = (axis1_target - axis1_position_) / dt;
+                    double mount_vel1 = (axis2_target - axis2_position_) / dt;
+                    
+                    // Clamp to max velocity (reduced for PRECISION mode)
+                    double max_vel = (gamepad_mode_ == 3) ? gamepad_max_velocity_ * 0.1 : gamepad_max_velocity_;
+                    mount_vel0 = std::clamp(mount_vel0, -max_vel, max_vel);
+                    mount_vel1 = std::clamp(mount_vel1, -max_vel, max_vel);
+                    
+                    if (canopen_interface_->isDriveEnabled(0)) {
+                        canopen_interface_->setVelocityTarget(0, mount_vel0, config_.slew_acceleration);
+                    }
+                    if (canopen_interface_->isDriveEnabled(1)) {
+                        canopen_interface_->setVelocityTarget(1, mount_vel1, config_.slew_acceleration);
+                    }
+                    gamepad_axis0_active_ = true;
+                    gamepad_axis1_active_ = true;
+                } else {
+                    // Stick released – stop coordinate-based motion
+                    if (gamepad_axis0_active_) {
+                        if (canopen_interface_->isDriveEnabled(0)) {
+                            canopen_interface_->setVelocityTarget(0, 0.0, config_.slew_acceleration);
+                        }
+                        gamepad_axis0_active_ = false;
+                    }
+                    if (gamepad_axis1_active_) {
+                        if (canopen_interface_->isDriveEnabled(1)) {
+                            canopen_interface_->setVelocityTarget(1, 0.0, config_.slew_acceleration);
+                        }
+                        gamepad_axis1_active_ = false;
                     }
                 }
-                gamepad_axis1_active_ = axis1_deflected;
             }
             
             std::this_thread::sleep_for(std::chrono::milliseconds(20)); // ~50 Hz
@@ -6451,6 +6635,10 @@ void MountController::startGamepadLoop() {
 
 void MountController::stopGamepad() {
     pimpl->stopGamepad();
+}
+
+void MountController::setGamepadMode(GamepadMode mode) {
+    pimpl->setGamepadMode(static_cast<int>(mode));
 }
 
 } // namespace controllers

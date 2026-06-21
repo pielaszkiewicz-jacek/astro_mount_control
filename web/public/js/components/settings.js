@@ -19,6 +19,7 @@ const SettingsComponent = (() => {
     {
       id: 'logging',
       label: 'Logging',
+      restartRequired: false,
       fields: [
         { key: 'log_level', label: 'Log Level', type: 'select', options: ['DEBUG', 'INFO', 'WARN', 'ERROR'] },
         { key: 'log_directory', label: 'Log Directory', type: 'text' },
@@ -30,6 +31,7 @@ const SettingsComponent = (() => {
     {
       id: 'network',
       label: 'Network',
+      restartRequired: true,
       fields: [
         { key: 'grpc_address', label: 'gRPC Address', type: 'text' },
         { key: 'grpc_port', label: 'gRPC Port', type: 'number', min: 1, max: 65535 },
@@ -42,6 +44,7 @@ const SettingsComponent = (() => {
     {
       id: 'canopen',
       label: 'CANopen',
+      restartRequired: true,
       fields: [
         { key: 'canopen_interface', label: 'Interface', type: 'text' },
         { key: 'canopen_node_id', label: 'Node ID', type: 'number', min: 1, max: 127 },
@@ -1301,8 +1304,30 @@ const SettingsComponent = (() => {
       + '</button>'
       + '</div>';
 
+    // Navigation mode selector
+    const currentMode = s.gamepad_mode !== undefined ? s.gamepad_mode : 0;
+    const bootstrapCal = s.bootstrap_calibrated || false;
+    const tpointCal = s.tpoint_calibrated || false;
+    const modeNames = [
+      I18n.t('cfg.gamepad.mode_raw', 'Raw Axes'),
+      I18n.t('cfg.gamepad.mode_celestial', 'Celestial (RA/Dec)'),
+      I18n.t('cfg.gamepad.mode_alt_az', 'Alt-Az'),
+      I18n.t('cfg.gamepad.mode_precision', 'Precision (RA/Dec, slow)')
+    ];
+    var modeSelectHtml = '<div class="gamepad-mode-row"><span class="gamepad-mode-label">' + I18n.t('cfg.gamepad.mode_label', 'Nav Mode') + ':</span>'
+      + '<select id="gamepad-mode-select" class="gamepad-mode-select">';
+    for (var mi = 0; mi < 4; mi++) {
+      var disabled = false;
+      if (mi > 0 && !bootstrapCal) disabled = true;
+      if (mi === 3 && !tpointCal) disabled = true;
+      var selected = (mi === currentMode) ? ' selected' : '';
+      modeSelectHtml += '<option value="' + mi + '"' + (disabled ? ' disabled' : '') + selected + '>' + Utils.escapeHtml(modeNames[mi]) + (disabled ? ' (' + I18n.t('cfg.gamepad.needs_cal', 'needs calibration') + ')' : '') + '</option>';
+    }
+    modeSelectHtml += '</select></div>';
+
     panel.innerHTML = '<div class="gamepad-state-header"><span class="gamepad-connection-status">' + connIcon + ' ' + connLabel + '</span><span class="gamepad-device-name">' + Utils.escapeHtml(deviceName) + '</span></div>'
       + ctrlHtml
+      + modeSelectHtml
       + '<div class="gamepad-state-grid">'
       + '<div class="gamepad-state-section"><div class="gamepad-section-title">' + I18n.t('cfg.gamepad.axes', 'Analog Axes') + '</div>'
       + axisBar(s.axis_lx, 'Left X') + axisBar(s.axis_ly, 'Left Y') + axisBar(s.axis_rx, 'Right X') + axisBar(s.axis_ry, 'Right Y')
@@ -1316,13 +1341,27 @@ const SettingsComponent = (() => {
       + btnIndicator(s.button_speed_up, 'SPD+') + btnIndicator(s.button_speed_down, 'SPD\u2212')
       + btnIndicator(s.button_manual_toggle, 'MANUAL')
       + '</div>'
-      + '<div class="gamepad-info-row"><span>' + I18n.t('cfg.gamepad.axes_count', 'Axes') + ': ' + (s.axis_count || 0) + '</span><span>' + I18n.t('cfg.gamepad.buttons_count', 'Buttons') + ': ' + (s.button_count || 0) + '</span></div>'
+      + '<div class="gamepad-info-row"><span>' + I18n.t('cfg.gamepad.axes_count', 'Axes') + ': ' + (s.axis_count || 0) + '</span><span>' + I18n.t('cfg.gamepad.buttons_count', 'Buttons') + ': ' + (s.button_count || 0) + '</span><span>' + I18n.t('cfg.gamepad.speed', 'Speed') + ': ' + (s.max_velocity || 5.0).toFixed(1) + ' \u00B0/s</span></div>'
       + '</div></div>';
 
     // Attach click handler after DOM update
     var btn = document.getElementById('gamepad-ctrl-btn');
     if (btn) {
       btn.onclick = toggleGamepadControl;
+    }
+
+    // Attach mode select change handler
+    var modeSelect = document.getElementById('gamepad-mode-select');
+    if (modeSelect) {
+      modeSelect.onchange = async function() {
+        var newMode = parseInt(this.value, 10);
+        try {
+          await Api.setGamepadMode(newMode);
+          console.log('Gamepad mode set to', newMode);
+        } catch (err) {
+          console.error('Failed to set gamepad mode:', err);
+        }
+      };
     }
   }
 
@@ -1697,6 +1736,16 @@ const SettingsComponent = (() => {
           value = parseFloat(input.value);
           if (isNaN(value)) value = 0;
         }
+      } else if (type === 'select') {
+        // Select values: try to parse as number if purely numeric
+        const raw = input.value;
+        if (/^-?\d+$/.test(raw)) {
+          value = parseInt(raw, 10);
+        } else if (/^-?\d+\.?\d*$/.test(raw)) {
+          value = parseFloat(raw);
+        } else {
+          value = raw;
+        }
       } else if (type === 'quaternion') {
         // Parse comma-separated quaternion values
         const parts = input.value.split(',').map(s => parseFloat(s.trim()));
@@ -1792,9 +1841,14 @@ const SettingsComponent = (() => {
       }
 
       if (statusEl) {
-        statusEl.textContent = '✅ Saved';
+        const needsRestart = group.restartRequired !== undefined ? group.restartRequired : true;
+        if (needsRestart) {
+          statusEl.innerHTML = '✅ Saved <span style="color:var(--color-warning,orange);font-weight:bold;" title="' + I18n.t('cfg.status.restart_hint', 'This change requires a controller restart to take effect') + '">⚠ Restart required</span>';
+        } else {
+          statusEl.textContent = '✅ Saved';
+        }
         statusEl.style.color = 'var(--color-success)';
-        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+        setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 6000);
       }
 
       // Reload config to reflect changes

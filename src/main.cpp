@@ -121,10 +121,10 @@ int main(int argc, char* argv[]) {
         controller_config.canopen_sync_period_ms = canopen_config.sync_interval_ms;
         controller_config.canopen_accel_mode = canopen_config.accel_mode;
         
-        // HAL-level CANopen parameters (sdo_timeout_ms, pdo_config from hal.canopen)
+        // HAL-level CANopen parameters (sdo_timeout_ms from hal.canopen)
         auto hal_config = config.getHALConfig();
         controller_config.canopen_sdo_timeout_ms = static_cast<int>(hal_config.canopen.sdo_timeout_ms);
-        controller_config.canopen_pdo_config_enabled = hal_config.canopen.pdo_config_enabled;
+        controller_config.canopen_pdo_config_enabled = canopen_config.pdo_config_enabled;
         controller_config.hal_config = hal_config;
         
         // Set servo initialization configuration (custom SDO sequence)
@@ -141,10 +141,21 @@ int main(int argc, char* argv[]) {
             controller_config.servo_init_sequence.push_back(e);
         }
         
+        // Populate ControllerConfig with logging settings from config file
+        controller_config.log_level = logging_config.level;
+        controller_config.log_directory = logging_config.directory;
+        controller_config.log_rotation_days = logging_config.rotation_days;
+        controller_config.log_max_file_size_mb = logging_config.max_file_size_mb;
+        controller_config.log_console_output = logging_config.console_output;
+
         // Set network configuration
         auto network_config = config.getNetworkConfig();
         controller_config.grpc_address = network_config.grpc_address;
         controller_config.grpc_port = network_config.grpc_port;
+        controller_config.network_max_connections = network_config.max_connections;
+        controller_config.network_enable_ssl = network_config.enable_ssl;
+        controller_config.network_ssl_cert_path = network_config.ssl_cert_path;
+        controller_config.network_ssl_key_path = network_config.ssl_key_path;
         
         // Set guider configuration
         auto guider_config = config.getGuiderConfig();
@@ -295,9 +306,12 @@ int main(int argc, char* argv[]) {
         
         // Create and start gRPC server
         grpc_server_instance = std::make_unique<api::GrpcServer>(
-            network_config.grpc_address, 
+            network_config.grpc_address,
             network_config.grpc_port,
-            *mount_controller
+            *mount_controller,
+            network_config.enable_ssl,
+            network_config.ssl_cert_path,
+            network_config.ssl_key_path
         );
         
         if (!grpc_server_instance->start()) {

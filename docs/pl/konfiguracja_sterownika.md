@@ -115,6 +115,81 @@ Definiuje serwer gRPC do komunikacji zewnętrznej.
 
 Implementacja: [`NetworkConfig`](include/config/configuration.h:30).
 
+### 4.1 Konfiguracja SSL/TLS dla gRPC
+
+Serwer gRPC może używać szyfrowania TLS. Domyślnie SSL jest **wyłączony** (`enable_ssl: false`).
+
+#### Generowanie certyfikatów (development)
+
+W katalogu [`certs/`](certs/) znajdują się domyślne certyfikaty self-signed (ważne 10 lat, CN=localhost).
+Aby wygenerować własne:
+
+```bash
+mkdir -p certs
+openssl req -x509 -newkey rsa:4096 \
+  -keyout certs/server.key \
+  -out certs/server.crt \
+  -days 3650 -nodes \
+  -subj "/C=PL/O=TwojaOrganizacja/CN=localhost"
+```
+
+#### Włączenie SSL
+
+1. W pliku `config/default.json` ustaw:
+   ```json
+   "network": {
+       "enable_ssl": true,
+       "ssl_cert_path": "certs/server.crt",
+       "ssl_key_path": "certs/server.key"
+   }
+   ```
+   lub przez UI: **Settings → Network → Enable SSL** → zaznacz → Save.
+
+2. **Zrestartuj kontroler** — SSL wymaga restartu, nie może być przełączany dynamicznie.
+
+3. W logu startowym pojawi się:
+   ```
+   gRPC SSL enabled: cert=certs/server.crt, key=certs/server.key
+   ```
+
+#### Konfiguracja klienta (proxy) — automatyczna synchronizacja
+
+Proxy automatycznie synchronizuje ustawienia SSL z kontrolerem. Gdy w UI (Settings → Network) zmienisz `enable_ssl` i zapiszesz, proxy:
+
+1. Odczytuje `network_enable_ssl` z żądania
+2. Aktualizuje własną konfigurację SSL
+3. Odtwarza połączenie gRPC z nowymi ustawieniami TLS
+
+Log proxy potwierdzi:
+```
+[ssl] Proxy SSL ENABLED (synced from controller config)
+[gRPC] Connected to mount controller at 127.0.0.1:50051 (TLS)
+```
+
+Możesz też ręcznie przełączyć SSL przez endpoint:
+```bash
+curl -X POST http://localhost:8080/api/config/addresses \
+  -H 'Content-Type: application/json' \
+  -d '{"controller": {"ssl": true}}'
+```
+
+> **Uwaga**: Sam kontroler C++ wymaga restartu, aby zastosować SSL po stronie serwera. Proxy przełącza się natychmiast — po restarcie kontrolera połączenie zostanie automatycznie wznowione z TLS.
+
+#### Produkcja
+
+Dla środowiska produkcyjnego użyj certyfikatu podpisanego przez zaufane CA (np. **Let's Encrypt**).
+Umieść pełny łańcuch certyfikatów (certyfikat serwera + CA pośrednie + root CA) w pliku `ssl_cert_path`.
+Klucz prywatny nie może być zabezpieczony hasłem (gRPC nie obsługuje odszyfrowywania klucza przy starcie).
+
+#### Rozwiązywanie problemów
+
+| Problem | Przyczyna | Rozwiązanie |
+|---------|-----------|-------------|
+| `Failed to open certificate file` | Błędna ścieżka lub brak pliku | Ścieżki w `ssl_cert_path`/`ssl_key_path` są relatywne do katalogu roboczego kontrolera |
+| `Failed to open key file` | jw. | Użyj ścieżek bezwzględnych: `/home/user/project/certs/server.key` |
+| Klient odrzuca certyfikat | Self-signed cert | W środowisku dev: ustaw `NODE_TLS_REJECT_UNAUTHORIZED=0` lub użyj `grpc.credentials.createSsl()` bez root CA |
+| `Handshake failed` | Niezgodność certyfikatu i klucza | Wygeneruj parę ponownie tym samym poleceniem `openssl` |
+
 ---
 
 ## 5. Sekcja `canopen` — Konfiguracja magistrali CANopen

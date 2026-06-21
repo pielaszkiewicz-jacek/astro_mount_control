@@ -292,25 +292,17 @@ public:
     CanOpenConfig getCanOpenConfig() const {
         CanOpenConfig config;
         
-        // ── Source of truth: hal.canopen ──────────────────────────────
-        // The hal.canopen section is the authoritative CANopen configuration.
-        // Top-level "canopen" is a legacy alias kept for backward compatibility.
+        // ── Single source of truth: hal.canopen ───────────────────────
         auto hal_json = config_.value("hal", json::object());
         auto hal_can = hal_json.value("canopen", json::object());
         
-        // Legacy fallback section (deprecated – prefer hal.canopen)
-        auto canopen = config_.value("canopen", json::object());
-        
-        // Read from hal.canopen first, fall back to legacy canopen, then hard defaults
-        config.interface     = hal_can.value("interface_name", canopen.value("interface", "can0"));
-        config.node_id       = hal_can.value("node_id", canopen.value("node_id", 1));
-        config.baud_rate     = hal_can.value("bitrate", canopen.value("baud_rate", 1000000));
-        config.enable_sync   = hal_can.value("use_sync", canopen.value("enable_sync", true));
-        config.sync_interval_ms = hal_can.value("sync_period_ms",
-                                  canopen.value("sync_interval_ms", 100));
-        
-        // accel_mode: prefer hal.canopen, fallback to legacy canopen
-        config.accel_mode = hal_can.value("accel_mode", canopen.value("accel_mode", "time"));
+        config.interface     = hal_can.value("interface_name", "can0");
+        config.node_id       = hal_can.value("node_id", 1);
+        config.baud_rate     = hal_can.value("bitrate", 1000000);
+        config.enable_sync   = hal_can.value("use_sync", true);
+        config.sync_interval_ms = hal_can.value("sync_period_ms", 100);
+        config.accel_mode    = hal_can.value("accel_mode", "time");
+        config.pdo_config_enabled = hal_can.value("pdo_config_enabled", false);
         
         return config;
     }
@@ -528,14 +520,17 @@ public:
     
     void setCanOpenConfig(const CanOpenConfig& config) {
         json canopen;
-        canopen["interface"] = config.interface;
+        canopen["interface_name"] = config.interface;
         canopen["node_id"] = config.node_id;
-        canopen["baud_rate"] = config.baud_rate;
-        canopen["enable_sync"] = config.enable_sync;
-        canopen["sync_interval_ms"] = config.sync_interval_ms;
+        canopen["bitrate"] = config.baud_rate;
+        canopen["use_sync"] = config.enable_sync;
+        canopen["sync_period_ms"] = config.sync_interval_ms;
         canopen["accel_mode"] = config.accel_mode;
+        canopen["pdo_config_enabled"] = config.pdo_config_enabled;
         
-        config_["canopen"] = canopen;
+        // Write to hal.canopen (single source of truth)
+        if (!config_.contains("hal")) config_["hal"] = json::object();
+        config_["hal"]["canopen"] = canopen;
         modified_ = true;
     }
     

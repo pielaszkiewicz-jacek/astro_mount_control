@@ -100,6 +100,19 @@ public:
     static LogLevel getLevel();
     
     /**
+     * @brief Parse log level from string (case-insensitive)
+     * @param level_str Level string (TRACE, DEBUG, INFO, WARN, ERROR, CRITICAL, OFF)
+     * @return Parsed log level, defaults to INFO for unknown strings
+     */
+    static LogLevel levelFromString(const std::string& level_str);
+    
+    /**
+     * @brief Set the console sink log level (for dynamic toggling)
+     * @param level Log level for console output (use OFF to disable)
+     */
+    static void setConsoleLevel(LogLevel level);
+    
+    /**
      * @brief Flush all loggers
      */
     static void flush();

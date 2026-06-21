@@ -214,6 +214,25 @@ LogLevel Logger::getLevel() {
     return level_;
 }
 
+LogLevel Logger::levelFromString(const std::string& level_str) {
+    std::string upper = level_str;
+    for (auto& c : upper) c = static_cast<char>(::toupper(c));
+    if (upper == "TRACE")    return LogLevel::TRACE;
+    if (upper == "DEBUG")    return LogLevel::DEBUG;
+    if (upper == "INFO")     return LogLevel::INFO;
+    if (upper == "WARN")     return LogLevel::WARN;
+    if (upper == "ERROR")    return LogLevel::ERROR;
+    if (upper == "CRITICAL") return LogLevel::CRITICAL;
+    if (upper == "OFF")      return LogLevel::OFF;
+    return LogLevel::INFO;  // default fallback
+}
+
+void Logger::setConsoleLevel(LogLevel level) {
+    if (console_sink_) {
+        console_sink_->set_level(toSpdlogLevel(level));
+    }
+}
+
 void Logger::flush() {
     for (auto& [name, logger] : loggers_) {
         logger->flush();

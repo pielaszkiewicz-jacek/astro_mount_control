@@ -1,4 +1,9 @@
 {
+    "canopen": {
+        "accel_mode": "time",
+        "interface_name": "can0",
+        "node_id": 1
+    },
     "derotator": {
         "absolute_encoder": true,
         "backlash": 2.0,
@@ -115,6 +120,7 @@
             "interface_name": "can0",
             "library": "canopensocket",
             "node_id": 1,
+            "pdo_config_enabled": true,
             "pdo_update_rate": 100,
             "sdo_timeout_ms": 1000,
             "sync_period_ms": 100,
@@ -167,6 +173,7 @@
             },
             "deadzone": 0.15,
             "device_path": "/dev/input/js0",
+            "gamepad_mode": 0,
             "invert_axis1": false,
             "invert_axis2": false,
             "max_velocity_deg_s": 5.0,
@@ -225,9 +232,9 @@
     "logging": {
         "console_output": true,
         "directory": "/var/log/astro-mount",
-        "level": "INFO",
-        "max_file_size_mb": 100,
-        "rotation_days": 7
+        "level": "DEBUG",
+        "max_file_size_mb": 10,
+        "rotation_days": 1
     },
     "mount": {
         "altitude": 100.0,
@@ -345,9 +352,9 @@
         "enable_ssl": false,
         "grpc_address": "0.0.0.0",
         "grpc_port": 50051,
-        "max_connections": 10,
-        "ssl_cert_path": "",
-        "ssl_key_path": ""
+        "max_connections": 9,
+        "ssl_cert_path": "certs/server.crt",
+        "ssl_key_path": "certs/server.key"
     },
     "servo_init": {
         "comment": "Custom SDO configuration sequence sent to servo drives during initialization. Each entry specifies axis (0=HA, 1=Dec), CANopen OD index (hex), subindex, 32-bit value, and a human-readable description.",
@@ -372,9 +379,9 @@
         ]
     },
     "telescope": {
-        "aperture": 200.0,
+        "aperture": -1.136e-321,
         "camera_model": "ASI1600",
-        "focal_length": 6.9311550464608e-310,
+        "focal_length": 8e-322,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,

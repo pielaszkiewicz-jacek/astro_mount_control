@@ -443,6 +443,9 @@ service MountControllerService {
     rpc StartGamepad(google.protobuf.Empty) returns (google.protobuf.Empty);
     rpc StopGamepad(google.protobuf.Empty) returns (google.protobuf.Empty);
     
+    // Set gamepad navigation mode (RAW / CELESTIAL / ALT_AZ)
+    rpc SetGamepadMode(GamepadModeRequest) returns (google.protobuf.Empty);
+    
     // ============================================
     // CASUAL mount orientation
     // ============================================
@@ -588,14 +591,23 @@ message Configuration {
     string log_level = 14;
     string log_directory = 15;
     int32 log_rotation_days = 16;
+    int32 log_max_file_size_mb = 74;
+    optional bool log_console_output = 75;
     
     // Network
     string grpc_address = 17;
     int32 grpc_port = 18;
+    int32 network_max_connections = 76;
+    optional bool network_enable_ssl = 77;
+    string network_ssl_cert_path = 78;
+    string network_ssl_key_path = 79;
     
     // CanOpen
     string canopen_interface = 19;
     int32 canopen_node_id = 20;
+    int32 canopen_baud_rate = 80;
+    optional bool canopen_enable_sync = 81;
+    int32 canopen_sync_interval_ms = 82;
     
     // Mount control parameters
     double park_position_axis1 = 21;    // Park target for axis 1 [degrees]
@@ -610,20 +622,20 @@ message Configuration {
     AxisPhysicalParameters dec_axis_params = 28;
     
     // Encoder configuration
-    bool use_encoders = 29;
-    bool encoders_absolute = 30;
+    optional bool use_encoders = 29;
+    optional bool encoders_absolute = 30;
     double encoder_resolution_config = 31;
     
     // TPOINT configuration
     uint32 tpoint_enabled_terms = 32;
     
     // Guider configuration
-    bool enable_guider = 33;
+    optional bool enable_guider = 33;
     double guider_max_correction = 34;
     double guider_aggression = 35;
     
     // Atmospheric refraction correction
-    bool enable_refraction_correction = 36;  // Apply real-time refraction correction in tracking loop
+    optional bool enable_refraction_correction = 36;  // Apply real-time refraction correction in tracking loop
 
     // Mount type configuration
     MountType mount_type = 37;  // Mount geometry type (equatorial/alt-az)
@@ -633,12 +645,12 @@ message Configuration {
     double rate_tolerance = 39;          // Slew rate tolerance [degrees/sec]
     
     // Meridian flip configuration
-    bool meridian_flip_enabled = 40;                 // Enable automatic meridian flip
+    optional bool meridian_flip_enabled = 40;                 // Enable automatic meridian flip
     double meridian_flip_delay_minutes = 41;         // Delay after meridian crossing [minutes]
     double meridian_flip_hysteresis_degrees = 42;    // Hysteresis for flip trigger [degrees]
     
     // Soft limits configuration
-    bool soft_limits_enabled = 43;                   // Enable soft limit checking
+    optional bool soft_limits_enabled = 43;                   // Enable soft limit checking
     double soft_limit_axis1_min = 44;                // Axis1 minimum [degrees]
     double soft_limit_axis1_max = 45;                // Axis1 maximum [degrees]
     double soft_limit_axis2_min = 46;                // Axis2 minimum [degrees]
@@ -651,12 +663,12 @@ message Configuration {
     MountOrientation mount_orientation = 51;  // Mount orientation in local horizontal frame
 
     // Servo initialization via custom SDO sequence
-    bool servo_init_enabled = 52;             // Enable custom SDO sequence during init
+    optional bool servo_init_enabled = 52;             // Enable custom SDO sequence during init
     string servo_init_sequence = 53;          // JSON array of {axis, index, subindex, value, description} entries
 
     // CANopen acceleration interpretation mode
     string canopen_accel_mode = 54;           // "time" (0x6083 = ramp time) or "rate" (0x6083 = acceleration rate)
-    bool canopen_pdo_config_enabled = 70;     // Write PDO mappings to drive during init
+    optional bool canopen_pdo_config_enabled = 70;     // Write PDO mappings to drive during init
     int32 controller_poll_ms = 71;            // Main loop poll interval [ms], default 50 (20 Hz)
     int32 tracking_update_ms = 72;            // Tracking update interval [ms], default 20 (50 Hz)
 
@@ -666,7 +678,7 @@ message Configuration {
     reserved 55, 56;
 
     // Field rotation parameters
-    bool field_rotation_enabled = 57;
+    optional bool field_rotation_enabled = 57;
     double field_rotation_latitude = 63;       // Observer latitude for field rotation [deg]
     double field_rotation_altitude = 58;
     double field_rotation_azimuth = 64;        // Current azimuth for field rotation [deg]
@@ -821,6 +833,14 @@ message EphemerisMetrics {
 // ============================================
 // Bootstrap calibration messages
 // ============================================
+
+// Gamepad navigation mode — how joystick axes map to mount motion
+enum GamepadMode {
+    GAMEPAD_RAW = 0;           // Raw axis velocity control (always available)
+    GAMEPAD_CELESTIAL = 1;     // Navigate in RA/Dec (requires bootstrap calibration)
+    GAMEPAD_ALT_AZ = 2;        // Navigate in Alt/Az (requires bootstrap calibration)
+    GAMEPAD_PRECISION = 3;     // Fine RA/Dec control at low speed (requires TPOINT calibration)
+}
 
 // Bootstrap mode — how bootstrap measurements are collected (plan §5.1)
 enum BootstrapMode {
@@ -1202,6 +1222,7 @@ message GamepadConfig {
     double sensitivity = 3;          // Sensitivity curve, default 1.0
     double read_frequency = 4;       // Poll frequency in Hz, default 50
     bool autostart = 5;              // Auto-start gamepad loop after boot
+    GamepadMode gamepad_mode = 6;    // Navigation mode (RAW=0, CELESTIAL=1, ALT_AZ=2)
 }
 
 // HAL status
@@ -1238,6 +1259,15 @@ message GamepadState {
     bool button_home = 16;
     int32 axis_count = 17;
     int32 button_count = 18;
+    GamepadMode gamepad_mode = 19;   // Current navigation mode
+    bool bootstrap_calibrated = 20;  // Whether bootstrap calibration is done
+    bool tpoint_calibrated = 21;     // Whether TPOINT calibration is done
+    double max_velocity = 22;        // Current max velocity (deg/s) – adjustable via speed buttons
+}
+
+// Wrapper message for SetGamepadMode RPC
+message GamepadModeRequest {
+    GamepadMode mode = 1;        // Desired gamepad navigation mode
 }
 
 // HAL configuration request

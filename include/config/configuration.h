@@ -44,6 +44,7 @@ public:
         int sync_interval_ms;
         std::string accel_mode = "time";  // "time" = drive interprets 0x6083/0x6084 as ramp time,
                                            // "rate" = drive interprets as acceleration rate (°/s²)
+        bool pdo_config_enabled = false;  // Write PDO mappings to drive
     };
 
     struct AxisPhysicalParameters {
