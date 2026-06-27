@@ -65,13 +65,6 @@ TEST_F(TPointModelTest, ApplyCorrectionsWithoutFit) {
     EXPECT_NEAR(result.second, 45.0, 1e-6);
 }
 
-TEST_F(TPointModelTest, SetMountParameters) {
-    model->setMountParameters(1.8, 0.1, 0.2);
-    // Parameters should be stored, but we can't directly verify them
-    // This test ensures the method doesn't crash
-    SUCCEED();
-}
-
 TEST_F(TPointModelTest, SetTelescopeParameters) {
     model->setTelescopeParameters(2500.0, 250.0, 2000.0);
     // Parameters should be stored
@@ -269,7 +262,6 @@ TEST_F(TPointModelTest, SaveAndLoadFile) {
     std::string filename = "test_tpoint_config.json";
     
     // Set some parameters
-    model->setMountParameters(1.8, 0.1, 0.2);
     model->setTelescopeParameters(2500.0, 250.0, 2000.0);
     
     // Save to file

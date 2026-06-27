@@ -11,6 +11,10 @@ message Coordinates {
     double ra = 1;          // Right ascension in hours (J2000)
     double dec = 2;         // Declination in degrees (J2000)
     
+    // Tracking mode
+    // 0 = SIDEREAL (default), 1 = SOLAR, 2 = LUNAR, 3 = CUSTOM, 4 = OFF
+    int32 tracking_mode = 31;
+    
     // Proper motion
     double pm_ra = 3;       // Proper motion in RA (mas/yr)
     double pm_dec = 4;      // Proper motion in Dec (mas/yr)
@@ -239,6 +243,14 @@ message ControllerState {
 
     // === NEW: Bootstrap status (plan §5.3) ===
     BootstrapStatus bootstrap_status = 25;  // Current bootstrap calibration status
+
+    // Telescope axis positions (servo position ÷ gear ratio)
+    double telescope_axis1 = 26;  // Telescope axis1 position [degrees]
+    double telescope_axis2 = 27;  // Telescope axis2 position [degrees]
+
+    // Actual motor velocity (from CANopen hardware, deg/s)
+    double actual_rate_axis1 = 28;  // Actual axis1 velocity [deg/s]
+    double actual_rate_axis2 = 29;  // Actual axis2 velocity [deg/s]
 }
 
 // Pole position
@@ -420,6 +432,9 @@ service MountControllerService {
     // Home derotator (find zero position)
     rpc HomeDerotator(DerotatorHomingRequest) returns (google.protobuf.Empty);
     
+    // Home mount (set reference position for tracking origin)
+    rpc Home(MountHomingRequest) returns (google.protobuf.Empty);
+    
     // Get field rotation parameters (computed rates)
     rpc GetFieldRotationParams(google.protobuf.Empty) returns (FieldRotationParams);
     
@@ -438,6 +453,13 @@ service MountControllerService {
     
     // Reinitialize HAL with current or new configuration
     rpc ReinitializeHAL(HALReinitRequest) returns (google.protobuf.Empty);
+    
+    // ── Controller restart operations ──────────────────────────────
+    // Soft restart: shutdown + reinitialize, preserving calibration data
+    rpc RestartController(google.protobuf.Empty) returns (google.protobuf.Empty);
+    
+    // Hard restart: shutdown + reinitialize, discarding all calibration data
+    rpc HardRestartController(google.protobuf.Empty) returns (google.protobuf.Empty);
     
     // Start / stop the gamepad manual-control loop (axis commands)
     rpc StartGamepad(google.protobuf.Empty) returns (google.protobuf.Empty);
@@ -569,11 +591,6 @@ message Configuration {
     double longitude = 2;
     double altitude = 3;
     
-    // Mount parameters
-    double mount_height = 4;
-    double pier_west = 5;
-    double pier_east = 6;
-    
     // Telescope parameters
     double focal_length = 7;
     double aperture = 8;
@@ -686,6 +703,15 @@ message Configuration {
     double field_rotation_applied_correction = 60;
     double field_rotation_temperature = 61;
     double field_rotation_flexure_correction = 62;
+
+    // CANopen position rewind: periodically reset the drive's absolute position
+    // counter to prevent overflow beyond the drive's target position limit
+    // (typically ±1,000,000 encoder counts). Set to 0 to disable.
+    double canopen_position_rewind_interval_seconds = 83;
+
+    // Threshold percentage of the 1,000,000 count limit at which immediate
+    // rewind is triggered regardless of the time interval. Range 0–100.
+    double canopen_position_rewind_threshold_percent = 84;
 }
 
 // Health check messages
@@ -1290,4 +1316,13 @@ enum HALFeature {
     HAL_FEATURE_CANOPEN = 5;
     HAL_FEATURE_MODBUS = 6;
     HAL_FEATURE_ETHERCAT = 7;
+}
+
+// Mount homing request — sets the internal reference position for the
+// mount axes to known telescope coordinates.  Used after physically
+// pointing the telescope at a known celestial object (e.g. Polaris)
+// to establish a correct coordinate reference before tracking.
+message MountHomingRequest {
+    double axis1 = 1;  // Telescope axis1 position [degrees] (HA for equatorial, altitude for alt-az/casual)
+    double axis2 = 2;  // Telescope axis2 position [degrees] (Dec for equatorial, azimuth for alt-az/casual)
 }

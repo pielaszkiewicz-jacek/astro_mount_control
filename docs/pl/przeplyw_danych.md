@@ -238,12 +238,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client as Klient gRPC
-    participle ODB as Baza Obiektów
+    participant ODB as Baza Obiektów
     participant API as Serwer API gRPC
     participant MC as Kontroler Montażu  
-    participle EPM as EphemerisModel
+    participant EPM as EphemerisModel
     participant EPT as EphemerisTracker
-    participle EPI as EphemerisInterpolator
+    participant EPI as EphemerisInterpolator
     
     Client->>ODB: queryEphemeris(object_id, time_range)
     ODB-->>Client: EphemerisData (punkty[])

@@ -37,8 +37,8 @@ flowchart TB
             CAN_IMPL["✅ CANopen (CiA 402)<br/>Komunikacja PDO/SDO/NMT<br/>Węzły: RA, Dec, Derotator"]:::done
             SIM_IMPL["✅ Symulowana<br/>Testy/rozwój<br/>Konfigurowalny szum i błędy"]:::done
             GAM_IMPL["✅ Gamepad<br/>Ręczne sterowanie joystickiem<br/>Evdev + legacy joystick API"]:::done
-            SER_IMPL["⏳ Szeregowa<br/>RS-232/485<br/>Planowana"]:::planned
-            ETH_IMPL["⏳ Ethernet<br/>EtherCAT / Modbus TCP<br/>Planowana"]:::planned
+            SER_IMPL["✅ Szeregowa<br/>RS-232/485<br/>Modbus RTU/ASCII"]:::done
+            ETH_IMPL["✅ Ethernet<br/>Modbus TCP<br/>Konfigurowalny IP/port"]:::done
         end
     end
 
@@ -84,8 +84,8 @@ flowchart TB
 | Symulowany | `HALType::SIMULATED` | Symulowany sprzęt do testów/rozwoju | ✅ Zaimplementowany |
 | CANopen | `HALType::CANOPEN` | Napędy CANopen/CiA 402 | ✅ Zaimplementowany |
 | Gamepad | `HALType::GAMEPAD` | Sterowanie ręczne przez gamepad/joystick | ✅ Zaimplementowany |
-| Szeregowy | `HALType::SERIAL` | Komunikacja szeregowa RS-232/485 | ⏳ Planowany |
-| Ethernet | `HALType::ETHERNET` | EtherCAT, Modbus TCP, Profinet | ⏳ Planowany |
+| Szeregowy | `HALType::SERIAL` | Komunikacja szeregowa RS-232/485 (Modbus) | ✅ Zaimplementowany |
+| Ethernet | `HALType::ETHERNET` | Modbus TCP przez Ethernet | ✅ Zaimplementowany |
 | Niestandardowy | `HALType::CUSTOM` | Interfejs sprzętowy zdefiniowany przez użytkownika | 🔧 Rozszerzalny |
 
 ---
@@ -372,6 +372,8 @@ struct HALConfig {
         uint32_t sync_period_ms{100};
         uint32_t sdo_timeout_ms{1000};
         uint32_t pdo_update_rate{100}; // Hz
+        std::string accel_mode{"time"}; // "time" = ramp time, "rate" = acceleration rate (°/s²)
+        bool pdo_config_enabled{false}; // Zapis mapowań PDO do napędu
         
         // NMT (Network Management)
         struct {
@@ -427,7 +429,9 @@ struct HALConfig {
         bool invert_axis1{false};                 // Odwróć oś 1 (RA/HA)
         bool invert_axis2{false};                 // Odwróć oś 2 (Dec/Alt)
         double update_rate_hz{50.0};              // Częstotliwość odświeżania
-        std::vector<double> speed_presets{0.5, 1.0, 2.0, 3.0, 5.0};  // Predefiniowane prędkości
+        std::vector<double> speed_presets{};                          // Predefiniowane prędkości (pusta = domyślne)
+        int gamepad_mode{0};                       // Tryb nawigacji gamepada (0=RAW, 1=CELESTIAL, 2=ALT_AZ, 3=PRECISION)
+        bool autostart{false};                     // Automatyczne uruchomienie pętli gamepada przy starcie
         std::map<int, std::string> button_mapping; // Mapowanie przycisków physical→akcja
         std::map<int, std::string> axis_mapping;   // Mapowanie osi physical→funkcja
     } gamepad;
@@ -1214,7 +1218,12 @@ src/hal/
 │   ├── gamepad_hal.cpp  # Implementacja GamepadHAL
 │   ├── gamepad_input_evdev.h  # Nagłówek EvdevGamepadInput
 │   └── gamepad_input_evdev.cpp # Implementacja EvdevGamepadInput
-└── serial_hal/          # (jeszcze niezaimplementowane)
+├── serial_hal/
+│   ├── serial_hal.h     # Nagłówek SerialHAL
+│   └── serial_hal.cpp   # Implementacja SerialHAL (Modbus RTU/ASCII)
+└── ethernet_hal/
+    ├── ethernet_hal.h   # Nagłówek EthernetHAL
+    └── ethernet_hal.cpp # Implementacja EthernetHAL (Modbus TCP)
 ```
 
 ---
@@ -1229,4 +1238,4 @@ src/hal/
 
 ---
 
-*Ostatnia aktualizacja: 17 maja 2026*
+*Ostatnia aktualizacja: 22 czerwca 2026*

@@ -53,6 +53,8 @@ const SettingsComponent = (() => {
         { key: 'canopen_sync_interval_ms', label: 'SYNC Interval (ms)', type: 'number', min: 10, max: 10000 },
         { key: 'canopen_accel_mode', label: 'Accel/Decel Mode', type: 'select', options: ['time', 'rate'] },
         { key: 'canopen_pdo_config_enabled', label: 'Write PDO Mappings', type: 'checkbox' },
+        { key: 'canopen_position_rewind_interval_seconds', label: 'Position Rewind (s)', type: 'number', min: 0, max: 86400, step: 60, help: '0 = disabled. Periodically resets the CANopen drive position counter to prevent overflow beyond ±1,000,000 counts during long tracking sessions.' },
+        { key: 'canopen_position_rewind_threshold_percent', label: 'Rewind Threshold (%)', type: 'number', min: 0, max: 100, step: 5, help: '0 = only use time interval. If the drive position reaches this % of the 1,000,000 count limit, an immediate rewind is triggered without waiting for the time interval.' },
         { key: 'canopen_position_counts_per_degree', label: 'Position Counts/°', type: 'number', min: 0.001, max: 100000, step: 0.001 },
         { key: 'canopen_velocity_counts_per_deg_s', label: 'Velocity Counts per °/s', type: 'number', min: 0.001, max: 100000, step: 0.001 },
       ],
@@ -60,16 +62,17 @@ const SettingsComponent = (() => {
     {
       id: 'mount_location',
       label: 'Mount Location',
+      restartRequired: false,
       fields: [
         { key: 'latitude', label: 'Latitude (°)', type: 'number', angleType: 'deg' },
         { key: 'longitude', label: 'Longitude (°)', type: 'number', angleType: 'deg' },
         { key: 'altitude', label: 'Altitude (m)', type: 'number', min: -500, max: 10000 },
-        { key: 'mount_height', label: 'Mount Height (m)', type: 'number', min: 0, max: 50, step: 0.1 },
       ],
     },
     {
       id: 'mount_general',
       label: 'Mount General',
+      restartRequired: false,
       fields: [
         { key: 'mount_type', label: 'Mount Type', type: 'select', options: ['EQUATORIAL', 'ALT_AZ', 'CASUAL', 'UNKNOWN'] },
         { key: 'max_slew_rate', label: 'Max Slew Rate (°/s)', type: 'number', min: 0.1, max: 50, step: 0.1 },
@@ -81,6 +84,7 @@ const SettingsComponent = (() => {
     {
       id: 'mount_environmental',
       label: 'Mount Environmental',
+      restartRequired: false,
       fields: [
         { key: 'default_temperature', label: 'Default Temperature (°C)', type: 'number', min: -50, max: 60, step: 0.1 },
         { key: 'default_pressure', label: 'Default Pressure (hPa)', type: 'number', min: 500, max: 1100, step: 0.01 },
@@ -432,7 +436,7 @@ const SettingsComponent = (() => {
     logging: 'Konfiguracja systemu logowania: poziom szczegó\u0142owo\u015bci, katalog docelowy, rotacja, rozmiar plików oraz wypisywanie na konsol\u0119.',
     network: 'Konfiguracja serwera gRPC: adres nas\u0142uchiwania, port, maksymalna liczba po\u0142\u0105cze\u0144 oraz opcjonalne szyfrowanie TLS.',
     canopen: 'Konfiguracja magistrali CANopen: interfejs SocketCAN, w\u0142asny Node ID sterownika, szybko\u015b\u0107 transmisji oraz parametry SYNC.',
-    mount_location: 'Wspó\u0142rz\u0119dne geograficzne obserwatorium: szeroko\u015b\u0107 i d\u0142ugo\u015b\u0107 geograficzna, wysoko\u015b\u0107 n.p.m. oraz wysoko\u015b\u0107 osi monta\u017cu.',
+    mount_location: 'Wspó\u0142rz\u0119dne geograficzne obserwatorium: szeroko\u015b\u0107 i d\u0142ugo\u015b\u0107 geograficzna oraz wysoko\u015b\u0107 n.p.m.',
     mount_general: 'Parametry globalne monta\u017cu: typ monta\u017cu (paralaktyczny/azymutalny), maksymalne pr\u0119dko\u015bci i przyspieszenia przewijania i trackingu.',
     mount_environmental: 'Domy\u015blne parametry \u015brodowiskowe: temperatura, ci\u015bnienie i wilgotno\u015b\u0107 dla oblicze\u0144 refrakcji atmosferycznej.',
     mount_encoders: 'Konfiguracja enkoderów: czy u\u017cywa\u0107 enkoderów, czy s\u0105 absolutne oraz ich rozdzielczo\u015b\u0107.',
@@ -591,13 +595,6 @@ const SettingsComponent = (() => {
       type: 'float',
       range: '-500 do 10000',
     },
-    mount_height: {
-      description: 'Wysoko\u015b\u0107 osi monta\u017cu nad poziomem gruntu w metrach. Istotne przy precyzyjnych obliczeniach paralaksy.',
-      defaultValue: '1.5',
-      type: 'float',
-      range: '0.0 – 50.0',
-    },
-
     // ── Mount General ──
     mount_type: {
       description: 'Typ monta\u017cu: EQUATORIAL (paralaktyczny, wymaga gwiazdowej pr\u0119dko\u015bci korekcyjnej tylko w jednej osi), ALT_AZ (azymutalny, wymaga korekcji w obu osiach), CASUAL (niestandardowy).',
@@ -1003,6 +1000,20 @@ const SettingsComponent = (() => {
       defaultValue: 'false (wy\u0142\u0105czone)',
       type: 'boolean',
       range: 'true / false',
+    },
+
+    canopen_position_rewind_interval_seconds: {
+      description: 'Okresowo resetuje licznik pozycji sterownika CANopen, aby zapobiec przekroczeniu limitu \u00B11\u00A0000\u00A0000 zlicze\u0144 podczas d\u0142ugich sesji \u015bledzenia. Operacja nie powoduje fizycznego ruchu — zmienia tylko wewn\u0119trzny offset. Ustaw 0 aby wy\u0142\u0105czy\u0107.',
+      defaultValue: '3600 (1 godzina)',
+      type: 'number',
+      range: '0 – 86400 (0 = wy\u0142\u0105czone)',
+    },
+
+    canopen_position_rewind_threshold_percent: {
+      description: 'Je\u015bli pozycja sterownika CANopen (w zliczeniach) osi\u0105gnie ten procent limitu 1\u00A0000\u00A0000, przewini\u0119cie jest wykonywane natychmiast, bez oczekiwania na up\u0142yw interwa\u0142u czasowego. Ustaw 0 aby wy\u0142\u0105czy\u0107 sprawdzanie progu.',
+      defaultValue: '80',
+      type: 'number',
+      range: '0 – 100 (0 = wy\u0142\u0105czone)',
     },
 
     // ── Loop Timing ──
@@ -1439,9 +1450,13 @@ const SettingsComponent = (() => {
       // Start live gamepad state polling (panel injected by renderConfig)
       startGamepadPolling();
 
-      // Show the Reset All button
+      // Show the Reset All and Restart buttons
       const resetAllBtn = $('#btn-reset-all-config');
       if (resetAllBtn) resetAllBtn.style.display = 'inline-flex';
+      const restartSoftBtn = $('#btn-restart-soft');
+      if (restartSoftBtn) restartSoftBtn.style.display = 'inline-flex';
+      const restartHardBtn = $('#btn-restart-hard');
+      if (restartHardBtn) restartHardBtn.style.display = 'inline-flex';
     } catch (err) {
       configEl.innerHTML = `
         <div class="status-placeholder" style="color: var(--color-danger);">
@@ -1926,6 +1941,42 @@ const SettingsComponent = (() => {
     }
   }
 
+  /**
+   * Execute a controller restart via API.
+   * @param {boolean} hard - If true, perform hard restart (discard calibrations)
+   */
+  async function handleRestart(hard) {
+    const label = hard ? 'HARD RESTART' : 'SOFT RESTART';
+    console.log(`[Settings] ${label} initiated`);
+    App.showToast(`${label} in progress...`, 'info');
+
+    // Disable both buttons during restart
+    const softBtn = $('#btn-restart-soft');
+    const hardBtn = $('#btn-restart-hard');
+    if (softBtn) softBtn.disabled = true;
+    if (hardBtn) hardBtn.disabled = true;
+
+    try {
+      if (hard) {
+        await Api.hardRestartController();
+      } else {
+        await Api.restartController();
+      }
+      App.showToast(`${label} completed successfully`, 'success');
+
+      // Reload config after restart
+      const fresh = await Api.getConfig();
+      currentConfig = fresh;
+      const container = $('#config-content');
+      if (container) renderConfig(fresh, container);
+    } catch (err) {
+      App.showToast(`${label} failed: ${err.message}`, 'error');
+    } finally {
+      if (softBtn) softBtn.disabled = false;
+      if (hardBtn) hardBtn.disabled = false;
+    }
+  }
+
   // ─── Export / Import Configuration ────────────────────────────────────────
 
   /**
@@ -2027,6 +2078,24 @@ const SettingsComponent = (() => {
       if (resetAllBtn) {
         if (confirm('Reset ALL configuration to default values? This cannot be undone.')) {
           resetAllConfig();
+        }
+        return;
+      }
+
+      const restartSoftBtn = e.target.closest('#btn-restart-soft');
+      if (restartSoftBtn) {
+        if (confirm('Soft restart the controller?\\n\\nThis will reload the configuration from disk and reinitialize all subsystems.\\nBootstrap and TPOINT calibrations will be PRESERVED.\\n\\nThe mount MUST be idle — tracking and slewing will be stopped.')) {
+          handleRestart(false);
+        }
+        return;
+      }
+
+      const restartHardBtn = e.target.closest('#btn-restart-hard');
+      if (restartHardBtn) {
+        if (confirm('⚠ HARD RESTART the controller?\\n\\nThis will reload the configuration from disk and reinitialize all subsystems.\\nALL calibrations (bootstrap, TPOINT) will be PERMANENTLY DISCARDED.\\n\\nThe mount MUST be idle — tracking and slewing will be stopped.\\n\\nThis cannot be undone.')) {
+          if (confirm('FINAL CONFIRMATION: Really discard ALL calibration data?')) {
+            handleRestart(true);
+          }
         }
         return;
       }

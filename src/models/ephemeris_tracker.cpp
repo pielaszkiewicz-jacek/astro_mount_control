@@ -616,27 +616,26 @@ public:
                          config_.apply_aberration, config_.apply_nutation, config_.apply_precession);
         }
         
-        // Apply TPOINT corrections if enabled and model available
+        // Apply TPOINT corrections if enabled and model available.
+        // Use predictMountPosition() to invert the fitted model (Newton-Raphson),
+        // matching the approach used by slewToEquatorial(). This finds the mount
+        // HA/Dec that produces the true sky position (ra, dec) after accounting
+        // for mount geometry errors.
         if (config_.apply_tpoint_corrections && config_.tpoint_model) {
-            // TPOINT corrections require mount hour angle and declination
-            // For now, we approximate mount HA from observer longitude and sidereal time
-            double ha = sidereal_time - ra; // hours
-            while (ha < -12.0) ha += 24.0;
-            while (ha > 12.0) ha -= 24.0;
+            double ra_before = ra;
+            double dec_before = dec;
             
-            // Mount declination is same as object declination (for equatorial mounts)
-            double mount_dec = dec;
+            auto [mount_ha, mount_dec] = config_.tpoint_model->predictMountPosition(ra, dec);
             
-            // Apply TPOINT corrections
-            auto [corrected_ra, corrected_dec] = config_.tpoint_model->applyCorrections(
-                ra, dec, ha, mount_dec);
+            // Convert corrected mount HA back to RA
+            ra = sidereal_time - mount_ha;
+            while (ra < 0.0) ra += 24.0;
+            while (ra >= 24.0) ra -= 24.0;
+            dec = mount_dec;
             
-            ra = corrected_ra;
-            dec = corrected_dec;
-            
-            API_LOG_DEBUG("EphemerisModel: TPOINT corrections applied: "
-                         "ΔRA={:.6f}h, ΔDec={:.6f}°",
-                         corrected_ra - ra, corrected_dec - dec);
+            API_LOG_DEBUG("EphemerisModel: TPOINT corrections applied via predictMountPosition: "
+                         "ΔRA={:.6f}h, ΔDec={:.6f}° (mount HA={:.4f}h, Dec={:.4f}°)",
+                         ra - ra_before, dec - dec_before, mount_ha, mount_dec);
         }
         
         return std::make_tuple(ra, dec, ra_rate, dec_rate);
@@ -1517,7 +1516,7 @@ bool EphemerisTracker::performRecovery() {
 
 class EphemerisTrackerManager::Impl {
 public:
-    Impl() : next_tracker_id_(1) {
+    Impl() : next_tracker_id_(1), tpoint_model_(nullptr) {
         API_LOG_INFO("EphemerisTrackerManager: Created");
     }
     
@@ -1536,13 +1535,18 @@ public:
             return false;
         }
         
-        // Create and store model
-        EphemerisModel::Config default_config;
-        auto model = std::make_shared<EphemerisModel>(ephemeris_data, default_config);
+        // Create and store model — pass the stored TPOINT model if available
+        EphemerisModel::Config config;
+        if (tpoint_model_) {
+            config.tpoint_model = tpoint_model_;
+            config.apply_tpoint_corrections = true;
+        }
+        auto model = std::make_shared<EphemerisModel>(ephemeris_data, config);
         ephemeris_models_[object_id] = model;
         
-        API_LOG_INFO("EphemerisTrackerManager: Uploaded ephemeris for object '{}' ({})",
-                    ephemeris_data.object_name(), object_id);
+        API_LOG_INFO("EphemerisTrackerManager: Uploaded ephemeris for object '{}' ({}){}",
+                    ephemeris_data.object_name(), object_id,
+                    tpoint_model_ ? " [TPOINT enabled]" : "");
         
         return true;
     }
@@ -1722,6 +1726,27 @@ public:
                     latitude, longitude, altitude);
     }
     
+    void setTPointModel(std::shared_ptr<TPointModel> tpoint_model) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        
+        tpoint_model_ = tpoint_model;
+        
+        // Update all existing ephemeris models with the new TPOINT model
+        for (auto& [object_id, model] : ephemeris_models_) {
+            auto config = model->getConfig();
+            config.tpoint_model = tpoint_model;
+            config.apply_tpoint_corrections = (tpoint_model != nullptr);
+            model->updateConfig(config);
+        }
+        
+        if (tpoint_model_) {
+            API_LOG_INFO("EphemerisTrackerManager: TPOINT model set — applied to {} existing "
+                        "ephemeris model(s)", ephemeris_models_.size());
+        } else {
+            API_LOG_INFO("EphemerisTrackerManager: TPOINT model cleared (set to nullptr)");
+        }
+    }
+    
 private:
     mutable std::mutex mutex_;
     std::map<std::string, std::shared_ptr<EphemerisModel>> ephemeris_models_;
@@ -1732,6 +1757,9 @@ private:
     double observer_altitude_{0.0};
     
     int next_tracker_id_{1};
+    
+    // TPOINT model for mount geometry correction (shared from MountController)
+    std::shared_ptr<TPointModel> tpoint_model_;
     
     mutable std::mutex stats_mutex_;
     uint64_t total_tracks_{0};
@@ -1798,6 +1826,10 @@ void EphemerisTrackerManager::clearCache() {
 void EphemerisTrackerManager::setObserverLocation(double latitude, double longitude,
                                                  double altitude) {
     impl_->setObserverLocation(latitude, longitude, altitude);
+}
+
+void EphemerisTrackerManager::setTPointModel(std::shared_ptr<TPointModel> tpoint_model) {
+    impl_->setTPointModel(tpoint_model);
 }
 
 } // namespace models

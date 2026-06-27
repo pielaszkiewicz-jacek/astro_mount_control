@@ -49,6 +49,8 @@ const CalibrationComponent = (() => {
   let bsSelectedObject = null;
   /** TPOINT: currently selected reference object for measurement */
   let tpSelectedObject = null;
+  /** Last object used for any measurement (auto-populated to Slew form) */
+  let lastUsedObject = null;
   /** Current bootstrap mode value (0=MANUAL, 1=HYBRID, 2=AUTOMATIC) */
   let currentBootstrapMode = 0;
 
@@ -488,6 +490,9 @@ const CalibrationComponent = (() => {
         await Api.addTPointMeasurement(measurement);
       }
 
+      // Remember this object for the Slew & Track form
+      lastUsedObject = obj;
+
       resultDiv.className = 'calibration-result success';
       resultDiv.textContent = I18n.t('cal.msg.measurement_added', { name: obj.name || 'object', ra: Number(ra).toFixed(4), dec: Number(dec).toFixed(2) });
       resultDiv.style.display = 'block';
@@ -903,6 +908,14 @@ const CalibrationComponent = (() => {
     return { bs: bsSelectedObject, tp: tpSelectedObject };
   }
 
+  /**
+   * Get the last object used for a measurement (auto-populated to Slew form).
+   * @returns {object|null}
+   */
+  function getLastUsedObject() {
+    return lastUsedObject;
+  }
+
   return {
     init,
     startPolling,
@@ -911,5 +924,6 @@ const CalibrationComponent = (() => {
     loadTPointStatus,
     toggleHelp,
     getSelectedObject,
+    getLastUsedObject,
   };
 })();

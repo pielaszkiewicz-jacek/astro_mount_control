@@ -125,6 +125,23 @@ public:
                                   const std::vector<double>& mountOrientation);
 
     /**
+     * @brief Convert mount-oriented alt/az to true horizontal coordinates
+     *
+     * For a CASUAL (randomly oriented) mount, this applies the inverse quaternion
+     * rotation to obtain the true local horizontal (altitude, azimuth) that the
+     * mount is pointing at. Does NOT convert to equatorial — use
+     * mountOrientationToEquatorial() if RA/Dec is needed.
+     *
+     * @param mount_altitude Altitude in mount frame [degrees]
+     * @param mount_azimuth Azimuth in mount frame [degrees]
+     * @param mountOrientation Mount orientation quaternion [qx, qy, qz, qw]
+     * @return True horizontal coordinates (altitude_deg, azimuth_deg)
+     */
+    static std::pair<double, double> mountOrientationToHorizontal(
+        double mount_altitude, double mount_azimuth,
+        const std::array<double, 4>& mountOrientation);
+
+    /**
      * @brief Convert mount-oriented alt/az to celestial equatorial coordinates
      *
      * For a CASUAL (randomly oriented) mount, the mount reports angles in its own
@@ -138,7 +155,7 @@ public:
      * @return Equatorial coordinates (ra in hours, dec in degrees)
      */
     std::pair<double, double> mountOrientationToEquatorial(double mount_altitude, double mount_azimuth,
-                                                           double jd, const std::array<double, 4>& mountOrientation);
+                                                            double jd, const std::array<double, 4>& mountOrientation);
 
     /**
      * @brief Convert celestial equatorial to mount-oriented alt/az coordinates

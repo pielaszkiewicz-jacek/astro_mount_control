@@ -52,8 +52,12 @@ protected:
         config_.enable_guider = false;
         config_.guider_max_correction = 100.0;
         config_.guider_aggression = 0.5;
-        config_.ha_axis_params.gear_ratio = 360.0;
-        config_.dec_axis_params.gear_ratio = 360.0;
+        // Use gear_ratio=1.0 in tests so servo degrees == telescope degrees
+        config_.ha_axis_params.gear_ratio = 1.0;
+        config_.dec_axis_params.gear_ratio = 1.0;
+        // Park at Dec=0° (celestial equator) instead of Dec=90° (NCP) to avoid
+        // coordinate singularities in RA/Dec transforms during tests.
+        config_.park_position_axis2 = 0.0;
         config_.ha_axis_params.backlash = 0.0;
         config_.dec_axis_params.backlash = 0.0;
         config_.ha_axis_params.encoder_resolution = 360000.0;

@@ -26,9 +26,6 @@
     "latitude": 52.0,
     "longitude": 21.0,
     "altitude": 100.0,
-    "mount_height": 1.5,
-    "pier_west": 0.0,
-    "pier_east": 0.0,
     "default_temperature": 15.0,
     "default_pressure": 1013.25,
     "default_humidity": 0.5,
@@ -37,7 +34,7 @@
     "encoder_resolution": 16384,
 
     "max_slew_rate": 5.0,
-    "max_tracking_rate": 0.004178,
+    "max_tracking_rate": 1.504,
     "slew_acceleration": 1.0,
     "tracking_acceleration": 0.001,
 

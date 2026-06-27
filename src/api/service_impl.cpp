@@ -49,7 +49,23 @@ grpc::Status MountControllerServiceImpl::TrackObject(grpc::ServerContext* contex
                                                     const astro_mount::Coordinates* request,
                                                     google::protobuf::Empty* response) {
     try {
-        if (controller_.startTracking(request->ra(), request->dec())) {
+        // Map proto tracking_mode (int32) to MountController::TrackingMode enum.
+        // Proto field 31 defaults to 0 (SIDEREAL) when not set, preserving
+        // backward compatibility with clients built before this field was added.
+        auto mode = controllers::MountController::TrackingMode::SIDEREAL;
+        switch (request->tracking_mode()) {
+            case 0: mode = controllers::MountController::TrackingMode::SIDEREAL; break;
+            case 1: mode = controllers::MountController::TrackingMode::SOLAR;    break;
+            case 2: mode = controllers::MountController::TrackingMode::LUNAR;    break;
+            case 3: mode = controllers::MountController::TrackingMode::CUSTOM;   break;
+            case 4: mode = controllers::MountController::TrackingMode::OFF;      break;
+            default:
+                API_LOG_WARN("TrackObject: unknown tracking_mode={}, defaulting to SIDEREAL",
+                            request->tracking_mode());
+                break;
+        }
+        
+        if (controller_.startTracking(request->ra(), request->dec(), mode)) {
             return grpc::Status::OK;
         } else {
             return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to start tracking");
@@ -94,11 +110,20 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         response->set_guider_active(status.guider_active);
         response->set_tracking_rate_ra(status.axis1_rate * 3600.0);   // deg/s → arcsec/s
         response->set_tracking_rate_dec(status.axis2_rate * 3600.0);  // deg/s → arcsec/s
+        response->set_actual_rate_axis1(status.actual_axis1_rate);       // deg/s (CANopen)
+        response->set_actual_rate_axis2(status.actual_axis2_rate);       // deg/s (CANopen)
         
-        // Current axis position
+        // Axis (servo motor shaft) positions — absolute, unbounded servo degrees.
+        // These are the raw CANopen absolute encoder positions (× gear_ratio from
+        // telescope degrees). Can exceed 360°; see mount_controller.cpp:1706-1716.
         auto* pos = response->mutable_current_position();
         pos->set_axis1(status.axis1_position);
         pos->set_axis2(status.axis2_position);
+        
+        // Telescope axis positions — normalized telescope degrees [0°, 360°).
+        // Computed as servo_position / gear_ratio, then normalized per mount type.
+        response->set_telescope_axis1(status.telescope_axis1_position);
+        response->set_telescope_axis2(status.telescope_axis2_position);
         
         // Meridian flip status
         response->set_pier_side(status.pier_side);
@@ -149,6 +174,16 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             state.set_guider_active(status.guider_active);
             state.set_tracking_rate_ra(status.tracking_error_ra);
             state.set_tracking_rate_dec(status.tracking_error_dec);
+            
+            // Axis (servo motor shaft) positions — absolute, unbounded servo degrees.
+            auto* pos = state.mutable_current_position();
+            pos->set_axis1(status.axis1_position);
+            pos->set_axis2(status.axis2_position);
+            
+            // Telescope axis positions — normalized telescope degrees [0°, 360°).
+            state.set_telescope_axis1(status.telescope_axis1_position);
+            state.set_telescope_axis2(status.telescope_axis2_position);
+            
             *state.mutable_state_time() = TimeUtil::GetCurrentTime();
             
             if (!writer->Write(state)) {
@@ -779,9 +814,6 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_latitude(config.latitude);
         response->set_longitude(config.longitude);
         response->set_altitude(config.altitude);
-        response->set_mount_height(config.mount_height);
-        response->set_pier_west(config.pier_west);
-        response->set_pier_east(config.pier_east);
         response->set_focal_length(config.focal_length);
         response->set_aperture(config.aperture);
         response->set_default_temperature(config.default_temperature);
@@ -806,6 +838,8 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_canopen_enable_sync(config.canopen_use_sync);
         response->set_canopen_sync_interval_ms(config.canopen_sync_period_ms);
         response->set_canopen_accel_mode(config.canopen_accel_mode);
+        response->set_canopen_position_rewind_interval_seconds(config.canopen_position_rewind_interval_seconds);
+        response->set_canopen_position_rewind_threshold_percent(config.canopen_position_rewind_threshold_percent);
         
         // Mount control parameters
         response->set_max_slew_rate(config.max_slew_rate);
@@ -993,9 +1027,6 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->latitude() != 0.0) config.latitude = request->latitude();
     if (request->longitude() != 0.0) config.longitude = request->longitude();
     if (request->altitude() != 0.0) config.altitude = request->altitude();
-    if (request->mount_height() != 0.0) config.mount_height = request->mount_height();
-    if (request->pier_west() != 0.0) config.pier_west = request->pier_west();
-    if (request->pier_east() != 0.0) config.pier_east = request->pier_east();
     if (request->default_temperature() != 0.0) config.default_temperature = request->default_temperature();
     if (request->default_pressure() != 0.0) config.default_pressure = request->default_pressure();
     if (request->default_humidity() != 0.0) config.default_humidity = request->default_humidity();
@@ -1007,6 +1038,8 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->has_canopen_enable_sync()) config.canopen_use_sync = request->canopen_enable_sync();
     if (request->canopen_sync_interval_ms() != 0) config.canopen_sync_period_ms = request->canopen_sync_interval_ms();
     if (!request->canopen_accel_mode().empty()) config.canopen_accel_mode = request->canopen_accel_mode();
+    if (request->canopen_position_rewind_interval_seconds() != 0.0) config.canopen_position_rewind_interval_seconds = request->canopen_position_rewind_interval_seconds();
+    if (request->canopen_position_rewind_threshold_percent() != 0.0) config.canopen_position_rewind_threshold_percent = request->canopen_position_rewind_threshold_percent();
     if (!request->grpc_address().empty()) config.grpc_address = request->grpc_address();
     if (request->grpc_port() != 0) config.grpc_port = request->grpc_port();
     if (request->network_max_connections() != 0) config.network_max_connections = request->network_max_connections();
@@ -1059,10 +1092,10 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->has_enable_refraction_correction()) config.enable_refraction_correction = request->enable_refraction_correction();
     
     // ── Mount type ───────────────────────────────────────────────
-    if (request->mount_type() != astro_mount::MountType::EQUATORIAL) {
-        config.mount_type = static_cast<controllers::MountController::MountType>(
-            request->mount_type());
-    }
+    // Always apply — unlike numeric proto3 fields, enum defaults (EQUATORIAL=0)
+    // are legitimate user choices and cannot be distinguished from "not sent".
+    config.mount_type = static_cast<controllers::MountController::MountType>(
+        request->mount_type());
     
     // ── Mount orientation quaternion (for CASUAL mount type) ─────
     if (request->has_mount_orientation()) {
@@ -2335,7 +2368,7 @@ grpc::Status MountControllerServiceImpl::HomeDerotator(
         API_LOG_INFO("HomeDerotator called");
         
         if (!controller_.homeDerotator(*request)) {
-            return grpc::Status(grpc::StatusCode::INTERNAL, 
+            return grpc::Status(grpc::StatusCode::INTERNAL,
                                "Failed to home derotator");
         }
         
@@ -2343,7 +2376,30 @@ grpc::Status MountControllerServiceImpl::HomeDerotator(
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("HomeDerotator failed: {}", e.what());
-        return grpc::Status(grpc::StatusCode::INTERNAL, 
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                           std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::Home(
+    grpc::ServerContext* context,
+    const astro_mount::MountHomingRequest* request,
+    google::protobuf::Empty* response) {
+    
+    try {
+        API_LOG_INFO("Home called: axis1={:.4f}°, axis2={:.4f}°",
+                     request->axis1(), request->axis2());
+        
+        if (!controller_.home(*request)) {
+            return grpc::Status(grpc::StatusCode::INTERNAL,
+                               "Failed to home mount — mount must be IDLE or ERROR state");
+        }
+        
+        return grpc::Status::OK;
+        
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("Home failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }
 }
@@ -2459,6 +2515,40 @@ grpc::Status MountControllerServiceImpl::ReinitializeHAL(
         API_LOG_ERROR("ReinitializeHAL failed: {}", e.what());
         return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::RestartController(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    google::protobuf::Empty* response) {
+    try {
+        API_LOG_INFO("RestartController (soft) called");
+        if (!controller_.restart()) {
+            return grpc::Status(grpc::StatusCode::INTERNAL, "Soft restart failed");
+        }
+        API_LOG_INFO("RestartController (soft) completed successfully");
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("RestartController failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::HardRestartController(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    google::protobuf::Empty* response) {
+    try {
+        API_LOG_INFO("HardRestartController called");
+        if (!controller_.hardRestart()) {
+            return grpc::Status(grpc::StatusCode::INTERNAL, "Hard restart failed");
+        }
+        API_LOG_INFO("HardRestartController completed successfully");
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("HardRestartController failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
     }
 }
 

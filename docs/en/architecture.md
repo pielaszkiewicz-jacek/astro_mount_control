@@ -46,12 +46,14 @@ struct MountStatus {
     };
     
     State state;
-    double axis1_position;      // Degrees
-    double axis2_position;      // Degrees
-    double axis1_rate;          // Degrees/sec
-    double axis2_rate;          // Degrees/sec
-    double axis1_target;        // Degrees
-    double axis2_target;        // Degrees
+    double axis1_position;           // Degrees (servo/motor shaft)
+    double axis2_position;           // Degrees (servo/motor shaft)
+    double telescope_axis1_position; // Degrees (telescope axis, after gear ratio)
+    double telescope_axis2_position; // Degrees (telescope axis, after gear ratio)
+    double axis1_rate;               // Degrees/sec
+    double axis2_rate;               // Degrees/sec
+    double axis1_target;             // Degrees
+    double axis2_target;             // Degrees
     
     bool encoders_active;
     bool guider_active;
@@ -60,14 +62,27 @@ struct MountStatus {
     double tracking_error_ra;   // Arcseconds
     double tracking_error_dec;  // Arcseconds
     
-    // Meridian flip status
-    bool meridian_flipped;      // Has meridian flip been performed
-    double time_to_meridian;    // Time to meridian [hours]
-    int pier_side;              // 1=East, -1=West
+    /// Meridian flip status
+    bool meridian_flip_pending{false};      ///< True if a flip is pending (waiting for delay)
+    bool meridian_flip_in_progress{false};  ///< True if the flip slew is being executed
+    int pier_side{1};                       ///< 1=East pier, -1=West pier
+    double time_to_meridian{0.0};           ///< Time until meridian crossing [hours]
     
-    // Soft limit status
-    bool soft_limit_warning;    // In warning zone
-    bool soft_limit_active;     // In deceleration zone
+    /// Soft safety limits status
+    bool soft_limit_warning_active{false};     ///< True when within the warning zone
+    bool soft_limit_deceleration_active{false}; ///< True when within the deceleration zone
+    double soft_limit_distance_axis1{0.0};    ///< Distance to nearest soft limit on axis1 [degrees]
+    double soft_limit_distance_axis2{0.0};    ///< Distance to nearest soft limit on axis2 [degrees]
+    std::string soft_limit_warning_message;    ///< Human-readable warning description
+    
+    // Bootstrap / encoder status fields
+    bool encoders_absolute{false};
+    int bootstrap_mode{0};                    ///< Current bootstrap mode (BootstrapMode enum)
+    bool bootstrap_calibrated{false};         ///< Whether bootstrap calibration completed
+    int bootstrap_measurement_count{0};       ///< Number of bootstrap measurements stored
+    
+    std::chrono::system_clock::time_point timestamp;
+    std::string error_message;
 };
 ```
 ```

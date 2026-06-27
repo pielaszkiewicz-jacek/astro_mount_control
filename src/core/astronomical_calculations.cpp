@@ -470,20 +470,16 @@ std::array<double, 3> rotateVectorByQuaternion(const std::array<double, 3>& v,
 
 } // anonymous namespace
 
-std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial(
+std::pair<double, double> AstronomicalCalculations::mountOrientationToHorizontal(
     double mount_altitude, double mount_azimuth,
-    double jd, const std::array<double, 4>& mountOrientation) {
+    const std::array<double, 4>& mountOrientation) {
     
-    // Step 0: Normalize quaternion before use.
-    // The optimized rotation formula v' = v + 2·qw·(q×v) + 2·(q×(q×v)) requires
-    // a unit quaternion for correct results.  A non-unit quaternion causes
-    // both direction error and non-uniform scaling of the rotated vector.
+    // Normalize quaternion before use.
     double norm = std::sqrt(mountOrientation[0] * mountOrientation[0] +
                             mountOrientation[1] * mountOrientation[1] +
                             mountOrientation[2] * mountOrientation[2] +
                             mountOrientation[3] * mountOrientation[3]);
     if (norm < 1e-12) {
-        // Degenerate quaternion — return invalid coordinates
         return {0.0, 0.0};
     }
     double inv_norm = 1.0 / norm;
@@ -492,34 +488,38 @@ std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial
     double qz = mountOrientation[2] * inv_norm;
     double qw = mountOrientation[3] * inv_norm;
     
-    // Step 1: Convert mount-frame alt/az to a Cartesian unit vector.
-    // In the mount frame: x = north, y = east, z = zenith
+    // Convert mount-frame alt/az to Cartesian unit vector.
     double alt_rad = mount_altitude * D2R;
     double az_rad = mount_azimuth * D2R;
     
     std::array<double, 3> mount_vec = {{
-        std::cos(alt_rad) * std::cos(az_rad),     // north
-        std::cos(alt_rad) * std::sin(az_rad),     // east
-        std::sin(alt_rad)                          // zenith
+        std::cos(alt_rad) * std::cos(az_rad),
+        std::cos(alt_rad) * std::sin(az_rad),
+        std::sin(alt_rad)
     }};
     
-    // Step 2: Apply inverse quaternion rotation to get true horizontal vector.
-    // Q^-1 = [qx, qy, qz, qw]^-1 = [-qx, -qy, -qz, qw] (for unit quaternion)
-    std::array<double, 4> inv_q = {{
-        -qx,
-        -qy,
-        -qz,
-         qw
-    }};
+    // Apply inverse quaternion rotation to get true horizontal vector.
+    std::array<double, 4> inv_q = {{ -qx, -qy, -qz, qw }};
     std::array<double, 3> horiz_vec = rotateVectorByQuaternion(mount_vec, inv_q);
     
-    // Step 3: Convert Cartesian vector back to alt/az
+    // Convert Cartesian vector back to alt/az.
     double horiz_alt = std::asin(horiz_vec[2]) * R2D;
     double horiz_az = std::atan2(horiz_vec[1], horiz_vec[0]) * R2D;
     if (horiz_az < 0.0) horiz_az += 360.0;
     if (horiz_az >= 360.0) horiz_az -= 360.0;
     
-    // Step 4: Convert true horizontal to equatorial (remove refraction)
+    return {horiz_alt, horiz_az};
+}
+
+std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial(
+    double mount_altitude, double mount_azimuth,
+    double jd, const std::array<double, 4>& mountOrientation) {
+    
+    // Step 1: Convert mount-frame → true horizontal via inverse quaternion
+    auto [horiz_alt, horiz_az] = mountOrientationToHorizontal(
+        mount_altitude, mount_azimuth, mountOrientation);
+    
+    // Step 2: Convert true horizontal to equatorial (remove refraction)
     return horizontalToEquatorial(horiz_alt, horiz_az, jd, false);
 }
 

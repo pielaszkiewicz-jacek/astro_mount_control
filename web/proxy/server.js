@@ -337,6 +337,35 @@ app.post('/api/slew', async (req, res) => {
 });
 
 /**
+ * POST /api/track
+ * Slew to equatorial coordinates and start tracking (sidereal).
+ * Maps to gRPC: TrackObject()
+ * Body: { ra: number, dec: number }
+ */
+app.post('/api/track', async (req, res) => {
+  try {
+    const { ra, dec } = req.body;
+
+    if (ra === undefined || dec === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: ra, dec' });
+    }
+
+    if (typeof ra !== 'number' || ra < 0 || ra >= 24) {
+      return res.status(400).json({ error: 'RA must be a number in range [0, 24)' });
+    }
+
+    if (typeof dec !== 'number' || dec < -90 || dec > 90) {
+      return res.status(400).json({ error: 'Dec must be a number in range [-90, 90]' });
+    }
+
+    await grpcCall('TrackObject', { ra, dec });
+    res.json({ success: true, message: `Tracking RA=${ra}h, Dec=${dec}° (sidereal)` });
+  } catch (err) {
+    res.status(502).json({ error: 'Track failed', details: err.message });
+  }
+});
+
+/**
  * POST /api/stop
  * Stop all mount movement.
  * Maps to gRPC: Stop()
@@ -375,6 +404,25 @@ app.post('/api/unpark', async (req, res) => {
     res.json({ success: true, message: 'Mount unparked' });
   } catch (err) {
     res.status(502).json({ error: 'Unpark failed', details: err.message });
+  }
+});
+
+/**
+ * POST /api/home
+ * Home mount — set reference position for tracking origin.
+ * Maps to gRPC: Home(MountHomingRequest)
+ * Body: { axis1: number, axis2: number } (telescope degrees)
+ */
+app.post('/api/home', async (req, res) => {
+  try {
+    const { axis1, axis2 } = req.body || {};
+    if (axis1 == null || axis2 == null) {
+      return res.status(400).json({ error: 'axis1 and axis2 (telescope degrees) are required' });
+    }
+    await grpcCall('Home', { axis1: Number(axis1), axis2: Number(axis2) });
+    res.json({ success: true, message: `Mount homed to axis1=${axis1}°, axis2=${axis2}°` });
+  } catch (err) {
+    res.status(502).json({ error: 'Home failed', details: err.message });
   }
 });
 
@@ -543,6 +591,34 @@ app.post('/api/config', async (req, res) => {
     res.json({ success: true, message: 'Configuration updated successfully' });
   } catch (err) {
     res.status(502).json({ error: 'Failed to update configuration', details: err.message });
+  }
+});
+
+/**
+ * POST /api/restart
+ * Soft restart: reload config, reinitialize, preserving calibrations.
+ * Maps to gRPC: RestartController()
+ */
+app.post('/api/restart', async (req, res) => {
+  try {
+    await grpcCall('RestartController', {});
+    res.json({ success: true, message: 'Controller soft-restarted (calibrations preserved)' });
+  } catch (err) {
+    res.status(502).json({ error: 'Restart failed', details: err.message });
+  }
+});
+
+/**
+ * POST /api/hard-restart
+ * Hard restart: reload config, reinitialize, discarding ALL calibrations.
+ * Maps to gRPC: HardRestartController()
+ */
+app.post('/api/hard-restart', async (req, res) => {
+  try {
+    await grpcCall('HardRestartController', {});
+    res.json({ success: true, message: 'Controller hard-restarted (calibrations discarded)' });
+  } catch (err) {
+    res.status(502).json({ error: 'Hard restart failed', details: err.message });
   }
 });
 
@@ -740,6 +816,49 @@ app.post('/api/axis/move-relative', async (req, res) => {
 });
 
 /**
+ * POST /api/axis/move-absolute
+ * Move an axis to an absolute position using position control.
+ * Maps to gRPC: ControlAxis() with POSITION_CONTROL, relative=false
+ * Body: { axis_id: number, target_deg: number, velocity?: number }
+ */
+app.post('/api/axis/move-absolute', async (req, res) => {
+  try {
+    const { axis_id, target_deg, velocity, acceleration, deceleration } = req.body;
+
+    if (axis_id === undefined || target_deg === undefined) {
+      return res.status(400).json({ error: 'Missing required fields: axis_id, target_deg' });
+    }
+    if (![0, 1].includes(axis_id)) {
+      return res.status(400).json({ error: 'axis_id must be 0 or 1' });
+    }
+    if (typeof target_deg !== 'number' || isNaN(target_deg)) {
+      return res.status(400).json({ error: 'target_deg must be a valid number' });
+    }
+
+    const grpcRequest = {
+      axis_id,
+      mode: 'POSITION_CONTROL',
+      target_position: target_deg,
+      relative: false,
+    };
+    if (typeof velocity === 'number' && isFinite(velocity) && velocity > 0) {
+      grpcRequest.max_velocity = velocity;
+    }
+    if (typeof acceleration === 'number' && isFinite(acceleration) && acceleration > 0) {
+      grpcRequest.acceleration = acceleration;
+    }
+    if (typeof deceleration === 'number' && isFinite(deceleration) && deceleration > 0) {
+      grpcRequest.deceleration = deceleration;
+    }
+
+    await grpcCall('ControlAxis', grpcRequest);
+    res.json({ success: true, message: `Axis ${axis_id} moving to ${target_deg}°` });
+  } catch (err) {
+    res.status(502).json({ error: 'Axis absolute move failed', details: err.message });
+  }
+});
+
+/**
  * POST /api/axis/emergency-stop
  * Emergency stop — halt all axes immediately.
  * Maps to gRPC: EmergencyStop()
@@ -932,8 +1051,8 @@ app.post('/api/axis/slew-horizontal', async (req, res) => {
       return res.status(400).json({ error: 'Missing required fields: altitude, azimuth' });
     }
 
-    if (typeof altitude !== 'number' || altitude < 0 || altitude > 90) {
-      return res.status(400).json({ error: 'altitude must be in range [0, 90]' });
+    if (typeof altitude !== 'number' || altitude < -90 || altitude > 90) {
+      return res.status(400).json({ error: 'altitude must be in range [-90, 90]' });
     }
 
     if (typeof azimuth !== 'number' || azimuth < 0 || azimuth > 360) {
@@ -2173,6 +2292,10 @@ function formatState(state) {
       axis1: state.current_position?.axis1 ?? 0,
       axis2: state.current_position?.axis2 ?? 0,
     },
+    telescope: {
+      axis1: state.telescope_axis1 ?? 0,
+      axis2: state.telescope_axis2 ?? 0,
+    },
     tracked_object: state.tracked_object
       ? {
           ra: state.tracked_object.coordinates?.ra,
@@ -2186,6 +2309,8 @@ function formatState(state) {
     guider_active: state.guider_active,
     tracking_rate_ra: state.tracking_rate_ra,
     tracking_rate_dec: state.tracking_rate_dec,
+    actual_rate_axis1: state.actual_rate_axis1 ?? 0,
+    actual_rate_axis2: state.actual_rate_axis2 ?? 0,
     pier_side: state.pier_side,
     meridian_flipped: state.meridian_flipped,
     time_to_meridian: state.time_to_meridian,
@@ -2194,6 +2319,8 @@ function formatState(state) {
     humidity: state.humidity,
     pointing_error: state.pointing_error,
     tracking_performance: state.tracking_performance,
+    bootstrap_calibrated: state.bootstrap_status?.calibrated || false,
+    tpoint_calibrated: false, // TPOINT status not yet exposed in ControllerState proto
     bootstrap_status: state.bootstrap_status
       ? {
           calibrated: state.bootstrap_status.calibrated,

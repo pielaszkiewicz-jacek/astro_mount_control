@@ -15,6 +15,229 @@ const MountStatusComponent = (() => {
   let _dbObjectCache = {};
   let _lastTrackedName = null;
 
+  // ─── Velocity Chart State ──────────────────────────────────────────────
+  const CHART_MAX_POINTS = 60; // Rolling window: ~60 seconds at 1 Hz poll
+  let _velDataAxis1 = [];       // Array of { time: Date, value: number }
+  let _velDataAxis2 = [];
+  let _chartInitialized = false;
+
+  /**
+   * Initialize the velocity chart canvas and data buffers.
+   */
+  function initChart() {
+    if (_chartInitialized) return;
+    _chartInitialized = true;
+    _velDataAxis1 = [];
+    _velDataAxis2 = [];
+  }
+
+  /**
+   * Append velocity readings to the rolling buffer and render the chart.
+   * @param {number} rate1 - Axis 1 velocity (arcsec/s)
+   * @param {number} rate2 - Axis 2 velocity (arcsec/s)
+   */
+  function updateVelocityChart(rate1, rate2) {
+    const canvas = $('#velocity-canvas');
+    const container = $('#velocity-chart-content');
+    if (!canvas || !container) return;
+
+    // Initialize if first call
+    if (!_chartInitialized) initChart();
+
+    const now = Date.now();
+
+    // Append new data points
+    _velDataAxis1.push({ time: now, value: rate1 ?? 0 });
+    _velDataAxis2.push({ time: now, value: rate2 ?? 0 });
+
+    // Trim to rolling window
+    while (_velDataAxis1.length > CHART_MAX_POINTS) _velDataAxis1.shift();
+    while (_velDataAxis2.length > CHART_MAX_POINTS) _velDataAxis2.shift();
+
+    // Always draw the chart, even with zero data — the drawChart function
+    // handles empty/single-point datasets gracefully.
+    container.classList.remove('empty');
+    drawChart(canvas);
+  }
+
+  /**
+   * Apply exponential moving average smoothing to a data series.
+   * @param {Array<{time: number, value: number}>} data
+   * @param {number} alpha - Smoothing factor (0–1, higher = less smoothing)
+   * @returns {Array<{time: number, value: number}>} Smoothed data (same timestamps)
+   */
+  function smoothData(data, alpha) {
+    if (!data || data.length < 2) return data;
+    const smoothed = [{ time: data[0].time, value: data[0].value }];
+    for (let i = 1; i < data.length; i++) {
+      const prev = smoothed[i - 1].value;
+      const curr = data[i].value;
+      smoothed.push({
+        time: data[i].time,
+        value: alpha * curr + (1 - alpha) * prev
+      });
+    }
+    return smoothed;
+  }
+
+  /**
+   * Draw the velocity time-series chart on the canvas.
+   * @param {HTMLCanvasElement} canvas
+   */
+  function drawChart(canvas) {
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    // Set canvas physical size to match CSS size * DPR
+    const rect = canvas.getBoundingClientRect();
+    const w = rect.width;
+    const h = rect.height;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    ctx.scale(dpr, dpr);
+
+    // Chart margins
+    const margin = { top: 8, right: 44, bottom: 22, left: 48 };
+    const plotW = w - margin.left - margin.right;
+    const plotH = h - margin.top - margin.bottom;
+
+    // Smooth data for display (raw data preserved in _velDataAxis*)
+    const EMA_ALPHA = 0.35;  // moderate smoothing — still responsive
+    const smoothAxis1 = smoothData(_velDataAxis1, EMA_ALPHA);
+    const smoothAxis2 = smoothData(_velDataAxis2, EMA_ALPHA);
+
+    // Clear
+    ctx.clearRect(0, 0, w, h);
+
+    // Background
+    ctx.fillStyle = '#0f0f1a';
+    ctx.fillRect(0, 0, w, h);
+
+    // Compute Y range from smoothed data (with padding for readability)
+    let yMin = Infinity, yMax = -Infinity;
+    const allData = smoothAxis1.concat(smoothAxis2);
+    for (const pt of allData) {
+      if (pt.value < yMin) yMin = pt.value;
+      if (pt.value > yMax) yMax = pt.value;
+    }
+    // Ensure we have some range even with zero velocities
+    if (yMax - yMin < 0.001) { yMin -= 0.1; yMax += 0.1; }
+    // Add 10% padding
+    const yRange = yMax - yMin;
+    yMin -= yRange * 0.1;
+    yMax += yRange * 0.1;
+
+    // Compute X range from timestamps
+    const now = Date.now();
+    const xMin = now - (CHART_MAX_POINTS - 1) * 1000; // approximate
+    // Use actual data range
+    const tMin = smoothAxis1.length > 0 ? smoothAxis1[0].time : xMin;
+    const tMax = smoothAxis1.length > 0 ? smoothAxis1[smoothAxis1.length - 1].time : now;
+    const xRange = Math.max(tMax - tMin, 1000); // minimum 1 second range
+
+    // Helper: map data space to pixel space
+    function xPixel(t) {
+      return margin.left + ((t - tMin) / xRange) * plotW;
+    }
+    function yPixel(v) {
+      return margin.top + plotH - ((v - yMin) / (yMax - yMin)) * plotH;
+    }
+
+    // ── Grid lines ──
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 0.5;
+    const yTicks = 5;
+    for (let i = 0; i <= yTicks; i++) {
+      const y = margin.top + (plotH / yTicks) * i;
+      ctx.beginPath();
+      ctx.moveTo(margin.left, y);
+      ctx.lineTo(margin.left + plotW, y);
+      ctx.stroke();
+    }
+
+    // ── Y-axis labels ──
+    ctx.fillStyle = '#888';
+    ctx.font = '9px monospace';
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= yTicks; i++) {
+      const val = yMax - (yRange / yTicks) * i;
+      const y = margin.top + (plotH / yTicks) * i;
+      ctx.fillText(val.toFixed(2), margin.left - 4, y + 3);
+    }
+    // Y-axis unit label
+    ctx.fillStyle = '#666';
+    ctx.textAlign = 'center';
+    ctx.save();
+    ctx.translate(10, margin.top + plotH / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText('"/s', 0, 0);
+    ctx.restore();
+
+    // ── X-axis time labels ──
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'center';
+    const xTicks = 3;
+    for (let i = 0; i <= xTicks; i++) {
+      const t = tMin + (xRange / xTicks) * i;
+      const x = xPixel(t);
+      const d = new Date(t);
+      const label = d.getHours().toString().padStart(2, '0') + ':'
+                  + d.getMinutes().toString().padStart(2, '0') + ':'
+                  + d.getSeconds().toString().padStart(2, '0');
+      ctx.fillText(label, x, margin.top + plotH + 14);
+    }
+
+    // ── Draw Axis 1 (blue) ──
+    if (smoothAxis1.length === 1) {
+      // Single point: draw a dot
+      ctx.fillStyle = '#4fc3f7';
+      const x = xPixel(smoothAxis1[0].time);
+      const y = yPixel(smoothAxis1[0].value);
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (smoothAxis1.length > 1) {
+      ctx.strokeStyle = '#4fc3f7';
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < smoothAxis1.length; i++) {
+        const x = xPixel(smoothAxis1[i].time);
+        const y = yPixel(smoothAxis1[i].value);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // ── Draw Axis 2 (green) ──
+    if (smoothAxis2.length === 1) {
+      ctx.fillStyle = '#81c784';
+      const x = xPixel(smoothAxis2[0].time);
+      const y = yPixel(smoothAxis2[0].value);
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (smoothAxis2.length > 1) {
+      ctx.strokeStyle = '#81c784';
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      for (let i = 0; i < smoothAxis2.length; i++) {
+        const x = xPixel(smoothAxis2[i].time);
+        const y = yPixel(smoothAxis2[i].value);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // ── Axis border ──
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(margin.left, margin.top, plotW, plotH);
+  }
+
   /**
    * Format database object type name.
    * @param {string} type
@@ -135,6 +358,12 @@ const MountStatusComponent = (() => {
       return;
     }
 
+    // Update velocity chart with actual CANopen motor rates (deg/s → convert to arcsec/s)
+    updateVelocityChart(
+      (state.actual_rate_axis1 ?? 0) * 3600,
+      (state.actual_rate_axis2 ?? 0) * 3600
+    );
+
     // Update status badge
     const badge = $('#status-badge');
     if (badge) {
@@ -182,6 +411,7 @@ const MountStatusComponent = (() => {
     const posEl = $('#position-content');
     if (posEl) {
       posEl.innerHTML = `
+        <div class="stat-section-label">Servo (motor shaft)</div>
         <div class="stat-row">
           <span class="stat-label">Axis 1</span>
           <span class="stat-value highlight">${formatAngleDeg(state.position?.axis1, false)}</span>
@@ -190,12 +420,22 @@ const MountStatusComponent = (() => {
           <span class="stat-label">Axis 2</span>
           <span class="stat-value highlight">${formatAngleDeg(state.position?.axis2, false)}</span>
         </div>
+        <div class="stat-section-label">Telescope (after gear ratio)</div>
         <div class="stat-row">
-          <span class="stat-label">Tracking Rate RA</span>
+          <span class="stat-label">Axis 1</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis1, false)}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Axis 2</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis2, false)}</span>
+        </div>
+        <div class="stat-section-label">Tracking</div>
+        <div class="stat-row">
+          <span class="stat-label">Rate RA</span>
           <span class="stat-value">${formatNumber(state.tracking_rate_ra, 4)} "/s</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Tracking Rate Dec</span>
+          <span class="stat-label">Rate Dec</span>
           <span class="stat-value">${formatNumber(state.tracking_rate_dec, 4)} "/s</span>
         </div>
       `;

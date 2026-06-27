@@ -243,6 +243,7 @@ public:
             axis_status_[i].timestamp = std::chrono::system_clock::now();
             axis_position_[i] = PositionData{};
             axis_encoder_[i] = EncoderData{};
+            position_offset_[i] = 0.0;
         }
 
         // Shutdown CANopen context (stops reader thread, closes socket)
@@ -435,12 +436,18 @@ public:
 
         axis_target_position_[axis_id] = position;
 
+        // Convert logical degrees to the drive's absolute CANopen frame.
+        // After setActualPosition() (Home), position_offset_ is non-zero
+        // and the caller works in logical coordinates.  We must subtract
+        // the offset so the drive receives its native absolute target.
+        double drive_position = position - position_offset_[axis_id];
+
         // Convert degrees to drive position units using the configured
         // counts-per-degree factor (default 4000.0/360.0 ≈ 11.111 counts/°,
         // matching a 4000-count encoder → 360° at the motor shaft).
         const double cpd = config_.axis_position_counts_per_degree[axis_id];
         // Clamp to avoid int32_t overflow: |position| > ~1.93e8° at default cpd.
-        double raw_counts = position * cpd;
+        double raw_counts = drive_position * cpd;
         if (raw_counts > 2147483647.0) raw_counts = 2147483647.0;
         if (raw_counts < -2147483648.0) raw_counts = -2147483648.0;
         int32_t target_counts = static_cast<int32_t>(raw_counts);
@@ -626,6 +633,23 @@ public:
         return true;
     }
 
+    bool setActualPosition(int axis_id, double position) {
+        if (axis_id < 0 || axis_id >= 2) {
+            MOUNT_LOG_ERROR("Invalid axis_id {} for setActualPosition", axis_id);
+            return false;
+        }
+        // Compute a persistent software offset so that subsequent
+        // getPositionData() calls return the corrected position.
+        // The PDO/SDO hardware reads overwrite axis_position_ on
+        // every cycle; the offset survives across reads.
+        double current = axis_position_[axis_id].actual_position;
+        position_offset_[axis_id] = position - current;
+        axis_position_[axis_id].actual_position = position;
+        MOUNT_LOG_INFO("setActualPosition: axis={} position={:.4f} deg (offset={:.4f})",
+                       axis_id, position, position_offset_[axis_id]);
+        return true;
+    }
+
     void stopAxis(int axis_id) {
         if (axis_id < 0 || axis_id >= 2) {
             return;
@@ -792,7 +816,8 @@ public:
         // Fast path: cached PDO position (zero CAN traffic).
         if (pdo_configured_[axis_id] && pdo_data_valid_[axis_id].load(std::memory_order_acquire)) {
             int32_t raw = pdo_actual_position_[axis_id].load(std::memory_order_acquire);
-            axis_position_[axis_id].actual_position = static_cast<double>(raw) / cpd;
+            axis_position_[axis_id].actual_position = static_cast<double>(raw) / cpd
+                                                      + position_offset_[axis_id];
             axis_position_[axis_id].timestamp = std::chrono::system_clock::now();
             return axis_position_[axis_id];
         }
@@ -806,7 +831,7 @@ public:
             if (canopen_sdo_read_expedited(ctx_, node_id,
                                            0x6064, 0, &actual_pos, &len)) {
                 axis_position_[axis_id].actual_position =
-                    static_cast<double>(actual_pos) / cpd;
+                    static_cast<double>(actual_pos) / cpd + position_offset_[axis_id];
             }
 
             int32_t actual_vel = 0;
@@ -1116,6 +1141,7 @@ private:
     mutable DriveStatus axis_status_[2];
     mutable PositionData axis_position_[2];
     mutable EncoderData axis_encoder_[2];
+    double position_offset_[2] = {0.0, 0.0}; // Persistent offset from setActualPosition()
 
     // Cached mode/accel for setVelocityTarget — avoids redundant SDO writes
     // at high update rates (gamepad 50 Hz).  -1 = uninitialised.
@@ -1361,6 +1387,10 @@ bool CanOpenInterface::setVelocityTarget(int axis_id, double velocity,
 
 void CanOpenInterface::stopAxis(int axis_id) {
     pimpl->stopAxis(axis_id);
+}
+
+bool CanOpenInterface::setActualPosition(int axis_id, double position) {
+    return pimpl->setActualPosition(axis_id, position);
 }
 
 void CanOpenInterface::emergencyStop(int axis_id) {

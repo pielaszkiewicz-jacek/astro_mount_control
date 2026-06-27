@@ -138,11 +138,6 @@ public:
         double longitude;
         double altitude;
         
-        // Mount physical parameters
-        double mount_height;
-        double pier_west;
-        double pier_east;
-        
         // Mount parameters
         double max_slew_rate;
         double max_tracking_rate;
@@ -248,6 +243,20 @@ public:
         double field_rotation_temperature{15.0};
         double field_rotation_flexure_correction{0.0};
 
+        // CANopen position rewind: periodically reset the drive's absolute position
+        // counter to prevent overflow beyond the drive's target position limit
+        // (typically ±1,000,000 encoder counts). When rewinding, the drive's
+        // actual position is read, set as the new reference via setActualPosition(),
+        // and the position_offset_ is updated — no physical movement occurs.
+        // Set to 0 to disable periodic rewinding.
+        double canopen_position_rewind_interval_seconds{3600.0};
+
+        // CANopen position rewind threshold: if the drive's absolute position
+        // counter reaches this percentage of the 1,000,000 count limit, an
+        // immediate rewind is triggered regardless of the time interval.
+        // Range: 0.0–100.0 (0 = only use time interval, never trigger on threshold).
+        double canopen_position_rewind_threshold_percent{80.0};
+
         // HAL configuration (from JSON "hal" section)
         hal::HALConfig hal_config;
     };
@@ -270,8 +279,10 @@ public:
         double axis2_position;      // Degrees (servo/motor shaft)
         double telescope_axis1_position; // Degrees (telescope axis, after gear ratio)
         double telescope_axis2_position; // Degrees (telescope axis, after gear ratio)
-        double axis1_rate;          // Degrees/sec
-        double axis2_rate;          // Degrees/sec
+        double axis1_rate;          // Degrees/sec (commanded tracking/slewing rate)
+        double axis2_rate;          // Degrees/sec (commanded tracking/slewing rate)
+        double actual_axis1_rate;   // Degrees/sec (actual CANopen motor velocity)
+        double actual_axis2_rate;   // Degrees/sec (actual CANopen motor velocity)
         double axis1_target;        // Degrees
         double axis2_target;        // Degrees
         
@@ -946,6 +957,22 @@ public:
     bool homeDerotator(const ::astro_mount::DerotatorHomingRequest& request);
     
     /**
+     * @brief Home mount — set reference position for tracking origin.
+     *
+     * Sets the internal axis positions to known telescope coordinates.
+     * Use after physically pointing the mount at a known celestial object
+     * (e.g. Polaris at HA=0h, Dec=+90° for equatorial mounts) to establish
+     * a correct coordinate reference.
+     *
+     * Converts telescope degrees to servo degrees internally using gear_ratio.
+     * Stops any active motion before applying the new reference.
+     *
+     * @param request Proto homing request with axis1/axis2 in telescope degrees
+     * @return True if the reference was set successfully
+     */
+    bool home(const ::astro_mount::MountHomingRequest& request);
+    
+    /**
      * @brief Get field rotation parameters (computed rates)
      * @return Field rotation parameters
      */
@@ -978,6 +1005,20 @@ public:
      * @return True if reinitialization was successful
      */
     bool reinitializeHAL(const ::astro_mount::HALReinitRequest& request);
+    
+    /**
+     * @brief Soft restart: shutdown + reload config from file + reinitialize,
+     *        preserving bootstrap and TPOINT calibration data.
+     * @return True if restart was successful
+     */
+    bool restart();
+    
+    /**
+     * @brief Hard restart: shutdown + reload config from file + reinitialize,
+     *        discarding all calibration data (bootstrap, TPOINT).
+     * @return True if restart was successful
+     */
+    bool hardRestart();
     
     /**
      * @brief Start the gamepad manual-control loop (axis velocity commands).

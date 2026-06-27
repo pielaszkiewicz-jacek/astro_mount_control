@@ -50,10 +50,12 @@ protected:
                 "grpc_port": 50051,
                 "max_connections": 10
             },
-            "canopen": {
-                "node_id": 1,
-                "baud_rate": 1000000,
-                "sync_interval_ms": 100
+            "hal": {
+                "canopen": {
+                    "node_id": 1,
+                    "bitrate": 1000000,
+                    "sync_period_ms": 100
+                }
             },
             "mount": {
                 "latitude": 52.0,
@@ -63,7 +65,6 @@ protected:
                 "max_tracking_rate": 0.004178,
                 "slew_acceleration": 1.0,
                 "tracking_acceleration": 0.001,
-                "mount_height": 1.5,
                 "axis_physical_parameters": {
                     "ha_axis": {
                         "encoder_resolution": 16384,
@@ -115,10 +116,12 @@ protected:
                 "grpc_port": 50052,
                 "max_connections": 10
             },
-            "canopen": {
-                "node_id": 1,
-                "baud_rate": 1000000,
-                "sync_interval_ms": 100
+            "hal": {
+                "canopen": {
+                    "node_id": 1,
+                    "bitrate": 1000000,
+                    "sync_period_ms": 100
+                }
             },
             "mount": {
                 "latitude": 52.0,
@@ -128,7 +131,6 @@ protected:
                 "max_tracking_rate": 0.004178,
                 "slew_acceleration": 1.0,
                 "tracking_acceleration": 0.001,
-                "mount_height": 1.5,
                 "axis_physical_parameters": {
                     "ha_axis": {
                         "encoder_resolution": 16384,
@@ -440,10 +442,12 @@ protected:
                 "grpc_port": 50051,
                 "max_connections": 10
             },
-            "canopen": {
-                "node_id": 1,
-                "baud_rate": 1000000,
-                "sync_interval_ms": 100
+            "hal": {
+                "canopen": {
+                    "node_id": 1,
+                    "bitrate": 1000000,
+                    "sync_period_ms": 100
+                }
             },
             "mount": {
                 "latitude": 52.0,
@@ -453,7 +457,6 @@ protected:
                 "max_tracking_rate": 0.004178,
                 "slew_acceleration": 1.0,
                 "tracking_acceleration": 0.001,
-                "mount_height": 1.5,
                 "axis_physical_parameters": {
                     "ha_axis": {
                         "encoder_resolution": 16384,

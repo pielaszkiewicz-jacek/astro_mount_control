@@ -40,11 +40,11 @@
 | gRPC RPC | 50+ |
 | Sprawdzenia walidacji konfiguracji | 25+ |
 | Punkty ochrony NaN/Inf | 11 |
-| Obsługiwane typy sprzętu | 2 (CANopen, Symulowany) + 3 planowane |
+| Obsługiwane typy sprzętu | 5 (CANopen, Symulowany, Gamepad, Szeregowy, Ethernet) |
 | Obsługiwane protokoły sterowników | 2 (ASCOM, INDI) |
 | Czas budowania | ~3-4 minuty (Release, 4 rdzenie) |
 | Definicje protobuf | ~1115 linii |
-| Modele obliczeniowe | TPOINT (40+ parametrów), Kalman (6D), Efemerydy |
+| Modele obliczeniowe | TPOINT (40+ parametrów), Bootstrap (SVD), Kalman (6D), Efemerydy |
 | Standard C++ | C++17 |
 
 ---

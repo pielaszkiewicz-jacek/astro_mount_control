@@ -556,6 +556,19 @@ public:
      */
     void setObserverLocation(double latitude, double longitude, double altitude);
     
+    /**
+     * @brief Set the TPOINT model for mount geometry corrections
+     *
+     * After TPOINT calibration, this method propagates the fitted model to all
+     * existing EphemerisModel instances and stores it for future ephemeris uploads.
+     * When set, every EphemerisModel created by uploadEphemeris() or
+     * startTrackingWithData() will automatically apply TPOINT corrections
+     * during getApparentPosition() calls.
+     *
+     * @param tpoint_model Shared pointer to the fitted TPointModel (may be nullptr to disable)
+     */
+    void setTPointModel(std::shared_ptr<TPointModel> tpoint_model);
+    
 private:
     class Impl;
     std::unique_ptr<Impl> impl_;

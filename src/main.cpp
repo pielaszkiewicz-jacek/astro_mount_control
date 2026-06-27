@@ -68,9 +68,13 @@ int main(int argc, char* argv[]) {
         controllers::MountController::ControllerConfig controller_config;
         auto mount_config = config.getMountConfig();
         
-        controller_config.mount_type = (mount_config.type == "equatorial") ? 
-            controllers::MountController::MountType::EQUATORIAL : 
-            controllers::MountController::MountType::ALT_AZ;
+        if (mount_config.type == "equatorial") {
+            controller_config.mount_type = controllers::MountController::MountType::EQUATORIAL;
+        } else if (mount_config.type == "casual") {
+            controller_config.mount_type = controllers::MountController::MountType::CASUAL;
+        } else {
+            controller_config.mount_type = controllers::MountController::MountType::ALT_AZ;
+        }
         
         controller_config.latitude = mount_config.latitude;
         controller_config.longitude = mount_config.longitude;
@@ -82,10 +86,6 @@ int main(int argc, char* argv[]) {
         controller_config.slew_acceleration = mount_config.slew_acceleration;
         controller_config.tracking_acceleration = mount_config.tracking_acceleration;
         
-        // Set mount physical parameters
-        controller_config.mount_height = mount_config.mount_height;
-        controller_config.pier_west = mount_config.pier_west;
-        controller_config.pier_east = mount_config.pier_east;
         controller_config.default_temperature = mount_config.default_temperature;
         controller_config.default_pressure = mount_config.default_pressure;
         controller_config.default_humidity = mount_config.default_humidity;

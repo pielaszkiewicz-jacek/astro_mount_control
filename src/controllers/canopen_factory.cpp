@@ -116,7 +116,13 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                 axis_moving_[axis_id] = false;
                 axis_velocity_[axis_id] = 0.0;
             }
-            
+
+            bool setActualPosition(int axis_id, double position) override {
+                if (axis_id < 0 || axis_id >= 3) return false;
+                axis_position_[axis_id] = position;
+                return true;
+            }
+
             void emergencyStop(int axis_id) override {
                 if (axis_id < 0 || axis_id >= 3) return;
                 axis_enabled_[axis_id] = false;
@@ -383,7 +389,13 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                 if (!impl) return;
                 impl->stopAxis(axis_id);
             }
-            
+
+            bool setActualPosition(int axis_id, double position) override {
+                auto impl = impl_;
+                if (!impl) return false;
+                return impl->setActualPosition(axis_id, position);
+            }
+
             void emergencyStop(int axis_id) override {
                 auto impl = impl_;
                 if (!impl) return;

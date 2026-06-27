@@ -24,9 +24,11 @@ namespace hal {
  * Auto-detection tries /dev/input/js0 … js3 and /dev/input/event*
  * devices with EV_ABS capability.
  *
- * Hotplug detection: when the device is disconnected, the polling
- * loop uses inotify to watch /dev/input/ for new devices and
- * automatically reconnects when a gamepad is plugged in.
+ * Hotplug detection: when no device is found at initialization time,
+ * a background standby thread watches /dev/input/ via inotify and
+ * automatically connects when a gamepad is plugged in later.
+ * When a connected device is disconnected, the polling loop itself
+ * enters hotplug-wait and reconnects automatically.
  */
 class EvdevGamepadInput : public GamepadInput {
 public:
@@ -112,6 +114,7 @@ private:
     bool openEvdevDevice(const std::string& path);
     std::string autoDetect();
     void pollLoop();
+    void standbyLoop();           ///< Background thread when no device is connected
     void processJoystickEvent(const js_event& ev);
     void processEvdevEvent(const input_event& ev);
     double normalizeAxis(int raw, int axis_min, int axis_max) const;

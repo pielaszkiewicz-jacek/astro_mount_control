@@ -87,6 +87,20 @@ const Api = (() => {
   }
 
   /**
+   * Slew to equatorial coordinates and start sidereal tracking.
+   * POST /api/track
+   * @param {number} ra - Right ascension in hours
+   * @param {number} dec - Declination in degrees
+   * @returns {Promise<object>}
+   */
+  async function trackObject(ra, dec) {
+    return request('/track', {
+      method: 'POST',
+      body: JSON.stringify({ ra, dec }),
+    });
+  }
+
+  /**
    * Stop all mount movement.
    * POST /api/stop
    * @returns {Promise<object>}
@@ -111,6 +125,20 @@ const Api = (() => {
    */
   async function unparkMount() {
     return request('/unpark', { method: 'POST' });
+  }
+
+  /**
+   * Home mount — set reference position for tracking origin.
+   * POST /api/home
+   * @param {number} axis1 - Telescope axis1 position [degrees]
+   * @param {number} axis2 - Telescope axis2 position [degrees]
+   * @returns {Promise<object>}
+   */
+  async function homeMount(axis1, axis2) {
+    return request('/home', {
+      method: 'POST',
+      body: JSON.stringify({ axis1, axis2 }),
+    });
   }
 
   /**
@@ -289,6 +317,33 @@ const Api = (() => {
   }
 
   /**
+   * Move axis to an absolute position using position control.
+   * POST /api/axis/move-absolute
+   * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
+   * @param {number} targetDeg - Absolute target position in degrees
+   * @param {number} [velocity] - Maximum velocity in deg/s (uses config max_slew_rate if omitted)
+   * @param {number} [acceleration] - Acceleration in deg/s² (default: 50)
+   * @param {number} [deceleration] - Deceleration in deg/s² (default: 50)
+   * @returns {Promise<object>}
+   */
+  async function moveAxisAbsolute(axisId, targetDeg, velocity, acceleration, deceleration) {
+    const body = { axis_id: axisId, target_deg: targetDeg };
+    if (velocity !== undefined && velocity > 0) {
+      body.velocity = velocity;
+    }
+    if (acceleration !== undefined && acceleration > 0) {
+      body.acceleration = acceleration;
+    }
+    if (deceleration !== undefined && deceleration > 0) {
+      body.deceleration = deceleration;
+    }
+    return request('/axis/move-absolute', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  /**
    * Stop axis movement with smooth deceleration.
    * POST /api/axis/stop
    * @param {number} axisId - 0=HA/RA/Azimuth, 1=Dec/Altitude
@@ -365,7 +420,7 @@ const Api = (() => {
   /**
    * Slew to horizontal coordinates (altitude/azimuth).
    * POST /api/axis/slew-horizontal
-   * @param {number} altitude - Altitude in degrees [0, 90]
+   * @param {number} altitude - Altitude in degrees [-90, 90]
    * @param {number} azimuth - Azimuth in degrees [0, 360]
    * @returns {Promise<object>}
    */
@@ -915,20 +970,41 @@ const Api = (() => {
     return request('/hal/gamepad/mode', { method: 'POST', body: JSON.stringify({ mode: mode }), timeout: 5000 });
   }
 
+  /**
+   * Soft restart: reload config + reinitialize, preserving calibrations.
+   * POST /api/restart
+   * @returns {Promise<object>}
+   */
+  async function restartController() {
+    return request('/restart', { method: 'POST', timeout: 30000 });
+  }
+
+  /**
+   * Hard restart: reload config + reinitialize, discarding all calibrations.
+   * POST /api/hard-restart
+   * @returns {Promise<object>}
+   */
+  async function hardRestartController() {
+    return request('/hard-restart', { method: 'POST', timeout: 30000 });
+  }
+
   // Public API
   return {
     getStatus,
     slewToCoordinates,
+    trackObject,
     slewHorizontal,
     stopMount,
     parkMount,
     unparkMount,
+    homeMount,
     clearErrors,
     saveState,
     loadState,
     uploadAndLoadState,
     moveAxis,
     moveAxisRelative,
+    moveAxisAbsolute,
     stopAxis,
     emergencyStop,
     getMountOrientation,
@@ -988,5 +1064,7 @@ const Api = (() => {
     startGamepad,
     stopGamepad,
     setGamepadMode,
+    restartController,
+    hardRestartController,
   };
 })();

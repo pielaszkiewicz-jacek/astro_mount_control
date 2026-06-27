@@ -226,7 +226,7 @@ const Utils = (() => {
         case 'ra':   formatted = formatRA(val); break;
         case 'hours': formatted = formatAngleHours(val); break;
         case 'dec':  formatted = formatDec(val); break;
-        default:     formatted = formatAngleDeg(val, false); break;
+        default:     formatted = formatAngleDeg(val, true); break;
       }
       input.value = formatted;
     }

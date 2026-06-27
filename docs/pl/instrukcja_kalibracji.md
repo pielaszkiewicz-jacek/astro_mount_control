@@ -7,6 +7,10 @@
   - [1. Wprowadzenie](#1-wprowadzenie)
     - [Kiedy kalibrować?](#kiedy-kalibrować)
   - [2. Przygotowanie](#2-przygotowanie)
+    - [2.5 Ustalenie punktu referencyjnego (Home)](#25-ustalenie-punktu-referencyjnego-home)
+      - [Jak to działa?](#jak-to-działa)
+      - [Zachowanie zależnie od typu montażu](#zachowanie-zależnie-od-typu-montażu)
+      - [Procedura krok po kroku](#procedura-krok-po-kroku)
   - [3. Kalibracja Bootstrap (wstępna)](#3-kalibracja-bootstrap-wstępna)
     - [3.1 Tryb ręczny (MANUAL)](#31-tryb-ręczny-manual)
       - [Krok 1: Wybierz tryb](#krok-1-wybierz-tryb)
@@ -67,9 +71,56 @@ Przed rozpoczęciem kalibracji:
 
 > **Uwaga:** Przy enkoderach inkrementalnych po restarcie kontrolera pozycja startowa to pozycja parkowania (domyślnie HA=0°, Dec=0°). Kalibracja bootstrap skoryguje ten offset.
 
+6. **Wykonaj operację Home** — ustaw punkt referencyjny układu współrzędnych (szczegóły w [sekcji 2.5](#25-ustalenie-punktu-referencyjnego-home)).
+
+---
+
+### 2.5 Ustalenie punktu referencyjnego (Home)
+
+Po uruchomieniu kontrolera, enkodery absolutne CANopen zgłaszają **losowe pozycje bezwzględne** — nie odpowiadają one rzeczywistemu położeniu montażu na niebie. Bez korekty, montaż w ciągu kilku sekund śledzenia osiągnie limity kątów i przejdzie w stan ERROR.
+
+Operacja **Home** rozwiązuje ten problem: ustawia wewnętrzny punkt referencyjny kontrolera tak, aby zgadzał się z fizycznym położeniem teleskopu. **Home nie porusza montażem** — użytkownik musi najpierw ręcznie skierować teleskop na znany obiekt.
+
+#### Jak to działa?
+
+Funkcja `Home(axis1, axis2)` przyjmuje współrzędne w **stopniach teleskopu** (po przełożeniu przekładni). Kontroler konwertuje je wewnętrznie na stopnie serwa (`× gear_ratio`), zapisuje jako bieżącą pozycję i resetuje filtr Kalmana, flagi meridian flip oraz prędkości do zera.
+
+Po wykonaniu Home:
+- **Śledzenie** działa poprawnie — używa przyrostów względnych (`pozycja += prędkość × dt`)
+- **Limity miękkie** są liczone od poprawnej pozycji teleskopu
+- **Detekcja południka** (meridian flip) działa na podstawie poprawnego HA
+- **Wyświetlanie w zakładce Status** pokazuje poprawne współrzędne teleskopu
+
+#### Zachowanie zależnie od typu montażu
+
+| Typ montażu | `axis1` (stopnie teleskopu) | `axis2` (stopnie teleskopu) | Przykład Home |
+|---|---|---|---|
+| **EQUATORIAL** | Kąt godzinny HA [-180°, 180°] | Deklinacja Dec [-90°, 90°] | `Home(0, 90)` — biegun NCP |
+| **ALT_AZ** | Wysokość [0°, 90°] | Azymut [0°, 360°) | `Home(45, 180)` — płd, 45° |
+| **CASUAL** | Wysokość w ramie montażu [0°, 90°] | Azymut w ramie montażu [0°, 360°) | wymaga bootstrapu |
+
+#### Procedura krok po kroku
+
+1. **Fizycznie skieruj teleskop na znany obiekt** — np. Polaris (Gwiazda Polarna) dla montażu equatorialnego, lub dowolną jasną gwiazdę o znanych współrzędnych
+2. **Oblicz współrzędne teleskopu** dla tego obiektu:
+   - **EQUATORIAL**: `HA = LST − RA` (w stopniach: `HA° = HA_godz × 15`), `Dec = deklinacja obiektu`
+   - **ALT_AZ**: wysokość i azymut obiektu (można obliczyć w zakładce **Tests** → Reference Object → Transform)
+3. **Wyślij komendę Home** — kliknij przycisk **Home** w zakładce **Control** (sekcja Quick Actions). Przycisk używa bieżących współrzędnych teleskopu z zakładki Status jako wartości referencyjnych.
+   Alternatywnie przez API gRPC:
+   ```
+   grpcurl -d '{"axis1": 0, "axis2": 90}' ... astro_mount.MountControllerService/Home
+   ```
+4. **Zweryfikuj** — sprawdź zakładkę **Status**: pozycje teleskopu (`Telescope axis1/axis2`) powinny odpowiadać zadanym wartościom
+
+> **⚠️ Ograniczenie CANopen absolutnego:** Po `Home()` NIE wykonuj bezpośrednio slewa pozycyjnego (`SlewToCoordinates` / `SlewToHorizontal`). Napędy CANopen używają absolutnego pozycjonowania — jeśli ich wewnętrzna pozycja bezwzględna różni się od ustawionej przez Home, slew może spowodować nieoczekiwany, gwałtowny obrót. **Najpierw wykonaj kalibrację Bootstrap** — po skalibrowaniu slewy będą bezpieczne, ponieważ kontroler przelicza współrzędne przez macierz obrotu.
+
+> **💡 Wskazówka:** Home najlepiej wykonać od razu po fizycznym ustawieniu montażu na biegun niebieski. Dla montażu equatorialnego: skieruj teleskop na Polaris, oblicz HA (zazwyczaj bliskie 0°), Dec ≈ +89.3° i wyślij `Home(0, 89.3)`.
+
 ---
 
 ## 3. Kalibracja Bootstrap (wstępna)
+
+> **Wymagane:** Przed rozpoczęciem kalibracji bootstrap z enkoderami absolutnymi wykonaj operację **Home** ([sekcja 2.5](#25-ustalenie-punktu-referencyjnego-home)). Bez Home pomiary bootstrap będą wskazywały przypadkową orientację, co uniemożliwi poprawne dopasowanie.
 
 Przejdź do zakładki **Calibration**. W górnej części znajduje się karta **"Initial Calibration (Bootstrap)"**.
 
@@ -235,6 +286,11 @@ Poniżej kompletny scenariusz kalibracji od zera dla montażu equatorialnego z e
       ├── Sprawdź typ enkoderów: incremental
       └── Pozycja startowa: HA=0°, Dec=0° (park)
 
+19:02  HOME — ustaw punkt referencyjny
+      ├── Fizycznie skieruj teleskop na Polaris
+      ├── Oblicz HA: LST − RA(Polaris) ≈ 0°
+      └── Wyślij: Home(axis1=0, axis2=89.3)
+
 19:05  BOOTSTRAP — tryb MANUAL
       ├── Szukaj: "Vega"      → Slew & Measure  ✅
       ├── Szukaj: "Arcturus"  → Slew & Measure  ✅
@@ -314,6 +370,7 @@ Poniżej kompletny scenariusz kalibracji od zera dla montażu equatorialnego z e
 | **RMS residual** | Średni błąd kwadratowy dopasowania — im mniejszy, tym lepiej |
 | **Alignment error** | Całkowity błąd wskazywania w sekundach kątowych |
 | **Gear ratio** | Przełożenie przekładni (serwomotor : oś teleskopu), np. 360:1 |
+| **Home** | Operacja ustawiająca punkt referencyjny układu współrzędnych — nie porusza fizycznie montażem, jedynie koryguje wewnętrzny stan kontrolera na podstawie znanego położenia teleskopu |
 | **Enkoder absolutny** | Zna pozycję po restarcie bez kalibracji |
 | **Enkoder inkrementalny** | Po restarcie zaczyna od zera — wymaga kalibracji bootstrap |
 | **Slew** | Szybki obrót montażu do zadanego położenia |

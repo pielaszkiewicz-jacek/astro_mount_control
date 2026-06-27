@@ -154,6 +154,21 @@
             </div>
           </div>
 
+          <!-- Axis Velocity Chart Card -->
+          <div id="card-velocity-chart" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title" data-i18n="card.axis_velocity">Axis Velocity</h2>
+              <span id="velocity-legend" class="chart-legend">
+                <span class="legend-item"><span class="legend-dot" style="background:#4fc3f7;"></span> <span data-i18n="chart.axis1">Axis 1</span></span>
+                <span class="legend-item"><span class="legend-dot" style="background:#81c784;"></span> <span data-i18n="chart.axis2">Axis 2</span></span>
+              </span>
+            </div>
+            <div class="card-body" id="velocity-chart-content">
+              <canvas id="velocity-canvas" class="velocity-canvas" width="600" height="200"></canvas>
+              <div class="status-placeholder" data-i18n="status.waiting">Waiting for data...</div>
+            </div>
+          </div>
+
           <!-- Tracking Card -->
           <div id="card-tracking" class="card">
             <div class="card-header">
@@ -195,8 +210,35 @@
                   <label for="slew-dec" data-i18n="slew.dec_label">Declination (degrees)</label>
                   <input type="text" id="slew-dec" class="form-input" data-angle-type="dec" data-angle-decimals="4" placeholder="e.g. +41° 16' 12.3\"" required>
                 </div>
-                <button type="submit" class="btn btn-primary btn-full" data-i18n="slew.btn">Slew</button>
+                <div class="form-row" style="gap:8px;">
+                  <button type="submit" class="btn btn-primary" style="flex:1;" data-i18n="slew.btn">Slew</button>
+                  <button type="button" id="btn-slew-and-track" class="btn btn-warning" style="flex:1;" data-i18n="slew.track_btn">Slew & Track</button>
+                </div>
+
+                <!-- Object search from database -->
+                <div class="slew-search-section" style="margin-top:8px;">
+                  <div class="search-row" style="display:flex; gap:6px;">
+                    <input type="text" id="slew-object-search" class="form-input" placeholder="Search object by name…" data-i18n-placeholder="slew.search_placeholder" style="flex:1;">
+                    <button type="button" id="btn-slew-search" class="btn btn-secondary btn-sm" data-i18n="slew.search_btn">Search</button>
+                  </div>
+                  <div id="slew-search-results" class="calibration-search-results" style="margin-top:4px;"></div>
+                </div>
               </form>
+              <!-- Last calibration object info -->
+              <div id="slew-last-object" class="calibration-selected-object" style="margin-top:10px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                  <span class="calibration-selected-label" data-i18n="slew.last_object">Last used:</span>
+                  <span id="slew-last-name" class="calibration-selected-name" style="font-weight:600;">—</span>
+                  <span id="slew-last-catalog" style="font-size:0.78rem; color:var(--color-text-secondary);"></span>
+                </div>
+                <div id="slew-last-details" style="display:flex; gap:16px; margin-top:4px; font-size:0.82rem; color:var(--color-text-secondary);">
+                  <span data-i18n="slew.ra_label_short">RA</span> <span id="slew-last-ra" style="font-family:monospace;">—</span>
+                  <span data-i18n="slew.dec_label_short">Dec</span> <span id="slew-last-dec" style="font-family:monospace;">—</span>
+                  <span data-i18n="slew.mag_label">Mag</span> <span id="slew-last-mag" style="font-family:monospace;">—</span>
+                  <span id="slew-last-type" style="font-size:0.78rem; color:var(--color-primary);"></span>
+                </div>
+                <div id="slew-last-empty" style="font-size:0.82rem; color:var(--color-text-secondary); margin-top:2px;" data-i18n="slew.no_object">No calibration object yet. Add a measurement from the database first.</div>
+              </div>
             </div>
           </div>
 
@@ -295,6 +337,7 @@
                 <button id="btn-stop" class="btn btn-danger" data-i18n="btn.stop">Stop</button>
                 <button id="btn-park" class="btn btn-warning" data-i18n="btn.park">Park</button>
                 <button id="btn-unpark" class="btn btn-secondary" data-i18n="btn.unpark">Unpark</button>
+                <button id="btn-home" class="btn btn-primary" data-i18n="btn.home">Home</button>
                 <button id="btn-clear-errors" class="btn btn-secondary" data-i18n="btn.clear_errors">Clear Errors</button>
               </div>
             </div>
@@ -450,6 +493,8 @@
                   <span data-i18n="settings.import">Import</span>
                 </button>
                 <button id="btn-reset-all-config" class="btn btn-sm btn-danger" data-i18n-title="settings.reset_title" title="Reset all configuration to default values" style="display:none;"><span data-i18n="settings.reset_all">Reset All to Defaults</span></button>
+                <button id="btn-restart-soft" class="btn btn-sm btn-warning" data-i18n-title="settings.restart_soft_title" title="Reload config and reinitialize, preserving calibrations" style="display:none;"><span data-i18n="settings.restart_soft">&#x21bb; Soft Restart</span></button>
+                <button id="btn-restart-hard" class="btn btn-sm btn-danger" data-i18n-title="settings.restart_hard_title" title="Reload config and reinitialize, discarding ALL calibrations" style="display:none;"><span data-i18n="settings.restart_hard">&#x2620; Hard Restart</span></button>
               </div>
             </div>
             <div class="card-body" id="config-content">

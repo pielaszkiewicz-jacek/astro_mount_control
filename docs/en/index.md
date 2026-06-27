@@ -7,11 +7,16 @@
 3. [Mathematical Models](#mathematical-models)
 4. [gRPC API](#grpc-api)
 5. [Configuration](#configuration)
-6. [Usage Examples](#usage-examples)
-7. [Installation and Building](#installation-and-building)
-8. [Testing](#testing)
-9. [Axis Physical Parameters](#axis-physical-parameters)
-10. [ASCOM and INDI Drivers](#ascom-and-indi-drivers)
+6. [Web Proxy (HTTP/JSON → gRPC)](#6-web-proxy-httpjson--grpc)
+7. [Web Interface (Browser SPA)](#7-web-interface-browser-spa)
+8. [Object Database Service](#8-object-database-service)
+9. [Configuration System](#9-configuration-system)
+10. [Usage Examples](#usage-examples)
+11. [Installation and Building](#installation-and-building)
+12. [Testing](#testing)
+13. [Axis Physical Parameters](#axis-physical-parameters)
+14. [ASCOM and INDI Drivers](#ascom-and-indi-drivers)
+15. [Web Interface](#web-interface)
 
 ## Introduction
 
@@ -45,6 +50,7 @@ flowchart TB
     classDef comm fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
     classDef hw fill:#efebe9,stroke:#4e342e,stroke-width:2px,color:#3e2723
     classDef cfg fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#004d40
+    classDef driver fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
 
     subgraph WEBUI["🌐 Web Interface"]
         SPA["Browser SPA<br/>web/public/index.html<br/>Vanilla JS · 6 tabs"]
@@ -63,6 +69,7 @@ flowchart TB
 
     subgraph CORE["⚙️ Mount Controller Core"]
         MC["MountController<br/>src/controllers/mount_controller.cpp<br/>State machine · Tracking loop · Meridian flip"]
+        DC["DerotatorController<br/>src/controllers/derotator_controller.cpp<br/>Independent thread · Field rotation control"]
     end
 
     subgraph MODELS["🧮 Mathematical Models"]
@@ -80,10 +87,18 @@ flowchart TB
         DB_SERVICE["ObjectDatabaseService<br/>db/src/object_database_service.cpp<br/>SQLite · Catalog CRUD · Search · Import"]
     end
 
+    subgraph EXTERNAL["🌍 External Drivers"]
+        ASCOM_TEL["ASCOM Telescope Driver<br/>ascom/AstroMountTelescope.cs<br/>ITelescopeV3 · Alpaca REST → gRPC"]:::driver
+        ASCOM_ROT["ASCOM Rotator Driver<br/>ascom_rotator/AstroMountRotator.cs<br/>IRotatorV3 · Alpaca REST → gRPC"]:::driver
+        INDI_TEL["INDI Telescope Driver<br/>indi/astro_mount_driver.cpp<br/>INDI Protocol → gRPC"]:::driver
+        INDI_ROT["INDI Rotator Driver<br/>indi_rotator/astro_mount_rotator_driver.cpp<br/>INDI Rotator → gRPC"]:::driver
+    end
+
     subgraph HW["🔧 Hardware"]
         HW1["Servo drives"]
         HW2["Absolute encoders"]
         HW3["Sensors<br/>Temperature · Pressure"]
+        DEROT_HW["Derotator<br/>Motor · Encoder"]
     end
 
     SPA -->|"HTTP/JSON"| PROXY
@@ -96,19 +111,26 @@ flowchart TB
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
+    MC -.->|"setFieldRotationRate()"| DC
     ASTRO --> KF
     TPOINT --> KF
     KF --> CAN
     CONFIG --> CAN
     CAN --> HW
+    DC --> DEROT_HW
+
+    ASCOM_TEL -.->|"gRPC (local/network)"| GRPC
+    ASCOM_ROT -.->|"gRPC (local/network)"| GRPC
+    INDI_TEL -.->|"gRPC (local/network)"| GRPC
+    INDI_ROT -.->|"gRPC (local/network)"| GRPC
 
     class SPA,PROXY client
     class PY,CPP client
     class GRPC,DB_GRPC api
-    class MC core
+    class MC,DC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
-    class HW1,HW2,HW3 hw
+    class HW1,HW2,HW3,DEROT_HW hw
 ```
 
 ### System Components
@@ -119,15 +141,31 @@ Main component integrating all modules:
 - Mount state management
 - Encoder and guider integration
 - TPOINT calibration
+- Bootstrap calibration (initial alignment)
+- Ephemeris tracking (moving objects)
 - Delegates derotator operations to [`DerotatorController`](include/controllers/derotator_controller.h)
+- Integration with DerotatorController via field rotation rate injection
 
 #### 2. **DerotatorController**
 Standalone derotator controller extracted from MountController (Phase 1 refactoring):
-- Own work thread and shared mutex for thread-safe operation
-- Field rotation compensation for alt-az and CASUAL mounts
-- Derotator homing (AUTO, LIMIT_SWITCH, ENCODER_ZERO, MANUAL)
-- Direct position/rate control via [`controlFieldRotation()`](src/controllers/derotator_controller.cpp)
-- Encapsulates all derotator HAL dependencies (motor, encoder)
+
+- **Independent thread**: Own worker thread for homing and calibration
+- **Own mutex**: State protection with `shared_mutex`
+- **HAL pointers**: Derotator motor and encoder passed via `DerotatorConfig`
+- **Rotation modes**:
+  - `DISABLED` — rotation off
+  - `ALT_AZ` — compensation for ALT-AZ mount
+  - `EQUATORIAL` — compensation for EQ mount (field rate)
+  - `CUSTOM` — manual angular velocity
+  - `FIXED_ANGLE` — hold fixed angle
+  - `TRACKING` — sidereal rate tracking
+- **Homing methods**:
+  - `AUTO` — automatic sequence
+  - `LIMIT_SWITCH` — limit switch
+  - `ENCODER_ZERO` — encoder zero position
+  - `MANUAL` — manual position set
+- **Public methods**: `home()`, `controlFieldRotation()`, `getStatus()`, `enableFieldRotation()`, `configure()`
+- Synchronization with MountController via `setFieldRotationRate()` called in tracking loop
 
 #### 3. **AstronomicalCalculations**
 Astronomical calculations based on SOFA library:
@@ -139,7 +177,7 @@ Astronomical calculations based on SOFA library:
 #### 4. **TPointModel**
 Full TPOINT model for geometric error correction:
 - 21 TPOINT parameters (IA, IE, NPAE, AN, AW, etc.)
-- Least squares fitting method
+- Least squares fitting with QR decomposition
 - Atmospheric refraction correction
 - Star proper motion handling
 
@@ -721,6 +759,19 @@ The system is configured through [`config/default.json`](config/default.json). B
     "latitude": 52.0,
     "longitude": 21.0
   },
+  "servo_init": {
+    "enabled": true,
+    "sequence": [
+      {
+        "axis": 0,
+        "data_size": 2,
+        "description": "HA axis: electronic gear ratio numerator",
+        "index": "0x2201",
+        "subindex": 0,
+        "value": 51200
+      }
+    ]
+  },
   "hal": {
     "type": "simulated",
     "name": "Default_HAL",
@@ -901,7 +952,7 @@ See [`docs/en/drivers.md`](drivers.md) for complete driver documentation includi
 
 ## Web Interface
 
-See sections [**7. Web Proxy**](#7-web-proxy-httpjson--grpc) and [**8. Web Interface**](#8-web-interface-browser-spa) above for component descriptions. The complete WEB UI documentation is in [`web/README.md`](../web/README.md).
+See sections [**6. Web Proxy**](#6-web-proxy-httpjson--grpc) and [**7. Web Interface**](#7-web-interface-browser-spa) above for component descriptions. The complete WEB UI documentation is in [`web/README.md`](../web/README.md).
 
 ### Quick Start
 
@@ -913,5 +964,7 @@ npm start                   # Starts on http://localhost:8080
 ```
 
 ---
+
+*Last updated: June 22, 2026*
 
 *For detailed information on specific components, please refer to the dedicated documentation files.*

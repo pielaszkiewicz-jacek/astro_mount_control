@@ -51,6 +51,7 @@ flowchart TB
     classDef hw fill:#efebe9,stroke:#4e342e,stroke-width:2px,color:#3e2723
     classDef cfg fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#004d40
     classDef driver fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef driver fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
 
     subgraph WEBUI["🌐 Interfejs Web"]
         SPA["SPA w przeglądarce<br/>web/public/index.html<br/>Vanilla JS · 6 zakładek"]
@@ -140,7 +141,9 @@ Główny komponent integrujący wszystkie moduły:
 - Sterowanie śledzeniem i szybkim przesuwaniem
 - Zarządzanie stanem montażu
 - Integracja z enkoderami i guiderem
-- Kalibracja TPOINT
+- Kalibracja bootstrap (wstępne wyrównanie)
+- Kalibracja TPOINT (precyzyjny model wskazań)
+- Śledzenie efemeryd (obiekty ruchome: satelity, komety, asteroidy)
 - Integracja z DerotatorController poprzez wstrzykiwanie prędkości rotacji pola
 
 #### 2. **DerotatorController**
@@ -697,6 +700,20 @@ stub->TrackObject(&context, coords, &response);
     "latitude": 52.0,
     "longitude": 21.0
   },
+  "servo_init": {
+    "comment": "Sekwencja SDO do inicjalizacji serwonapędów",
+    "enabled": true,
+    "sequence": [
+      {
+        "axis": 0,
+        "data_size": 2,
+        "description": "Oś HA: licznik elektronicznego przełożenia",
+        "index": "0x2201",
+        "subindex": 0,
+        "value": 51200
+      }
+    ]
+  },
   "hal": {
     "type": "simulated",
     "name": "Default_HAL",
@@ -879,7 +896,7 @@ Wszystkie sterowniki używają warstwy klienta gRPC do komunikacji z `MountContr
 
 ## Interfejs Web
 
-Patrz sekcje [**7. Web Proxy**](#7-web-proxy-httpjson--grpc) i [**8. Web Interface**](#8-web-interface-browser-spa) powyżej. Pełna dokumentacja Web UI znajduje się w [`web/README.md`](../web/README.md).
+Patrz sekcje [**6. Web Proxy**](#6-web-proxy-httpjson--grpc) i [**7. Web Interface**](#7-web-interface-browser-spa) powyżej. Pełna dokumentacja Web UI znajduje się w [`web/README.md`](../web/README.md).
 
 ### Szybki start
 
@@ -889,5 +906,7 @@ cp .env.example .env        # Edytuj gRPC/DB host/port jeśli potrzebne
 npm install
 npm start                   # Uruchamia na http://localhost:8080
 ```
+
+*Ostatnia aktualizacja: 22 czerwca 2026*
 
 *Szczegółowe informacje o poszczególnych komponentach znajdują się w dedykowanych plikach dokumentacji.*

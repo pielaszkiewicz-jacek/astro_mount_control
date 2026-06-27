@@ -34,9 +34,6 @@ protected:
         config_.latitude = 52.0;
         config_.longitude = 21.0;
         config_.altitude = 100.0;
-        config_.mount_height = 1.5;
-        config_.pier_west = 0.0;
-        config_.pier_east = 0.0;
         config_.max_slew_rate = 5.0;
         config_.max_tracking_rate = 0.004178;
         config_.slew_acceleration = 1.0;

@@ -218,14 +218,6 @@ public:
     size_t getMeasurementCount() const;
 
     /**
-     * @brief Set mount parameters
-     * @param mount_height Mount height in meters
-     * @param pier_west Pier west offset in meters
-     * @param pier_east Pier east offset in meters
-     */
-    void setMountParameters(double mount_height, double pier_west, double pier_east);
-
-    /**
      * @brief Set telescope parameters
      * @param focal_length Focal length in mm
      * @param aperture Aperture in mm

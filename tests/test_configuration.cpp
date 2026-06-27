@@ -22,6 +22,9 @@ protected:
 TEST_F(ConfigurationTest, InitialState) {
     // Default configuration should be valid
     auto errors = config->validate();
+    for (const auto& e : errors) {
+        ADD_FAILURE() << "Validation error: " << e;
+    }
     EXPECT_TRUE(errors.empty());
 }
 
@@ -68,7 +71,7 @@ TEST_F(ConfigurationTest, GetMountConfig) {
     EXPECT_NEAR(mount.ha_axis_params.gear_ratio, 360.0, 1e-6);
     EXPECT_NEAR(mount.dec_axis_params.gear_ratio, 360.0, 1e-6);
     EXPECT_NEAR(mount.max_slew_rate, 5.0, 1e-6);
-    EXPECT_NEAR(mount.max_tracking_rate, 0.004178, 1e-6);
+    EXPECT_NEAR(mount.max_tracking_rate, 1.504, 1e-6);
     EXPECT_NEAR(mount.slew_acceleration, 1.0, 1e-6);
     EXPECT_NEAR(mount.tracking_acceleration, 0.001, 1e-6);
 }

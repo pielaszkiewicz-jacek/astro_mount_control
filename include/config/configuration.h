@@ -95,10 +95,6 @@ public:
         double slew_acceleration;
         double tracking_acceleration;
         
-        // Additional mount parameters
-        double mount_height;
-        double pier_west;
-        double pier_east;
         double default_temperature;
         double default_pressure;
         double default_humidity;

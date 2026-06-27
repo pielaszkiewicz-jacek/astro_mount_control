@@ -167,6 +167,14 @@ public:
     void stopAxis(int axis_id);
 
     /**
+     * @brief Set the actual position of an axis without physical movement.
+     * @param axis_id Axis identifier (0=HA/Az, 1=Dec/Alt)
+     * @param position New absolute position in degrees
+     * @return True if the position was set successfully
+     */
+    bool setActualPosition(int axis_id, double position);
+
+    /**
      * @brief Emergency stop
      * @param axis_id Axis identifier
      */

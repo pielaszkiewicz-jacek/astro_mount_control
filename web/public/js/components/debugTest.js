@@ -322,12 +322,14 @@ const DebugTestComponent = (() => {
 
     switch (mountType) {
       case 0: // EQUATORIAL — polar axis aligned to celestial pole
-        // Pitch = 90° - latitude (tilt from horizontal to polar axis)
-        // Yaw = 0 (aligned to north meridian)
-        // Roll = 0
+        // Roll = 90° - latitude: rotation around East (X) axis tilts
+        // the horizontal zenith toward the celestial pole (North).
+        // ZYX convention: R = Rz(yaw) * Ry(pitch) * Rx(roll).
+        // With yaw=0, pitch=0, roll=(90-lat): R = Rx(90°-lat).
+        // Yaw = 0 (meridian aligned to North), Pitch = 0.
         if (yawInput) { yawInput.value = '0.0'; yawInput.readOnly = true; }
-        if (pitchInput) { pitchInput.value = (90.0 - observerLatitude).toFixed(4); pitchInput.readOnly = true; }
-        if (rollInput) { rollInput.value = '0.0'; rollInput.readOnly = true; }
+        if (pitchInput) { pitchInput.value = '0.0'; pitchInput.readOnly = true; }
+        if (rollInput) { rollInput.value = (90.0 - observerLatitude).toFixed(4); rollInput.readOnly = true; }
         if (hint) hint.textContent = I18n.t('tests.euler_hint_eq');
         break;
 
@@ -633,53 +635,70 @@ const DebugTestComponent = (() => {
       return;
     }
 
-    const raRad = raHours * 15 * Math.PI / 180; // RA in radians (1h = 15°)
-    const decRad = decDeg * Math.PI / 180;
+    let axis1Deg, axis2Deg;
 
-    // Step 1: Celestial unit vector (ICRS, equatorial)
-    // x points to vernal equinox, z to north celestial pole
-    const cx = Math.cos(decRad) * Math.cos(raRad);
-    const cy = Math.cos(decRad) * Math.sin(raRad);
-    const cz = Math.sin(decRad);
+    // ── EQUATORIAL mount: use direct HA/Dec formula ──────────────
+    // The backend slewToEquatorial() for EQUATORIAL computes:
+    //   HA = LST - RA  (hours),  axis1 = HA * 15° (degrees)
+    //   axis2 = Dec
+    // It does NOT apply a rotation matrix.  Going through the
+    // celestial→ENU→rotation_matrix→mount_frame pipeline would
+    // produce Alt/Az coordinates, which are completely different
+    // from HA/Dec for a polar-aligned mount.
+    if (mountType === 0) {
+      const lstRad = computeApproximateLST();
+      const lstHours = lstRad * 12 / Math.PI; // radians → hours
+      let haHours = lstHours - raHours;
+      // Normalize HA to [-12, 12] hours
+      while (haHours > 12) haHours -= 24;
+      while (haHours < -12) haHours += 24;
+      axis1Deg = haHours * 15.0;
+      axis2Deg = decDeg;
 
-    // Step 2: Convert celestial → ENU (East, North, Up)
-    // We need the local sidereal time (LST). Approximate from observer longitude
-    // and current UTC time.
-    const lstRad = computeApproximateLST();
+      logOutput(`Transform (EQUATORIAL): RA=${raHours.toFixed(3)}h, Dec=${decDeg.toFixed(3)}° → HA=${haHours.toFixed(4)}h → Axis1=${axis1Deg.toFixed(4)}°, Axis2=${axis2Deg.toFixed(4)}°`);
+      logOutput(`  LST=${lstHours.toFixed(4)}h, observer lon=${observerLongitude.toFixed(2)}°`);
+    } else {
+      // ── ALT_AZ / CASUAL: use celestial→ENU→rotation_matrix ────
+      const raRad = raHours * 15 * Math.PI / 180;
+      const decRad = decDeg * Math.PI / 180;
 
-    // Rotation from celestial (equatorial) to ENU:
-    // First rotate by LST around Z to align with local meridian,
-    // then rotate by (90° - latitude) around East (X) axis.
-    const sinLST = Math.sin(lstRad);
-    const cosLST = Math.cos(lstRad);
-    const sinLat = Math.sin(observerLatitude * Math.PI / 180);
-    const cosLat = Math.cos(observerLatitude * Math.PI / 180);
+      // Step 1: Celestial unit vector (ICRS, equatorial)
+      const cx = Math.cos(decRad) * Math.cos(raRad);
+      const cy = Math.cos(decRad) * Math.sin(raRad);
+      const cz = Math.sin(decRad);
 
-    // Celestial → Horizontal (Az/Alt): rotate around Z by LST, then around X by (90°-lat)
-    // ENU vector: E = -sinLST*cx + cosLST*cy
-    //             N = -sinLat*cosLST*cx - sinLat*sinLST*cy + cosLat*cz
-    //             U =  cosLat*cosLST*cx + cosLat*sinLST*cy + sinLat*cz
-    const enuE = -sinLST * cx + cosLST * cy;
-    const enuN = -sinLat * cosLST * cx - sinLat * sinLST * cy + cosLat * cz;
-    const enuU =  cosLat * cosLST * cx + cosLat * sinLST * cy + sinLat * cz;
+      // Step 2: Celestial → ENU (East, North, Up)
+      const lstRad = computeApproximateLST();
+      const sinLST = Math.sin(lstRad);
+      const cosLST = Math.cos(lstRad);
+      const sinLat = Math.sin(observerLatitude * Math.PI / 180);
+      const cosLat = Math.cos(observerLatitude * Math.PI / 180);
 
-    // Step 3: Apply rotation matrix R (ENU → Mount frame)
-    const m = rotationMatrix;
-    const mfX = m[0] * enuE + m[1] * enuN + m[2] * enuU;
-    const mfY = m[3] * enuE + m[4] * enuN + m[5] * enuU;
-    const mfZ = m[6] * enuE + m[7] * enuN + m[8] * enuU;
+      const enuE = -sinLST * cx + cosLST * cy;
+      const enuN = -sinLat * cosLST * cx - sinLat * sinLST * cy + cosLat * cz;
+      const enuU =  cosLat * cosLST * cx + cosLat * sinLST * cy + sinLat * cz;
 
-    // Normalize
-    const mfNorm = Math.sqrt(mfX*mfX + mfY*mfY + mfZ*mfZ);
-    const nx = mfX / mfNorm;
-    const ny = mfY / mfNorm;
-    const nz = mfZ / mfNorm;
+      // Step 3: Apply rotation matrix R (ENU → Mount frame)
+      const m = rotationMatrix;
+      const mfX = m[0] * enuE + m[1] * enuN + m[2] * enuU;
+      const mfY = m[3] * enuE + m[4] * enuN + m[5] * enuU;
+      const mfZ = m[6] * enuE + m[7] * enuN + m[8] * enuU;
 
-    // Step 4: Convert mount-frame vector to axis angles
-    // Axis 1 (HA-like): azimuthal angle in the mount's XY plane, measured from +X
-    // Axis 2 (Dec-like): elevation angle from the XY plane
-    const axis1Deg = Math.atan2(ny, nx) * 180 / Math.PI;
-    const axis2Deg = Math.asin(nz) * 180 / Math.PI;
+      // Normalize
+      const mfNorm = Math.sqrt(mfX*mfX + mfY*mfY + mfZ*mfZ);
+      const nx = mfX / mfNorm;
+      const ny = mfY / mfNorm;
+      const nz = mfZ / mfNorm;
+
+      // Step 4: Mount-frame vector → axis angles
+      axis1Deg = Math.atan2(ny, nx) * 180 / Math.PI;
+      axis2Deg = Math.asin(nz) * 180 / Math.PI;
+
+      logOutput(`Transform (${mountType === 1 ? 'ALT_AZ' : 'CASUAL'}): RA=${raHours.toFixed(3)}h, Dec=${decDeg.toFixed(3)}° → Axis1=${axis1Deg.toFixed(4)}°, Axis2=${axis2Deg.toFixed(4)}°`);
+      logOutput(`  Celestial vector: [${cx.toFixed(4)}, ${cy.toFixed(4)}, ${cz.toFixed(4)}]`);
+      logOutput(`  ENU vector: [${enuE.toFixed(4)}, ${enuN.toFixed(4)}, ${enuU.toFixed(4)}]`);
+      logOutput(`  Mount-frame vector: [${nx.toFixed(4)}, ${ny.toFixed(4)}, ${nz.toFixed(4)}]`);
+    }
 
     // Display transformed coordinates
     const axis1El = $('#debug-tf-axis1');
@@ -687,10 +706,6 @@ const DebugTestComponent = (() => {
     if (axis1El) axis1El.value = axis1Deg.toFixed(4);
     if (axis2El) axis2El.value = axis2Deg.toFixed(4);
 
-    logOutput(`Transform: RA=${raHours.toFixed(3)}h, Dec=${decDeg.toFixed(3)}° → Axis1=${axis1Deg.toFixed(4)}°, Axis2=${axis2Deg.toFixed(4)}°`);
-    logOutput(`  Celestial vector: [${cx.toFixed(4)}, ${cy.toFixed(4)}, ${cz.toFixed(4)}]`);
-    logOutput(`  ENU vector: [${enuE.toFixed(4)}, ${enuN.toFixed(4)}, ${enuU.toFixed(4)}]`);
-    logOutput(`  Mount-frame vector: [${nx.toFixed(4)}, ${ny.toFixed(4)}, ${nz.toFixed(4)}]`);
     App.showToast(`Transformed: Axis1=${axis1Deg.toFixed(2)}°, Axis2=${axis2Deg.toFixed(2)}°`, 'info');
   }
 
@@ -737,77 +752,96 @@ const DebugTestComponent = (() => {
   }
 
   /**
-   * Send physical slew commands to the servo motors for the transformed
-   * telescope-frame coordinates.
+   * Send slew commands for the transformed telescope-frame coordinates.
    *
-   * Uses the moveAxisRelative API to slew both axes to the computed positions.
-   * Gets the current axis positions from live status first, then computes
-   * the relative offsets needed.
+   * For EQUATORIAL mounts: converts HA/Dec back to RA/Dec and uses
+   * slewToEquatorial() which properly handles gear ratio, position
+   * tracking, soft limits, and meridian flips.
+   *
+   * For ALT_AZ/CASUAL mounts: uses slewToCoordinates() with the original
+   * celestial (RA/Dec) coordinates, letting the C++ backend handle the
+   * mount-type-specific transformation through the orientation quaternion.
+   * Using slewHorizontal() with pre-computed mount-frame coordinates
+   * would cause a double-transformation: the frontend applies the rotation
+   * matrix, then the backend's slewToHorizontal() applies the quaternion
+   * again for CASUAL mounts, producing incorrect targets.
    */
   async function slewToTelescopeFrame() {
     // First, ensure we have fresh transformed coordinates
     transformReferenceCoordinates();
 
-    const axis1Target = readFloat('debug-tf-axis1', 0);
-    const axis2Target = readFloat('debug-tf-axis2', 0);
+    const axis1Tel = readFloat('debug-tf-axis1', 0);
+    const axis2Tel = readFloat('debug-tf-axis2', 0);
 
-    if (isNaN(axis1Target) || isNaN(axis2Target)) {
+    if (isNaN(axis1Tel) || isNaN(axis2Tel)) {
       logOutput('ERROR: No valid telescope-frame coordinates. Run Transform first.', true);
       App.showToast('Transform coordinates first', 'error');
       return;
     }
 
     try {
-      // Get current mount position from live state
-      const state = App.getLastState();
-      if (!state || !state.position) {
-        logOutput('ERROR: No live status data available. Cannot determine current position.', true);
-        App.showToast('No live status available', 'error');
-        return;
-      }
-
-      const currentAxis1 = state.position.axis1 || 0;
-      const currentAxis2 = state.position.axis2 || 0;
-
-      // Compute relative offsets
-      let offset1 = axis1Target - currentAxis1;
-      let offset2 = axis2Target - currentAxis2;
-
-      // Normalize axis1 offset to [-180, 180] for shortest path
-      while (offset1 > 180) offset1 -= 360;
-      while (offset1 < -180) offset1 += 360;
-
       logOutput(`--- Slew to Telescope-Frame Position ---`);
-      logOutput(`Current position: Axis1=${currentAxis1.toFixed(4)}°, Axis2=${currentAxis2.toFixed(4)}°`);
-      logOutput(`Target position:  Axis1=${axis1Target.toFixed(4)}°, Axis2=${axis2Target.toFixed(4)}°`);
-      logOutput(`Relative offset:  Axis1=${offset1.toFixed(4)}°, Axis2=${offset2.toFixed(4)}°`);
+      logOutput(`Target (transformed): Axis1=${axis1Tel.toFixed(4)}°, Axis2=${axis2Tel.toFixed(4)}°`);
 
-      // Send slew commands to both axes
-      // We move axis2 (Dec/Altitude) first if it needs to move, then axis1
-      const promises = [];
+      if (mountType === 0) {
+        // EQUATORIAL: convert HA/Dec → RA/Dec, use slewToEquatorial
+        const lstRad = computeApproximateLST();
+        const lstHours = lstRad * 12 / Math.PI;
+        const haHours = axis1Tel / 15.0;
+        let raHours = lstHours - haHours;
+        while (raHours < 0) raHours += 24;
+        while (raHours >= 24) raHours -= 24;
+        logOutput(`LST=${lstHours.toFixed(4)}h → RA=${raHours.toFixed(4)}h, Dec=${axis2Tel.toFixed(4)}°`);
+        await Api.slewToCoordinates(raHours, axis2Tel);
+      } else {
+        // ALT_AZ / CASUAL: use original celestial coordinates.
+        // The backend's slewToEquatorial() handles mount-type conversion:
+        //   CASUAL: equatorialToMountOrientation() applies the quaternion once
+        //   ALT_AZ: equatorialToHorizontal() + axis mapping
+        // This avoids the double-transformation that would occur if we called
+        // slewHorizontal() with mount-frame coordinates (which the backend
+        // would transform through the quaternion a second time).
+        const raHours = readFloat('debug-ref-ra', 0);
+        const decDeg = readFloat('debug-ref-dec', 0);
 
-      if (Math.abs(offset2) > 0.001) {
-        logOutput(`Slewing Axis2 by ${offset2.toFixed(4)}°...`);
-        promises.push(Api.moveAxisRelative(1, offset2));
+        if (isNaN(raHours) || isNaN(decDeg)) {
+          logOutput('ERROR: Original RA/Dec reference coordinates not available. Import a reference object first.', true);
+          App.showToast('Import a reference object first', 'error');
+          return;
+        }
+
+        logOutput(`Sending original celestial: RA=${raHours.toFixed(4)}h, Dec=${decDeg.toFixed(4)}°`);
+        logOutput(`Transformed for reference: Axis1=${axis1Tel.toFixed(4)}° (azimuth-like), Axis2=${axis2Tel.toFixed(4)}° (altitude-like)`);
+        await Api.slewToCoordinates(raHours, decDeg);
       }
-
-      if (Math.abs(offset1) > 0.001) {
-        logOutput(`Slewing Axis1 by ${offset1.toFixed(4)}°...`);
-        promises.push(Api.moveAxisRelative(0, offset1));
+      logOutput('Slew command sent successfully.');
+      
+      // ── Diagnostic: wait then read back ──────────────────────────
+      logOutput('Waiting 2s for mount to settle, then reading actual position...');
+      await new Promise(r => setTimeout(r, 2000));
+      
+      try {
+        const state = await Api.getStatus();
+        if (state) {
+          const telAx1 = (state.telescope && state.telescope.axis1 != null) ? state.telescope.axis1 : '?';
+          const telAx2 = (state.telescope && state.telescope.axis2 != null) ? state.telescope.axis2 : '?';
+          logOutput(`DIAG: After slew — Telescope: Axis1=${telAx1}°, Axis2=${telAx2}°`);
+          logOutput(`DIAG: Transform gave: Axis1=${axis1Tel.toFixed(4)}°, Axis2=${axis2Tel.toFixed(4)}°`);
+          if (typeof telAx1 === 'number' && typeof telAx2 === 'number') {
+            const d1 = Math.abs(telAx1 - axis1Tel);
+            const d2 = Math.abs(telAx2 - axis2Tel);
+            logOutput(`DIAG: Delta: Axis1=${d1.toFixed(4)}°, Axis2=${d2.toFixed(4)}°`);
+            logOutput(d1 < 1.0 && d2 < 1.0 ? 'DIAG: ✅ MATCH' : 'DIAG: ❌ MISMATCH');
+          }
+        }
+      } catch (diagErr) {
+        logOutput(`DIAG: Failed to read status: ${diagErr.message}`);
       }
-
-      if (promises.length === 0) {
-        logOutput('Already at target position. No slew needed.');
-        App.showToast('Already at target position', 'info');
-        return;
-      }
-
-      await Promise.all(promises);
-      logOutput('Slew commands sent to servos successfully.');
-      App.showToast('Servo slew commands sent', 'success');
+      
+      App.showToast('Slew command sent', 'success');
     } catch (err) {
-      logOutput(`ERROR: Servo slew failed: ${err.message}`, true);
-      App.showToast(`Servo slew failed: ${err.message}`, 'error');
+      logOutput(`ERROR: Slew failed: ${err.message}`, true);
+      App.showToast(`Slew failed: ${err.message}`, 'error');
     }
   }
 
@@ -822,15 +856,18 @@ const DebugTestComponent = (() => {
 
   function syncPositionsFromLive() {
     const state = App.getLastState();
-    if (!state || !state.position) {
+    if (!state || !state.telescope) {
       App.showToast('No live status data available', 'error');
       return;
     }
 
     const axis1Input = $('#debug-pos-axis1');
     const axis2Input = $('#debug-pos-axis2');
-    const v1 = state.position.axis1 || 0;
-    const v2 = state.position.axis2 || 0;
+    // Use telescope positions (normalized to [0°, 360°)) rather than raw servo
+    // positions, since the axis position override fields are labelled in
+    // telescope degrees (HA/Dec, Alt/Az, etc.).
+    const v1 = state.telescope.axis1 || 0;
+    const v2 = state.telescope.axis2 || 0;
     if (axis1Input) {
       if (axis1Input.setAngleDecimal) axis1Input.setAngleDecimal(v1);
       else axis1Input.value = v1.toFixed(4);
@@ -840,8 +877,8 @@ const DebugTestComponent = (() => {
       else axis2Input.value = v2.toFixed(4);
     }
 
-    logOutput(`Synced axis positions: axis1=${state.position.axis1?.toFixed(4)}°, axis2=${state.position.axis2?.toFixed(4)}°`);
-    App.showToast('Axis positions synced from live status', 'info');
+    logOutput(`Synced telescope positions: axis1=${state.telescope.axis1?.toFixed(4)}°, axis2=${state.telescope.axis2?.toFixed(4)}°`);
+    App.showToast('Telescope positions synced from live status', 'info');
   }
 
   // ─── Test Actions ──────────────────────────────────────────────────────

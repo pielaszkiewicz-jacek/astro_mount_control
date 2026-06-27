@@ -192,6 +192,19 @@ public:
     virtual void stopAxis(int axis_id) = 0;
 
     /**
+     * @brief Set the actual position of an axis without physical movement.
+     *
+     * Tells the drive "you are now at this position" without moving.
+     * Used by Home to synchronise the controller's logical coordinate
+     * frame with the physical drive's absolute encoder (CiA 402 0x6064).
+     *
+     * @param axis_id Axis identifier (0=HA/Az, 1=Dec/Alt)
+     * @param position New absolute position in degrees
+     * @return True if the position was set successfully
+     */
+    virtual bool setActualPosition(int axis_id, double position) = 0;
+
+    /**
      * @brief Emergency stop
      * @param axis_id Axis identifier
      */

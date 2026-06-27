@@ -241,6 +241,10 @@ public:
                                const astro_mount::DerotatorHomingRequest* request,
                                google::protobuf::Empty* response) override;
     
+    grpc::Status Home(grpc::ServerContext* context,
+                      const astro_mount::MountHomingRequest* request,
+                      google::protobuf::Empty* response) override;
+    
     grpc::Status GetFieldRotationParams(grpc::ServerContext* context,
                                         const google::protobuf::Empty* request,
                                         astro_mount::FieldRotationParams* response) override;
@@ -264,8 +268,16 @@ public:
     grpc::Status ReinitializeHAL(grpc::ServerContext* context,
                                    const astro_mount::HALReinitRequest* request,
                                    google::protobuf::Empty* response) override;
-    
-    grpc::Status StartGamepad(grpc::ServerContext* context,
+   
+   grpc::Status RestartController(grpc::ServerContext* context,
+                                  const google::protobuf::Empty* request,
+                                  google::protobuf::Empty* response) override;
+   
+   grpc::Status HardRestartController(grpc::ServerContext* context,
+                                      const google::protobuf::Empty* request,
+                                      google::protobuf::Empty* response) override;
+   
+   grpc::Status StartGamepad(grpc::ServerContext* context,
                               const google::protobuf::Empty* request,
                               google::protobuf::Empty* response) override;
     

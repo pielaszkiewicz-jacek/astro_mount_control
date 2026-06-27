@@ -30,9 +30,6 @@ using Vector2d = Eigen::Matrix<double, 2, 1>;
 class TPointModel::Impl {
 public:
     Impl() : enabled_terms_(TPointTerms::DEFAULT_TERMS),
-             mount_height_(1.5),
-             pier_west_(0.0),
-             pier_east_(0.0),
              focal_length_(2000.0),
              aperture_(200.0),
              tube_length_(1800.0),
@@ -367,12 +364,6 @@ public:
         return measurements_.size();
     }
     
-    void setMountParameters(double mount_height, double pier_west, double pier_east) {
-        mount_height_ = mount_height;
-        pier_west_ = pier_west;
-        pier_east_ = pier_east;
-    }
-    
     void setTelescopeParameters(double focal_length, double aperture, double tube_length) {
         focal_length_ = focal_length;
         aperture_ = aperture;
@@ -403,11 +394,6 @@ public:
             {"degrees_of_freedom", parameters_.degrees_of_freedom}
         };
         
-        data["mount_parameters"] = {
-            {"mount_height", mount_height_},
-            {"pier_west", pier_west_},
-            {"pier_east", pier_east_}
-        };
         
         data["telescope_parameters"] = {
             {"focal_length", focal_length_},
@@ -455,11 +441,6 @@ public:
             parameters_.degrees_of_freedom = params.value("degrees_of_freedom", 0);
             
             // Load mount parameters
-            auto mount_params = data["mount_parameters"];
-            mount_height_ = mount_params.value("mount_height", 1.5);
-            pier_west_ = mount_params.value("pier_west", 0.0);
-            pier_east_ = mount_params.value("pier_east", 0.0);
-            
             // Load telescope parameters
             auto telescope_params = data["telescope_parameters"];
             focal_length_ = telescope_params.value("focal_length", 2000.0);
@@ -1117,9 +1098,6 @@ private:
     std::vector<Measurement> measurements_;
     TPointParameters parameters_;
     uint32_t enabled_terms_;
-    double mount_height_;
-    double pier_west_;
-    double pier_east_;
     double focal_length_;
     double aperture_;
     double tube_length_;
@@ -1170,10 +1148,6 @@ void TPointModel::clearMeasurements() {
 
 size_t TPointModel::getMeasurementCount() const {
     return pimpl->getMeasurementCount();
-}
-
-void TPointModel::setMountParameters(double mount_height, double pier_west, double pier_east) {
-    pimpl->setMountParameters(mount_height, pier_west, pier_east);
 }
 
 void TPointModel::setTelescopeParameters(double focal_length, double aperture, double tube_length) {

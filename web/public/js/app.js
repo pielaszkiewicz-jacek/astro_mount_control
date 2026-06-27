@@ -27,6 +27,8 @@ const App = (() => {
   let dbConnected = false;
   // Polling interval in milliseconds
   const POLL_INTERVAL_MS = 1000;
+  // Cached mount type from config (0=EQUATORIAL, 1=ALT_AZ, 3=CASUAL)
+  let cachedMountType = null;
 
   // ─── Initialization ───────────────────────────────────────────────────
 
@@ -268,7 +270,7 @@ const App = (() => {
       lastState = state;
       updateConnectionBadge(true);
       MountStatusComponent.render(state);
-      MountControlComponent.setCalibrationState(state, getMountType(state));
+      MountControlComponent.setCalibrationState(state, await getMountType(state));
       updateFooterTime();
     } catch (err) {
       isConnected = false;
@@ -288,16 +290,34 @@ const App = (() => {
   }
 
   /**
-   * Infer mount type from the controller state.
-   * @param {object} state - Controller state from API
-   * @returns {'equatorial'|'alt_az'|'unknown'}
+   * Infer mount type from the controller configuration.
+   * Fetches the config on first call and caches the result.
+   * @param {object} state - Controller state from API (unused, kept for API compat)
+   * @returns {'equatorial'|'alt_az'|'casual'|'unknown'}
    */
-  function getMountType(state) {
-    // pier_side is only meaningful for equatorial mounts
-    if (state && state.pier_side !== undefined && state.pier_side !== null) {
-      return 'equatorial';
+  async function getMountType(state) {
+    if (cachedMountType !== null) {
+      return cachedMountType;
     }
-    return 'equatorial'; // Safe default
+    try {
+      const config = await Api.getConfig();
+      let rawType = config.mount_type;
+      // gRPC may serialize as string ("CASUAL") or number (3)
+      if (typeof rawType === 'string') {
+        rawType = rawType.toUpperCase();
+      }
+      if (rawType === 'CASUAL' || rawType === 3) {
+        cachedMountType = 'casual';
+      } else if (rawType === 'ALT_AZ' || rawType === 1) {
+        cachedMountType = 'alt_az';
+      } else {
+        cachedMountType = 'equatorial';
+      }
+    } catch (e) {
+      console.warn('[App] Failed to fetch mount type from config:', e.message);
+      cachedMountType = 'equatorial';
+    }
+    return cachedMountType;
   }
 
   // ─── Connection Badge ─────────────────────────────────────────────────

@@ -38,24 +38,42 @@ bool EvdevGamepadInput::initialize(const std::string& device_path) {
     }
     
     std::string path = device_path;
+    bool explicit_path = !path.empty();
     if (path.empty()) {
         path = autoDetect();
-        if (path.empty()) {
-            logging::Logger::get("gamepad")->error("[EvdevGamepadInput] No gamepad device found");
-            return false;
-        }
     }
     
-    if (!openDevice(path)) {
+    if (!path.empty() && openDevice(path)) {
+        // ── Device found ──────────────────────────────────────
+        device_path_ = path;
+        running_ = true;
+        poll_thread_ = std::thread(&EvdevGamepadInput::pollLoop, this);
+        
+        logging::Logger::get("gamepad")->info("[EvdevGamepadInput] Opened: {} ({}) axes={} buttons={}",
+                  device_name_, path, axis_count_, button_count_);
+        return true;
+    }
+    
+    // If a specific device path was requested but failed to open,
+    // do NOT enter standby — the user expects that exact device.
+    if (explicit_path) {
+        logging::Logger::get("gamepad")->error("[EvdevGamepadInput] Specified device '{}' not available", device_path);
         return false;
     }
     
-    device_path_ = path;
-    running_ = true;
-    poll_thread_ = std::thread(&EvdevGamepadInput::pollLoop, this);
+    // ── No device found via auto-detect — enter standby hotplug mode ──
+    // Start a background thread that watches /dev/input via inotify
+    // and auto-connects when a gamepad is later plugged in.
+    logging::Logger::get("gamepad")->info("[EvdevGamepadInput] No gamepad found — entering standby hotplug mode");
     
-    logging::Logger::get("gamepad")->info("[EvdevGamepadInput] Opened: {} ({}) axes={} buttons={}",
-              device_name_, path, axis_count_, button_count_);
+    if (!startInotifyWatch()) {
+        logging::Logger::get("gamepad")->error("[EvdevGamepadInput] Cannot start inotify watch for standby");
+        return false;
+    }
+    
+    running_ = true;
+    poll_thread_ = std::thread(&EvdevGamepadInput::standbyLoop, this);
+    
     return true;
 }
 
@@ -388,6 +406,49 @@ void EvdevGamepadInput::pollLoop() {
             stopInotifyWatch();
         }
     }
+}
+
+void EvdevGamepadInput::standbyLoop() {
+    auto logger = logging::Logger::get("gamepad");
+
+    while (running_) {
+        // Wait for a device to be plugged in (periodic timeout so we
+        // can still check the running_ flag and exit cleanly).
+        std::string new_path = waitForDevicePlug(3000); // 3s timeout
+        if (!running_) break;
+
+        if (!new_path.empty()) {
+            // Try to open the newly detected device
+            if (openDevice(new_path)) {
+                device_path_ = new_path;
+                {
+                    std::lock_guard<std::mutex> lock(state_mutex_);
+                    state_.connected = true;
+                }
+                logger->info("[EvdevGamepadInput] Standby hotplug connected: '{}' ({})",
+                             device_name_, new_path);
+
+                // Transition from standby to normal polling.
+                // The inotify fd stays open; the pollLoop will use
+                // startInotifyWatch() again if a disconnection occurs.
+                // We don't stop the inotify watch here — pollLoop calls
+                // stopInotifyWatch() before starting its own.
+                stopInotifyWatch();
+                pollLoop();  // blocks until shutdown or disconnection
+                // pollLoop returned — either shutdown or disconnected.
+                // If disconnected and still running, restart standby.
+                if (running_) {
+                    if (!startInotifyWatch()) {
+                        logger->error("[EvdevGamepadInput] Standby: failed to restart inotify watch");
+                        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+                    }
+                }
+                continue;  // back to waitForDevicePlug loop
+            }
+        }
+    }
+
+    stopInotifyWatch();
 }
 
 // ============================================================================

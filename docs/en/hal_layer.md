@@ -37,8 +37,8 @@ flowchart TB
             CAN_IMPL["✅ CANopen (CiA 402)<br/>PDO/SDO/NMT communication<br/>Node: RA, Dec, Derotator"]:::done
             SIM_IMPL["✅ Simulated<br/>Test/development<br/>Configurable noise & faults"]:::done
             GAM_IMPL["✅ Gamepad<br/>Manual control via joystick<br/>Evdev + legacy joystick API"]:::done
-            SER_IMPL["⏳ Serial<br/>RS-232/485<br/>Planned"]:::planned
-            ETH_IMPL["⏳ Ethernet<br/>EtherCAT / Modbus TCP<br/>Planned"]:::planned
+            SER_IMPL["✅ Serial<br/>RS-232/485<br/>Modbus RTU/ASCII"]:::done
+            ETH_IMPL["✅ Ethernet<br/>Modbus TCP<br/>Configurable IP/port"]:::done
         end
 
         HAL_IF --> MOTOR
@@ -85,8 +85,8 @@ flowchart TB
 | Simulated | `HALType::SIMULATED` | Simulated hardware for testing/development | ✅ Implemented |
 | CANopen | `HALType::CANOPEN` | CANopen/CiA 402 motor drives | ✅ Implemented |
 | Gamepad | `HALType::GAMEPAD` | Manual control via gamepad/joystick | ✅ Implemented |
-| Serial | `HALType::SERIAL` | RS-232/485 serial communication | ⏳ Planned |
-| Ethernet | `HALType::ETHERNET` | EtherCAT, Modbus TCP, Profinet | ⏳ Planned |
+| Serial | `HALType::SERIAL` | RS-232/485 serial communication (Modbus) | ✅ Implemented |
+| Ethernet | `HALType::ETHERNET` | Modbus TCP over Ethernet | ✅ Implemented |
 | Custom | `HALType::CUSTOM` | User-defined hardware interface | 🔧 Extensible |
 
 ---
@@ -369,7 +369,9 @@ struct HALConfig {
         double max_velocity_deg_s{5.0};        // Max velocity at full deflection
         bool invert_axis1{false};              // Invert left stick X
         bool invert_axis2{false};              // Invert left stick Y
-        std::vector<double> speed_presets;     // Predefined speed levels
+        std::vector<double> speed_presets{};   // Predefined speed levels (empty = defaults)
+        int gamepad_mode{0};                   // Gamepad navigation mode (0=RAW, 1=CELESTIAL, 2=ALT_AZ, 3=PRECISION)
+        bool autostart{false};                 // Auto-start gamepad loop on startup
         double update_rate_hz{50.0};           // Polling frequency
 
         // Button mapping: physical_index → action name
@@ -393,6 +395,8 @@ struct HALConfig {
         uint32_t sync_period_ms{100};
         uint32_t sdo_timeout_ms{1000};
         uint32_t pdo_update_rate{100}; // Hz
+        std::string accel_mode{"time"}; // "time" = ramp time, "rate" = acceleration rate (°/s²)
+        bool pdo_config_enabled{false}; // Write PDO mappings to drive
         
         // NMT (Network Management)
         struct {
@@ -1167,7 +1171,12 @@ src/hal/
 │   ├── gamepad_hal.cpp  # GamepadHAL implementation
 │   ├── gamepad_input_evdev.h  # EvdevGamepadInput header
 │   └── gamepad_input_evdev.cpp # EvdevGamepadInput implementation
-└── serial_hal/          # (not yet implemented)
+├── serial_hal/
+│   ├── serial_hal.h     # SerialHAL header
+│   └── serial_hal.cpp   # SerialHAL implementation (Modbus RTU/ASCII)
+└── ethernet_hal/
+    ├── ethernet_hal.h   # EthernetHAL header
+    └── ethernet_hal.cpp # EthernetHAL implementation (Modbus TCP)
 ```
 
 ---
@@ -1182,4 +1191,4 @@ src/hal/
 
 ---
 
-*Last updated: May 17, 2026*
+*Last updated: June 22, 2026*

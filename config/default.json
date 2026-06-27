@@ -122,6 +122,8 @@
             "node_id": 1,
             "pdo_config_enabled": true,
             "pdo_update_rate": 100,
+            "position_rewind_interval_seconds": 3600.0,
+            "position_rewind_threshold_percent": 80.0,
             "sdo_timeout_ms": 1000,
             "sync_period_ms": 100,
             "use_sync": true
@@ -173,7 +175,7 @@
             },
             "deadzone": 0.15,
             "device_path": "/dev/input/js0",
-            "gamepad_mode": 0,
+            "gamepad_mode": 1,
             "invert_axis1": false,
             "invert_axis2": false,
             "max_velocity_deg_s": 5.0,
@@ -268,9 +270,9 @@
                 "temp_gear_error_coeff": 0.04,
                 "torsional_compliance": 1.2e-06,
                 "velocity_counts_per_deg_s": 142.222222222,
-                "worm_ratio": 180.0,
+                "worm_ratio": 360.0,
                 "worm_teeth": 1,
-                "worm_wheel_teeth": 180
+                "worm_wheel_teeth": 360
             },
             "ha_axis": {
                 "axis_stiffness": 0.5,
@@ -301,27 +303,26 @@
                 "temp_gear_error_coeff": 0.05,
                 "torsional_compliance": 1e-06,
                 "velocity_counts_per_deg_s": 142.222222222,
-                "worm_ratio": 180.0,
+                "worm_ratio": 360.0,
                 "worm_teeth": 1,
-                "worm_wheel_teeth": 180
+                "worm_wheel_teeth": 360
             }
         },
         "controller_poll_ms": 50,
         "default_humidity": 0.5,
         "default_pressure": 1013.25,
-        "default_temperature": 15.0,
+        "default_temperature": 16.0,
         "enable_refraction_correction": true,
         "encoder_resolution": 16384.0,
-        "encoders_absolute": true,
-        "latitude": 52.0,
+        "encoders_absolute": false,
+        "latitude": 52.00083333333333,
         "longitude": 21.0,
-        "max_slew_rate": 60.0,
+        "max_slew_rate": 1.0,
         "max_tracking_rate": 1.504,
         "meridian_flip_delay_minutes": 5.0,
         "meridian_flip_enabled": true,
         "meridian_flip_hysteresis_degrees": 0.5,
         "meridian_flip_timeout_seconds": 120.0,
-        "mount_height": 1.5,
         "orientation_quaternion": [
             0.0,
             0.0,
@@ -330,8 +331,6 @@
         ],
         "park_position_axis1": 0.0,
         "park_position_axis2": 90.0,
-        "pier_east": 0.0,
-        "pier_west": 0.0,
         "position_tolerance": 0.1,
         "rate_tolerance": 0.01,
         "slew_acceleration": 1.0,
@@ -346,7 +345,7 @@
         "tracking_acceleration": 0.001,
         "tracking_update_ms": 20,
         "type": "equatorial",
-        "use_encoders": true
+        "use_encoders": false
     },
     "network": {
         "enable_ssl": false,
@@ -379,9 +378,9 @@
         ]
     },
     "telescope": {
-        "aperture": -1.136e-321,
+        "aperture": 8e-322,
         "camera_model": "ASI1600",
-        "focal_length": 8e-322,
+        "focal_length": 6.94304897411333e-310,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,

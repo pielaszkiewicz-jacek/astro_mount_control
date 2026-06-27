@@ -93,17 +93,19 @@ public:
         
         // ==========================================
         // Validate CANopen configuration
+        // (reads from hal.canopen — the single source of truth)
         // ==========================================
-        auto canopen = config_.value("canopen", json::object());
+        auto hal_json = config_.value("hal", json::object());
+        auto canopen = hal_json.value("canopen", json::object());
         int node_id = canopen.value("node_id", 0);
         if (node_id < 1 || node_id > 127) {
             errors.push_back("Invalid canopen.node_id (must be 1-127)");
         }
-        int baud_rate = canopen.value("baud_rate", 0);
+        int baud_rate = canopen.value("bitrate", 0);
         if (baud_rate <= 0) {
             errors.push_back("Invalid canopen.baud_rate (must be > 0)");
         }
-        int sync_interval_ms = canopen.value("sync_interval_ms", 0);
+        int sync_interval_ms = canopen.value("sync_period_ms", 0);
         if (sync_interval_ms <= 0) {
             errors.push_back("Invalid canopen.sync_interval_ms (must be > 0)");
         }
@@ -140,11 +142,6 @@ public:
         if (tracking_acceleration <= 0.0) {
             errors.push_back("Invalid mount.tracking_acceleration (must be > 0)");
         }
-        double mount_height = mount.value("mount_height", 0.0);
-        if (mount_height < 0.0) {
-            errors.push_back("Invalid mount.mount_height (must be >= 0)");
-        }
-        
         // Mount axis_physical_parameters validation
         auto axis_params = mount.value("axis_physical_parameters", json::object());
         for (const auto& axis_name : {"ha_axis", "dec_axis"}) {
@@ -322,10 +319,7 @@ public:
         config.controller_poll_ms = mount.value("controller_poll_ms", 50);
         config.tracking_update_ms = mount.value("tracking_update_ms", 20);
         
-        // Load additional mount parameters from JSON
-        config.mount_height = mount.value("mount_height", 1.5);
-        config.pier_west = mount.value("pier_west", 0.0);
-        config.pier_east = mount.value("pier_east", 0.0);
+        // Load environmental defaults from JSON
         config.default_temperature = mount.value("default_temperature", 15.0);
         config.default_pressure = mount.value("default_pressure", 1013.25);
         config.default_humidity = mount.value("default_humidity", 0.5);
@@ -545,10 +539,6 @@ public:
         mount["slew_acceleration"] = config.slew_acceleration;
         mount["tracking_acceleration"] = config.tracking_acceleration;
         
-        // Additional mount parameters
-        mount["mount_height"] = config.mount_height;
-        mount["pier_west"] = config.pier_west;
-        mount["pier_east"] = config.pier_east;
         mount["default_temperature"] = config.default_temperature;
         mount["default_pressure"] = config.default_pressure;
         mount["default_humidity"] = config.default_humidity;
@@ -575,6 +565,10 @@ public:
         mount["soft_limit_warning_degrees"] = config.soft_limit_warning_degrees;
         mount["soft_limit_deceleration_degrees"] = config.soft_limit_deceleration_degrees;
         mount["soft_limit_tracking_rate_factor"] = config.soft_limit_tracking_rate_factor;
+        
+        // Loop timing
+        mount["controller_poll_ms"] = config.controller_poll_ms;
+        mount["tracking_update_ms"] = config.tracking_update_ms;
         
         // Park position
         mount["park_position_axis1"] = config.park_position_axis1;
@@ -954,10 +948,6 @@ private:
         mount_default.slew_acceleration = 1.0;
         mount_default.tracking_acceleration = 0.001;
         
-        // Additional mount parameters
-        mount_default.mount_height = 1.5;
-        mount_default.pier_west = 0.0;
-        mount_default.pier_east = 0.0;
         mount_default.default_temperature = 15.0;
         mount_default.default_pressure = 1013.25;
         mount_default.default_humidity = 0.5;
@@ -984,6 +974,10 @@ private:
         mount_default.soft_limit_warning_degrees = 10.0;
         mount_default.soft_limit_deceleration_degrees = 5.0;
         mount_default.soft_limit_tracking_rate_factor = 0.1;
+        
+        // Loop timing
+        mount_default.controller_poll_ms = 50;
+        mount_default.tracking_update_ms = 20;
         
         // Park position
         mount_default.park_position_axis1 = 0.0;

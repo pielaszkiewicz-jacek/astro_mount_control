@@ -238,12 +238,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant Client as gRPC Client
-    participle ODB as Object Database
+    participant ODB as Object Database
     participant API as gRPC API Server
     participant MC as Mount Controller  
-    participle EPM as EphemerisModel
+    participant EPM as EphemerisModel
     participant EPT as EphemerisTracker
-    participle EPI as EphemerisInterpolator
+    participant EPI as EphemerisInterpolator
     
     Client->>ODB: queryEphemeris(object_id, time_range)
     ODB-->>Client: EphemerisData (points[])
@@ -849,7 +849,7 @@ sequenceDiagram
     Driver->>gRPC: Park()
     gRPC->>Server: Park
     Server-->>gRPC: parking
-    Loop: ReadScopeStatus
+    Note over Driver: ReadScopeStatus loop
         Driver-->>INDI: set PARKING state
     Server-->>gRPC: parked
     gRPC-->>Driver: ok

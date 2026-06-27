@@ -90,10 +90,14 @@ const MountControlComponent = (() => {
     document.addEventListener('i18n:applied', buildControlHelpContent);
     bindHelpToggle('card-control-help');
     initSlewForm();
+    initSlewAndTrackBtn();
+    initSlewSearch();
     initQuickActions();
     initAxisControl();
     initAxisModeControls();
     initStateFileInput();
+    // Populate slew form from last calibration object (delayed until CalibrationComponent is ready)
+    setTimeout(populateSlewFromLastObject, 500);
   }
 
   /**
@@ -254,6 +258,244 @@ const MountControlComponent = (() => {
     }
   }
 
+  // ─── Slew & Track Button ─────────────────────────────────────────────
+
+  function initSlewAndTrackBtn() {
+    const btn = $('#btn-slew-and-track');
+    if (btn) btn.addEventListener('click', handleSlewAndTrack);
+  }
+
+  async function handleSlewAndTrack() {
+    const raInput = $('#slew-ra');
+    const decInput = $('#slew-dec');
+    const btn = $('#btn-slew-and-track');
+
+    if (!raInput || !decInput) return;
+
+    const ra = raInput.getAngleDecimal ? raInput.getAngleDecimal() : parseFloat(raInput.value);
+    const dec = decInput.getAngleDecimal ? decInput.getAngleDecimal() : parseFloat(decInput.value);
+
+    if (isNaN(ra) || ra < 0 || ra >= 24) {
+      App.showToast('RA must be between 0 and 24 hours', 'error');
+      return;
+    }
+
+    if (isNaN(dec) || dec < -90 || dec > 90) {
+      App.showToast('Dec must be between -90 and 90 degrees', 'error');
+      return;
+    }
+
+    if (btn) btn.disabled = true;
+
+    try {
+      const result = await Api.trackObject(ra, dec);
+      const raStr = Utils.formatRA(ra);
+      const decStr = Utils.formatDec(dec);
+      App.showToast(result.message || `Tracking RA=${raStr}, Dec=${decStr}`, 'success');
+    } catch (err) {
+      App.showToast(`Track failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  // ─── Auto-populate from Calibration ──────────────────────────────────
+
+  /**
+   * Populate the Slew form and object info display from the last object
+   * used in calibration (if any). Formats coordinates as sexagesimal.
+   */
+  function populateSlewFromLastObject() {
+    const obj = CalibrationComponent.getLastUsedObject();
+
+    // Populate RA/Dec inputs if object is available
+    if (obj) {
+      const raInput = $('#slew-ra');
+      const decInput = $('#slew-dec');
+      if (raInput && obj.ra_hours != null) {
+        if (raInput.setAngleDecimal) raInput.setAngleDecimal(obj.ra_hours);
+        else raInput.value = obj.ra_hours;
+      }
+      if (decInput && obj.dec_degrees != null) {
+        if (decInput.setAngleDecimal) decInput.setAngleDecimal(obj.dec_degrees);
+        else decInput.value = obj.dec_degrees;
+      }
+    }
+
+    // Show/hide details vs empty message
+    const detailsRow = $('#slew-last-details');
+    const emptyMsg = $('#slew-last-empty');
+
+    if (obj) {
+      if (detailsRow) detailsRow.style.display = 'flex';
+      if (emptyMsg) emptyMsg.style.display = 'none';
+
+      const nameEl = $('#slew-last-name');
+      if (nameEl) nameEl.textContent = obj.name || '(unnamed)';
+
+      const catalogEl = $('#slew-last-catalog');
+      if (catalogEl) catalogEl.textContent = obj.catalog_id || '';
+
+      const raEl = $('#slew-last-ra');
+      if (raEl && obj.ra_hours != null) raEl.textContent = Utils.formatRA(obj.ra_hours);
+
+      const decEl = $('#slew-last-dec');
+      if (decEl && obj.dec_degrees != null) decEl.textContent = Utils.formatDec(obj.dec_degrees);
+
+      const magEl = $('#slew-last-mag');
+      if (magEl) {
+        magEl.textContent = obj.v_magnitude != null ? Number(obj.v_magnitude).toFixed(1) : '—';
+      }
+
+      const typeEl = $('#slew-last-type');
+      if (typeEl) {
+        const typeLabel = obj.type ? obj.type.replace(/_/g, ' ').toLowerCase() : '';
+        typeEl.textContent = typeLabel;
+      }
+    } else {
+      if (detailsRow) detailsRow.style.display = 'none';
+      if (emptyMsg) emptyMsg.style.display = 'block';
+    }
+  }
+
+  // ─── Slew Object Search ──────────────────────────────────────────────
+
+  function initSlewSearch() {
+    const searchInput = $('#slew-object-search');
+    const searchBtn = $('#btn-slew-search');
+
+    if (searchBtn) {
+      searchBtn.addEventListener('click', () => handleSlewSearch());
+    }
+    if (searchInput) {
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); handleSlewSearch(); }
+      });
+    }
+  }
+
+  async function handleSlewSearch() {
+    const input = $('#slew-object-search');
+    const resultsEl = $('#slew-search-results');
+    if (!input || !resultsEl) return;
+
+    const query = input.value.trim();
+    if (!query) {
+      resultsEl.innerHTML = '';
+      return;
+    }
+
+    resultsEl.innerHTML = `<div class="calibration-search-hint">Searching…</div>`;
+
+    try {
+      const result = await Api.searchObjects({ query });
+      const objects = result.objects || [];
+
+      if (objects.length === 0) {
+        resultsEl.innerHTML = `<div class="calibration-search-hint">No results for "${Utils.escapeHtml(query)}"</div>`;
+        return;
+      }
+
+      let html = '<div class="calibration-search-list">';
+      objects.slice(0, 12).forEach(obj => {
+        const ra = obj.ra_hours != null ? Number(obj.ra_hours).toFixed(4) : '—';
+        const dec = obj.dec_degrees != null ? Number(obj.dec_degrees).toFixed(2) : '—';
+        const mag = obj.v_magnitude != null ? Number(obj.v_magnitude).toFixed(1) : '—';
+        const name = Utils.escapeHtml(obj.name || '(unnamed)');
+        const catalog = obj.catalog_id ? Utils.escapeHtml(obj.catalog_id) : '';
+
+        html += `<div class="calibration-search-item" data-ra="${ra}" data-dec="${obj.dec_degrees}" data-name="${Utils.escapeHtml(obj.name || '')}" data-catalog="${catalog}" data-mag="${mag}" data-type="${Utils.escapeHtml(obj.type || '')}">`;
+        html += `<div class="calibration-search-item-name">${name}`;
+        if (catalog) html += ` <span class="calibration-search-item-catalog">${catalog}</span>`;
+        html += `</div>`;
+        html += `<div class="calibration-search-item-coords">RA: ${ra}h &nbsp; Dec: ${dec}° &nbsp; Mag: ${mag}</div>`;
+        html += `<button class="btn btn-sm btn-primary calibration-search-item-select">Select</button>`;
+        html += `</div>`;
+      });
+      html += '</div>';
+      resultsEl.innerHTML = html;
+
+      // Bind click on item row
+      resultsEl.querySelectorAll('.calibration-search-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const ra = parseFloat(item.dataset.ra);
+          const dec = parseFloat(item.dataset.dec);
+          if (!isNaN(ra) && !isNaN(dec)) {
+            populateSlewFromSearch(item.dataset);
+          }
+        });
+      });
+
+      // Bind "Select" buttons
+      resultsEl.querySelectorAll('.calibration-search-item-select').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const item = btn.closest('.calibration-search-item');
+          if (item) {
+            const ra = parseFloat(item.dataset.ra);
+            const dec = parseFloat(item.dataset.dec);
+            if (!isNaN(ra) && !isNaN(dec)) {
+              populateSlewFromSearch(item.dataset);
+            }
+          }
+        });
+      });
+
+    } catch (err) {
+      resultsEl.innerHTML = `<div class="calibration-search-hint" style="color:var(--color-danger);">Search error: ${Utils.escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  /**
+   * Populate the slew form and last-object display from a search result.
+   * @param {DOMStringMap} data - dataset from the clicked search item
+   */
+  function populateSlewFromSearch(data) {
+    const raInput = $('#slew-ra');
+    const decInput = $('#slew-dec');
+    const ra = parseFloat(data.ra);
+    const dec = parseFloat(data.dec);
+
+    if (raInput && !isNaN(ra)) {
+      if (raInput.setAngleDecimal) raInput.setAngleDecimal(ra);
+      else raInput.value = ra.toFixed(4);
+    }
+    if (decInput && !isNaN(dec)) {
+      if (decInput.setAngleDecimal) decInput.setAngleDecimal(dec);
+      else decInput.value = dec.toFixed(4);
+    }
+
+    // Update "last object" display
+    const detailsRow = $('#slew-last-details');
+    const emptyMsg = $('#slew-last-empty');
+    if (detailsRow) detailsRow.style.display = 'flex';
+    if (emptyMsg) emptyMsg.style.display = 'none';
+
+    const nameEl = $('#slew-last-name');
+    if (nameEl) nameEl.textContent = data.name || '(unnamed)';
+
+    const catalogEl = $('#slew-last-catalog');
+    if (catalogEl) catalogEl.textContent = data.catalog || '';
+
+    const raEl = $('#slew-last-ra');
+    if (raEl && !isNaN(ra)) raEl.textContent = Utils.formatRA(ra);
+
+    const decEl = $('#slew-last-dec');
+    if (decEl && !isNaN(dec)) decEl.textContent = Utils.formatDec(dec);
+
+    const magEl = $('#slew-last-mag');
+    if (magEl) magEl.textContent = data.mag || '—';
+
+    const typeEl = $('#slew-last-type');
+    if (typeEl) typeEl.textContent = (data.type || '').replace(/_/g, ' ').toLowerCase();
+
+    // Clear search results
+    const resultsEl = $('#slew-search-results');
+    if (resultsEl) resultsEl.innerHTML = '';
+
+    App.showToast(`Selected ${data.name || 'object'}: RA ${Utils.formatRA(ra)}, Dec ${Utils.formatDec(dec)}`, 'info');
+  }
+
   // ─── Quick Actions ───────────────────────────────────────────────────
 
   function initQuickActions() {
@@ -265,6 +507,9 @@ const MountControlComponent = (() => {
 
     const unparkBtn = $('#btn-unpark');
     if (unparkBtn) unparkBtn.addEventListener('click', handleUnpark);
+
+    const homeBtn = $('#btn-home');
+    if (homeBtn) homeBtn.addEventListener('click', handleHome);
 
     const clearBtn = $('#btn-clear-errors');
     if (clearBtn) clearBtn.addEventListener('click', handleClearErrors);
@@ -310,6 +555,61 @@ const MountControlComponent = (() => {
       App.showToast(result.message || 'Mount unparked', 'success');
     } catch (err) {
       App.showToast(`Unpark failed: ${err.message}`, 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function handleHome() {
+    const btn = $('#btn-home');
+    if (btn) btn.disabled = true;
+    try {
+      // Pre-fill with current telescope position from the last status
+      // snapshot as a convenience, but let the user override with the
+      // correct reference coordinates for the object the telescope is
+      // physically pointed at.
+      const state = App.getLastState();
+      const currentAxis1 = state?.telescope?.axis1 ?? 0;
+      const currentAxis2 = state?.telescope?.axis2 ?? 0;
+
+      // Ask for Axis1 (telescope degrees). For equatorial: HA in degrees;
+      // for alt-az/casual: altitude.  Pre-filled with current value.
+      const axis1Str = prompt(
+        `Enter telescope Axis1 position [degrees]:\n` +
+        `(Equatorial: Hour Angle; Alt-Az/Casual: Altitude)\n` +
+        `Current value: ${currentAxis1.toFixed(4)}°`,
+        currentAxis1.toFixed(4)
+      );
+      if (axis1Str === null) { if (btn) btn.disabled = false; return; }
+
+      // Ask for Axis2 (telescope degrees).
+      const axis2Str = prompt(
+        `Enter telescope Axis2 position [degrees]:\n` +
+        `(Equatorial: Declination; Alt-Az/Casual: Azimuth)\n` +
+        `Current value: ${currentAxis2.toFixed(4)}°`,
+        currentAxis2.toFixed(4)
+      );
+      if (axis2Str === null) { if (btn) btn.disabled = false; return; }
+
+      const axis1 = parseFloat(axis1Str);
+      const axis2 = parseFloat(axis2Str);
+      if (isNaN(axis1) || isNaN(axis2)) {
+        App.showToast('Invalid axis values — enter numbers (degrees)', 'error');
+        if (btn) btn.disabled = false;
+        return;
+      }
+
+      const result = await Api.homeMount(axis1, axis2);
+      App.showToast(result.message || `Mount homed to axis1=${axis1.toFixed(2)}°, axis2=${axis2.toFixed(2)}°`, 'success');
+
+      // Force immediate status refresh so the UI shows the new
+      // positions without waiting for the next poll cycle.
+      try {
+        const freshState = await Api.getStatus();
+        MountStatusComponent.render(freshState);
+      } catch (_) { /* non-critical */ }
+    } catch (err) {
+      App.showToast(`Home failed: ${err.message}`, 'error');
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -649,11 +949,19 @@ const MountControlComponent = (() => {
    * @param {string} mountType - 'equatorial' | 'alt_az' | 'unknown'
    */
   function setCalibrationState(state, mountType) {
+    const wasCalibrated = isCalibrated;
     currentMountType = mountType || 'unknown';
 
-    // Mount is considered calibrated when in TRACKING or SLEWING state
+    // Mount is considered calibrated when bootstrap or TPOINT is done,
+    // or when actively slewing/tracking.
     const status = (state && state.status || '').toUpperCase();
-    isCalibrated = (status === 'TRACKING' || status === 'SLEWING');
+    const hasCalibration = (state && (state.bootstrap_calibrated || state.tpoint_calibrated));
+    isCalibrated = hasCalibration || (status === 'TRACKING' || status === 'SLEWING');
+
+    // When calibration just completed, auto-populate from last used object
+    if (!wasCalibrated && isCalibrated) {
+      populateSlewFromLastObject();
+    }
 
     updateAxisModeIndicator();
   }
@@ -672,13 +980,23 @@ const MountControlComponent = (() => {
     if (currentMountType === 'alt_az') {
       horizLabel = 'Azimuth';
       vertLabel = 'Altitude';
+    } else if (currentMountType === 'casual') {
+      horizLabel = 'Axis 1';
+      vertLabel = 'Axis 2';
     } else {
       // equatorial (default) or unknown
       horizLabel = 'RA';
       vertLabel = 'Dec';
     }
 
-    const mountTypeLabel = currentMountType === 'alt_az' ? I18n.t('tests.alt_az') : I18n.t('tests.equatorial');
+    let mountTypeLabel;
+    if (currentMountType === 'alt_az') {
+      mountTypeLabel = I18n.t('tests.alt_az');
+    } else if (currentMountType === 'casual') {
+      mountTypeLabel = I18n.t('tests.casual');
+    } else {
+      mountTypeLabel = I18n.t('tests.equatorial');
+    }
     if (isCalibrated) {
       badge.className = 'status-badge tracking';
       badge.textContent = I18n.t('axis.mode_astro');
