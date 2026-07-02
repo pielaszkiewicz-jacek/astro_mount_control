@@ -53,8 +53,9 @@ const SettingsComponent = (() => {
         { key: 'canopen_sync_interval_ms', label: 'SYNC Interval (ms)', type: 'number', min: 10, max: 10000 },
         { key: 'canopen_accel_mode', label: 'Accel/Decel Mode', type: 'select', options: ['time', 'rate'] },
         { key: 'canopen_pdo_config_enabled', label: 'Write PDO Mappings', type: 'checkbox' },
-        { key: 'canopen_position_rewind_interval_seconds', label: 'Position Rewind (s)', type: 'number', min: 0, max: 86400, step: 60, help: '0 = disabled. Periodically resets the CANopen drive position counter to prevent overflow beyond ±1,000,000 counts during long tracking sessions.' },
-        { key: 'canopen_position_rewind_threshold_percent', label: 'Rewind Threshold (%)', type: 'number', min: 0, max: 100, step: 5, help: '0 = only use time interval. If the drive position reaches this % of the 1,000,000 count limit, an immediate rewind is triggered without waiting for the time interval.' },
+        { key: 'canopen_position_rewind_enabled', label: 'Position Rewind', type: 'checkbox', help: 'Master switch for the CANopen position rewind mechanism. When disabled, the drive absolute position counter is never reset, regardless of the interval or threshold settings below.' },
+        { key: 'canopen_position_rewind_interval_seconds', label: 'Rewind Interval (s)', type: 'number', min: 0, max: 86400, step: 60, help: 'Periodically resets the CANopen drive position counter to prevent overflow beyond ±1,000,000 counts during long tracking sessions.' },
+        { key: 'canopen_position_rewind_threshold_percent', label: 'Rewind Threshold (%)', type: 'number', min: 0, max: 100, step: 5, help: 'If the drive position reaches this % of the 1,000,000 count limit, an immediate rewind is triggered without waiting for the time interval.' },
         { key: 'canopen_position_counts_per_degree', label: 'Position Counts/°', type: 'number', min: 0.001, max: 100000, step: 0.001 },
         { key: 'canopen_velocity_counts_per_deg_s', label: 'Velocity Counts per °/s', type: 'number', min: 0.001, max: 100000, step: 0.001 },
       ],
@@ -998,6 +999,13 @@ const SettingsComponent = (() => {
     canopen_pdo_config_enabled: {
       description: 'Zapisuje mapowanie PDO (Process Data Objects) do serwonap\u0119du podczas inicjalizacji. Mo\u017ce nadpisa\u0107 parametry fabryczne nap\u0119du.',
       defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+
+    canopen_position_rewind_enabled: {
+      description: 'Główny przełącznik mechanizmu przewijania pozycji CANopen. Gdy wyłączone, licznik bezwzględnej pozycji napędu nigdy nie jest resetowany, niezależnie od ustawień interwału i progu poniżej.',
+      defaultValue: 'true (włączone)',
       type: 'boolean',
       range: 'true / false',
     },

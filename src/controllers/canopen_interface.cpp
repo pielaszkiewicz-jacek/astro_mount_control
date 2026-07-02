@@ -346,6 +346,7 @@ public:
         // succeeded; otherwise the drive may remain in Velocity mode
         // and ignore all subsequent target position commands.
         canopen_402_set_mode(ctx_, node_id, CIA402_OPMODE_PROFILE_POS);
+        cached_op_mode_[axis_id] = CIA402_OPMODE_PROFILE_POS;
         logging::Logger::get("canopen")->info(
             "CANopen: Axis {} mode set to Profile Position (1)", axis_id);
 
@@ -461,28 +462,54 @@ public:
         // would cancel an in-progress motion profile.
         int8_t current_mode = 0;
         size_t mode_len = 1;
-        canopen_sdo_read_expedited(ctx_, node_id,
-                                    OD_INDEX_MODES_OF_OP_DISPLAY, 0,
-                                    &current_mode, &mode_len);
+        if (!canopen_sdo_read_expedited(ctx_, node_id,
+                                        OD_INDEX_MODES_OF_OP_DISPLAY, 0,
+                                        &current_mode, &mode_len)) {
+            logging::Logger::get("canopen")->warn(
+                "CANopen: Axis {} (node {}): failed to read current mode — SDO timeout, continuing",
+                axis_id, node_id);
+            // Best-effort: assume we need to switch mode
+            current_mode = -1;
+        }
         if (current_mode != CIA402_OPMODE_PROFILE_POS) {
             logging::Logger::get("canopen")->info(
                 "CANopen: Axis {} mode={}, switching to Profile Position (1)",
                 axis_id, current_mode);
             int8_t mode = CIA402_OPMODE_PROFILE_POS;
-            canopen_402_set_mode(ctx_, node_id, mode);
-            // Update the cached mode so setVelocityTarget() knows to
-            // switch back to Profile Velocity when needed.
-            cached_op_mode_[axis_id] = mode;
+            if (!canopen_402_set_mode(ctx_, node_id, mode)) {
+                logging::Logger::get("canopen")->error(
+                    "CANopen: Axis {} (node {}): SDO mode switch to Profile Position FAILED — "
+                    "drive may be in wrong mode, aborting setPositionTarget",
+                    axis_id, node_id);
+                axis_enabled_[axis_id] = false;
+                axis_status_[axis_id].enabled = false;
+                return false;
+            }
         }
+        // Always update the cached mode — even if the drive was already in
+        // Profile Position (e.g. because enableDrive() set it).  If we skip
+        // this, a stale value from a previous setVelocityTarget() (mode 3)
+        // would cause setVelocityTarget to skip its mode switch later,
+        // leaving the drive in Position mode where 0x60FF is ignored.
+        cached_op_mode_[axis_id] = CIA402_OPMODE_PROFILE_POS;
 
-        // Set profile velocity and acceleration via SDO.
+        // Set profile velocity via SDO.
         // Convert using configured scaling factor (default 4000.0/360.0 ≈ 11.111 counts per °/s,
         // matching a 4000-count encoder → 360°/s at the motor shaft).
         const double vpd = config_.axis_velocity_counts_per_deg_s[axis_id];
         int32_t profile_vel = static_cast<int32_t>(velocity * vpd);
-        canopen_sdo_write_expedited(ctx_, node_id,
-                                     OD_INDEX_PROFILE_VELOCITY, 0,
-                                     &profile_vel, 4);
+        if (!canopen_sdo_write_expedited(ctx_, node_id,
+                                         OD_INDEX_PROFILE_VELOCITY, 0,
+                                         &profile_vel, 4)) {
+            logging::Logger::get("canopen")->error(
+                "CANopen: Axis {} (node {}): SDO profile velocity (0x6081) write FAILED — "
+                "drive will use stale velocity! vel={:.4f}°/s → {} counts (vpd={:.3f}). "
+                "Aborting setPositionTarget.",
+                axis_id, node_id, velocity, profile_vel, vpd);
+            axis_enabled_[axis_id] = false;
+            axis_status_[axis_id].enabled = false;
+            return false;
+        }
 
         // Convert acceleration to drive units.
         // Mode "time": drive interprets 0x6083/0x6084 as ramp time → use inverse mapping.
@@ -497,12 +524,27 @@ public:
             profile_acc = static_cast<int32_t>(
                 accel_K / std::max(acceleration, 0.001));
         }
-        canopen_sdo_write_expedited(ctx_, node_id,
-                                     OD_INDEX_PROFILE_ACCEL, 0,
-                                     &profile_acc, 4);
+        if (!canopen_sdo_write_expedited(ctx_, node_id,
+                                         OD_INDEX_PROFILE_ACCEL, 0,
+                                         &profile_acc, 4)) {
+            logging::Logger::get("canopen")->warn(
+                "CANopen: Axis {} (node {}): SDO profile acceleration (0x6083) write FAILED — "
+                "drive will use stale acceleration. Continuing with position target.",
+                axis_id, node_id);
+            // Non-fatal: acceleration mismatch causes jerky motion but not
+            // uncontrolled spinning.  Continue with the position target.
+        }
 
         // Set target position (this also toggles the control word new-set-point bit)
-        canopen_402_set_target_position(ctx_, node_id, target_counts);
+        if (!canopen_402_set_target_position(ctx_, node_id, target_counts)) {
+            logging::Logger::get("canopen")->error(
+                "CANopen: Axis {} (node {}): set_target_position FAILED — "
+                "target={} counts. Aborting setPositionTarget.",
+                axis_id, node_id, target_counts);
+            axis_enabled_[axis_id] = false;
+            axis_status_[axis_id].enabled = false;
+            return false;
+        }
 
         axis_position_[axis_id].target_position = position;
         axis_position_[axis_id].timestamp = std::chrono::system_clock::now();
@@ -563,18 +605,50 @@ public:
 
         axis_target_velocity_[axis_id] = velocity;
 
-        // Set Profile Velocity mode (mode 3) — only the first time.
-        // PDO writes below only update 0x60FF; the drive must already
-        // be in Profile Velocity mode for the PDO to take effect.
+        // Force-switch to Profile Velocity mode (mode 3).
+        // We cannot trust cached_op_mode_ — parallel code paths (HAL,
+        // gamepad, INDI MoveWE/MoveNS) may write to 0x6060 without
+        // updating our cache.  Writing the mode via SDO is idempotent
+        // when the drive is already in the target mode, so there is no
+        // penalty for the unconditional write.
         int8_t mode = CIA402_OPMODE_PROFILE_VEL;
-        if (cached_op_mode_[axis_id] != mode) {
-            if (!canopen_402_set_mode(ctx_, node_id, mode)) {
+        
+        // Small settle before mode change.
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        
+        if (!canopen_402_set_mode(ctx_, node_id, mode)) {
+            MOUNT_LOG_ERROR("CANopen: Axis {}: SDO mode switch to Profile Velocity FAILED",
+                           axis_id);
+            axis_enabled_[axis_id] = false;
+            axis_status_[axis_id].enabled = false;
+            return false;
+        }
+        
+        // Verify the mode was accepted by reading 0x6061.
+        std::this_thread::sleep_for(std::chrono::milliseconds(15));
+        int8_t actual_mode = 0;
+        size_t mode_len = 1;
+        if (canopen_sdo_read_expedited(ctx_, node_id,
+                                       OD_INDEX_MODES_OF_OP_DISPLAY, 0,
+                                       &actual_mode, &mode_len)) {
+            MOUNT_LOG_INFO("CANopen: Axis {}: mode display after switch: {} (expected {})",
+                          axis_id, actual_mode, mode);
+            if (actual_mode != mode) {
+                MOUNT_LOG_ERROR("CANopen: Axis {}: mode switch MISMATCH — "
+                               "set={}, display={}. Drive may not support "
+                               "Profile Velocity mode or is in wrong NMT state.",
+                               axis_id, mode, actual_mode);
                 axis_enabled_[axis_id] = false;
                 axis_status_[axis_id].enabled = false;
                 return false;
             }
-            cached_op_mode_[axis_id] = mode;
+        } else {
+            MOUNT_LOG_WARN("CANopen: Axis {}: cannot read back mode display (0x6061) — "
+                          "SDO timeout?", axis_id);
+            // Continue — the SDO write was ACK'd.
         }
+        
+        cached_op_mode_[axis_id] = mode;
 
         const double vpd = config_.axis_velocity_counts_per_deg_s[axis_id];
 
@@ -597,20 +671,60 @@ public:
             cached_accel_[axis_id] = profile_acc;
         }
 
-        // ── Send target velocity via PDO (RPDO1) ──────────────────────
-        // PDO is a single CAN frame, no SDO handshake, no response wait.
-        // This eliminates the mutex-holding time from ~10ms (SDO) to ~µs.
+        // ── Send target velocity via SDO first, then best-effort PDO ──
+        // Always write 0x60FF via SDO to guarantee the velocity reaches
+        // the correct OD index.  RPDO1 PDO mapping may differ from the
+        // configured mapping on some drives (silent SDO timeout, default
+        // mapping with 0x607A Target Position).  A PDO-written velocity
+        // landing on Target Position would cause uncontrolled max-speed
+        // slewing.  SDO guarantees correctness at the cost of ~10ms
+        // per call; PDO serves as a fast subsequent update (best-effort).
         int32_t target_vel = static_cast<int32_t>(velocity * vpd);
-        if (!sendVelocityPDO(axis_id, target_vel)) {
-            // PDO send failed — fall back to SDO write.
-            if (!canopen_sdo_write_expedited(ctx_, node_id,
-                                              OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
-                                              &target_vel, 4)) {
-                axis_enabled_[axis_id] = false;
-                axis_status_[axis_id].enabled = false;
-                return false;
+        bool sdo_ok = canopen_sdo_write_expedited(ctx_, node_id,
+                                                   OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
+                                                   &target_vel, 4);
+        if (!sdo_ok) {
+            MOUNT_LOG_ERROR("CANopen: Axis {} (node {}): SDO target velocity write failed",
+                           axis_id, node_id);
+            axis_enabled_[axis_id] = false;
+            axis_status_[axis_id].enabled = false;
+            return false;
+        }
+        
+        // Read-back verification: confirm the drive stored the correct value.
+        // This tells us whether the velocity scaling (vpd = counts/(deg/s))
+        // is correct for this drive.  If write == readback but the drive
+        // still moves at the wrong speed, the unit assumption is wrong
+        // (e.g. drive expects RPM, not counts/s).
+        {
+            int32_t readback_vel = 0;
+            size_t rb_len = 4;
+            if (canopen_sdo_read_expedited(ctx_, node_id,
+                                           OD_INDEX_TARGET_VELOCITY_PROFILE, 0,
+                                           &readback_vel, &rb_len)) {
+                MOUNT_LOG_INFO("CANopen: Axis {} (node {}): target_vel write={} → readback={} (vpd={:.3f}, raw_vel={:.4f}°/s)",
+                              axis_id, node_id, target_vel, readback_vel, vpd, velocity);
+            } else {
+                MOUNT_LOG_WARN("CANopen: Axis {} (node {}): cannot read back 0x60FF — "
+                              "SDO timeout?", axis_id, node_id);
             }
         }
+        // ── PDO intentionally NOT sent for velocity ──────────────────
+        // Evidence from logs: SDO write to 0x60FF succeeds (write=readback),
+        // but the drive moves at ~7424 °/s — indicating it is NOT in Profile
+        // Velocity mode.  The PDO frame [ctrl=0x000F, data=target_vel] is
+        // sent to COB-ID 0x200+node; if the drive's RPDO1 mapping was NOT
+        // correctly configured (silent SDO failure in configureDrivePDO),
+        // the default mapping maps byte 2-5 to Target Position (0x607A).
+        //
+        // A PDO writing velocity value 213 to Target Position triggers an
+        // uncontrolled slew from the current position (~-2.6M counts) to
+        // position 213 — exactly the behaviour observed in the logs.
+        //
+        // Removing the PDO means the drive stays in Position mode with the
+        // old (already-reached) target → no movement.  The SDO mode switch
+        // to Profile Velocity (above, with verification) is the correct way.
+        
 
         axis_position_[axis_id].actual_velocity = velocity;
         axis_position_[axis_id].timestamp = std::chrono::system_clock::now();
@@ -638,15 +752,46 @@ public:
             MOUNT_LOG_ERROR("Invalid axis_id {} for setActualPosition", axis_id);
             return false;
         }
+
+        const double cpd = config_.axis_position_counts_per_degree[axis_id];
+
+        // Read the actual hardware position from the drive (OD 0x6064)
+        // before computing the software offset.  If we rely on the cached
+        // axis_position_[axis_id].actual_position (which may be 0.0 from
+        // default initialisation), the offset will be wrong and all
+        // subsequent setPositionTarget calls will target the wrong
+        // absolute position — causing uncontrolled max-speed slewing.
+        double current = 0.0;
+        if (connected_ && ctx_) {
+            uint8_t node_id = nodeIdForAxis(axis_id);
+            int32_t actual_pos = 0;
+            size_t len = 4;
+            if (canopen_sdo_read_expedited(ctx_, node_id,
+                                           0x6064, 0, &actual_pos, &len)) {
+                current = static_cast<double>(actual_pos) / cpd;
+                MOUNT_LOG_INFO("setActualPosition: axis={} read hardware pos: {} counts = {:.4f}°",
+                               axis_id, actual_pos, current);
+            } else {
+                MOUNT_LOG_WARN("setActualPosition: axis={} SDO read of 0x6064 failed — "
+                               "falling back to cached actual_position={:.4f}°",
+                               axis_id, axis_position_[axis_id].actual_position);
+                current = axis_position_[axis_id].actual_position;
+            }
+        } else {
+            // Not connected — use cached value
+            current = axis_position_[axis_id].actual_position;
+            MOUNT_LOG_DEBUG("setActualPosition: axis={} not connected, using cached pos={:.4f}°",
+                           axis_id, current);
+        }
+
         // Compute a persistent software offset so that subsequent
         // getPositionData() calls return the corrected position.
         // The PDO/SDO hardware reads overwrite axis_position_ on
         // every cycle; the offset survives across reads.
-        double current = axis_position_[axis_id].actual_position;
         position_offset_[axis_id] = position - current;
         axis_position_[axis_id].actual_position = position;
-        MOUNT_LOG_INFO("setActualPosition: axis={} position={:.4f} deg (offset={:.4f})",
-                       axis_id, position, position_offset_[axis_id]);
+        MOUNT_LOG_INFO("setActualPosition: axis={} logical={:.4f}° hw_current={:.4f}° offset={:.4f}°",
+                       axis_id, position, current, position_offset_[axis_id]);
         return true;
     }
 
@@ -813,16 +958,11 @@ public:
         const double cpd = config_.axis_position_counts_per_degree[axis_id];
         const double vpd = config_.axis_velocity_counts_per_deg_s[axis_id];
 
-        // Fast path: cached PDO position (zero CAN traffic).
-        if (pdo_configured_[axis_id] && pdo_data_valid_[axis_id].load(std::memory_order_acquire)) {
-            int32_t raw = pdo_actual_position_[axis_id].load(std::memory_order_acquire);
-            axis_position_[axis_id].actual_position = static_cast<double>(raw) / cpd
-                                                      + position_offset_[axis_id];
-            axis_position_[axis_id].timestamp = std::chrono::system_clock::now();
-            return axis_position_[axis_id];
-        }
-
-        // SDO fallback when PDO is disabled or not yet receiving.
+        // Always use SDO for position reads — PDO position may be garbage
+        // if the TPDO1 mapping on the drive differs from our configuration.
+        // Evidence: actual velocity reads correctly (1.48 °/s via SDO 0x606C)
+        // but positions jump by thousands of degrees between reads, indicating
+        // TPDO1 PDO frames carry wrong position data (mapping mismatch).
         if (connected_ && ctx_) {
             uint8_t node_id = nodeIdForAxis(axis_id);
 
@@ -1182,59 +1322,91 @@ private:
     EncoderCallback encoder_callback_;
     ErrorCallback error_callback_;
 
-    // ─── PDO configuration (called once per axis during initialize()) ───
-    // Configures TPDO1 (status+position) and RPDO1 (control+velocity) on
-    // the drive via SDO.  Failures are non-fatal — the drive may already
-    // have suitable default mappings, or we fall back to SDO.
+    // ─── PDO configuration with read-back verification ─────────────
+    // Configures TPDO1 (status+pos) and RPDO1 (ctrl+velocity) on the
+    // drive via SDO and VERIFIES each mapping by reading it back.
+    //
+    // Without verification, a silent SDO timeout or the drive rejecting
+    // the mapping (e.g. NMT state not Operational) leaves pdo_configured_
+    // true while the drive still uses its default mapping.  Default RPDO1
+    // typically maps bytes 2-5 to Target Position (0x607A), not Target
+    // Velocity (0x60FF) — sending a velocity value to Target Position
+    // causes an uncontrolled max-speed slew (logs confirm this).
+    //
+    // On verification failure, pdo_configured_ stays false and all
+    // consumers fall back to SDO (correct OD index addressing).
     void configureDrivePDO(uint8_t node_id) {
-        // === TPDO1: Status Word (0x6041:16) + Position Actual (0x6064:32) ===
-        // Step 1: disable TPDO1
-        uint32_t cobid_disable = 0x80000000UL | (CANOPEN_COBID_TPDO1 + node_id);
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1800, 1, &cobid_disable, 4);
-        // Step 2: clear mapping
-        uint8_t zero = 0;
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 0, &zero, 1);
-        // Step 3: map Status Word (0x6041, 16-bit)
-        uint32_t map1 = 0x60410010;
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 1, &map1, 4);
-        // Step 4: map Position Actual Value (0x6064, 32-bit)
-        uint32_t map2 = 0x60640020;
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 2, &map2, 4);
-        // Step 5: set mapping count to 2
-        uint8_t count = 2;
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 0, &count, 1);
-        // Step 6: set transmission type to asynchronous (255) and enable
-        uint32_t tpdoparam = (uint32_t)(CANOPEN_COBID_TPDO1 + node_id) | 0x40000000UL; // event-driven
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1800, 1, &tpdoparam, 4);
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1800, 2, &count, 1); // transmission type = 255 (async)
-
-        // === RPDO1: Control Word (0x6040:16) + Target Velocity (0x60FF:32) ===
-        // Step 1: disable RPDO1
-        cobid_disable = 0x80000000UL | (CANOPEN_COBID_RPDO1 + node_id);
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1400, 1, &cobid_disable, 4);
-        // Step 2: clear mapping
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 0, &zero, 1);
-        // Step 3: map Control Word (0x6040, 16-bit)
-        uint32_t rmap1 = 0x60400010;
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 1, &rmap1, 4);
-        // Step 4: map Target Velocity (0x60FF, 32-bit)
-        uint32_t rmap2 = 0x60FF0020;
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 2, &rmap2, 4);
-        // Step 5: set mapping count to 2
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 0, &count, 1);
-        // Step 6: enable RPDO1
-        uint32_t rpdoparam = CANOPEN_COBID_RPDO1 + node_id;
-        canopen_sdo_write_expedited(ctx_, node_id, 0x1400, 1, &rpdoparam, 4);
-
-        // Mark PDO as configured for this axis so sendVelocityPDO()
-        // and the read path use PDO instead of SDO fallback.
+        auto logger = logging::Logger::get("canopen");
         int axis = static_cast<int>(node_id) - config_.node_id;
-        if (axis >= 0 && axis < 2) {
-            pdo_configured_[axis] = true;
+        if (axis < 0 || axis >= 2) return;
+        
+        bool rpdo_ok = false;
+        bool tpdo_ok = false;
+        uint8_t zero = 0;
+        uint8_t count = 2;
+        
+        // ─── TPDO1: Status Word (0x6041:16) + Position Actual (0x6064:32) ───
+        {
+            uint32_t cobid_disable = 0x80000000UL | (CANOPEN_COBID_TPDO1 + node_id);
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1800, 1, &cobid_disable, 4);
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 0, &zero, 1);
+            
+            uint32_t map1 = 0x60410010;  // Status Word, 16-bit
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 1, &map1, 4);
+            uint32_t map2 = 0x60640020;  // Position Actual Value, 32-bit
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 2, &map2, 4);
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1A00, 0, &count, 1);
+            
+            // Enable TPDO1 (event-driven, async)
+            uint32_t tpdoparam = (uint32_t)(CANOPEN_COBID_TPDO1 + node_id) | 0x40000000UL;
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1800, 1, &tpdoparam, 4);
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1800, 2, &count, 1);
+            
+            // Verify TPDO1 mapping via read-back
+            uint32_t rb_map1 = 0, rb_map2 = 0;
+            size_t len4 = 4;
+            bool rb1 = canopen_sdo_read_expedited(ctx_, node_id, 0x1A00, 1, &rb_map1, &len4);
+            bool rb2 = canopen_sdo_read_expedited(ctx_, node_id, 0x1A00, 2, &rb_map2, &len4);
+            tpdo_ok = rb1 && rb2 && (rb_map1 == map1) && (rb_map2 == map2);
         }
-
-        logging::Logger::get("canopen")->info(
-            "CANopen: PDO configured for node {} (TPDO1: status+pos, RPDO1: ctrl+vel)", node_id);
+        
+        // ─── RPDO1: Control Word (0x6040:16) + Target Velocity (0x60FF:32) ───
+        {
+            uint32_t cobid_disable = 0x80000000UL | (CANOPEN_COBID_RPDO1 + node_id);
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1400, 1, &cobid_disable, 4);
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 0, &zero, 1);
+            
+            uint32_t rmap1 = 0x60400010;  // Control Word, 16-bit
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 1, &rmap1, 4);
+            uint32_t rmap2 = 0x60FF0020;  // Target Velocity, 32-bit
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 2, &rmap2, 4);
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1600, 0, &count, 1);
+            
+            // Enable RPDO1
+            uint32_t rpdoparam = CANOPEN_COBID_RPDO1 + node_id;
+            canopen_sdo_write_expedited(ctx_, node_id, 0x1400, 1, &rpdoparam, 4);
+            
+            // Verify RPDO1 mapping via read-back
+            uint32_t rb_rmap1 = 0, rb_rmap2 = 0;
+            size_t len4 = 4;
+            bool rb1 = canopen_sdo_read_expedited(ctx_, node_id, 0x1600, 1, &rb_rmap1, &len4);
+            bool rb2 = canopen_sdo_read_expedited(ctx_, node_id, 0x1600, 2, &rb_rmap2, &len4);
+            rpdo_ok = rb1 && rb2 && (rb_rmap1 == rmap1) && (rb_rmap2 == rmap2);
+        }
+        
+        // Only enable PDO path when BOTH mappings verified.
+        // A single mismatch means the drive uses a different (possibly
+        // dangerous) mapping — SDO fallback is the safe path.
+        pdo_configured_[axis] = rpdo_ok && tpdo_ok;
+        
+        if (pdo_configured_[axis]) {
+            logger->info("CANopen: PDO verified for node {} (TPDO1+TPDO1+→status+pos, RPDO1→ctrl+vel)",
+                        node_id);
+        } else {
+            logger->warn("CANopen: PDO verification FAILED for node {} "
+                        "(TPDO1_ok={}, RPDO1_ok={}) — using SDO fallback",
+                        node_id, tpdo_ok, rpdo_ok);
+        }
     }
 
     // ─── PDO frame handler (called from C reader thread) ──────────────

@@ -32,7 +32,7 @@ const Utils = (() => {
     const h = Math.floor(hours);
     const m = Math.floor((hours - h) * 60);
     const s = ((hours - h - m / 60) * 3600).toFixed(1);
-    return `${h}h ${m}m ${s}s`;
+    return `${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(4, '0')}s`;
   }
 
   /**
@@ -48,7 +48,7 @@ const Utils = (() => {
     const d = Math.floor(Math.abs(degrees));
     const m = Math.floor((Math.abs(degrees) - d) * 60);
     const s = ((Math.abs(degrees) - d - m / 60) * 3600).toFixed(1);
-    return `${sign}${d}° ${m}' ${s}"`;
+    return `${sign}${d}° ${String(m).padStart(2, '0')}' ${String(s).padStart(4, '0')}"`;
   }
 
   /**
@@ -58,6 +58,22 @@ const Utils = (() => {
    * @param {boolean} [showSign=true] - Whether to show +/- sign
    * @returns {string} e.g. "152° 33' 00.0\""
    */
+  /**
+   * Format an angle in decimal degrees to a colon-separated DMS string.
+   * @param {number} degrees - Angle in decimal degrees
+   * @returns {string} e.g. "152:33:00.00"
+   */
+  function formatAngleDmsColon(degrees) {
+    if (degrees === null || degrees === undefined || !isFinite(degrees)) {
+      return '0:0:0.00';
+    }
+    const abs = Math.abs(degrees);
+    const d = Math.floor(abs);
+    const m = Math.floor((abs - d) * 60);
+    const s = ((abs - d - m / 60) * 3600).toFixed(2);
+    return `${d}:${String(m).padStart(2, '0')}:${String(s).padStart(5, '0')}`;
+  }
+
   function formatAngleDeg(degrees, showSign = true) {
     if (degrees === null || degrees === undefined || !isFinite(degrees)) {
       return '—';
@@ -66,7 +82,7 @@ const Utils = (() => {
     const d = Math.floor(Math.abs(degrees));
     const m = Math.floor((Math.abs(degrees) - d) * 60);
     const s = ((Math.abs(degrees) - d - m / 60) * 3600).toFixed(1);
-    return `${sign}${d}° ${m}' ${s}"`;
+    return `${sign}${d}° ${String(m).padStart(2, '0')}' ${String(s).padStart(4, '0')}"`;
   }
 
   /**
@@ -223,10 +239,11 @@ const Utils = (() => {
       if (!isFinite(val)) return;
       let formatted;
       switch (type) {
-        case 'ra':   formatted = formatRA(val); break;
-        case 'hours': formatted = formatAngleHours(val); break;
-        case 'dec':  formatted = formatDec(val); break;
-        default:     formatted = formatAngleDeg(val, true); break;
+        case 'ra':        formatted = formatRA(val); break;
+        case 'hours':     formatted = formatAngleHours(val); break;
+        case 'dec':       formatted = formatDec(val); break;
+        case 'deg-colon': formatted = formatAngleDmsColon(val); break;
+        default:          formatted = formatAngleDeg(val, true); break;
       }
       input.value = formatted;
     }
@@ -391,6 +408,7 @@ const Utils = (() => {
     formatRA,
     formatDec,
     formatAngleDeg,
+    formatAngleDmsColon,
     formatAngleHours,
     parseDMS,
     parseHMS,

@@ -112,6 +112,14 @@ const App = (() => {
           DatabaseComponent.loadStats();
         }
 
+        // Redraw velocity chart when Status tab becomes visible.
+        // When the tab is hidden (display:none), canvas dimensions are 0×0
+        // and drawChart() skips rendering. On reactivation, the chart must
+        // be restored from buffered data.
+        if (tabName === 'status') {
+          MountStatusComponent.redrawVelocityChart();
+        }
+
         // Start/stop calibration polling when tab is shown/hidden
         if (tabName === 'calibration') {
           CalibrationComponent.startPolling();

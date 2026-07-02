@@ -122,7 +122,7 @@
             "node_id": 1,
             "pdo_config_enabled": true,
             "pdo_update_rate": 100,
-            "position_rewind_enabled": false,
+            "position_rewind_enabled": true,
             "position_rewind_interval_seconds": 3600.0,
             "position_rewind_threshold_percent": 80.0,
             "sdo_timeout_ms": 1000,
@@ -381,7 +381,7 @@
     "telescope": {
         "aperture": 8e-322,
         "camera_model": "ASI1600",
-        "focal_length": 6.9521308674341e-310,
+        "focal_length": 6.94304897411333e-310,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,

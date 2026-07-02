@@ -126,6 +126,20 @@ int main(int argc, char* argv[]) {
         controller_config.canopen_sdo_timeout_ms = static_cast<int>(hal_config.canopen.sdo_timeout_ms);
         controller_config.canopen_pdo_config_enabled = canopen_config.pdo_config_enabled;
         controller_config.hal_config = hal_config;
+
+        // Read CANopen position rewind configuration from JSON (hal.canopen)
+        std::string rewind_enabled_str = config.getValue("hal.canopen.position_rewind_enabled");
+        if (!rewind_enabled_str.empty()) {
+            controller_config.canopen_position_rewind_enabled = (rewind_enabled_str == "true");
+        }
+        std::string rewind_interval_str = config.getValue("hal.canopen.position_rewind_interval_seconds");
+        if (!rewind_interval_str.empty()) {
+            controller_config.canopen_position_rewind_interval_seconds = std::stod(rewind_interval_str);
+        }
+        std::string rewind_threshold_str = config.getValue("hal.canopen.position_rewind_threshold_percent");
+        if (!rewind_threshold_str.empty()) {
+            controller_config.canopen_position_rewind_threshold_percent = std::stod(rewind_threshold_str);
+        }
         
         // Set servo initialization configuration (custom SDO sequence)
         auto servo_init_config = config.getServoInitConfig();

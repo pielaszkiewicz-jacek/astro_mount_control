@@ -2205,14 +2205,20 @@ TEST_F(MountControllerTest, TelescopePositionEqualsServoDividedByGearRatio) {
         if (status.state == MountController::MountStatus::State::IDLE) {
             double gear1 = config_.ha_axis_params.gear_ratio;
             double gear2 = config_.dec_axis_params.gear_ratio;
-            // telescope position should equal servo position / gear_ratio
-            EXPECT_NEAR(status.telescope_axis1_position, status.axis1_position / gear1, 1e-9);
-            EXPECT_NEAR(status.telescope_axis2_position, status.axis2_position / gear2, 1e-9);
-            // telescope positions should be in celestial range
-            EXPECT_GE(status.telescope_axis1_position, -180.0);
-            EXPECT_LE(status.telescope_axis1_position, 180.0);
-            EXPECT_GE(status.telescope_axis2_position, -90.0);
-            EXPECT_LE(status.telescope_axis2_position, 90.0);
+            // telescope position = servo position / gear_ratio (modulo 360°),
+            // because the implementation normalizes telescope positions to [0°, 360°)
+            // while raw servo positions can be negative (unnormalized).
+            double expected_tel_axis1 = std::fmod(status.axis1_position / gear1, 360.0);
+            if (expected_tel_axis1 < 0.0) expected_tel_axis1 += 360.0;
+            double expected_tel_axis2 = std::fmod(status.axis2_position / gear2, 360.0);
+            if (expected_tel_axis2 < 0.0) expected_tel_axis2 += 360.0;
+            EXPECT_NEAR(status.telescope_axis1_position, expected_tel_axis1, 1e-9);
+            EXPECT_NEAR(status.telescope_axis2_position, expected_tel_axis2, 1e-9);
+            // telescope positions should be in celestial range [0°, 360°)
+            EXPECT_GE(status.telescope_axis1_position, 0.0);
+            EXPECT_LT(status.telescope_axis1_position, 360.0);
+            EXPECT_GE(status.telescope_axis2_position, 0.0);
+            EXPECT_LT(status.telescope_axis2_position, 360.0);
             break;
         }
     }

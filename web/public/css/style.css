@@ -714,6 +714,14 @@ body {
   gap: 8px;
 }
 
+/* Home card description */
+.home-description {
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+  margin: 0 0 12px 0;
+  line-height: 1.5;
+}
+
 /* ─── Axis Control Pad ──────────────────────────────────────────────── */
 
 /* Mode info bar */
@@ -3066,3 +3074,4 @@ input[type="file"].form-input::file-selector-button:hover {
   border-radius: 50%;
   display: inline-block;
 }
+

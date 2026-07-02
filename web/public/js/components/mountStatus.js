@@ -55,7 +55,26 @@ const MountStatusComponent = (() => {
     while (_velDataAxis2.length > CHART_MAX_POINTS) _velDataAxis2.shift();
 
     // Always draw the chart, even with zero data — the drawChart function
-    // handles empty/single-point datasets gracefully.
+    // handles empty/single-point datasets gracefully. Also removes the
+    // "Waiting for data..." placeholder so the canvas is visible.
+    const placeholder = container.querySelector('.status-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
+    container.classList.remove('empty');
+    drawChart(canvas);
+  }
+
+  /**
+   * Redraw the velocity chart with existing buffered data.
+   * Called when the Status tab becomes visible after being hidden,
+   * to restore the chart that was skipped by drawChart's zero-dimension guard.
+   */
+  function redrawVelocityChart() {
+    const canvas = $('#velocity-canvas');
+    const container = $('#velocity-chart-content');
+    if (!canvas || !container) return;
+    if (_velDataAxis1.length === 0 && _velDataAxis2.length === 0) return;
+    const placeholder = container.querySelector('.status-placeholder');
+    if (placeholder) placeholder.style.display = 'none';
     container.classList.remove('empty');
     drawChart(canvas);
   }
@@ -92,6 +111,13 @@ const MountStatusComponent = (() => {
     const rect = canvas.getBoundingClientRect();
     const w = rect.width;
     const h = rect.height;
+
+    // Skip drawing when canvas is not visible (e.g., Status tab hidden).
+    // Setting canvas.width/height to 0 permanently shrinks the internal
+    // resolution, so future draw calls would still produce blank output
+    // even after the tab becomes visible again.
+    if (w <= 0 || h <= 0) return;
+
     canvas.width = w * dpr;
     canvas.height = h * dpr;
     ctx.scale(dpr, dpr);
@@ -358,10 +384,13 @@ const MountStatusComponent = (() => {
       return;
     }
 
-    // Update velocity chart with actual CANopen motor rates (deg/s → convert to arcsec/s)
+    // Update velocity chart with commanded tracking rates (already in arcsec/s).
+    // Using the commanded rate (tracking_rate_*) instead of the raw CANopen
+    // velocity (actual_rate_*) avoids oscillations: in position mode the drive
+    // stops between updates, causing actual_rate to flicker 0 ↔ small values.
     updateVelocityChart(
-      (state.actual_rate_axis1 ?? 0) * 3600,
-      (state.actual_rate_axis2 ?? 0) * 3600
+      state.tracking_rate_ra ?? 0,
+      state.tracking_rate_dec ?? 0
     );
 
     // Update status badge
@@ -576,5 +605,5 @@ const MountStatusComponent = (() => {
   }
 
   // Public API
-  return { render };
+  return { render, redrawVelocityChart };
 })();

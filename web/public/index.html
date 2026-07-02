@@ -327,6 +327,29 @@
             </div>
           </div>
 
+          <!-- Home Card -->
+          <div id="card-home" class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title" data-i18n="card.home">🏠 Home</h2>
+            </div>
+            <div class="card-body">
+              <p class="home-description" data-i18n="home.description">Home does not move the mount &mdash; first point the telescope physically at a known object, then set the reference coordinates below.</p>
+              <div class="control-form">
+                <div class="form-row">
+                  <div class="form-group" style="flex:1;">
+                    <label for="home-axis1" data-i18n="home.axis1_label">Oś 1 (HA / Wysokość) [°]</label>
+                    <input type="text" id="home-axis1" class="form-input" value="0" data-angle-type="dec" data-angle-decimals="4" data-angle-decimal="0" placeholder="np. -12° 30' 45.2"" />
+                  </div>
+                  <div class="form-group" style="flex:1;">
+                    <label for="home-axis2" data-i18n="home.axis2_label">Oś 2 (Dec / Azymut) [°]</label>
+                    <input type="text" id="home-axis2" class="form-input" value="0" data-angle-type="dec" data-angle-decimals="4" data-angle-decimal="0" placeholder="np. +41° 16' 12.3"" />
+                  </div>
+                </div>
+                <button id="btn-home" class="btn btn-primary btn-full" data-i18n="btn.home">🏠 Home</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Quick Actions Card -->
           <div id="card-actions" class="card full-width">
             <div class="card-header">
@@ -337,7 +360,6 @@
                 <button id="btn-stop" class="btn btn-danger" data-i18n="btn.stop">Stop</button>
                 <button id="btn-park" class="btn btn-warning" data-i18n="btn.park">Park</button>
                 <button id="btn-unpark" class="btn btn-secondary" data-i18n="btn.unpark">Unpark</button>
-                <button id="btn-home" class="btn btn-primary" data-i18n="btn.home">Home</button>
                 <button id="btn-clear-errors" class="btn btn-secondary" data-i18n="btn.clear_errors">Clear Errors</button>
               </div>
             </div>

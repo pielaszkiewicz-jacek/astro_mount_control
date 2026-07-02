@@ -1460,9 +1460,16 @@ public:
                     auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
                     axis1_target_ = mount_ha * 15.0 * ha_gear;  // Convert hours→degrees→servo degrees
                     axis2_target_ = mount_dec * dec_gear;
+                    // Store TPOINT-corrected target for the tracking loop
+                    tracking_target_ra_hours_ = mount_ha;
+                    tracking_target_dec_deg_ = mount_dec;
                 } else {
                     axis1_target_ = ha_hours * 15.0 * ha_gear;  // Convert hours→degrees→servo degrees
                     axis2_target_ = dec * dec_gear;
+                    // Store celestial target for the tracking loop so it can
+                    // compute HA = LST - RA correctly as sidereal time advances.
+                    tracking_target_ra_hours_ = ra;
+                    tracking_target_dec_deg_ = dec;
                 }
             } else if (config_.mount_type == MountType::CASUAL) {
                 // Convert RA/Dec to mount-frame alt/az using the orientation quaternion.
@@ -1587,13 +1594,54 @@ public:
                 pier_side_ = 1;
             }
             
-            // Use HAL motor velocity control or CANopen if available
-            if (hal_axis1_motor_ && hal_axis2_motor_) {
-                hal_axis1_motor_->setVelocity(axis1_tracking_rate, config_.tracking_acceleration);
-                hal_axis2_motor_->setVelocity(axis2_tracking_rate, config_.tracking_acceleration);
-            } else if (canopen_interface_) {
-                canopen_interface_->setVelocityTarget(0, axis1_tracking_rate, config_.tracking_acceleration);
-                canopen_interface_->setVelocityTarget(1, axis2_tracking_rate, config_.tracking_acceleration);
+            // For EQUATORIAL mounts, use Profile Position mode instead of
+            // Profile Velocity for tracking.  Velocity mode is unreliable
+            // on this drive (SDO to 0x60FF and 0x6061 confirmed correct,
+            // but 0x6064 position changes at 800+ °/s while 0x606C reports
+            // 1.5 °/s).  Position mode is universally supported and more
+            // robust — we update the target position periodically in the
+            // tracking loop via setPositionTarget().
+            if (config_.mount_type == MountType::EQUATORIAL) {
+                // Set an initial position target at the current celestial
+                // position.  The tracking loop will advance it periodically.
+                const double TRACK_POS_VEL = std::max(axis1_tracking_rate * 2.0, 2.0);  // °/s servo
+                bool pos_ok = false;
+                if (hal_axis1_motor_ && hal_axis2_motor_) {
+                    bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, TRACK_POS_VEL, config_.slew_acceleration);
+                    bool ok2 = hal_axis2_motor_->setPosition(axis2_target_, TRACK_POS_VEL, config_.slew_acceleration);
+                    pos_ok = ok1 && ok2;
+                } else if (canopen_interface_) {
+                    bool ok1 = canopen_interface_->setPositionTarget(0, axis1_target_, TRACK_POS_VEL, config_.slew_acceleration);
+                    bool ok2 = canopen_interface_->setPositionTarget(1, axis2_target_, TRACK_POS_VEL, config_.slew_acceleration);
+                    pos_ok = ok1 && ok2;
+                }
+                if (!pos_ok) {
+                    MOUNT_LOG_ERROR("startTracking: failed to set position targets — aborting");
+                    axis1_rate_ = 0.0;
+                    axis2_rate_ = 0.0;
+                    state_ = MountStatus::State::IDLE;
+                    return false;
+                }
+                last_pos_update_iter_ = 0;
+            } else {
+                // ALT_AZ / CASUAL: use velocity mode (unchanged).
+                bool velocity_set_ok = false;
+                if (hal_axis1_motor_ && hal_axis2_motor_) {
+                    bool ok1 = hal_axis1_motor_->setVelocity(axis1_tracking_rate, config_.tracking_acceleration);
+                    bool ok2 = hal_axis2_motor_->setVelocity(axis2_tracking_rate, config_.tracking_acceleration);
+                    velocity_set_ok = ok1 && ok2;
+                } else if (canopen_interface_) {
+                    bool ok1 = canopen_interface_->setVelocityTarget(0, axis1_tracking_rate, config_.tracking_acceleration);
+                    bool ok2 = canopen_interface_->setVelocityTarget(1, axis2_tracking_rate, config_.tracking_acceleration);
+                    velocity_set_ok = ok1 && ok2;
+                }
+                if (!velocity_set_ok) {
+                    MOUNT_LOG_ERROR("startTracking: failed to set velocity targets — aborting");
+                    axis1_rate_ = 0.0;
+                    axis2_rate_ = 0.0;
+                    state_ = MountStatus::State::IDLE;
+                    return false;
+                }
             }
             
             // Start HAL interface — enables periodic hardware I/O for motor control,
@@ -1637,6 +1685,8 @@ public:
                 double snap_tracking_accel = 0;
                 double snap_temperature = 20.0;
                 bool is_tracking = false;
+                double snap_target_ra = 0.0;
+                double snap_target_dec = 0.0;
                 
                 // ---- I/O Block 1: HAL safety monitor check (outside state_mutex_) ----
                 // Reading hardware safety status is I/O-bound and takes significant time
@@ -1856,7 +1906,7 @@ public:
                 // The motors do NOT need to be paused; the drive's PID loop continues
                 // undisturbed because the logical target position (adjusted by the
                 // new offset) remains continuous.
-                if (canopen_interface_) {
+                if (canopen_interface_ && config_.canopen_position_rewind_enabled) {
                     bool do_rewind = false;
                     std::string rewind_reason;
                     
@@ -1914,6 +1964,11 @@ public:
                         if (canopen_interface_->setActualPosition(0, rewind_pos1)) {
                             MOUNT_LOG_DEBUG("CANopen rewind: axis 0 position {:.2f}° → {:.2f}°",
                                      pos1_before, rewind_pos1);
+                            // Synchronize internal position with the rewound CANopen drive position.
+                            // Without this, the tracking loop continues to accumulate offsets
+                            // from the old (huge) axis1_position_ value, immediately triggering
+                            // soft-limit violations on the next iteration.
+                            axis1_position_ = rewind_pos1;
                         } else {
                             MOUNT_LOG_WARN("CANopen rewind: axis 0 setActualPosition failed");
                         }
@@ -1923,12 +1978,22 @@ public:
                         if (canopen_interface_->setActualPosition(1, rewind_pos2)) {
                             MOUNT_LOG_DEBUG("CANopen rewind: axis 1 position {:.2f}° → {:.2f}°",
                                      pos2_before, rewind_pos2);
+                            axis2_position_ = rewind_pos2;
                         } else {
                             MOUNT_LOG_WARN("CANopen rewind: axis 1 setActualPosition failed");
                         }
                         
                         last_position_rewind_time_ = std::chrono::steady_clock::now();
                         MOUNT_LOG_INFO("CANopen position rewind complete");
+                        
+                        // Re-evaluate soft limits after rewind changed axis positions.
+                        // evaluateSoftLimits() was called at the top of the iteration
+                        // (line 1720) with the old pre-rewind position values. After
+                        // the rewind resets axis1_position_/axis2_position_ to a much
+                        // smaller value, the stale soft_limit_distance_ values from
+                        // the old (huge) position would incorrectly trigger the limit
+                        // violation check below.
+                        evaluateSoftLimits(axis1_position_, axis2_position_);
                     }
                 }
                 
@@ -2728,17 +2793,46 @@ public:
                 }
                 
                 // Snapshot values needed for I/O operations after lock release.
-                // current_rate_1/2 are local variables containing the final tracking
-                // rates (either from guider delta for equatorial or Alt-Az computation).
-                // config_.tracking_acceleration, env_temperature_, and state_ are shared
-                // state protected by state_mutex_ (env_temperature_ is also writable under
-                // env_mutex_ via I/O Block 2) — we snapshot them here while still under
-                // the lock to ensure a consistent view for I/O operations after release.
                 snap_rate_1 = current_rate_1;
                 snap_rate_2 = current_rate_2;
                 snap_tracking_accel = config_.tracking_acceleration;
                 snap_temperature = env_temperature_;
                 is_tracking = (state_ == MountStatus::State::TRACKING);
+                
+                // For EQUATORIAL position-mode tracking, capture the celestial
+                // target and current LST so we can compute new position targets
+                // outside the lock.
+                // IMPORTANT: These must ASSIGN to the outer-scope variables
+                // (declared at the top of the tracking loop), NOT re-declare
+                // them.  A re-declaration ("double snap_target_ra = ...")
+                // shadows the outer variable — the inner one goes out of scope
+                // at the closing brace, and the position-update code below
+                // uses the outer (zero-initialized) copy, causing the drive
+                // to target RA=0h Dec=0° instead of the actual celestial
+                // target.  This produces uncontrolled max-speed slewing.
+                snap_target_ra = 0.0;
+                snap_target_dec = 0.0;
+                if (config_.mount_type == MountType::EQUATORIAL) {
+                    // Use the celestial target coordinates stored by startTracking().
+                    // These are fixed RA/Dec of the object being tracked; the
+                    // position-update block below computes HA = LST - RA at the
+                    // current sidereal time, which correctly advances the mount
+                    // at the sidereal rate.
+                    //
+                    // IMPORTANT: Do NOT recompute snap_target_ra from axis1_target_
+                    // (e.g. snap_target_ra = lst - axis1_target_/(15*gear)) on
+                    // every iteration.  That would anchor the target to the
+                    // original HA, cancelling out the LST advance and stalling
+                    // the tracking position.
+                    snap_target_ra = tracking_target_ra_hours_;
+                    snap_target_dec = tracking_target_dec_deg_;
+                    
+                    const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                    const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                    // Store current axis targets for the I/O block below
+                    snap_pos_target_axis1_ = axis1_target_;
+                    snap_pos_target_axis2_ = axis2_target_;
+                }
                 }   // state_mutex_ scope ends, lock released
                 
                 // Handle HAL safety error: take lock briefly to set error state.
@@ -2753,45 +2847,82 @@ public:
                     break;
                 }
                 
-                // ---- I/O Block 3: HAL/CANopen motor velocity updates (outside state_mutex_) ----
-                // Motor control involves CANopen bus communication or HAL hardware calls,
-                // both of which are I/O-bound and can take 1-10ms+ on the bus. We execute
-                // these outside the lock using snapshot values captured above, so gRPC
-                // handlers (getStatus etc.) are not blocked during hardware communication.
-                //
-                // Rate limiter: only issue setVelocity/setVelocityTarget when the tracking
-                // rate has changed significantly (>1e-12 deg/s). During steady-state tracking
-                // (which is the vast majority of the time), the rate is constant and every
-                // 100ms CANopen bus write would be redundant — generating unnecessary bus
-                // traffic and CPU overhead. The threshold of 1e-12 deg/s (~4e-9 arcsec/s)
-                // is far below any physically meaningful rate change, so it acts as a
-                // pure equality comparison while tolerating harmless FP rounding.
+                // ---- I/O Block 3: Motor control updates (outside state_mutex_) ----
                 if (is_tracking) {
-                    bool rate_changed = false;
-                    if (hal_axis1_motor_ && hal_axis2_motor_) {
-                        rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
-                                       (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
-                        if (rate_changed) {
+                    if (config_.mount_type == MountType::EQUATORIAL) {
+                        // ── EQUATORIAL position-mode tracking ──────────────
+                        // Every 50 iterations (~1 s) recompute the celestial
+                        // target and send a new setPositionTarget.  The drive
+                        // PID smoothly tracks the advancing target.
+                        // Velocity mode is unreliable on this hardware (0x606C
+                        // reports 1.5 °/s while 0x6064 moves 800+ °/s).
+                        constexpr size_t POS_UPDATE_INTERVAL = 50;
+                        if (tracking_iteration_count_ - last_pos_update_iter_ >= POS_UPDATE_INTERVAL) {
+                            last_pos_update_iter_ = tracking_iteration_count_;
+                            
+                            // Compute new HA = LST - RA, then axis1 target in servo degrees.
+                            // Add a 1.5 s lead so the target is always slightly ahead of the
+                            // actual position.  Without the lead the drive reaches the target
+                            // before the next update arrives, producing stop-start oscillation.
+                            double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                            double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                            constexpr double SIDEREAL_HOURS_PER_SEC = 24.0 / 86164.0905;
+                            constexpr double POS_LEAD_SECONDS = 1.5;
+                            double ha_hours = lst - snap_target_ra + POS_LEAD_SECONDS * SIDEREAL_HOURS_PER_SEC;
+                            while (ha_hours > 12.0) ha_hours -= 24.0;
+                            while (ha_hours < -12.0) ha_hours += 24.0;
+                            
+                            const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                            const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                            double new_axis1_target = ha_hours * 15.0 * ha_gear;
+                            double new_axis2_target = snap_target_dec * dec_gear;
+                            
+                            // Use profile velocity 1.5× the sidereal servo rate so the
+                            // drive smoothly catches up to the lead target without
+                            // overshooting.  0.004178 °/s (telescope) × gear_ratio.
+                            const double sidereal_servo_rate = 0.004178074 * ha_gear;
+                            const double pos_vel = sidereal_servo_rate * 1.5;
+                            
                             try {
-                                hal_axis1_motor_->setVelocity(snap_rate_1, snap_tracking_accel);
-                                hal_axis2_motor_->setVelocity(snap_rate_2, snap_tracking_accel);
-                                last_sent_rate_1_ = snap_rate_1;
-                                last_sent_rate_2_ = snap_rate_2;
+                                if (hal_axis1_motor_ && hal_axis2_motor_) {
+                                    hal_axis1_motor_->setPosition(new_axis1_target, pos_vel, config_.slew_acceleration);
+                                    hal_axis2_motor_->setPosition(new_axis2_target, pos_vel, config_.slew_acceleration);
+                                } else if (canopen_interface_) {
+                                    canopen_interface_->setPositionTarget(0, new_axis1_target, pos_vel, config_.slew_acceleration);
+                                    canopen_interface_->setPositionTarget(1, new_axis2_target, pos_vel, config_.slew_acceleration);
+                                }
                             } catch (const std::exception& e) {
-                                MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
+                                MOUNT_LOG_WARN("Position update error during tracking: {}", e.what());
                             }
                         }
-                    } else if (canopen_interface_) {
-                        rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
-                                       (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
-                        if (rate_changed) {
-                            try {
-                                canopen_interface_->setVelocityTarget(0, snap_rate_1, snap_tracking_accel);
-                                canopen_interface_->setVelocityTarget(1, snap_rate_2, snap_tracking_accel);
-                                last_sent_rate_1_ = snap_rate_1;
-                                last_sent_rate_2_ = snap_rate_2;
-                            } catch (const std::exception& e) {
-                                MOUNT_LOG_WARN("CANopen communication error during tracking: {}", e.what());
+                    } else {
+                        // ── ALT_AZ / CASUAL velocity-mode tracking ─────────
+                        bool rate_changed = false;
+                        if (hal_axis1_motor_ && hal_axis2_motor_) {
+                            rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
+                                           (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
+                            if (rate_changed) {
+                                try {
+                                    hal_axis1_motor_->setVelocity(snap_rate_1, snap_tracking_accel);
+                                    hal_axis2_motor_->setVelocity(snap_rate_2, snap_tracking_accel);
+                                    last_sent_rate_1_ = snap_rate_1;
+                                    last_sent_rate_2_ = snap_rate_2;
+                                } catch (const std::exception& e) {
+                                    MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
+                                }
+                            }
+                        } else if (canopen_interface_) {
+                            rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
+                                           (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
+                            if (rate_changed) {
+                                try {
+                                    canopen_interface_->setVelocityTarget(0, snap_rate_1, snap_tracking_accel);
+                                    canopen_interface_->setVelocityTarget(1, snap_rate_2, snap_tracking_accel);
+                                    last_sent_rate_1_ = snap_rate_1;
+                                    last_sent_rate_2_ = snap_rate_2;
+                                } catch (const std::exception& e) {
+                                    MOUNT_LOG_WARN("CANopen communication error during tracking: {}", e.what());
+                                }
                             }
                         }
                     }
@@ -2815,6 +2946,17 @@ public:
                 exit_error = error_message_;
             }
             if (exit_state == MountStatus::State::ERROR) {
+                // Stop motors immediately on error. The tracking loop may have exited
+                // due to a soft-limit violation, NaN/Inf detection, or HAL safety error
+                // while CANopen drives were in Profile Velocity mode. Without an explicit
+                // stop, the motors continue running at the last commanded velocity
+                // indefinitely, causing uncontrolled mount rotation.
+                if (hal_axis1_motor_) hal_axis1_motor_->stop();
+                if (hal_axis2_motor_) hal_axis2_motor_->stop();
+                if (!hal_axis1_motor_ && canopen_interface_) {
+                    canopen_interface_->stopAxis(0);
+                    canopen_interface_->stopAxis(1);
+                }
                 notifyError(exit_error);
                 notifyStatusChanged();
             } else if (exit_state == MountStatus::State::MERIDIAN_FLIP) {
@@ -3228,6 +3370,11 @@ public:
             status.axis1_rate = axis1_rate_;
             status.axis2_rate = axis2_rate_;
         }
+        // Report actual CANopen motor velocities (from refreshPositions).
+        // These reflect what the drive is physically doing, as opposed to
+        // axis1_rate_/axis2_rate_ which hold the commanded tracking rates.
+        status.actual_axis1_rate = actual_axis1_rate_;
+        status.actual_axis2_rate = actual_axis2_rate_;
         status.axis1_target = axis1_target_;
         status.axis2_target = axis2_target_;
         status.encoders_active = encoders_active_;
@@ -3320,14 +3467,19 @@ public:
             // No normalization — CANopen drives use absolute positioning.
             axis1_position_ = pos0.actual_position;
             axis2_position_ = pos1.actual_position;
-            axis1_rate_ = pos0.actual_velocity;
-            axis2_rate_ = pos1.actual_velocity;
+            // Store actual CANopen velocities in dedicated fields.
+            // Do NOT overwrite axis1_rate_/axis2_rate_ which hold the
+            // commanded tracking rates set by startTracking() — the UI
+            // needs both values (commanded vs actual).
+            actual_axis1_rate_ = pos0.actual_velocity;
+            actual_axis2_rate_ = pos1.actual_velocity;
 
-            // Throttled log: servo → telescope position conversion.
-            // Logs every ~100 calls (~10 s at 100 ms main loop) to avoid spam.
+            // Throttled log: servo → telescope position + velocity.
+            // Logs every ~50 calls (~5 s at 100 ms main loop) to help
+            // diagnose velocity scaling issues.
             static int refresh_log_counter = 0;
             refresh_log_counter++;
-            if (refresh_log_counter % 100 == 0) {
+            if (refresh_log_counter % 50 == 0) {
                 double ha_gear_r = config_.ha_axis_params.gear_ratio;
                 double dec_gear_r = config_.dec_axis_params.gear_ratio;
                 if (ha_gear_r < 1.0) ha_gear_r = 360.0;
@@ -3335,10 +3487,12 @@ public:
                 double telescope_axis1 = pos0.actual_position / ha_gear_r;
                 double telescope_axis2 = pos1.actual_position / dec_gear_r;
                 MOUNT_LOG_INFO("CANopen pos → Telescope: axis1={:.4f}° axis2={:.4f}° "
-                               "| Servo (raw): axis1={:.4f}° axis2={:.4f}° "
+                               "| Servo: axis1={:.4f}° axis2={:.4f}° "
+                               "| Vel: axis1={:.4f}°/s axis2={:.4f}°/s "
                                "| Gear HA={:.1f}:1 Dec={:.1f}:1",
                                telescope_axis1, telescope_axis2,
                                pos0.actual_position, pos1.actual_position,
+                               pos0.actual_velocity, pos1.actual_velocity,
                                config_.ha_axis_params.gear_ratio, config_.dec_axis_params.gear_ratio);
             }
         }
@@ -4845,6 +4999,7 @@ public:
             setIfStr("canopen", "accel_mode", config_.canopen_accel_mode);     // legacy compat
             hc["accel_mode"] = config_.canopen_accel_mode;
             hc["pdo_config_enabled"] = config_.canopen_pdo_config_enabled;
+            hc["position_rewind_enabled"] = config_.canopen_position_rewind_enabled;
             hc["position_rewind_interval_seconds"] = config_.canopen_position_rewind_interval_seconds;
             hc["position_rewind_threshold_percent"] = config_.canopen_position_rewind_threshold_percent;
 
@@ -6217,6 +6372,25 @@ public:
         double telescope_axis1 = axis1_pos / ha_gear;
         double telescope_axis2 = axis2_pos / dec_gear;
         
+        // For EQUATORIAL mounts, HA is normalized to [0°, 360°) by getStatus().
+        // After CANopen position rewind, HA can be in the range [270°, 360°),
+        // which is equivalent to [-90°, 0°) but exceeds soft_limit_axis1_max=270°.
+        // Normalize to [-180°, 180°] for the soft limit check so wrap-around
+        // positions are evaluated correctly.
+        if (config_.mount_type == MountType::EQUATORIAL) {
+            // Normalize telescope HA to [-180°, 180°] using a while loop.
+            // An if/else only handles ±540°; after hours of tracking at
+            // 1.5 °/s servo (≡ 5400 °/h servo), axis1_pos can exceed
+            // thousands of servo degrees.  The while loop is bounded
+            // because each iteration subtracts a constant 360°.
+            while (telescope_axis1 > 180.0) {
+                telescope_axis1 -= 360.0;
+            }
+            while (telescope_axis1 < -180.0) {
+                telescope_axis1 += 360.0;
+            }
+        }
+        
         const double min1 = config_.soft_limit_axis1_min;
         const double max1 = config_.soft_limit_axis1_max;
         const double min2 = config_.soft_limit_axis2_min;
@@ -6307,6 +6481,8 @@ private:
     double axis2_target_;
     double axis1_rate_;
     double axis2_rate_;
+    double actual_axis1_rate_{0.0};      // Actual CANopen motor velocity [deg/s], updated by refreshPositions
+    double actual_axis2_rate_{0.0};      // Actual CANopen motor velocity [deg/s], updated by refreshPositions
     bool encoders_active_;
     bool guider_active_;
     bool tpoint_calibrated_;
@@ -6329,6 +6505,21 @@ private:
     // Initialized to NaN so the first iteration always triggers a write.
     double last_sent_rate_1_{std::numeric_limits<double>::quiet_NaN()};
     double last_sent_rate_2_{std::numeric_limits<double>::quiet_NaN()};
+    
+    // Position-mode tracking: iteration counter for periodic position-target
+    // updates.  Every N iterations the tracking loop recomputes the celestial
+    // target and sends a setPositionTarget to advance the drive.
+    size_t last_pos_update_iter_{0};
+    double snap_pos_target_axis1_{0.0};
+    double snap_pos_target_axis2_{0.0};
+
+    // Stored celestial target coordinates set by startTracking().
+    // The tracking loop uses these to compute the advancing HA target
+    // (HA = LST - RA) as sidereal time progresses.  They must NOT be
+    // recomputed from axis1_target_ on every iteration because that
+    // cancels out the LST advance — the tracking target would stall.
+    double tracking_target_ra_hours_{0.0};
+    double tracking_target_dec_deg_{0.0};
     
     // Bootstrap calibration computed results
     double bootstrap_rms_ra_arcsec_{0.0};

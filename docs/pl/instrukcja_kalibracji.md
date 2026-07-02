@@ -9,6 +9,7 @@
   - [2. Przygotowanie](#2-przygotowanie)
     - [2.5 Ustalenie punktu referencyjnego (Home)](#25-ustalenie-punktu-referencyjnego-home)
       - [Jak to działa?](#jak-to-działa)
+      - [Sekcja Home w interfejsie](#sekcja-home-w-interfejsie)
       - [Zachowanie zależnie od typu montażu](#zachowanie-zależnie-od-typu-montażu)
       - [Procedura krok po kroku](#procedura-krok-po-kroku)
   - [3. Kalibracja Bootstrap (wstępna)](#3-kalibracja-bootstrap-wstępna)
@@ -71,7 +72,7 @@ Przed rozpoczęciem kalibracji:
 
 > **Uwaga:** Przy enkoderach inkrementalnych po restarcie kontrolera pozycja startowa to pozycja parkowania (domyślnie HA=0°, Dec=0°). Kalibracja bootstrap skoryguje ten offset.
 
-6. **Wykonaj operację Home** — ustaw punkt referencyjny układu współrzędnych (szczegóły w [sekcji 2.5](#25-ustalenie-punktu-referencyjnego-home)).
+6. **Wykonaj operację Home** — w zakładce **Control** znajdź sekcję **Home**, wprowadź współrzędne obu osi i kliknij przycisk 🏠 (szczegóły w [sekcji 2.5](#25-ustalenie-punktu-referencyjnego-home)).
 
 ---
 
@@ -91,6 +92,40 @@ Po wykonaniu Home:
 - **Detekcja południka** (meridian flip) działa na podstawie poprawnego HA
 - **Wyświetlanie w zakładce Status** pokazuje poprawne współrzędne teleskopu
 
+#### Sekcja Home w interfejsie
+
+W zakładce **Control** znajduje się wydzielona sekcja **Home**, zawierająca:
+
+```
+┌─────────────────────────────────────────────────┐
+│ 🏠 Home                                          │
+│                                                 │
+│ Ustaw punkt referencyjny układu współrzędnych.  │
+│ Home nie porusza montażem — przed użyciem       │
+│ skieruj fizycznie teleskop na znany obiekt.     │
+│                                                 │
+│ Oś 1 (HA / Wysokość):                           │
+│ ┌─────────────────────────┐                     │
+│ │ 0.000                   │ [°]                │
+│ └─────────────────────────┘                     │
+│                                                 │
+│ Oś 2 (Dec / Azymut):                            │
+│ ┌─────────────────────────┐                     │
+│ │ 90.000                  │ [°]                │
+│ └─────────────────────────┘                     │
+│                                                 │
+│ [ 🏠 Home ]                                     │
+└─────────────────────────────────────────────────┘
+```
+
+| Element | Opis |
+|---|---|
+| **Oś 1 (HA / Wysokość)** | Pole do wpisania współrzędnej pierwszej osi w stopniach teleskopu. Dla montażu **EQUATORIAL**: kąt godzinny (HA) w zakresie [−180°, 180°]. Dla **ALT_AZ / CASUAL**: wysokość w zakresie [0°, 90°]. |
+| **Oś 2 (Dec / Azymut)** | Pole do wpisania współrzędnej drugiej osi w stopniach teleskopu. Dla montażu **EQUATORIAL**: deklinacja w zakresie [−90°, 90°]. Dla **ALT_AZ / CASUAL**: azymut w zakresie [0°, 360°). |
+| **Przycisk Home 🏠** | Wysyła komendę Home z wartościami wpisanymi w pola. Po kliknięciu kontroler natychmiast aktualizuje wewnętrzną pozycję — sprawdź zakładkę **Status** aby zweryfikować. |
+
+> **💡 Wskazówka:** Pola są wstępnie wypełnione bieżącymi współrzędnymi teleskopu z zakładki Status. Jeśli teleskop jest już fizycznie skierowany na znany obiekt, wystarczy tylko kliknąć przycisk.
+
 #### Zachowanie zależnie od typu montażu
 
 | Typ montażu | `axis1` (stopnie teleskopu) | `axis2` (stopnie teleskopu) | Przykład Home |
@@ -105,16 +140,17 @@ Po wykonaniu Home:
 2. **Oblicz współrzędne teleskopu** dla tego obiektu:
    - **EQUATORIAL**: `HA = LST − RA` (w stopniach: `HA° = HA_godz × 15`), `Dec = deklinacja obiektu`
    - **ALT_AZ**: wysokość i azymut obiektu (można obliczyć w zakładce **Tests** → Reference Object → Transform)
-3. **Wyślij komendę Home** — kliknij przycisk **Home** w zakładce **Control** (sekcja Quick Actions). Przycisk używa bieżących współrzędnych teleskopu z zakładki Status jako wartości referencyjnych.
+3. **Wprowadź współrzędne** — w pola **Oś 1** i **Oś 2** sekcji Home wpisz obliczone wartości
+4. **Kliknij przycisk Home 🏠** — kontroler ustawi wewnętrzny punkt referencyjny na podane współrzędne
    Alternatywnie przez API gRPC:
    ```
    grpcurl -d '{"axis1": 0, "axis2": 90}' ... astro_mount.MountControllerService/Home
    ```
-4. **Zweryfikuj** — sprawdź zakładkę **Status**: pozycje teleskopu (`Telescope axis1/axis2`) powinny odpowiadać zadanym wartościom
+5. **Zweryfikuj** — sprawdź zakładkę **Status**: pozycje teleskopu (`Telescope axis1/axis2`) powinny odpowiadać zadanym wartościom
 
 > **⚠️ Ograniczenie CANopen absolutnego:** Po `Home()` NIE wykonuj bezpośrednio slewa pozycyjnego (`SlewToCoordinates` / `SlewToHorizontal`). Napędy CANopen używają absolutnego pozycjonowania — jeśli ich wewnętrzna pozycja bezwzględna różni się od ustawionej przez Home, slew może spowodować nieoczekiwany, gwałtowny obrót. **Najpierw wykonaj kalibrację Bootstrap** — po skalibrowaniu slewy będą bezpieczne, ponieważ kontroler przelicza współrzędne przez macierz obrotu.
 
-> **💡 Wskazówka:** Home najlepiej wykonać od razu po fizycznym ustawieniu montażu na biegun niebieski. Dla montażu equatorialnego: skieruj teleskop na Polaris, oblicz HA (zazwyczaj bliskie 0°), Dec ≈ +89.3° i wyślij `Home(0, 89.3)`.
+> **💡 Wskazówka:** Home najlepiej wykonać od razu po fizycznym ustawieniu montażu na biegun niebieski. Dla montażu equatorialnego: skieruj teleskop na Polaris, oblicz HA (zazwyczaj bliskie 0°), Dec ≈ +89.3°, wprowadź `Oś 1 = 0`, `Oś 2 = 89.3` i kliknij Home.
 
 ---
 
@@ -287,9 +323,10 @@ Poniżej kompletny scenariusz kalibracji od zera dla montażu equatorialnego z e
       └── Pozycja startowa: HA=0°, Dec=0° (park)
 
 19:02  HOME — ustaw punkt referencyjny
-      ├── Fizycznie skieruj teleskop na Polaris
-      ├── Oblicz HA: LST − RA(Polaris) ≈ 0°
-      └── Wyślij: Home(axis1=0, axis2=89.3)
+       ├── Fizycznie skieruj teleskop na Polaris
+       ├── Oblicz HA: LST − RA(Polaris) ≈ 0°
+       ├── Wprowadź w sekcji Home: Oś 1 = 0, Oś 2 = 89.3
+       └── Kliknij przycisk 🏠 Home
 
 19:05  BOOTSTRAP — tryb MANUAL
       ├── Szukaj: "Vega"      → Slew & Measure  ✅

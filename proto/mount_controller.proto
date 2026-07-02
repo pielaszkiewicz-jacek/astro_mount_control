@@ -704,6 +704,11 @@ message Configuration {
     double field_rotation_temperature = 61;
     double field_rotation_flexure_correction = 62;
 
+    // Enable/disable the CANopen position rewind mechanism entirely.
+    // When disabled, the drive's absolute position counter is never reset,
+    // regardless of the interval or threshold settings below.
+    optional bool canopen_position_rewind_enabled = 85;
+
     // CANopen position rewind: periodically reset the drive's absolute position
     // counter to prevent overflow beyond the drive's target position limit
     // (typically ±1,000,000 encoder counts). Set to 0 to disable.

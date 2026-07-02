@@ -113,12 +113,12 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         response->set_actual_rate_axis1(status.actual_axis1_rate);       // deg/s (CANopen)
         response->set_actual_rate_axis2(status.actual_axis2_rate);       // deg/s (CANopen)
         
-        // Axis (servo motor shaft) positions — absolute, unbounded servo degrees.
-        // These are the raw CANopen absolute encoder positions (× gear_ratio from
-        // telescope degrees). Can exceed 360°; see mount_controller.cpp:1706-1716.
+        // MountPosition.axis1/axis2 are documented as telescope/mount degrees
+        // (not servo motor degrees).  Use telescope_axis{1,2}_position which is
+        // already servo / gear_ratio, normalized per mount type.
         auto* pos = response->mutable_current_position();
-        pos->set_axis1(status.axis1_position);
-        pos->set_axis2(status.axis2_position);
+        pos->set_axis1(status.telescope_axis1_position);
+        pos->set_axis2(status.telescope_axis2_position);
         
         // Telescope axis positions — normalized telescope degrees [0°, 360°).
         // Computed as servo_position / gear_ratio, then normalized per mount type.
@@ -175,10 +175,12 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             state.set_tracking_rate_ra(status.tracking_error_ra);
             state.set_tracking_rate_dec(status.tracking_error_dec);
             
-            // Axis (servo motor shaft) positions — absolute, unbounded servo degrees.
+            // MountPosition.axis1/axis2 are documented as telescope/mount degrees
+            // (not servo motor degrees).  Use telescope_axis{1,2}_position which is
+            // already servo / gear_ratio, normalized per mount type.
             auto* pos = state.mutable_current_position();
-            pos->set_axis1(status.axis1_position);
-            pos->set_axis2(status.axis2_position);
+            pos->set_axis1(status.telescope_axis1_position);
+            pos->set_axis2(status.telescope_axis2_position);
             
             // Telescope axis positions — normalized telescope degrees [0°, 360°).
             state.set_telescope_axis1(status.telescope_axis1_position);
@@ -363,16 +365,26 @@ grpc::Status MountControllerServiceImpl::AddBootstrapMeasurement(grpc::ServerCon
         double mount_ha = 0.0;
         double mount_dec = 0.0;
         if (request->has_mount_position()) {
-            auto config = controller_.getConfiguration();
-            if (config.mount_type == controllers::MountController::MountType::CASUAL) {
-                // CASUAL mount: axis1 and axis2 are directly the mount position in degrees
-                mount_ha = request->mount_position().axis1();  // axis1 in degrees
-                mount_dec = request->mount_position().axis2(); // axis2 in degrees
-            } else {
-                // EQUATORIAL or ALT_AZ: axis1 is HA/azimuth in degrees, convert to hours
-                mount_ha = request->mount_position().axis1() / 15.0; // degrees to hours
-                mount_dec = request->mount_position().axis2();       // degrees
-            }
+            // MountPosition.axis1/axis2 are documented as telescope/mount degrees.
+            // runBootstrapCalibration() treats mount_ha as altitude-like degrees
+            // and mount_dec as azimuth-like degrees.  Do NOT divide by 15 here —
+            // the bootstrap SVD solver expects degrees, not hours.
+            mount_ha = request->mount_position().axis1();  // axis1 in telescope/mount degrees
+            mount_dec = request->mount_position().axis2(); // axis2 in telescope/mount degrees
+        } else {
+            // Mount position not provided by the client — auto-populate from
+            // the current controller telescope position.  If this is also
+            // zero (e.g. incremental encoders before any motion), the
+            // bootstrap SVD will be degenerate (all mount vectors identical),
+            // producing a suspiciously perfect RMS=0.000 fit.
+            auto status = controller_.getStatus();
+            mount_ha = status.telescope_axis1_position;
+            mount_dec = status.telescope_axis2_position;
+            API_LOG_WARN("AddBootstrapMeasurement: client did not provide mount_position — "
+                        "auto-populated from controller state: mount_ha={:.4f}°, mount_dec={:.4f}°. "
+                        "If these are all zeros, bootstrap calibration will produce a "
+                        "degenerate (RMS=0.000) result.",
+                        mount_ha, mount_dec);
         }
         
         // For bootstrap, we use simpler parameters - default environmental values
@@ -838,6 +850,7 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_canopen_enable_sync(config.canopen_use_sync);
         response->set_canopen_sync_interval_ms(config.canopen_sync_period_ms);
         response->set_canopen_accel_mode(config.canopen_accel_mode);
+        response->set_canopen_position_rewind_enabled(config.canopen_position_rewind_enabled);
         response->set_canopen_position_rewind_interval_seconds(config.canopen_position_rewind_interval_seconds);
         response->set_canopen_position_rewind_threshold_percent(config.canopen_position_rewind_threshold_percent);
         
@@ -1038,6 +1051,7 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->has_canopen_enable_sync()) config.canopen_use_sync = request->canopen_enable_sync();
     if (request->canopen_sync_interval_ms() != 0) config.canopen_sync_period_ms = request->canopen_sync_interval_ms();
     if (!request->canopen_accel_mode().empty()) config.canopen_accel_mode = request->canopen_accel_mode();
+    if (request->has_canopen_position_rewind_enabled()) config.canopen_position_rewind_enabled = request->canopen_position_rewind_enabled();
     if (request->canopen_position_rewind_interval_seconds() != 0.0) config.canopen_position_rewind_interval_seconds = request->canopen_position_rewind_interval_seconds();
     if (request->canopen_position_rewind_threshold_percent() != 0.0) config.canopen_position_rewind_threshold_percent = request->canopen_position_rewind_threshold_percent();
     if (!request->grpc_address().empty()) config.grpc_address = request->grpc_address();

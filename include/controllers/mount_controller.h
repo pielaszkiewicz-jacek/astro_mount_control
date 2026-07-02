@@ -243,6 +243,11 @@ public:
         double field_rotation_temperature{15.0};
         double field_rotation_flexure_correction{0.0};
 
+        // Enable/disable the CANopen position rewind mechanism entirely.
+        // When false, the drive's absolute position counter is never reset,
+        // regardless of the interval or threshold settings below.
+        bool canopen_position_rewind_enabled{true};
+
         // CANopen position rewind: periodically reset the drive's absolute position
         // counter to prevent overflow beyond the drive's target position limit
         // (typically ±1,000,000 encoder counts). When rewinding, the drive's

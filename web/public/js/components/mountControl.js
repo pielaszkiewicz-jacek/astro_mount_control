@@ -562,43 +562,25 @@ const MountControlComponent = (() => {
 
   async function handleHome() {
     const btn = $('#btn-home');
+    const input1 = $('#home-axis1');
+    const input2 = $('#home-axis2');
     if (btn) btn.disabled = true;
+
+    const axis1 = input1?.getAngleDecimal ? input1.getAngleDecimal() : 0;
+    const axis2 = input2?.getAngleDecimal ? input2.getAngleDecimal() : 0;
+
+    if (!isFinite(axis1) || !isFinite(axis2)) {
+      App.showToast('Invalid axis values — enter DMS format (e.g. 0:0:0.00)', 'error');
+      if (btn) btn.disabled = false;
+      return;
+    }
+
+    if (!confirm(`Set Home reference to:\n  Axis 1 = ${axis1.toFixed(4)}°\n  Axis 2 = ${axis2.toFixed(4)}°\n\nThis does not move the mount. Continue?`)) {
+      if (btn) btn.disabled = false;
+      return;
+    }
+
     try {
-      // Pre-fill with current telescope position from the last status
-      // snapshot as a convenience, but let the user override with the
-      // correct reference coordinates for the object the telescope is
-      // physically pointed at.
-      const state = App.getLastState();
-      const currentAxis1 = state?.telescope?.axis1 ?? 0;
-      const currentAxis2 = state?.telescope?.axis2 ?? 0;
-
-      // Ask for Axis1 (telescope degrees). For equatorial: HA in degrees;
-      // for alt-az/casual: altitude.  Pre-filled with current value.
-      const axis1Str = prompt(
-        `Enter telescope Axis1 position [degrees]:\n` +
-        `(Equatorial: Hour Angle; Alt-Az/Casual: Altitude)\n` +
-        `Current value: ${currentAxis1.toFixed(4)}°`,
-        currentAxis1.toFixed(4)
-      );
-      if (axis1Str === null) { if (btn) btn.disabled = false; return; }
-
-      // Ask for Axis2 (telescope degrees).
-      const axis2Str = prompt(
-        `Enter telescope Axis2 position [degrees]:\n` +
-        `(Equatorial: Declination; Alt-Az/Casual: Azimuth)\n` +
-        `Current value: ${currentAxis2.toFixed(4)}°`,
-        currentAxis2.toFixed(4)
-      );
-      if (axis2Str === null) { if (btn) btn.disabled = false; return; }
-
-      const axis1 = parseFloat(axis1Str);
-      const axis2 = parseFloat(axis2Str);
-      if (isNaN(axis1) || isNaN(axis2)) {
-        App.showToast('Invalid axis values — enter numbers (degrees)', 'error');
-        if (btn) btn.disabled = false;
-        return;
-      }
-
       const result = await Api.homeMount(axis1, axis2);
       App.showToast(result.message || `Mount homed to axis1=${axis1.toFixed(2)}°, axis2=${axis2.toFixed(2)}°`, 'success');
 
