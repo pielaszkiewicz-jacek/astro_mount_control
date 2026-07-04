@@ -2104,6 +2104,7 @@ public:
                     // pole regardless of nutation), so skip the RA correction when
                     // the mount is within 0.1° of the celestial pole.
                     constexpr double NUTATION_POLE_GUARD_DEG = 0.1;
+                    double nutation_correction_axis1 = 0.0;
                     if (std::abs(dec_for_nutation) < (90.0 - NUTATION_POLE_GUARD_DEG)) {
                         auto [app_ra, app_dec] = astro_calc_->applyNutation(current_ra, dec_for_nutation, jd);
 
@@ -2113,8 +2114,14 @@ public:
                         // Normalize to [-12, 12] hours
                         if (ra_correction_hours > 12.0) ra_correction_hours -= 24.0;
                         if (ra_correction_hours < -12.0) ra_correction_hours += 24.0;
-                        axis1_position_ += ra_correction_hours * 15.0 * ha_gear_eq;
+                        nutation_correction_axis1 = ra_correction_hours * 15.0 * ha_gear_eq;
                     }
+                    // Apply only the DELTA (change from last iteration) to prevent
+                    // cumulative correction accumulation (E1 fix).
+                    double nutation_delta = nutation_correction_axis1 - last_nutation_correction_axis1_;
+                    axis1_position_ += nutation_delta;
+                    last_nutation_correction_axis1_ = nutation_correction_axis1;
+                    last_nutation_correction_axis2_ = 0.0;  // nutation in Dec is handled via current_dec
                     
                     // Guard against NaN propagation from nutation calculation.
                     // If axis1_position_ becomes non-finite, transition to ERROR immediately
@@ -2134,8 +2141,13 @@ public:
                     // the actual sky position given the current mount HA/Dec, and we apply
                     // the difference back to the mount axes to compensate.
                     if (tpoint_calibrated_) {
-                        double ha_for_tp = axis1_position_ / 15.0;  // Convert degrees back to hours
-                        double dec_for_tp = axis2_position_;
+                        // Convert servo degrees to telescope units for TPoint model.
+                        // applyCorrections() expects mount_ha in telescope hours and
+                        // mount_dec in telescope degrees.
+                        const double ha_gear_tp = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear_tp = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        double ha_for_tp = axis1_position_ / 15.0 / ha_gear_tp;  // servo deg → telescope hours
+                        double dec_for_tp = axis2_position_ / dec_gear_tp;        // servo deg → telescope deg
                         // Pass snapshotted temperature for thermal compensation in
                         // axis_nonperp_temp_coeff, temp_flexure_coeff, temp_encoder_coeff,
                         // and axis physical corrections (backlash_temp_coeff, expansion_coeff,
@@ -2150,11 +2162,17 @@ public:
                         if (tp_ra_correction_hours > 12.0) tp_ra_correction_hours -= 24.0;
                         if (tp_ra_correction_hours < -12.0) tp_ra_correction_hours += 24.0;
                         // Convert telescope degrees → servo degrees
-                        const double dec_gear_tp = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
-                        axis1_position_ += tp_ra_correction_hours * 15.0 * ha_gear_eq;
+                        // (dec_gear_tp and ha_gear_tp already defined above)
+                        double tp_correction_axis1 = tp_ra_correction_hours * 15.0 * ha_gear_eq;
+                        double tp_correction_axis2 = (corrected_dec - dec_for_tp) * dec_gear_tp;
                         
-                        // Apply Dec correction (telescope degrees → servo degrees)
-                        axis2_position_ += (corrected_dec - dec_for_tp) * dec_gear_tp;
+                        // Apply only the DELTA to prevent cumulative correction (E1 fix)
+                        double tp_delta1 = tp_correction_axis1 - last_tpoint_correction_axis1_;
+                        double tp_delta2 = tp_correction_axis2 - last_tpoint_correction_axis2_;
+                        axis1_position_ += tp_delta1;
+                        axis2_position_ += tp_delta2;
+                        last_tpoint_correction_axis1_ = tp_correction_axis1;
+                        last_tpoint_correction_axis2_ = tp_correction_axis2;
                         
                         // Guard against NaN propagation from TPoint corrections.
                         // Non-finite values would break the soft limit evaluation and
@@ -2185,9 +2203,11 @@ public:
                         if (current_ra < 0.0) current_ra += 24.0;
                         
                         // Get true horizontal coordinates (without refraction).
-                        // axis2_position_ is in servo degrees; convert to telescope Dec.
+                        // axis2_position_ is in servo degrees; convert to telescope Dec
+                        // using the Dec gear ratio (not HA gear ratio).
+                        const double dec_gear_ref = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
                         auto [alt_true, az] = astro_calc_->equatorialToHorizontal(
-                            current_ra, axis2_position_ / ha_gear_eq, jd, false);
+                            current_ra, axis2_position_ / dec_gear_ref, jd, false);
                         
                         // Compute refraction correction
                         double refraction_deg = astro_calc_->applyAtmosphericRefraction(alt_true, az, jd);
@@ -2206,18 +2226,25 @@ public:
                             if (ra_correction_hours > 12.0) ra_correction_hours -= 24.0;
                             if (ra_correction_hours < -12.0) ra_correction_hours += 24.0;
                             
-                            // Apply refraction correction as position offset in servo degrees
-                            axis1_position_ += ra_correction_hours * 15.0 * ha_gear_eq;
+                            // Apply refraction correction using delta tracking (E1 fix).
+                            // Compute absolute corrections, then apply only the change.
+                            double refr_correction_axis1 = ra_correction_hours * 15.0 * ha_gear_eq;
                             
                             // Dec correction: convert telescope degrees → servo degrees
-                            const double dec_gear_ref = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                            // (dec_gear_ref already defined above)
                             double dec_correction = (dec_refracted - (axis2_position_ / dec_gear_ref));
                             // Refraction should never change declination by more than ~0.5° (30 arcmin).
                             // Larger values indicate numerical issues — clamp to avoid wild corrections.
-                            // Refraction should never change declination by more than ~0.5° (30 arcmin).
-                            // Larger values indicate numerical issues — clamp to avoid wild corrections.
                             if (std::abs(dec_correction) < 0.5) {
-                                axis2_position_ += dec_correction * dec_gear_ref;
+                                double refr_correction_axis2 = dec_correction * dec_gear_ref;
+                                
+                                // Apply only the DELTA to prevent cumulative correction
+                                double refr_delta1 = refr_correction_axis1 - last_refraction_correction_axis1_;
+                                double refr_delta2 = refr_correction_axis2 - last_refraction_correction_axis2_;
+                                axis1_position_ += refr_delta1;
+                                axis2_position_ += refr_delta2;
+                                last_refraction_correction_axis1_ = refr_correction_axis1;
+                                last_refraction_correction_axis2_ = refr_correction_axis2;
                             }
                             
                             // Guard against NaN propagation from refraction correction.
@@ -2255,15 +2282,27 @@ public:
                     
                     if (config_.mount_type == MountType::ALT_AZ) {
                         // ALT-AZ: axis1 = altitude, axis2 = azimuth
+                        // Convert servo degrees → telescope degrees before calling
+                        // horizontalToEquatorial (expects telescope alt/az).
+                        const double ha_gear_corr = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear_corr = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        double alt_telescope = axis1_position_ / ha_gear_corr;
+                        double az_telescope  = axis2_position_ / dec_gear_corr;
                         auto eq = astro_calc_->horizontalToEquatorial(
-                            axis1_position_, axis2_position_, jd, false);
+                            alt_telescope, az_telescope, jd, false);
                         current_ra = eq.first;
                         current_dec = eq.second;
                         convert_ok = std::isfinite(current_ra) && std::isfinite(current_dec);
                     } else {  // CASUAL
                         // CASUAL: axis1 = altitude-like, axis2 = azimuth-like in mount frame
+                        // Convert servo degrees → telescope degrees before calling
+                        // mountOrientationToEquatorial (expects telescope mount-frame angles).
+                        const double ha_gear_cas_corr = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear_cas_corr = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        double mount_alt_tel = axis1_position_ / ha_gear_cas_corr;
+                        double mount_az_tel  = axis2_position_ / dec_gear_cas_corr;
                         auto eq = astro_calc_->mountOrientationToEquatorial(
-                            axis1_position_, axis2_position_, jd,
+                            mount_alt_tel, mount_az_tel, jd,
                             mount_orientation_.quaternion);
                         current_ra = eq.first;
                         current_dec = eq.second;
@@ -2347,23 +2386,30 @@ public:
                             }
                             
                             if (convert_back_ok) {
-                                // Apply as position offsets with clamping to prevent wild jumps
-                                double alt_offset = new_alt - axis1_position_;
-                                double az_offset = new_az - axis2_position_;
+                                // Apply as position offsets with clamping to prevent wild jumps.
+                                // new_alt/new_az are in telescope degrees; axis positions are in
+                                // servo degrees. Convert to a common unit (telescope) for comparison.
+                                const double ha_gear_off = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                                const double dec_gear_off = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                                double current_alt_telescope = axis1_position_ / ha_gear_off;
+                                double current_az_telescope  = axis2_position_ / dec_gear_off;
+                                double alt_offset_telescope = new_alt - current_alt_telescope;
+                                double az_offset_telescope  = new_az - current_az_telescope;
                                 
-                                // Clamp corrections: nutation is at most ~17",
-                                // refraction at most ~0.5° at low altitude
-                                const double MAX_ALT_CORR = 1.0;   // degrees
-                                const double MAX_AZ_CORR = 2.0;    // degrees
-                                if (std::abs(alt_offset) > MAX_ALT_CORR) {
-                                    alt_offset = std::copysign(MAX_ALT_CORR, alt_offset);
+                                // Clamp corrections in telescope degrees:
+                                // nutation is at most ~17", refraction at most ~0.5° at low altitude
+                                const double MAX_ALT_CORR = 1.0;   // degrees telescope
+                                const double MAX_AZ_CORR = 2.0;    // degrees telescope
+                                if (std::abs(alt_offset_telescope) > MAX_ALT_CORR) {
+                                    alt_offset_telescope = std::copysign(MAX_ALT_CORR, alt_offset_telescope);
                                 }
-                                if (std::abs(az_offset) > MAX_AZ_CORR) {
-                                    az_offset = std::copysign(MAX_AZ_CORR, az_offset);
+                                if (std::abs(az_offset_telescope) > MAX_AZ_CORR) {
+                                    az_offset_telescope = std::copysign(MAX_AZ_CORR, az_offset_telescope);
                                 }
                                 
-                                axis1_position_ += alt_offset;
-                                axis2_position_ += az_offset;
+                                // Convert back to servo degrees for application
+                                axis1_position_ += alt_offset_telescope * ha_gear_off;
+                                axis2_position_ += az_offset_telescope * dec_gear_off;
                                 
                                 // IMPORTANT: Do NOT normalize axis2_position_ to [0, 360) here.
                                 // CANopen drives use absolute positioning — if the servo is at
@@ -2398,9 +2444,15 @@ public:
                 // through the orientation quaternion to obtain mount-frame tracking rates.
                 // where ω = Earth rotation rate (7.2921150e-5 rad/s) scaled by tracking mode.
                 if (config_.mount_type == MountType::ALT_AZ) {
-                    // Convert positions to radians
-                    double alt_rad = axis1_position_ * M_PI / 180.0;
-                    double az_rad  = axis2_position_ * M_PI / 180.0;
+                    // Convert servo positions to telescope degrees, then to radians.
+                    // axis1_position_/axis2_position_ are in servo degrees (motor shaft);
+                    // trig functions require telescope-axis angles, so divide by gear ratio.
+                    const double ha_gear_local = config_.ha_axis_params.gear_ratio;
+                    const double dec_gear_local = config_.dec_axis_params.gear_ratio;
+                    double alt_telescope = axis1_position_ / ha_gear_local;
+                    double az_telescope  = axis2_position_ / dec_gear_local;
+                    double alt_rad = alt_telescope * M_PI / 180.0;
+                    double az_rad  = az_telescope * M_PI / 180.0;
                     double lat_rad = config_.latitude * M_PI / 180.0;
                     
                     // Compute cos(lat) with polar singularity guard.
@@ -2447,9 +2499,7 @@ public:
                     // Convert telescope-axis rates to servo-motor rates.
                     // The astronomical formulas produce Earth-relative rates
                     // (telescope axis °/s); the servo must move G× faster
-                    // where G is the gear ratio.
-                    const double ha_gear_local = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_local = config_.dec_axis_params.gear_ratio;
+                    // where G is the gear ratio (ha_gear_local/dec_gear_local defined above).
 
                     // Write rates under rate_mutex_ for thread safety
                     // (applyGuiderCorrection may read axis1_rate_/axis2_rate_ from another thread)
@@ -2486,10 +2536,18 @@ public:
                 else if (config_.mount_type == MountType::CASUAL) {
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                     
-                    // Get current mount position in true horizontal frame
-                    // (inverse quaternion rotation of mount-frame position)
-                    auto [true_alt, true_az] = astro_calc_->mountOrientationToEquatorial(
-                        axis1_position_, axis2_position_, jd, mount_orientation_.quaternion);
+                    // Get current mount position in true horizontal frame.
+                    // Convert servo degrees → telescope degrees first, then apply
+                    // inverse quaternion to get true horizontal (alt, az).
+                    // mountOrientationToHorizontal() returns (alt, az) —
+                    // mountOrientationToEquatorial() would return (RA, Dec) which is
+                    // incorrect for the rate formulas below.
+                    const double ha_gear_cas = config_.ha_axis_params.gear_ratio;
+                    const double dec_gear_cas = config_.dec_axis_params.gear_ratio;
+                    double mount_alt_telescope = axis1_position_ / ha_gear_cas;
+                    double mount_az_telescope = axis2_position_ / dec_gear_cas;
+                    auto [true_alt, true_az] = astro_calc_->mountOrientationToHorizontal(
+                        mount_alt_telescope, mount_az_telescope, mount_orientation_.quaternion);
                     
                     // Compute ALT_AZ rates at the current true horizontal position
                     double alt_rad = true_alt * M_PI / 180.0;
@@ -2536,11 +2594,17 @@ public:
                     double vy = -sin_alt * sin_az_h * alt_rate_rad + cos_alt * cos_az_h * az_rate_rad;
                     double vz = cos_alt * alt_rate_rad;
                     
-                    // Rotate position and velocity by orientation quaternion to mount frame
+                    // Rotate position and velocity by orientation quaternion to mount frame.
+                    // Normalize the quaternion first — a non-unit quaternion does not
+                    // represent a pure rotation (C3 fix).
                     double qx = mount_orientation_.quaternion[0];
                     double qy = mount_orientation_.quaternion[1];
                     double qz = mount_orientation_.quaternion[2];
                     double qw = mount_orientation_.quaternion[3];
+                    double qnorm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+                    if (qnorm > 1e-15) {
+                        qx /= qnorm; qy /= qnorm; qz /= qnorm; qw /= qnorm;
+                    }
                     
                     // Inline quaternion rotation: v' = v + 2*qw*(q×v) + 2*(q×(q×v))
                     auto rotateVec = [qx, qy, qz, qw](double vx, double vy, double vz)
@@ -2567,7 +2631,10 @@ public:
                     double m1_rad = m1_deg * M_PI / 180.0;
                     double m2_rad = m2_deg * M_PI / 180.0;
                     double cos_m1 = std::cos(m1_rad);
-                    const double MIN_COS_M1 = 1e-10;
+                    // Zenith singularity guard: match ALT_AZ behaviour (cos(89.5°) ≈ 0.0087).
+                    // The old guard of 1e-10 was effectively absent — any approach to the
+                    // mount zenith would produce rate amplification of 1e10, causing NaN.
+                    const double MIN_COS_M1 = std::cos(89.5 * M_PI / 180.0);
                     if (std::abs(cos_m1) < MIN_COS_M1) {
                         cos_m1 = std::copysign(MIN_COS_M1, cos_m1);
                     }
@@ -2578,8 +2645,7 @@ public:
                                          / cos_m1 * 180.0 / M_PI;
                     
                     // Convert telescope-axis rates to servo-motor rates.
-                    const double ha_gear_cas = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_cas = config_.dec_axis_params.gear_ratio;
+                    // (ha_gear_cas/dec_gear_cas already defined above in rate computation)
 
                     // Write rates under rate_mutex_ for thread safety
                     {
@@ -2867,7 +2933,13 @@ public:
                             double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                             double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
                             constexpr double SIDEREAL_HOURS_PER_SEC = 24.0 / 86164.0905;
-                            constexpr double POS_LEAD_SECONDS = 1.5;
+                            // Adaptive lead: must be > profile_velocity_ratio × update_interval
+                            // to prevent the drive from catching up before the next update.
+                            // profile_velocity_ratio = pos_vel / sidereal_rate = 1.5.
+                            // With update interval ~1.0s, lead must be > 1.5s.
+                            // 1.5 × 1.0 + 0.5 margin = 2.0s ensures the drive never stops.
+                            const double update_interval_s = POS_UPDATE_INTERVAL * config_.tracking_update_ms / 1000.0;
+                            const double POS_LEAD_SECONDS = 1.5 * update_interval_s + 0.5;
                             double ha_hours = lst - snap_target_ra + POS_LEAD_SECONDS * SIDEREAL_HOURS_PER_SEC;
                             while (ha_hours > 12.0) ha_hours -= 24.0;
                             while (ha_hours < -12.0) ha_hours += 24.0;
@@ -2897,29 +2969,43 @@ public:
                         }
                     } else {
                         // ── ALT_AZ / CASUAL velocity-mode tracking ─────────
+                        // Apply exponential smoothing to rate updates to prevent
+                        // abrupt velocity changes that cause mechanical vibration (A5 fix).
+                        const double RATE_SMOOTHING_ALPHA = 0.3;
+                        double smoothed_rate_1 = last_sent_rate_1_;
+                        double smoothed_rate_2 = last_sent_rate_2_;
+                        // Only smooth if we have a valid previous rate (not NaN from init)
+                        if (std::isfinite(last_sent_rate_1_)) {
+                            smoothed_rate_1 = last_sent_rate_1_ + RATE_SMOOTHING_ALPHA * (snap_rate_1 - last_sent_rate_1_);
+                            smoothed_rate_2 = last_sent_rate_2_ + RATE_SMOOTHING_ALPHA * (snap_rate_2 - last_sent_rate_2_);
+                        }
+                        
+                        // Use a meaningful threshold (1e-6 deg/s servo) instead of 1e-12
+                        // to reduce CANopen bus traffic while still catching real changes.
+                        const double RATE_CHANGE_THRESHOLD = 1e-6;
                         bool rate_changed = false;
                         if (hal_axis1_motor_ && hal_axis2_motor_) {
-                            rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
-                                           (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
+                            rate_changed = (std::abs(smoothed_rate_1 - last_sent_rate_1_) > RATE_CHANGE_THRESHOLD) ||
+                                           (std::abs(smoothed_rate_2 - last_sent_rate_2_) > RATE_CHANGE_THRESHOLD);
                             if (rate_changed) {
                                 try {
-                                    hal_axis1_motor_->setVelocity(snap_rate_1, snap_tracking_accel);
-                                    hal_axis2_motor_->setVelocity(snap_rate_2, snap_tracking_accel);
-                                    last_sent_rate_1_ = snap_rate_1;
-                                    last_sent_rate_2_ = snap_rate_2;
+                                    hal_axis1_motor_->setVelocity(smoothed_rate_1, snap_tracking_accel);
+                                    hal_axis2_motor_->setVelocity(smoothed_rate_2, snap_tracking_accel);
+                                    last_sent_rate_1_ = smoothed_rate_1;
+                                    last_sent_rate_2_ = smoothed_rate_2;
                                 } catch (const std::exception& e) {
                                     MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
                                 }
                             }
                         } else if (canopen_interface_) {
-                            rate_changed = (std::abs(snap_rate_1 - last_sent_rate_1_) > 1e-12) ||
-                                           (std::abs(snap_rate_2 - last_sent_rate_2_) > 1e-12);
+                            rate_changed = (std::abs(smoothed_rate_1 - last_sent_rate_1_) > RATE_CHANGE_THRESHOLD) ||
+                                           (std::abs(smoothed_rate_2 - last_sent_rate_2_) > RATE_CHANGE_THRESHOLD);
                             if (rate_changed) {
                                 try {
-                                    canopen_interface_->setVelocityTarget(0, snap_rate_1, snap_tracking_accel);
-                                    canopen_interface_->setVelocityTarget(1, snap_rate_2, snap_tracking_accel);
-                                    last_sent_rate_1_ = snap_rate_1;
-                                    last_sent_rate_2_ = snap_rate_2;
+                                    canopen_interface_->setVelocityTarget(0, smoothed_rate_1, snap_tracking_accel);
+                                    canopen_interface_->setVelocityTarget(1, smoothed_rate_2, snap_tracking_accel);
+                                    last_sent_rate_1_ = smoothed_rate_1;
+                                    last_sent_rate_2_ = smoothed_rate_2;
                                 } catch (const std::exception& e) {
                                     MOUNT_LOG_WARN("CANopen communication error during tracking: {}", e.what());
                                 }
@@ -6497,6 +6583,19 @@ private:
     // independent of the loop iteration interval (dt).
     double guider_delta_axis1_{0.0};
     double guider_delta_axis2_{0.0};
+    
+    // Previous astronomical correction values for delta tracking (E1 fix).
+    // Instead of adding the full correction each iteration (which accumulates
+    // because current_ra is recomputed from the already-corrected axis1_position_),
+    // we track the last applied correction and only add the difference
+    // (delta = new_correction - last_correction).
+    // Units: servo degrees (axis1) and servo degrees (axis2), matching axis1/2_position_.
+    double last_nutation_correction_axis1_{0.0};
+    double last_nutation_correction_axis2_{0.0};
+    double last_tpoint_correction_axis1_{0.0};
+    double last_tpoint_correction_axis2_{0.0};
+    double last_refraction_correction_axis1_{0.0};
+    double last_refraction_correction_axis2_{0.0};
     
     // Cached last-sent CANopen/HAL motor rates for rate-change detection.
     // The tracking loop sends setVelocity / setVelocityTarget every 100ms
