@@ -415,6 +415,7 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                 DriveStatus result;
                 result.operational = status.operational;
                 result.enabled = status.enabled;
+                result.quick_stop = status.quick_stop;
                 result.warning = status.warning;
                 result.error = status.error;
                 result.homed = status.homed;
@@ -463,6 +464,7 @@ std::unique_ptr<ICanOpenInterface> CanOpenFactory::create(const ICanOpenInterfac
                         DriveStatus result;
                         result.operational = status.operational;
                         result.enabled = status.enabled;
+                        result.quick_stop = status.quick_stop;
                         result.warning = status.warning;
                         result.error = status.error;
                         result.homed = status.homed;

@@ -316,7 +316,7 @@
         "enable_refraction_correction": true,
         "encoder_resolution": 16384.0,
         "encoders_absolute": false,
-        "equatorial_tracking_velocity_mode": false,
+        "equatorial_tracking_velocity_mode": true,
         "invert_axis1": false,
         "invert_axis2": false,
         "latitude": 52.00083333333333,
@@ -378,66 +378,13 @@
                 "index": "0x2201",
                 "subindex": 0,
                 "value": 51200
-            },
-
-            {
-                "axis": 0,
-                "data_size": 2,
-                "description": "Shutdown",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 6
-            },
-            {
-                "axis": 0,
-                "data_size": 2,
-                "description": "Switch On",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 7
-            },
-
-                        {
-                "axis": 0,
-                "data_size": 2,
-                "description": "Enable Op",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 15
-            },
-
-
-            {
-                "axis": 1,
-                "data_size": 2,
-                "description": "Shutdown",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 6
-            },
-            {
-                "axis": 1,
-                "data_size": 2,
-                "description": "Switch On",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 7
-            },
-            {
-                "axis": 1,
-                "data_size": 2,
-                "description": "Enable Op",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 15
             }
-           
         ]
     },
     "telescope": {
         "aperture": 8e-322,
         "camera_model": "ASI1600",
-        "focal_length": -1.136e-321,
+        "focal_length": 6.90541919172857e-310,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,

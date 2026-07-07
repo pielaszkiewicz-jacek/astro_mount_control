@@ -222,6 +222,18 @@ public:
         // Atmospheric refraction correction
         bool enable_refraction_correction{true};  ///< Apply real-time refraction correction in tracking loop
         
+        // Equatorial tracking mode: false = Profile Position (default, stable),
+        // true = Profile Velocity (experimental — 0x606C reports incorrect velocity
+        // on some hardware, causing the velocity PID to misbehave).
+        bool equatorial_tracking_velocity_mode{false};
+
+        // Per-axis rotation direction inversion.
+        // When true, the motor target position/velocity for this axis is negated,
+        // reversing the physical rotation direction relative to the computed target.
+        // Use this when the telescope/motor wiring causes reversed axis movement.
+        bool invert_axis1{false};
+        bool invert_axis2{false};
+        
         // Mount orientation (for CASUAL mount type)
         MountOrientation mount_orientation;
 

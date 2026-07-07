@@ -129,6 +129,15 @@ public:
         // Atmospheric refraction correction
         bool enable_refraction_correction{true};
         
+        // Equatorial tracking mode: false = Profile Position (default, stable),
+        // true = Profile Velocity (experimental)
+        bool equatorial_tracking_velocity_mode{false};
+
+        // Per-axis rotation direction inversion.
+        // When true, the motor target position/velocity for this axis is negated.
+        bool invert_axis1{false};
+        bool invert_axis2{false};
+        
         // Loop timing
         int controller_poll_ms{50};
         int tracking_update_ms{20};

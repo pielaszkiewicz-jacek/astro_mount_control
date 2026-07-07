@@ -113,12 +113,10 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         response->set_actual_rate_axis1(status.actual_axis1_rate);       // deg/s (CANopen)
         response->set_actual_rate_axis2(status.actual_axis2_rate);       // deg/s (CANopen)
         
-        // MountPosition.axis1/axis2 are documented as telescope/mount degrees
-        // (not servo motor degrees).  Use telescope_axis{1,2}_position which is
-        // already servo / gear_ratio, normalized per mount type.
+        // current_position = servo/motor degrees (raw, before gear_ratio division)
         auto* pos = response->mutable_current_position();
-        pos->set_axis1(status.telescope_axis1_position);
-        pos->set_axis2(status.telescope_axis2_position);
+        pos->set_axis1(status.axis1_position);
+        pos->set_axis2(status.axis2_position);
         
         // Telescope axis positions — normalized telescope degrees [0°, 360°).
         // Computed as servo_position / gear_ratio, then normalized per mount type.
@@ -175,12 +173,10 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             state.set_tracking_rate_ra(status.tracking_error_ra);
             state.set_tracking_rate_dec(status.tracking_error_dec);
             
-            // MountPosition.axis1/axis2 are documented as telescope/mount degrees
-            // (not servo motor degrees).  Use telescope_axis{1,2}_position which is
-            // already servo / gear_ratio, normalized per mount type.
+            // current_position = servo/motor degrees (raw, before gear_ratio division)
             auto* pos = state.mutable_current_position();
-            pos->set_axis1(status.telescope_axis1_position);
-            pos->set_axis2(status.telescope_axis2_position);
+            pos->set_axis1(status.axis1_position);
+            pos->set_axis2(status.axis2_position);
             
             // Telescope axis positions — normalized telescope degrees [0°, 360°).
             state.set_telescope_axis1(status.telescope_axis1_position);
@@ -932,6 +928,13 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_position_tolerance(config.position_tolerance);
         response->set_rate_tolerance(config.rate_tolerance);
         
+        // Equatorial tracking mode (position vs velocity)
+        response->set_equatorial_tracking_velocity_mode(config.equatorial_tracking_velocity_mode);
+
+        // Per-axis rotation direction inversion
+        response->set_invert_axis1(config.invert_axis1);
+        response->set_invert_axis2(config.invert_axis2);
+        
         // Meridian flip configuration
         response->set_meridian_flip_enabled(config.meridian_flip_enabled);
         response->set_meridian_flip_delay_minutes(config.meridian_flip_delay_minutes);
@@ -1158,6 +1161,13 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->field_rotation_applied_correction() != 0.0) config.field_rotation_applied_correction = request->field_rotation_applied_correction();
     if (request->field_rotation_temperature() != 0.0) config.field_rotation_temperature = request->field_rotation_temperature();
     if (request->field_rotation_flexure_correction() != 0.0) config.field_rotation_flexure_correction = request->field_rotation_flexure_correction();
+    
+    // ── Equatorial tracking mode ─────────────────────────────────
+    if (request->has_equatorial_tracking_velocity_mode()) config.equatorial_tracking_velocity_mode = request->equatorial_tracking_velocity_mode();
+
+    // ── Per-axis rotation direction inversion ────────────────────
+    if (request->has_invert_axis1()) config.invert_axis1 = request->invert_axis1();
+    if (request->has_invert_axis2()) config.invert_axis2 = request->invert_axis2();
     
     // ── Meridian flip configuration ──────────────────────────────
     if (request->has_meridian_flip_enabled()) config.meridian_flip_enabled = request->meridian_flip_enabled();

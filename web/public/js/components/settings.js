@@ -149,6 +149,16 @@ const SettingsComponent = (() => {
       ],
     },
     {
+      id: 'mount_tracking_mode',
+      label: 'Equatorial Tracking Mode',
+      restartRequired: false,
+      fields: [
+        { key: 'equatorial_tracking_velocity_mode', label: 'Velocity Mode (experimental)', type: 'checkbox', warn: 'Velocity mode uses drive internal PID — may be unreliable on some hardware (0x606C feedback bug). Position mode is recommended.' },
+        { key: 'invert_axis1', label: 'Invert Axis 1 (HA/RA) Direction', type: 'checkbox', help: 'Reverses the physical rotation direction of axis 1. Enable if telescope moves opposite to the expected direction.' },
+        { key: 'invert_axis2', label: 'Invert Axis 2 (Dec) Direction', type: 'checkbox', help: 'Reverses the physical rotation direction of axis 2. Enable if telescope moves opposite to the expected direction.' },
+      ],
+    },
+    {
       id: 'mount_orientation',
       label: 'Mount Orientation (Quaternion)',
       fields: [

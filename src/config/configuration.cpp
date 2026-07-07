@@ -354,6 +354,13 @@ public:
         // Atmospheric refraction correction
         config.enable_refraction_correction = mount.value("enable_refraction_correction", true);
         
+        // Equatorial tracking mode
+        config.equatorial_tracking_velocity_mode = mount.value("equatorial_tracking_velocity_mode", false);
+
+        // Per-axis rotation direction inversion
+        config.invert_axis1 = mount.value("invert_axis1", false);
+        config.invert_axis2 = mount.value("invert_axis2", false);
+        
         // Mount orientation quaternion (for CASUAL mount type)
         {
             auto quat = mount.value("orientation_quaternion", json::array({0.0, 0.0, 0.0, 1.0}));
@@ -576,6 +583,13 @@ public:
         
         // Atmospheric refraction correction
         mount["enable_refraction_correction"] = config.enable_refraction_correction;
+        
+        // Equatorial tracking mode
+        mount["equatorial_tracking_velocity_mode"] = config.equatorial_tracking_velocity_mode;
+
+        // Per-axis rotation direction inversion
+        mount["invert_axis1"] = config.invert_axis1;
+        mount["invert_axis2"] = config.invert_axis2;
         
         // Mount orientation quaternion
         mount["orientation_quaternion"] = {config.orientation_quaternion[0],
@@ -985,6 +999,9 @@ private:
         
         // Refraction correction
         mount_default.enable_refraction_correction = true;
+        
+        // Equatorial tracking mode (default: position mode)
+        mount_default.equatorial_tracking_velocity_mode = false;
         
         // Mount orientation quaternion (default unit quaternion for standard mounts)
         mount_default.orientation_quaternion = {0.0, 0.0, 0.0, 1.0};

@@ -39,7 +39,8 @@ public:
 
     struct DriveStatus {
         bool operational;                // Drive is operational
-        bool enabled;                    // Drive enabled
+        bool enabled;                    // Drive enabled (CiA 402 Operation Enabled)
+        bool quick_stop;                 // Quick Stop Active (CiA 402 bit 5)
         bool warning;                    // Warning present
         bool error;                      // Error present
         bool homed;                      // Axis is homed

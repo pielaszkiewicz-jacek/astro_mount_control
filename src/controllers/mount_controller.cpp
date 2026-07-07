@@ -813,6 +813,11 @@ public:
                         return false;  // callback skipped: no state change from caller's perspective
                     }
                 }
+
+                // Apply per-axis rotation direction inversion after soft limit check
+                // (soft limits operate in telescope degrees, inversion is applied in servo degrees)
+                if (config_.invert_axis1) axis1_target_ = -axis1_target_;
+                if (config_.invert_axis2) axis2_target_ = -axis2_target_;
                 
                 state_ = MountStatus::State::SLEWING;
                 slew_count_++;
@@ -1181,6 +1186,10 @@ public:
                         return false;  // callback skipped: no state change from caller's perspective
                     }
                 }
+
+                // Apply per-axis rotation direction inversion after soft limit check
+                if (config_.invert_axis1) axis1_target_ = -axis1_target_;
+                if (config_.invert_axis2) axis2_target_ = -axis2_target_;
                 
                 state_ = MountStatus::State::SLEWING;
             }  // state_mutex_ released
@@ -1767,6 +1776,7 @@ public:
                 }
 
                 // Apply soft safety limits: evaluate zones and get rate scaling factor
+                if (flip_soft_limit_cooldown_ > 0) flip_soft_limit_cooldown_--;
                 double rate_factor = evaluateSoftLimits(axis1_position_, axis2_position_);
                 
                 // Guard against NaN rate_factor (from non-finite positions passed to evaluateSoftLimits
@@ -1906,7 +1916,7 @@ public:
                 // The motors do NOT need to be paused; the drive's PID loop continues
                 // undisturbed because the logical target position (adjusted by the
                 // new offset) remains continuous.
-                if (canopen_interface_ && config_.canopen_position_rewind_enabled) {
+                if (canopen_interface_ && config_.canopen_position_rewind_enabled && !meridian_flip_in_progress_) {
                     bool do_rewind = false;
                     std::string rewind_reason;
                     
@@ -1921,29 +1931,26 @@ public:
                         }
                     }
                     
-                    // Check threshold-based trigger: compute approximate drive position
-                    // in counts and compare against the 1,000,000 count limit.
+                    // Check threshold-based trigger: compute distance traveled since
+                    // the last rewind in encoder counts, and compare against the
+                    // 1,000,000 count limit.  Using the delta (rather than
+                    // fmod(position, turn)) ensures the threshold resets to zero
+                    // after each successful rewind and only fires again when the
+                    // axis has accumulated enough motion to approach the drive's
+                    // absolute-position limit.
                     if (!do_rewind && config_.canopen_position_rewind_threshold_percent > 0.0) {
                         const double CANOPEN_TARGET_LIMIT_COUNTS = 1000000.0;
                         double threshold = config_.canopen_position_rewind_threshold_percent / 100.0;
                         double limit_counts = CANOPEN_TARGET_LIMIT_COUNTS * threshold;
                         
-                        // The drive position is approximately:
-                        //   drive_deg = fmod(axis_position, 360° × gear_ratio)
-                        //   drive_counts = drive_deg × cpd
-                        // We check both axes independently.
                         double cpd0 = config_.ha_axis_params.position_counts_per_degree;
                         double cpd1 = config_.dec_axis_params.position_counts_per_degree;
-                        double turn0 = 360.0 * config_.ha_axis_params.gear_ratio;
-                        double turn1 = 360.0 * config_.dec_axis_params.gear_ratio;
                         
-                        double drive_deg0 = std::fmod(axis1_position_, turn0);
-                        if (drive_deg0 < 0.0) drive_deg0 += turn0;
-                        double drive_counts0 = drive_deg0 * cpd0;
-                        
-                        double drive_deg1 = std::fmod(axis2_position_, turn1);
-                        if (drive_deg1 < 0.0) drive_deg1 += turn1;
-                        double drive_counts1 = drive_deg1 * cpd1;
+                        // Distance traveled since last rewind, in encoder counts
+                        double delta0 = axis1_position_ - last_rewind_axis1_position_;
+                        double delta1 = axis2_position_ - last_rewind_axis2_position_;
+                        double drive_counts0 = std::abs(delta0) * cpd0;
+                        double drive_counts1 = std::abs(delta1) * cpd1;
                         
                         if (drive_counts0 > limit_counts || drive_counts1 > limit_counts) {
                             do_rewind = true;
@@ -1959,11 +1966,20 @@ public:
                         double pos1_before = axis1_position_;
                         double pos2_before = axis2_position_;
                         
-                        double rewind_pos1 = std::fmod(axis1_position_, 360.0 * config_.ha_axis_params.gear_ratio);
-                        if (rewind_pos1 < 0.0) rewind_pos1 += 360.0 * config_.ha_axis_params.gear_ratio;
+                        // Use raw_servo (always synced from CANopen hardware) rather
+                        // than axis1_position_ (which diverges during tracking because
+                        // refreshPositionsFromCANopen no longer overwrites it).
+                        // If we used the diverged axis1_position_, setActualPosition
+                        // would compute a huge position_offset_ (~18330°), shifting
+                        // all subsequent setPositionTarget calls by that offset and
+                        // making the drive target unreachable positions.
+                        const double full_turn1 = 360.0 * config_.ha_axis_params.gear_ratio;
+                        double rewind_pos1 = std::fmod(raw_servo_axis1_position_, full_turn1);
+                        if (rewind_pos1 < 0.0) rewind_pos1 += full_turn1;
                         if (canopen_interface_->setActualPosition(0, rewind_pos1)) {
-                            MOUNT_LOG_DEBUG("CANopen rewind: axis 0 position {:.2f}° → {:.2f}°",
-                                     pos1_before, rewind_pos1);
+                            MOUNT_LOG_DEBUG("CANopen rewind: axis 0 position {:.2f}° → {:.2f}° "
+                                     "(raw_servo={:.2f}°)",
+                                     pos1_before, rewind_pos1, raw_servo_axis1_position_);
                             // Synchronize internal position with the rewound CANopen drive position.
                             // Without this, the tracking loop continues to accumulate offsets
                             // from the old (huge) axis1_position_ value, immediately triggering
@@ -1973,17 +1989,23 @@ public:
                             MOUNT_LOG_WARN("CANopen rewind: axis 0 setActualPosition failed");
                         }
                         
-                        double rewind_pos2 = std::fmod(axis2_position_, 360.0 * config_.dec_axis_params.gear_ratio);
-                        if (rewind_pos2 < 0.0) rewind_pos2 += 360.0 * config_.dec_axis_params.gear_ratio;
+                        const double full_turn2 = 360.0 * config_.dec_axis_params.gear_ratio;
+                        double rewind_pos2 = std::fmod(raw_servo_axis2_position_, full_turn2);
+                        if (rewind_pos2 < 0.0) rewind_pos2 += full_turn2;
                         if (canopen_interface_->setActualPosition(1, rewind_pos2)) {
-                            MOUNT_LOG_DEBUG("CANopen rewind: axis 1 position {:.2f}° → {:.2f}°",
-                                     pos2_before, rewind_pos2);
+                            MOUNT_LOG_DEBUG("CANopen rewind: axis 1 position {:.2f}° → {:.2f}° "
+                                     "(raw_servo={:.2f}°)",
+                                     pos2_before, rewind_pos2, raw_servo_axis2_position_);
                             axis2_position_ = rewind_pos2;
                         } else {
                             MOUNT_LOG_WARN("CANopen rewind: axis 1 setActualPosition failed");
                         }
                         
                         last_position_rewind_time_ = std::chrono::steady_clock::now();
+                        // Record the reference positions so the threshold check on the
+                        // next iteration measures delta from this rewind point.
+                        last_rewind_axis1_position_ = axis1_position_;
+                        last_rewind_axis2_position_ = axis2_position_;
                         MOUNT_LOG_INFO("CANopen position rewind complete");
                         
                         // Re-evaluate soft limits after rewind changed axis positions.
@@ -2025,7 +2047,11 @@ public:
                 // Check for hard limit violation (beyond limits → ERROR)
                 // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — it wraps rather
                 // than hitting a hard stop, so only axis1 is checked against limits.
-                if (config_.soft_limits_enabled) {
+                // Skip soft limit checks during meridian flip — the flip
+                // targets were already validated before the flip started,
+                // and positions can temporarily appear out of bounds as
+                // the drive slews between pier sides.
+                if (config_.soft_limits_enabled && !meridian_flip_in_progress_ && flip_soft_limit_cooldown_ <= 0) {
                     bool limit_violation = (soft_limit_distance_axis1_ < 0.0);
                     if (config_.mount_type != MountType::ALT_AZ &&
                         config_.mount_type != MountType::CASUAL) {
@@ -2040,8 +2066,10 @@ public:
                     }
                 }
                 
-                // Log warning when in deceleration zone
-                if (config_.soft_limits_enabled && soft_limit_deceleration_active_) {
+                // Skip soft limit deceleration/warning logs during meridian flip.
+                // The evaluateSoftLimits() call above may produce false positives as
+                // the telescope position briefly appears out of bounds during the flip slew.
+                if (config_.soft_limits_enabled && soft_limit_deceleration_active_ && !meridian_flip_in_progress_) {
                     MOUNT_LOG_WARN("Soft limit deceleration active: {}", soft_limit_warning_message_);
                 } else if (config_.soft_limits_enabled && soft_limit_warning_active_) {
                     MOUNT_LOG_DEBUG("Soft limit warning: {}", soft_limit_warning_message_);
@@ -2720,6 +2748,7 @@ public:
                                 meridian_flip_in_progress_ = true;
                                 meridian_flip_triggered_ = true;
                                 flip_start_time_ = now;
+                                flip_targets_sent_ = false;
                                 
                                 // Compute flip targets: add 180° telescope to HA (scaled by gear_ratio), complement Dec.
                                 // axis1_target_ is in servo degrees, so add 180° * gear_ratio for the flip.
@@ -2773,67 +2802,57 @@ public:
                         break;
                     }
                     
-                    // Compute distance to flip targets
+                    // Send the final flip targets to the drive ONCE.
+                    // The drive's internal profile generator handles acceleration,
+                    // cruise, and deceleration.  Sending incremental targets every
+                    // iteration restarts the profile ramp, preventing the drive
+                    // from ever reaching full speed.
+                    if (!flip_targets_sent_) {
+                        if (canopen_interface_) {
+                            try {
+                                canopen_interface_->setPositionTarget(0, flip_ha_target_, config_.max_slew_rate, config_.slew_acceleration);
+                                canopen_interface_->setPositionTarget(1, flip_dec_target_, config_.max_slew_rate, config_.slew_acceleration);
+                                MOUNT_LOG_INFO("Flip targets sent: axis1={:.2f}°, axis2={:.2f}°",
+                                         flip_ha_target_, flip_dec_target_);
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("CANopen communication error during meridian flip: {}", e.what());
+                            }
+                        }
+                        flip_targets_sent_ = true;
+                    }
+
+                    // Compute distance to flip targets (servo degrees) from encoder feedback.
                     double d1 = flip_ha_target_ - axis1_position_;
                     double d2 = flip_dec_target_ - axis2_position_;
-                    
-                    // Normalize d1 to [-180, 180] for shortest path
-                    while (d1 > 180.0) d1 -= 360.0;
-                    while (d1 < -180.0) d1 += 360.0;
-                    
-                    // Use measured dt so flip slew speed is independent of scheduler delays
-                    double step = config_.max_slew_rate * dt;
-                    
-                    // Guard against NaN/Inf step (from non-finite dt or config corruption).
-                    // A NaN step would propagate through copysign(min(step, |d|), d) below,
-                    // silently corrupting the axis positions and stalling the tracking loop.
-                    if (!std::isfinite(step)) {
-                        MOUNT_LOG_ERROR("Non-finite step in meridian flip: step={}, dt={}, max_slew_rate={}",
-                                 step, dt, config_.max_slew_rate);
-                        state_ = MountStatus::State::ERROR;
-                        error_message_ = "Numerical error: NaN/Inf step during meridian flip";
-                        break;
+
+                    // Normalize d1 to shortest path in servo degrees
+                    double ha_gear_flip = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                    double dec_gear_flip = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                    double full_turn_ha = 360.0 * ha_gear_flip;
+                    double full_turn_dec = 360.0 * dec_gear_flip;
+                    while (d1 > full_turn_ha / 2.0) d1 -= full_turn_ha;
+                    while (d1 < -full_turn_ha / 2.0) d1 += full_turn_ha;
+                    while (d2 > full_turn_dec / 2.0) d2 -= full_turn_dec;
+                    while (d2 < -full_turn_dec / 2.0) d2 += full_turn_dec;
+
+                    // Position tolerance in servo degrees
+                    double tol_servo = config_.position_tolerance * ha_gear_flip;
+                    bool reached = (std::abs(d1) <= tol_servo && std::abs(d2) <= tol_servo);
+
+                    // Log progress every ~1s (every 50 iterations at 20ms)
+                    static size_t flip_log_counter = 0;
+                    if (++flip_log_counter % 50 == 0 || reached) {
+                        MOUNT_LOG_INFO("Flip in progress: d1={:.1f} d2={:.1f} a1={:.1f} a2={:.1f} t1={:.1f} t2={:.1f}",
+                                 d1, d2, axis1_position_, axis2_position_, flip_ha_target_, flip_dec_target_);
                     }
-                    
-                    bool reached = true;
-                    
-                    if (std::abs(d1) > config_.position_tolerance) {
-                        axis1_position_ += std::copysign(std::min(step, std::abs(d1)), d1);
-                        reached = false;
-                    } else {
-                        axis1_position_ = flip_ha_target_;
-                    }
-                    
-                    if (std::abs(d2) > config_.position_tolerance) {
-                        axis2_position_ += std::copysign(std::min(step, std::abs(d2)), d2);
-                        reached = false;
-                    } else {
-                        axis2_position_ = flip_dec_target_;
-                    }
-                    
-                    // Update HAL motor or CANopen position targets during flip slew
-                    if (hal_axis1_motor_ && hal_axis2_motor_) {
-                        try {
-                            hal_axis1_motor_->setPosition(axis1_position_, config_.max_slew_rate, config_.slew_acceleration);
-                            hal_axis2_motor_->setPosition(axis2_position_, config_.max_slew_rate, config_.slew_acceleration);
-                        } catch (const std::exception& e) {
-                            MOUNT_LOG_WARN("HAL motor error during meridian flip: {}", e.what());
-                        }
-                    } else if (canopen_interface_) {
-                        try {
-                            canopen_interface_->setPositionTarget(0, axis1_position_, config_.max_slew_rate, config_.slew_acceleration);
-                            canopen_interface_->setPositionTarget(1, axis2_position_, config_.max_slew_rate, config_.slew_acceleration);
-                        } catch (const std::exception& e) {
-                            MOUNT_LOG_WARN("CANopen communication error during meridian flip: {}", e.what());
-                        }
-                    }
-                    
+
                     if (reached) {
                         // Flip slew complete
                         pier_side_ = -1; // West pier after flip
                         meridian_flipped_ = true;
                         meridian_flip_in_progress_ = false;
                         state_ = MountStatus::State::TRACKING;
+                        flip_soft_limit_cooldown_ = 10;  // Skip soft limit check for 10 iterations (~200ms)
                         flip_completed_ = true;
                         
                         // Set axis targets to flip targets (now matching current position)
@@ -2853,8 +2872,8 @@ public:
                         MOUNT_LOG_INFO("Meridian flip complete: HA={:.2f}°, Dec={:.2f}°, pier_side={}",
                                  axis1_position_, axis2_position_, pier_side_);
                     } else {
-                        MOUNT_LOG_INFO("Flip in progress: d1={:.4f} d2={:.4f} step={:.4f} a1={:.4f} a2={:.4f} t1={:.4f} t2={:.4f} state={}",
-                                 d1, d2, step, axis1_position_, axis2_position_, flip_ha_target_, flip_dec_target_, static_cast<int>(state_));
+                        MOUNT_LOG_INFO("Flip in progress: d1={:.1f} d2={:.1f} a1={:.1f} a2={:.1f} t1={:.1f} t2={:.1f}",
+                                 d1, d2, axis1_position_, axis2_position_, flip_ha_target_, flip_dec_target_);
                     }
                 }
                 
@@ -2915,19 +2934,23 @@ public:
                 
                 // ---- I/O Block 3: Motor control updates (outside state_mutex_) ----
                 if (is_tracking) {
-                    if (config_.mount_type == MountType::EQUATORIAL) {
-                        // ── EQUATORIAL position-mode tracking ──────────────
+                    if (config_.mount_type == MountType::EQUATORIAL &&
+                        !config_.equatorial_tracking_velocity_mode) {
+                        // ── EQUATORIAL position-mode tracking (default) ────
+                        static bool pos_mode_logged = false;
+                        if (!pos_mode_logged) {
+                            MOUNT_LOG_INFO("Tracking mode: POSITION (equatorial_tracking_velocity_mode=false)");
+                            pos_mode_logged = true;
+                        }
                         // Every 50 iterations (~1 s) recompute the celestial
                         // target and send a new setPositionTarget.  The drive
                         // PID smoothly tracks the advancing target.
-                        // Velocity mode is unreliable on this hardware (0x606C
-                        // reports 1.5 °/s while 0x6064 moves 800+ °/s).
                         constexpr size_t POS_UPDATE_INTERVAL = 50;
                         if (tracking_iteration_count_ - last_pos_update_iter_ >= POS_UPDATE_INTERVAL) {
                             last_pos_update_iter_ = tracking_iteration_count_;
                             
                             // Compute new HA = LST - RA, then axis1 target in servo degrees.
-                            // Add a 1.5 s lead so the target is always slightly ahead of the
+                            // Add a lead so the target is always slightly ahead of the
                             // actual position.  Without the lead the drive reaches the target
                             // before the next update arrives, producing stop-start oscillation.
                             double jd = core::AstronomicalCalculations::getCurrentJulianDate();
@@ -2948,6 +2971,10 @@ public:
                             const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
                             double new_axis1_target = ha_hours * 15.0 * ha_gear;
                             double new_axis2_target = snap_target_dec * dec_gear;
+
+                            // Apply per-axis rotation direction inversion
+                            if (config_.invert_axis1) new_axis1_target = -new_axis1_target;
+                            if (config_.invert_axis2) new_axis2_target = -new_axis2_target;
                             
                             // Use profile velocity 1.5× the sidereal servo rate so the
                             // drive smoothly catches up to the lead target without
@@ -2955,16 +2982,92 @@ public:
                             const double sidereal_servo_rate = 0.004178074 * ha_gear;
                             const double pos_vel = sidereal_servo_rate * 1.5;
                             
+                            // Diagnostic: log tracking target vs actual drive position
+                            // every ~10 position updates (~10 s) to detect drive lag.
+                            static size_t diag_log_counter = 0;
+                            diag_log_counter++;
+                            const bool diag_log = (diag_log_counter % 10 == 0);
+
                             try {
+                                bool pos_ok = false;
                                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                    hal_axis1_motor_->setPosition(new_axis1_target, pos_vel, config_.slew_acceleration);
-                                    hal_axis2_motor_->setPosition(new_axis2_target, pos_vel, config_.slew_acceleration);
+                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel, config_.slew_acceleration);
+                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel, config_.slew_acceleration);
+                                    pos_ok = ok1 && ok2;
                                 } else if (canopen_interface_) {
-                                    canopen_interface_->setPositionTarget(0, new_axis1_target, pos_vel, config_.slew_acceleration);
-                                    canopen_interface_->setPositionTarget(1, new_axis2_target, pos_vel, config_.slew_acceleration);
+                                    bool ok1 = canopen_interface_->setPositionTarget(0, new_axis1_target, pos_vel, config_.slew_acceleration);
+                                    bool ok2 = canopen_interface_->setPositionTarget(1, new_axis2_target, pos_vel, config_.slew_acceleration);
+                                    pos_ok = ok1 && ok2;
+                                }
+
+                                if (diag_log) {
+                                    double drv1 = raw_servo_axis1_position_;
+                                    double drv2 = raw_servo_axis2_position_;
+                                    // Read drive status to detect Quick Stop / fault
+                                    auto st0 = canopen_interface_->getDriveStatus(0);
+                                    auto st1 = canopen_interface_->getDriveStatus(1);
+                                    MOUNT_LOG_INFO("Tracking target: axis1={:.2f}° axis2={:.2f}° "
+                                                   "| Drive pos: axis1={:.2f}° axis2={:.2f}° "
+                                                   "| Delta: axis1={:.2f}° axis2={:.2f}° "
+                                                   "| HA lead={:.1f}s pos_vel={:.4f}°/s OK={} "
+                                                   "| Drive: en={}/{} qstop={}/{} fault={}/{} sw=0x{:04X}/0x{:04X}",
+                                                   new_axis1_target, new_axis2_target,
+                                                   drv1, drv2,
+                                                   new_axis1_target - drv1, new_axis2_target - drv2,
+                                                   POS_LEAD_SECONDS, pos_vel, pos_ok,
+                                                   st0.enabled, st1.enabled,
+                                                   st0.quick_stop, st1.quick_stop,
+                                                   st0.error, st1.error,
+                                                   st0.status_word, st1.status_word);
+                                } else if (!pos_ok) {
+                                    MOUNT_LOG_WARN("Tracking position target FAILED: "
+                                                   "axis1={:.2f}° axis2={:.2f}°",
+                                                   new_axis1_target, new_axis2_target);
                                 }
                             } catch (const std::exception& e) {
                                 MOUNT_LOG_WARN("Position update error during tracking: {}", e.what());
+                            }
+                        }
+                    } else if (config_.mount_type == MountType::EQUATORIAL &&
+                               config_.equatorial_tracking_velocity_mode) {
+                        // ── EQUATORIAL velocity-mode tracking (experimental) ─
+                        static bool vel_mode_logged = false;
+                        if (!vel_mode_logged) {
+                            MOUNT_LOG_INFO("Tracking mode: VELOCITY (equatorial_tracking_velocity_mode=true)");
+                            vel_mode_logged = true;
+                        }
+                        // WARNING: Velocity mode relies on the drive's internal
+                        // velocity PID (0x606C feedback). On some hardware the
+                        // velocity feedback register reports incorrect values,
+                        // causing tracking errors. Use position mode by default.
+                        // Rate is constant for sidereal tracking, so send once
+                        // and then only on significant changes or periodically.
+                        constexpr double EQUAT_VEL_THRESHOLD = 1e-6;
+                        const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        const double sidereal_servo_rate = 0.004178074 * ha_gear;
+                        double eq_vel_rate_1 = sidereal_servo_rate;   // sidereal HA rate
+                        double eq_vel_rate_2 = 0.0;                    // Dec rate = 0
+
+                        // Apply per-axis rotation direction inversion
+                        if (config_.invert_axis1) eq_vel_rate_1 = -eq_vel_rate_1;
+                        if (config_.invert_axis2) eq_vel_rate_2 = -eq_vel_rate_2;
+                        
+                        bool rate_changed = (std::abs(eq_vel_rate_1 - last_sent_rate_1_) > EQUAT_VEL_THRESHOLD) ||
+                                           (std::abs(eq_vel_rate_2 - last_sent_rate_2_) > EQUAT_VEL_THRESHOLD);
+                        if (rate_changed) {
+                            try {
+                                if (hal_axis1_motor_ && hal_axis2_motor_) {
+                                    hal_axis1_motor_->setVelocity(eq_vel_rate_1, config_.tracking_acceleration);
+                                    hal_axis2_motor_->setVelocity(eq_vel_rate_2, config_.tracking_acceleration);
+                                } else if (canopen_interface_) {
+                                    canopen_interface_->setVelocityTarget(0, eq_vel_rate_1, config_.tracking_acceleration);
+                                    canopen_interface_->setVelocityTarget(1, eq_vel_rate_2, config_.tracking_acceleration);
+                                }
+                                last_sent_rate_1_ = eq_vel_rate_1;
+                                last_sent_rate_2_ = eq_vel_rate_2;
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("Velocity update error during tracking: {}", e.what());
                             }
                         }
                     } else {
@@ -3373,6 +3476,7 @@ public:
                 tracking_active_ = false;
                 meridian_flip_pending_ = false;
                 meridian_flip_in_progress_ = false;
+                flip_soft_limit_cooldown_ = 0;
                 
                 // Clear derotator errors
                 if (derotator_) {
@@ -3406,10 +3510,11 @@ public:
         status.axis2_position = axis2_position_;
         // Telescope position: servo degrees divided by gear ratio gives
         // the actual telescope axis position on the sky.
-        // Uses the live axis1_position_ (which is now kept as un-normalized
-        // absolute servo position, updated in the tracking loop) rather than
-        // the stale raw_servo_axis1_position_ which was only updated from
-        // CANopen reads and not during tracking.
+        // Uses raw_servo_axis1_position_ (updated by refreshPositionsFromCANopen
+        // from the physical drive) as the ground-truth position.  During
+        // tracking, axis1_position_ is managed exclusively by the tracking
+        // loop and may diverge from the drive if the drive lags; the raw
+        // servo position always reflects what the hardware reports.
         // Guard against zero or near-zero gear_ratio (e.g. from corrupted config)
         // that would produce inf/nan in the status display and logs.
         double ha_gear = config_.ha_axis_params.gear_ratio;
@@ -3417,9 +3522,9 @@ public:
         if (ha_gear < 1.0) ha_gear = 360.0;
         if (dec_gear < 1.0) dec_gear = 360.0;
 
-        // Compute raw telescope positions (servo / gear_ratio)
-        double raw_tel_axis1 = axis1_position_ / ha_gear;
-        double raw_tel_axis2 = axis2_position_ / dec_gear;
+        // Compute raw telescope positions from CANopen ground-truth (servo / gear_ratio)
+        double raw_tel_axis1 = raw_servo_axis1_position_ / ha_gear;
+        double raw_tel_axis2 = raw_servo_axis2_position_ / dec_gear;
 
         // Normalize telescope positions to [0°, 360°) for consistent display.
         // -50° → 310°, 400° → 40°, etc.
@@ -3542,17 +3647,27 @@ public:
         {
             std::lock_guard<std::shared_mutex> lock(*state_mutex_);
 
-            // Store raw (absolute) servo motor position.
-            // The tracking loop also updates raw_servo_axis1/2_position_
-            // each iteration; this CANopen read provides the ground-truth
-            // absolute position from the physical hardware.
+            // Store raw (absolute) servo motor position from CANopen hardware.
+            // This is the ground-truth position; getStatus() reports the
+            // telescope position derived from these values regardless of
+            // whether tracking is active.
             raw_servo_axis1_position_ = pos0.actual_position;
             raw_servo_axis2_position_ = pos1.actual_position;
 
-            // Update live axis positions (absolute servo degrees).
-            // No normalization — CANopen drives use absolute positioning.
-            axis1_position_ = pos0.actual_position;
-            axis2_position_ = pos1.actual_position;
+            // During active tracking, the tracking loop OWNS axis1_position_ /
+            // axis2_position_.  Overwriting them here with the CANopen drive
+            // position creates a destructive oscillation: the tracking loop
+            // accumulates rate×dt at sidereal rate, then refreshPositions
+            // resets the position back to the (lagging) drive value.  In the
+            // logs this appears as a repetitive ~20° sawtooth pattern.
+            //
+            // When tracking is NOT active (IDLE, ERROR, etc.), we still
+            // update axis1_position_/axis2_position_ so getStatus() returns
+            // the correct drive position for UI display and status queries.
+            if (!tracking_active_) {
+                axis1_position_ = pos0.actual_position;
+                axis2_position_ = pos1.actual_position;
+            }
             // Store actual CANopen velocities in dedicated fields.
             // Do NOT overwrite axis1_rate_/axis2_rate_ which hold the
             // commanded tracking rates set by startTracking() — the UI
@@ -4965,6 +5080,9 @@ public:
         // Sync CANopen pdo_config_enabled into hal_config_ so that
         // saveConfigToFile→hal_config_.toJson() preserves it.
         hal_config_.canopen.pdo_config_enabled = config_.canopen_pdo_config_enabled;
+        hal_config_.canopen.position_rewind_enabled = config_.canopen_position_rewind_enabled;
+        hal_config_.canopen.position_rewind_interval_seconds = config_.canopen_position_rewind_interval_seconds;
+        hal_config_.canopen.position_rewind_threshold_percent = config_.canopen_position_rewind_threshold_percent;
 
         // Persist to disk if a config file path has been set
         if (!config_file_path_.empty()) {
@@ -5151,6 +5269,9 @@ public:
             m["park_position_axis1"] = config_.park_position_axis1;
             m["park_position_axis2"] = config_.park_position_axis2;
             m["enable_refraction_correction"] = config_.enable_refraction_correction;
+            m["equatorial_tracking_velocity_mode"] = config_.equatorial_tracking_velocity_mode;
+            m["invert_axis1"] = config_.invert_axis1;
+            m["invert_axis2"] = config_.invert_axis2;
 
             // Orientation quaternion — always update
             m["orientation_quaternion"] = {
@@ -6260,13 +6381,15 @@ public:
             // Compute telescope axis positions (servo ÷ gear_ratio, normalized).
             // Mirrors the logic in getStatus() so callback subscribers receive
             // the same telescope positions as gRPC polling clients.
+            // Uses raw_servo_axis1_position_ (CANopen ground-truth) for
+            // consistency with getStatus().
             double ha_gear = config_.ha_axis_params.gear_ratio;
             double dec_gear = config_.dec_axis_params.gear_ratio;
             if (ha_gear < 1.0) ha_gear = 360.0;
             if (dec_gear < 1.0) dec_gear = 360.0;
             
-            double raw_tel_axis1 = axis1_position_ / ha_gear;
-            double raw_tel_axis2 = axis2_position_ / dec_gear;
+            double raw_tel_axis1 = raw_servo_axis1_position_ / ha_gear;
+            double raw_tel_axis2 = raw_servo_axis2_position_ / dec_gear;
             
             // Normalize telescope positions to [0°, 360°) for consistent display.
             if (config_.mount_type == MountType::EQUATORIAL) {
@@ -6474,6 +6597,19 @@ public:
             }
             while (telescope_axis1 < -180.0) {
                 telescope_axis1 += 360.0;
+            }
+
+            // Normalize telescope Dec to [-90°, 90°] for post-meridian-flip
+            // positions. After a flip, Dec = 180° - original_Dec, which can
+            // exceed the [-90°, 90°] soft limit configured for the mount's
+            // physical range. The flipped Dec represents the same sky position
+            // on the opposite pier side and must be mapped back for limit
+            // comparison. Example: original Dec=45° → flipped Dec=135° →
+            // normalized to 180°-135°=45°.
+            if (telescope_axis2 > 90.0) {
+                telescope_axis2 = 180.0 - telescope_axis2;
+            } else if (telescope_axis2 < -90.0) {
+                telescope_axis2 = -180.0 - telescope_axis2;
             }
         }
         
@@ -6885,6 +7021,10 @@ private:
                     // ── RAW mode (or fallback when uncalibrated) ──
                     vel0 *= gamepad_max_velocity_;
                     vel1 *= gamepad_max_velocity_;
+
+                    // Apply per-axis rotation direction inversion
+                    if (config_.invert_axis1) vel0 = -vel0;
+                    if (config_.invert_axis2) vel1 = -vel1;
                     
                     if (canopen_interface_->isDriveEnabled(0)) {
                         if (axis0_deflected || gamepad_axis0_active_) {
@@ -7038,6 +7178,14 @@ private:
     // CANopen position rewind: periodically reset the drive's absolute position
     // counter to prevent overflow beyond the drive's ±1,000,000 count limit.
     std::chrono::steady_clock::time_point last_position_rewind_time_{std::chrono::steady_clock::now()};
+
+    // Axis positions at the time of the last successful CANopen position rewind.
+    // The rewind threshold check uses the delta since these reference positions
+    // (rather than fmod(position, turn)), so the threshold resets to zero after
+    // each rewind and only fires again when the axis has accumulated enough
+    // motion to approach the CANopen drive's ±1,000,000 count limit.
+    double last_rewind_axis1_position_{0.0};
+    double last_rewind_axis2_position_{0.0};
     
     // Meridian flip tracking
     bool meridian_flip_pending_{false};
@@ -7047,6 +7195,8 @@ private:
     int pier_side_{1};
     double time_to_meridian_{0.0};
     std::chrono::steady_clock::time_point flip_start_time_;
+    bool flip_targets_sent_{false};
+    int flip_soft_limit_cooldown_{0};  // Suppress soft limits for N iterations after flip completes
     double flip_ha_target_{0.0};
     double flip_dec_target_{0.0};
     double flip_original_ra_{0.0};

@@ -717,6 +717,17 @@ message Configuration {
     // Threshold percentage of the 1,000,000 count limit at which immediate
     // rewind is triggered regardless of the time interval. Range 0–100.
     double canopen_position_rewind_threshold_percent = 84;
+
+    // Equatorial tracking mode: false = Profile Position (default, stable),
+    // true = Profile Velocity (experimental — velocity feedback 0x606C is
+    // unreliable on some hardware).
+    optional bool equatorial_tracking_velocity_mode = 86;
+
+    // Per-axis rotation direction inversion.
+    // When true, the motor target position/velocity for this axis is negated,
+    // reversing the physical rotation direction relative to the computed target.
+    optional bool invert_axis1 = 87;
+    optional bool invert_axis2 = 88;
 }
 
 // Health check messages

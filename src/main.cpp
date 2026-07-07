@@ -200,6 +200,13 @@ int main(int argc, char* argv[]) {
         // Set refraction correction from config
         controller_config.enable_refraction_correction = mount_config.enable_refraction_correction;
         
+        // Set equatorial tracking mode from config
+        controller_config.equatorial_tracking_velocity_mode = mount_config.equatorial_tracking_velocity_mode;
+
+        // Set per-axis rotation direction inversion from config
+        controller_config.invert_axis1 = mount_config.invert_axis1;
+        controller_config.invert_axis2 = mount_config.invert_axis2;
+        
         // Set axis physical parameters (copy field by field)
         auto& ha = mount_config.ha_axis_params;
         controller_config.ha_axis_params.position_counts_per_degree = ha.position_counts_per_degree;

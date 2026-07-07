@@ -60,6 +60,13 @@ struct HALConfig {
         uint32_t pdo_update_rate{100}; // Hz
         std::string accel_mode{"time"}; // "time" or "rate" (CiA 402 acceleration interpretation)
         bool pdo_config_enabled{false}; // Write PDO mappings to drive (may overwrite mfgr params)
+
+        // CANopen position rewind: periodically reset the drive's absolute position
+        // counter to prevent overflow beyond the drive's target position limit
+        // (typically ±1,000,000 encoder counts).
+        bool position_rewind_enabled{true};
+        double position_rewind_interval_seconds{3600.0};  // 0 = disabled
+        double position_rewind_threshold_percent{80.0};    // 0 = disabled
         
         // === Konfiguracja NMT (Network Management) ===
         struct {
@@ -210,6 +217,9 @@ struct HALConfig {
         config.canopen.pdo_update_rate = canopen.value("pdo_update_rate", 100);
         config.canopen.accel_mode = canopen.value("accel_mode", "time");
         config.canopen.pdo_config_enabled = canopen.value("pdo_config_enabled", false);
+        config.canopen.position_rewind_enabled = canopen.value("position_rewind_enabled", true);
+        config.canopen.position_rewind_interval_seconds = canopen.value("position_rewind_interval_seconds", 3600.0);
+        config.canopen.position_rewind_threshold_percent = canopen.value("position_rewind_threshold_percent", 80.0);
         
         // Parse NMT configuration
         auto nmt_json = canopen.value("nmt", nlohmann::json::object());
@@ -443,6 +453,9 @@ struct HALConfig {
         canopen_json["pdo_update_rate"] = canopen.pdo_update_rate;
         canopen_json["accel_mode"] = canopen.accel_mode;
         canopen_json["pdo_config_enabled"] = canopen.pdo_config_enabled;
+        canopen_json["position_rewind_enabled"] = canopen.position_rewind_enabled;
+        canopen_json["position_rewind_interval_seconds"] = canopen.position_rewind_interval_seconds;
+        canopen_json["position_rewind_threshold_percent"] = canopen.position_rewind_threshold_percent;
         hal["canopen"] = canopen_json;
         
         // Save serial configuration

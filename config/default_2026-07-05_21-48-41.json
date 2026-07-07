@@ -122,9 +122,6 @@
             "node_id": 1,
             "pdo_config_enabled": true,
             "pdo_update_rate": 100,
-            "position_rewind_enabled": false,
-            "position_rewind_interval_seconds": 3600.0,
-            "position_rewind_threshold_percent": 80.0,
             "sdo_timeout_ms": 1000,
             "sync_period_ms": 100,
             "use_sync": true
@@ -317,16 +314,14 @@
         "encoder_resolution": 16384.0,
         "encoders_absolute": false,
         "equatorial_tracking_velocity_mode": false,
-        "invert_axis1": false,
-        "invert_axis2": false,
         "latitude": 52.00083333333333,
         "longitude": 21.0,
-        "max_slew_rate": 2.0,
+        "max_slew_rate": 1.0,
         "max_tracking_rate": 1.504,
         "meridian_flip_delay_minutes": 5.0,
         "meridian_flip_enabled": true,
         "meridian_flip_hysteresis_degrees": 0.5,
-        "meridian_flip_timeout_seconds": 180.0,
+        "meridian_flip_timeout_seconds": 120.0,
         "orientation_quaternion": [
             0.0,
             0.0,
@@ -378,66 +373,13 @@
                 "index": "0x2201",
                 "subindex": 0,
                 "value": 51200
-            },
-
-            {
-                "axis": 0,
-                "data_size": 2,
-                "description": "Shutdown",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 6
-            },
-            {
-                "axis": 0,
-                "data_size": 2,
-                "description": "Switch On",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 7
-            },
-
-                        {
-                "axis": 0,
-                "data_size": 2,
-                "description": "Enable Op",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 15
-            },
-
-
-            {
-                "axis": 1,
-                "data_size": 2,
-                "description": "Shutdown",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 6
-            },
-            {
-                "axis": 1,
-                "data_size": 2,
-                "description": "Switch On",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 7
-            },
-            {
-                "axis": 1,
-                "data_size": 2,
-                "description": "Enable Op",
-                "index": "0x6040",
-                "subindex": 0,
-                "value": 15
             }
-           
         ]
     },
     "telescope": {
         "aperture": 8e-322,
         "camera_model": "ASI1600",
-        "focal_length": -1.136e-321,
+        "focal_length": 6.9521308674341e-310,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,

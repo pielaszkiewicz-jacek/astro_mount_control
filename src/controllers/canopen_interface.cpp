@@ -419,20 +419,78 @@ public:
 
         // Ensure drive is in Operation Enabled state before sending position command.
         // This handles recovery from Quick Stop Active or fault states.
+        // CiA 402 §6.4: drive accepts motion commands ONLY in Operation Enabled
+        // state.  We must detect ALL states where the drive will ignore
+        // set-point commands (target position 0x607A, target velocity 0x60FF):
+        //
+        //   State                  | bits 0-2 | bit 3 | bit 5 | Accepts motion?
+        //   -----------------------+----------+-------+-------+----------------
+        //   Not Ready to Switch On |   000    |   0   |   0   | No
+        //   Switch On Disabled     |   000    |   0   |   x   | No
+        //   Ready to Switch On     |   001    |   0   |   0   | No
+        //   Switched On            |   011    |   0   |   0   | No
+        //   Operation Enabled      |   111    |   0   |   0   | YES
+        //   Quick Stop Active      |   111    |   0   |   1   | No  ← was MISSED before Fix #5
+        //   Fault Reaction Active  |   111    |   1   |   0   | No  ← was MISSED before Fix #7
+        //   Fault                  |   000    |   1   |   x   | No
+        //
+        // Check: must be in OpEnabled (bits 0,1,2 all set) AND no blocking
+        // conditions (Fault bit 3, Quick Stop bit 5).
         uint16_t status = canopen_402_get_status_word(ctx_, node_id);
-        if ((status & CIA402_STATUS_OPERATION_ENABLED) == 0) {
-            logging::Logger::get("canopen")->warn(
-                "CANopen: Axis {} (node {}) not in Operation Enabled (status=0x{:04X}), re-enabling",
-                axis_id, node_id, status);
-            if (!canopen_402_enable_drive(ctx_, node_id)) {
-                logging::Logger::get("canopen")->error(
-                    "CANopen: Failed to re-enable axis {} (node {}) before setPositionTarget",
-                    axis_id, node_id);
-                return false;
+        constexpr uint16_t OP_ENABLED_MASK = CIA402_STATUS_READY_TO_SWITCH_ON |
+                                              CIA402_STATUS_SWITCHED_ON |
+                                              CIA402_STATUS_OPERATION_ENABLED;
+        constexpr uint16_t MOTION_BLOCKING  = CIA402_STATUS_FAULT |
+                                              CIA402_STATUS_QUICK_STOP;
+        bool needs_enable = ((status & OP_ENABLED_MASK) != OP_ENABLED_MASK) ||
+                            ((status & MOTION_BLOCKING) != 0);
+        if (needs_enable) {
+            const char* reason = "unknown";
+            bool is_quick_stop = (status & CIA402_STATUS_QUICK_STOP) != 0;
+            if (status & CIA402_STATUS_FAULT) reason = "Fault/Fault Reaction Active";
+            else if (is_quick_stop) reason = "Quick Stop Active";
+            else reason = "not in Operation Enabled";
+
+            if (is_quick_stop && !(status & CIA402_STATUS_FAULT)) {
+                // Quick Stop Active (without fault): try a direct transition
+                // back to Operation Enabled by sending control word 0x000F.
+                // CiA 402 §6.4: from Quick Stop Active, setting bit 2=1
+                // (Quick Stop NOT active) while keeping bit 3=1 (Enable
+                // Operation) transitions directly to Operation Enabled.
+                // This is lighter than the full Shutdown→Switch On→Enable
+                // sequence and avoids a potential double-Quick-Stop cycle.
+                logging::Logger::get("canopen")->warn(
+                    "CANopen: Axis {} (node {}) Quick Stop Active (status=0x{:04X}), "
+                    "sending Enable Operation to clear",
+                    axis_id, node_id, status);
+                if (!canopen_402_set_control_word(ctx_, node_id, 0x000F)) {
+                    logging::Logger::get("canopen")->error(
+                        "CANopen: Axis {} (node {}): control word 0x000F write FAILED, "
+                        "falling back to full re-enable",
+                        axis_id, node_id);
+                    if (!canopen_402_enable_drive(ctx_, node_id)) {
+                        logging::Logger::get("canopen")->error(
+                            "CANopen: Failed to re-enable axis {} (node {}) before setPositionTarget",
+                            axis_id, node_id);
+                        return false;
+                    }
+                }
+            } else {
+                // Fault or not in OpEnabled: use full enable sequence
+                logging::Logger::get("canopen")->warn(
+                    "CANopen: Axis {} (node {}) {} (status=0x{:04X}), re-enabling",
+                    axis_id, node_id, reason, status);
+                if (!canopen_402_enable_drive(ctx_, node_id)) {
+                    logging::Logger::get("canopen")->error(
+                        "CANopen: Failed to re-enable axis {} (node {}) before setPositionTarget",
+                        axis_id, node_id);
+                    return false;
+                }
             }
             axis_enabled_[axis_id] = true;
             axis_status_[axis_id].enabled = true;
             axis_status_[axis_id].operational = true;
+            axis_status_[axis_id].quick_stop = false;
         }
 
         axis_target_position_[axis_id] = position;
@@ -582,24 +640,68 @@ public:
         uint8_t node_id = nodeIdForAxis(axis_id);
 
         // Ensure drive is in Operation Enabled (uses cached flag first,
-        // falls back to SDO status read only when necessary).
+        // Ensure drive is in Operation Enabled state before sending velocity command.
+        // Also handles Quick Stop Active (bit 5) which has Op Enabled bit set
+        // but the drive ignores motion commands.
+        // Same comprehensive CiA 402 state check as setPositionTarget() above.
+        // See the table there for all 8 drive states and which accept motion.
         if (!axis_enabled_[axis_id]) {
             uint16_t status = canopen_402_get_status_word(ctx_, node_id);
-            if ((status & CIA402_STATUS_OPERATION_ENABLED) == 0) {
-                logging::Logger::get("canopen")->warn(
-                    "CANopen: Axis {} (node {}) not in Operation Enabled (status=0x{:04X}), re-enabling",
-                    axis_id, node_id, status);
-                if (!canopen_402_enable_drive(ctx_, node_id)) {
-                    logging::Logger::get("canopen")->error(
-                        "CANopen: Failed to re-enable axis {} (node {}) before setVelocityTarget",
-                        axis_id, node_id);
-                    axis_enabled_[axis_id] = false;
-                    axis_status_[axis_id].enabled = false;
-                    return false;
+            constexpr uint16_t OP_ENABLED_MASK = CIA402_STATUS_READY_TO_SWITCH_ON |
+                                                  CIA402_STATUS_SWITCHED_ON |
+                                                  CIA402_STATUS_OPERATION_ENABLED;
+            constexpr uint16_t MOTION_BLOCKING  = CIA402_STATUS_FAULT |
+                                                  CIA402_STATUS_QUICK_STOP;
+            bool needs_enable = ((status & OP_ENABLED_MASK) != OP_ENABLED_MASK) ||
+                                ((status & MOTION_BLOCKING) != 0);
+            if (needs_enable) {
+                const char* reason = "unknown";
+                bool is_quick_stop = (status & CIA402_STATUS_QUICK_STOP) != 0;
+                if (status & CIA402_STATUS_FAULT) reason = "Fault/Fault Reaction Active";
+                else if (is_quick_stop) reason = "Quick Stop Active";
+                else reason = "not in Operation Enabled";
+
+                if (is_quick_stop && !(status & CIA402_STATUS_FAULT)) {
+                    // Quick Stop Active (without fault): direct transition
+                    // via Enable Operation (0x000F).  See setPositionTarget()
+                    // for the full rationale.
+                    logging::Logger::get("canopen")->warn(
+                        "CANopen: Axis {} (node {}) Quick Stop Active (status=0x{:04X}), "
+                        "sending Enable Operation to clear",
+                        axis_id, node_id, status);
+                    if (!canopen_402_set_control_word(ctx_, node_id, 0x000F)) {
+                        logging::Logger::get("canopen")->error(
+                            "CANopen: Axis {} (node {}): control word 0x000F write FAILED, "
+                            "falling back to full re-enable",
+                            axis_id, node_id);
+                        if (!canopen_402_enable_drive(ctx_, node_id)) {
+                            logging::Logger::get("canopen")->error(
+                                "CANopen: Failed to re-enable axis {} (node {}) before setVelocityTarget",
+                                axis_id, node_id);
+                            axis_enabled_[axis_id] = false;
+                            axis_status_[axis_id].enabled = false;
+                            axis_status_[axis_id].quick_stop = false;
+                            return false;
+                        }
+                    }
+                } else {
+                    logging::Logger::get("canopen")->warn(
+                        "CANopen: Axis {} (node {}) {} (status=0x{:04X}), re-enabling",
+                        axis_id, node_id, reason, status);
+                    if (!canopen_402_enable_drive(ctx_, node_id)) {
+                        logging::Logger::get("canopen")->error(
+                            "CANopen: Failed to re-enable axis {} (node {}) before setVelocityTarget",
+                            axis_id, node_id);
+                        axis_enabled_[axis_id] = false;
+                        axis_status_[axis_id].enabled = false;
+                        axis_status_[axis_id].quick_stop = false;
+                        return false;
+                    }
                 }
                 axis_enabled_[axis_id] = true;
                 axis_status_[axis_id].enabled = true;
                 axis_status_[axis_id].operational = true;
+                axis_status_[axis_id].quick_stop = false;
             }
         }
 
@@ -928,6 +1030,7 @@ public:
         if (pdo_configured_[axis_id] && pdo_data_valid_[axis_id].load(std::memory_order_acquire)) {
             uint16_t sw = pdo_status_word_[axis_id].load(std::memory_order_acquire);
             axis_status_[axis_id].enabled = (sw & CIA402_STATUS_OPERATION_ENABLED) != 0;
+            axis_status_[axis_id].quick_stop = (sw & CIA402_STATUS_QUICK_STOP) != 0;
             axis_status_[axis_id].target_reached = (sw & CIA402_STATUS_TARGET_REACHED) != 0;
             axis_status_[axis_id].warning = (sw & CIA402_STATUS_WARNING) != 0;
             axis_status_[axis_id].error = (sw & CIA402_STATUS_FAULT) != 0;
@@ -938,6 +1041,7 @@ public:
             uint8_t node_id = nodeIdForAxis(axis_id);
             uint16_t sw = canopen_402_get_status_word(ctx_, node_id);
             axis_status_[axis_id].enabled = (sw & CIA402_STATUS_OPERATION_ENABLED) != 0;
+            axis_status_[axis_id].quick_stop = (sw & CIA402_STATUS_QUICK_STOP) != 0;
             axis_status_[axis_id].target_reached = (sw & CIA402_STATUS_TARGET_REACHED) != 0;
             axis_status_[axis_id].warning = (sw & CIA402_STATUS_WARNING) != 0;
             axis_status_[axis_id].error = (sw & CIA402_STATUS_FAULT) != 0;
