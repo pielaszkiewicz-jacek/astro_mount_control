@@ -30,11 +30,11 @@ flowchart TB
             ENC["🔹 EncoderReader<br/>read · home · resolution"]:::component
             SAFE["🔹 SafetyMonitor<br/>limits · estop · monitoring"]:::component
             SENS["🔹 SensorInterface<br/>temp · pressure · current"]:::component
-            DEROT_IF["🔹 Derotator support<br/>motor · encoder · config"]:::component
         end
 
         subgraph IMPL["HAL Implementations"]
-            CAN_IMPL["✅ CANopen (CiA 402)<br/>PDO/SDO/NMT communication<br/>Node: RA, Dec, Derotator"]:::done
+            CAN_IMPL["✅ CANopen (CiA 402)<br/>PDO/SDO/NMT communication<br/>Node: HA, Dec"]:::done
+            MF_IMPL["✅ MF7025v2 (LingKong BLDC)<br/>Proprietary CAN V2.36<br/>CAN ID 0x140+node_id · SocketCAN<br/>Stabilized: thread-safe, dead-node detection, error logging"]:::done
             SIM_IMPL["✅ Simulated<br/>Test/development<br/>Configurable noise & faults"]:::done
             GAM_IMPL["✅ Gamepad<br/>Manual control via joystick<br/>Evdev + legacy joystick API"]:::done
             SER_IMPL["✅ Serial<br/>RS-232/485<br/>Modbus RTU/ASCII"]:::done
@@ -45,16 +45,14 @@ flowchart TB
         HAL_IF --> ENC
         HAL_IF --> SAFE
         HAL_IF --> SENS
-        HAL_IF --> DEROT_IF
         MOTOR --> CAN_IMPL & SIM_IMPL & GAM_IMPL & SER_IMPL & ETH_IMPL
         ENC --> CAN_IMPL & SIM_IMPL & GAM_IMPL
         SAFE --> CAN_IMPL & SIM_IMPL & GAM_IMPL
         SENS --> CAN_IMPL & SIM_IMPL & GAM_IMPL
-        DEROT_IF --> CAN_IMPL & SIM_IMPL
     end
 
     subgraph HW["Physical Hardware"]
-        MOT_HW["🔄 Servo/Stepper motors<br/>HA axis · Dec axis · Derotator"]:::hw
+        MOT_HW["🔄 Servo/Stepper motors<br/>HA axis · Dec axis"]:::hw
         ENC_HW["📏 Encoders<br/>Absolute · Incremental"]:::hw
         SENS_HW["🌡️ Sensors<br/>Temperature · Pressure · Current"]:::hw
         GAM_HW["🎮 Gamepad/Joystick<br/>USB / Bluetooth<br/>Linux evdev"]:::hw
@@ -84,6 +82,7 @@ flowchart TB
 |------|------|-------------|--------|
 | Simulated | `HALType::SIMULATED` | Simulated hardware for testing/development | ✅ Implemented |
 | CANopen | `HALType::CANOPEN` | CANopen/CiA 402 motor drives | ✅ Implemented |
+| **MF7025v2** | `HALType::MF7025V2` | LingKong BLDC, proprietary CAN V2.36 | ✅ **Stabilized** |
 | Gamepad | `HALType::GAMEPAD` | Manual control via gamepad/joystick | ✅ Implemented |
 | Serial | `HALType::SERIAL` | RS-232/485 serial communication (Modbus) | ✅ Implemented |
 | Ethernet | `HALType::ETHERNET` | Modbus TCP over Ethernet | ✅ Implemented |
@@ -108,11 +107,6 @@ public:
     virtual std::unique_ptr<EncoderReader> createEncoderReader(int axis_id) = 0;
     virtual std::unique_ptr<SafetyMonitor> createSafetyMonitor() = 0;
     virtual std::unique_ptr<SensorInterface> createSensorInterface() = 0;
-    
-    // Derotator (field rotator) support
-    virtual std::unique_ptr<MotorControl> createDerotatorMotor();
-    virtual std::unique_ptr<EncoderReader> createDerotatorEncoder();
-    virtual bool configureDerotator(const DerotatorConfig& config);
     
     // Platform information
     virtual std::string getPlatformName() const = 0;
@@ -145,7 +139,6 @@ public:
 | `SAFETY_MONITORING` | Safety monitoring |
 | `SENSOR_MONITORING` | Sensor monitoring |
 | `REAL_TIME_CONTROL` | Real-time control |
-| `DEROTATOR_SUPPORT` | Field derotator support |
 | `MANUAL_CONTROL` | Manual control (gamepad/joystick) |
 
 ---
@@ -431,7 +424,6 @@ struct HALConfig {
         double error_probability{0.01};
     } simulated;
     
-    DerotatorConfig derotator;          // Field derotator configuration
     std::vector<AxisConfig> axes;       // Axis configurations
     PIDParams pid_params;               // PID controller parameters
     
@@ -910,26 +902,6 @@ hal->shutdown();
 
 ---
 
-## Derotator (Field Rotator) Support
-
-The HAL layer includes support for field derotation:
-
-```cpp
-struct DerotatorConfig {
-    DerotatorType type{DerotatorType::STEPPER};
-    bool enabled{false};
-    double gear_ratio{180.0};
-    double max_speed{5.0};
-    double max_acceleration{2.0};
-    double backlash{0.0};
-    bool absolute_encoder{false};
-    double encoder_resolution{36000.0};
-    std::vector<double> calibration_table;
-    std::string connection_string;
-};
-```
-
----
 
 ## Usage Examples
 
@@ -981,9 +953,6 @@ if (hal->supportsFeature(HALFeature::PID_CONTROL)) {
 }
 if (hal->supportsFeature(HALFeature::ENCODER_FEEDBACK)) {
     std::cout << "Encoder feedback available" << std::endl;
-}
-if (hal->supportsFeature(HALFeature::DEROTATOR_SUPPORT)) {
-    auto derotator = hal->createDerotatorMotor();
 }
 ```
 

@@ -239,7 +239,13 @@ private:
     };
 
 public:
+    /// Create CanOpenHAL with an externally-provided CANopen interface
     CanOpenHAL(std::unique_ptr<controllers::ICanOpenInterface> canopen_interface);
+    
+    /// Create CanOpenHAL from HALConfig — creates the CANopen interface internally
+    /// using CanOpenFactory (only available when HAVE_CANOPEN is defined)
+    static std::unique_ptr<CanOpenHAL> create(const HALConfig& config);
+    
     ~CanOpenHAL() override;
     
     // HALInterface implementation
@@ -264,11 +270,6 @@ public:
     std::string getStatus() const override;
     std::string getErrorMessages() const override;
     void clearErrors() override;
-    
-    // Derotator support
-    std::unique_ptr<MotorControl> createDerotatorMotor() override;
-    std::unique_ptr<EncoderReader> createDerotatorEncoder() override;
-    bool configureDerotator(const struct DerotatorConfig& config) override;
     
     // CANopen-specific methods
     bool sendNMT(uint8_t node_id, uint8_t command);

@@ -1,0 +1,126 @@
+{
+    "logging": {
+        "level": "INFO",
+        "console_output": true
+    },
+    "network": {
+        "grpc_address": "0.0.0.0",
+        "grpc_port": 50051
+    },
+    "mount": {
+        "type": "equatorial",
+        "latitude": 52.0,
+        "longitude": 21.0,
+        "altitude": 100.0,
+        "max_slew_rate": 5.0,
+        "max_tracking_rate": 1.504,
+        "slew_acceleration": 1.0,
+        "park_position_axis1": 0.0,
+        "park_position_axis2": 90.0,
+        "axis_physical_parameters": {
+            "ha_axis": {
+                "motor_steps_per_rev": 200,
+                "gear_ratio": 360.0,
+                "worm_ratio": 180.0,
+                "encoder_resolution": 16384,
+                "backlash": 8.5
+            },
+            "dec_axis": {
+                "motor_steps_per_rev": 200,
+                "gear_ratio": 360.0,
+                "worm_ratio": 180.0,
+                "encoder_resolution": 16384,
+                "backlash": 6.3
+            }
+        }
+    },
+    "hal": {
+        "type": "mf7025v2",
+        "name": "LingKong_BLDC_Mount",
+        "mf7025v2": {
+            "can_interface": "can0",
+            "bitrate": 1000000,
+            "sdo_timeout_ms": 100,
+            "position_units_per_degree": 100.0,
+            "velocity_units_per_dps": 100.0
+        },
+        "axes": [
+            {
+                "id": 0,
+                "name": "HA_Axis",
+                "can_node_id": 1,
+                "motor_config": {
+                    "type": "BRUSHLESS_DC",
+                    "default_mode": "POSITION",
+                    "max_velocity": 5.0,
+                    "max_acceleration": 1.0,
+                    "max_torque": 100.0,
+                    "gear_ratio": 360.0,
+                    "encoder_counts_per_degree": 36000.0,
+                    "enable_current_limit": true,
+                    "current_limit": 5.0
+                },
+                "encoder_config": {
+                    "type": "ABSOLUTE",
+                    "interface": "CANOPEN",
+                    "resolution": 16384,
+                    "counts_per_degree": 100.0
+                },
+                "safety_limits": {
+                    "min_position": -270.0,
+                    "max_position": 270.0,
+                    "max_velocity": 5.0,
+                    "max_acceleration": 2.0
+                }
+            },
+            {
+                "id": 1,
+                "name": "Dec_Axis",
+                "can_node_id": 2,
+                "motor_config": {
+                    "type": "BRUSHLESS_DC",
+                    "default_mode": "POSITION",
+                    "max_velocity": 5.0,
+                    "max_acceleration": 1.0,
+                    "max_torque": 100.0,
+                    "gear_ratio": 360.0,
+                    "encoder_counts_per_degree": 36000.0,
+                    "enable_current_limit": true,
+                    "current_limit": 5.0
+                },
+                "encoder_config": {
+                    "type": "ABSOLUTE",
+                    "interface": "CANOPEN",
+                    "resolution": 16384,
+                    "counts_per_degree": 100.0
+                },
+                "safety_limits": {
+                    "min_position": -5.0,
+                    "max_position": 185.0,
+                    "max_velocity": 5.0,
+                    "max_acceleration": 2.0
+                }
+            }
+        ]
+    },
+    "pid_params": {
+        "kp": 1.5,
+        "ki": 0.2,
+        "kd": 0.05,
+        "integral_limit": 1000.0,
+        "output_limit": 100.0,
+        "anti_windup_gain": 0.1,
+        "enable_anti_windup": true
+    },
+    "safety": {
+        "enable_limits": true,
+        "enable_emergency_stop": true,
+        "emergency_stop_timeout_ms": 100,
+        "enable_temperature_monitoring": true,
+        "enable_current_monitoring": true,
+        "enable_voltage_monitoring": true,
+        "min_voltage": 20.0,
+        "max_voltage": 30.0,
+        "monitoring_rate": 10
+    }
+}

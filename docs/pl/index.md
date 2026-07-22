@@ -70,7 +70,6 @@ flowchart TB
 
     subgraph CORE["⚙️ Rdzeń kontrolera"]
         MC["MountController<br/>src/controllers/mount_controller.cpp<br/>Maszyna stanów · Pętla śledzenia · Meridian flip"]
-        DC["DerotatorController<br/>src/controllers/derotator_controller.cpp<br/>Niezależny wątek · Sterowanie polem"]
     end
 
     subgraph MODELS["🧮 Modele matematyczne"]
@@ -99,7 +98,6 @@ flowchart TB
         HW1["Napędy serwo"]
         HW2["Enkodery absolutne"]
         HW3["Czujniki<br/>Temperatura · Ciśnienie"]
-        DEROT_HW["Derotator<br/>Silnik · Enkoder"]
     end
 
     SPA -->|"HTTP/JSON"| PROXY
@@ -112,13 +110,11 @@ flowchart TB
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
-    MC -.->|"setFieldRotationRate()"| DC
     ASTRO --> KF
     TPOINT --> KF
     KF --> CAN
     CONFIG --> CAN
     CAN --> HW
-    DC --> DEROT_HW
 
     ASCOM_TEL -.->|"gRPC (local/network)"| GRPC
     ASCOM_ROT -.->|"gRPC (local/network)"| GRPC
@@ -128,10 +124,10 @@ flowchart TB
     class SPA,PROXY client
     class PY,CPP client
     class GRPC,DB_GRPC api
-    class MC,DC core
+    class MC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
-    class HW1,HW2,HW3,DEROT_HW hw
+    class HW1,HW2,HW3 hw
 ```
 
 ### Komponenty systemu
@@ -144,29 +140,6 @@ Główny komponent integrujący wszystkie moduły:
 - Kalibracja bootstrap (wstępne wyrównanie)
 - Kalibracja TPOINT (precyzyjny model wskazań)
 - Śledzenie efemeryd (obiekty ruchome: satelity, komety, asteroidy)
-- Integracja z DerotatorController poprzez wstrzykiwanie prędkości rotacji pola
-
-#### 2. **DerotatorController**
-Samodzielny kontroler derotatora, wydzielony z MountController:
-
-- **Niezależny wątek**: Własny wątek roboczy do homingu i kalibracji
-- **Własny muteks**: Ochrona dostępu do stanu (`shared_mutex`)
-- **Wskaźniki HAL**: Silnik i enkoder derotatora przekazywane przez `DerotatorConfig`
-- **Tryby rotacji pola**:
-  - `DISABLED` — rotacja wyłączona
-  - `ALT_AZ` — kompensacja dla montażu ALT-AZ
-  - `EQUATORIAL` — kompensacja dla montażu EQ (szybkość pola)
-  - `CUSTOM` — ręczna prędkość kątowa
-  - `FIXED_ANGLE` — utrzymanie stałego kąta
-  - `TRACKING` — śledzenie prędkością gwiazdową (sidereal)
-- **Metody homingu**:
-  - `AUTO` — automatyczna sekwencja
-  - `LIMIT_SWITCH` — wyłącznik krańcowy
-  - `ENCODER_ZERO` — pozycja zerowa enkodera
-  - `MANUAL` — ręczne ustawienie pozycji
-- **Metody publiczne**: `home()`, `controlFieldRotation()`, `getStatus()`, `enableFieldRotation()`, `configure()`
-- Synchronizacja z MountController przez `setFieldRotationRate()` wywoływane w pętli śledzenia
-
 #### 3. **AstronomicalCalculations**
 Obliczenia astronomiczne oparte na bibliotece SOFA:
 - Transformacje układów współrzędnych (równikowe ↔ horyzontalne)
@@ -235,15 +208,7 @@ Sterownik teleskopu ASCOM zgodny z interfejsem `ITelescopeV3`:
 - Obsługa `SideOfPier`, współrzędne `SiteLatitude`/`SiteLongitude`/`SiteElevation`
 - Klient gRPC ([`ascom/GrpcClient.cs`](ascom/GrpcClient.cs)) — uniwersalna klasa opakowująca
 
-#### 12. **ASCOM Rotator Driver** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs))
-Sterownik rotatora ASCOM zgodny z interfejsem `IRotatorV3`:
-- `MoveAbsolute(angle)` → `ControlFieldRotation(FIXED_ANGLE, angle)`
-- `Move(rate)` → `ControlFieldRotation(CUSTOM, rate)`
-- `Halt()` → `ControlFieldRotation(DISABLED, 0)`
-- `Home()` → `HomeDerotator(SEQUENTIAL)`
-- Wykorzystuje ten sam [`GrpcClient.cs`](ascom/GrpcClient.cs) do komunikacji gRPC
-
-#### 13. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
+#### 12. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
 Sterownik teleskopu INDI (C++):
 - Komunikacja przez protokół INDI (XML/TCP) → tłumaczenie na gRPC
 - `MoveNS`/`MoveWE` z mapowaniem axis_id (0=RA/WE, 1=Dec/NS) i prędkością ±1.0 deg/s (`VELOCITY_CONTROL`)
@@ -252,14 +217,6 @@ Sterownik teleskopu INDI (C++):
 - `EnvironmentNP` — właściwość numeryczna dla temperatury, ciśnienia, wilgotności
 - `SetCurrentPark()` — ustawienie pozycji parkowania z bieżącego stanu
 - Klient gRPC C++ ([`indi/MountGrpcClient.h`](indi/MountGrpcClient.h))
-
-#### 14. **INDI Rotator Driver** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp))
-Sterownik rotatora INDI (C++):
-- Dziedziczy po `INDI::Rotator` z trybem `CONNECTION_NONE` (tylko gRPC)
-- `MoveRotator(angle)` → `ControlFieldRotation(FIXED_ANGLE, angle)`
-- `HomeRotator()` → `HomeDerotator(AUTO)`
-- Możliwości: `ROTATOR_CAN_ABORT | ROTATOR_CAN_HOME`
-- Komunikacja przez ten sam [`MountGrpcClient.h`](indi/MountGrpcClient.h)
 
 ## Modele matematyczne
 
@@ -426,14 +383,6 @@ service MountControllerService {
     rpc StopAxis(AxisStopRequest) returns (google.protobuf.Empty);
     rpc EmergencyStop(EmergencyStopRequest) returns (google.protobuf.Empty);
     rpc GetAxisStatus(GetAxisStatusRequest) returns (AxisStatus);
-    
-    // === Derotator / Field Rotation ===
-    rpc ConfigureDerotator(DerotatorConfig) returns (google.protobuf.Empty);
-    rpc EnableFieldRotation(FieldRotationParams) returns (google.protobuf.Empty);
-    rpc ControlFieldRotation(FieldRotationControlRequest) returns (google.protobuf.Empty);
-    rpc GetDerotatorStatus(google.protobuf.Empty) returns (DerotatorStatus);
-    rpc HomeDerotator(DerotatorHomingRequest) returns (google.protobuf.Empty);
-    rpc GetFieldRotationParams(google.protobuf.Empty) returns (FieldRotationParams);
     
     // === HAL Configuration ===
     rpc GetHALConfig(HALConfigRequest) returns (HALConfig);
@@ -685,21 +634,6 @@ stub->TrackObject(&context, coords, &response);
     "max_residual": 30.0,
     "min_measurements": 10
   },
-  "derotator": {
-    "type": "stepper",
-    "enabled": false,
-    "gear_ratio": 180.0,
-    "max_speed": 5.0,
-    "max_acceleration": 2.0,
-    "backlash": 2.0,
-    "absolute_encoder": false,
-    "encoder_resolution": 36000.0
-  },
-  "field_rotation": {
-    "enabled": false,
-    "latitude": 52.0,
-    "longitude": 21.0
-  },
   "servo_init": {
     "comment": "Sekwencja SDO do inicjalizacji serwonapędów",
     "enabled": true,
@@ -886,9 +820,7 @@ Poniższa tabela podsumowuje cztery sterowniki zewnętrzne:
 | Sterownik | Język | Protokół zewnętrzny | Interfejs | Kluczowy plik |
 |-----------|-------|---------------------|-----------|---------------|
 | ASCOM Telescope | C# | Alpaca REST (HTTP/JSON) | `ITelescopeV3` | [`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) |
-| ASCOM Rotator | C# | Alpaca REST (HTTP/JSON) | `IRotatorV3` | [`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) |
 | INDI Telescope | C++ | INDI Protocol (XML/TCP) | `INDI::Telescope` | [`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) |
-| INDI Rotator | C++ | INDI Protocol (XML/TCP) | `INDI::Rotator` | [`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) |
 
 Wszystkie sterowniki używają warstwy klienta gRPC do komunikacji z `MountControllerService`:
 - **C#**: [`ascom/GrpcClient.cs`](ascom/GrpcClient.cs) (378 linii)
@@ -907,6 +839,21 @@ npm install
 npm start                   # Uruchamia na http://localhost:8080
 ```
 
-*Ostatnia aktualizacja: 22 czerwca 2026*
+## Nowe pliki konfiguracyjne
+
+Projekt zawiera gotowe pliki konfiguracyjne dla wspieranych typów HAL:
+
+| Plik | Typ HAL | Użycie |
+|------|---------|--------|
+| [`config/canopen.json`](../config/canopen.json) | CANopen/CiA 402 | `./astro_mount_control config/canopen.json` |
+| [`config/mf7025v2.json`](../config/mf7025v2.json) | LingKong MF7025v2 BLDC | `./astro_mount_control config/mf7025v2.json` |
+| [`config/default.json`](../config/default.json) | Domyślna (MF7025v2) | `./astro_mount_control` |
+| [`config/test_no_hardware.json`](../config/test_no_hardware.json) | Testowa (bez sprzętu) | `./astro_mount_control config/test_no_hardware.json` |
+
+## Raport weryfikacji
+
+Pełny raport stabilności i poprawności numerycznej: [`VERIFICATION_REPORT.md`](../VERIFICATION_REPORT.md)
+
+*Ostatnia aktualizacja: 19 lipca 2026*
 
 *Szczegółowe informacje o poszczególnych komponentach znajdują się w dedykowanych plikach dokumentacji.*

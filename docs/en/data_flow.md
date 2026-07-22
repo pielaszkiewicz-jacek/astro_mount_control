@@ -48,7 +48,6 @@ flowchart TD
         DRV2["⚡ Axis 2 Drive<br/>(Dec/Altitude)"]:::hw
         ENC1["📏 Axis 1 Encoder"]:::hw
         ENC2["📏 Axis 2 Encoder"]:::hw
-        DEROT["🔄 Derotator"]:::hw
     end
 
     GUI -->|"slewToEquatorial()<br/>startTracking()<br/>park()"| API
@@ -418,8 +417,6 @@ flowchart TD
         TEL_CFG["Telescope Config<br/>• focal_length, aperture<br/>• camera_model, pixel_size<br/>• sensor dimensions"]
         KF_CFG["Kalman Config<br/>• process_noise<br/>• measurement_noise<br/>• adaptive_q/r<br/>• innovation_threshold"]
         TP_CFG["TPOINT Config<br/>• enabled_terms<br/>• min_measurements<br/>• max_residual"]
-        DEROT_CFG["Derotator Config<br/>• type (none/canopen/stepper)<br/>• gear_ratio, max_speed<br/>• acceleration, backlash<br/>• calibration_table"]
-        FR_CFG["Field Rotation Config<br/>• enabled<br/>• compensation_mode<br/>• max_rate<br/>• PID gains"]
         HAL_CFG["HAL Config<br/>• type (canopen/simulated)<br/>• CAN params<br/>• watchdog timeout<br/>• PDO update rate"]
         NET["Network Config<br/>• gRPC address<br/>• gRPC port<br/>• SSL settings"]
         GUID_CFG["Guider Config<br/>• enabled<br/>• connection_string<br/>• max_correction<br/>• aggression, exposure"]
@@ -439,8 +436,6 @@ flowchart TD
     CFG --> TEL_CFG
     CFG --> KF_CFG
     CFG --> TP_CFG
-    CFG --> DEROT_CFG
-    CFG --> FR_CFG
     CFG --> HAL_CFG
     CFG --> NET
     CFG --> GUID_CFG
@@ -451,8 +446,6 @@ flowchart TD
     TEL_CFG -->|"telescope focal_length"| CONTROLLER
     KF_CFG -->|"process_noise, measurement_noise"| CONTROLLER
     TP_CFG -->|"enabled_terms, min_measurements"| CONTROLLER
-    DEROT_CFG -->|"derotator params"| CONTROLLER
-    FR_CFG -->|"field rotation params"| CONTROLLER
     HAL_CFG -->|"hal_type, can config"| CONTROLLER
     GUID_CFG -->|"guider settings"| CONTROLLER
     NET -->|"grpc_address, grpc_port"| GRPC
@@ -606,102 +599,6 @@ flowchart LR
     style TestFramework fill:#4CAF50,color:#fff
     style TestSubjects fill:#FF9800,color:#fff
     style MockLayer fill:#9E9E9E,color:#fff
-```
-
-## 12. Derotator Data Flow
-
-```mermaid
-sequenceDiagram
-    participant Client as gRPC Client
-    participant API as gRPC API Server
-    participant MC as MountController
-    participant DC as DerotatorController
-    participant HAL as HAL Motor/Encoder
-    participant HW as Derotator Hardware
-
-    Client->>API: ConfigureDerotator(config)
-    API->>MC: configureDerotator()
-    MC->>DC: configure(type, gear_ratio, max_speed, ...)
-    DC-->>MC: ok
-    MC-->>API: success
-    API-->>Client: response
-
-    Client->>API: EnableFieldRotation(params)
-    API->>MC: enableFieldRotation()
-    MC->>DC: enableFieldRotation(params)
-    Note over DC: Sets field rotation mode<br/>(ALT_AZ, EQUATORIAL, CUSTOM, etc.)
-    DC-->>MC: ok
-    MC-->>API: success
-
-    loop Tracking Loop (every 100ms)
-        MC->>MC: computeFieldRotationRate()
-        MC->>DC: setFieldRotationRate(rate)
-        DC->>DC: updateCurrentAngle(rate, dt)
-        
-        alt FIXED_ANGLE mode
-            DC->>DC: compute position error
-            DC->>HAL: setPositionTarget(target_angle, speed)
-        else CUSTOM mode (velocity)
-            DC->>DC: compute rate command
-            DC->>HAL: setVelocityTarget(custom_rate)
-        else ALT_AZ / EQUATORIAL mode
-            DC->>DC: tracking rate from MountController
-            DC->>HAL: setVelocityTarget(computed_rate)
-        end
-        
-        HAL-->>DC: actual_position, actual_velocity
-        DC-->>MC: derotator status (angle, rate, moving)
-    end
-
-    Client->>API: HomeDerotator(method)
-    API->>MC: homeDerotator()
-    MC->>DC: home(method)
-    Note over DC: Async homing thread started
-
-    par Async Homing
-        alt AUTO method
-            DC->>DC: rotate towards limit switch
-            HAL-->>DC: limit switch triggered
-            DC->>DC: reverse to home offset
-            DC->>DC: set homed flag
-        else LIMIT_SWITCH method
-            DC->>DC: rotate until limit switch
-            HAL-->>DC: limit switch triggered
-            DC->>DC: set current as home
-        else ENCODER_ZERO method
-            DC->>DC: rotate until encoder zero index
-            HAL-->>DC: zero index detected
-            DC->>DC: set current as home
-        else MANUAL method
-            DC->>DC: wait for manual position confirmation
-            Client->>API: GetDerotatorStatus()
-            API-->>Client: homing_in_progress
-            Client->>API: Set current as home
-        end
-        DC-->>MC: homing complete
-        MC-->>API: home status
-    end
-
-    Client->>API: ControlFieldRotation(mode, param)
-    API->>MC: controlFieldRotation()
-    MC->>DC: controlFieldRotation(mode, param)
-    alt DISABLED
-        DC->>HAL: stop motor, disable drive
-    else FIXED_ANGLE
-        DC->>DC: move to absolute angle
-    else CUSTOM
-        DC->>DC: rotate at custom rate
-    end
-    DC-->>MC: ok
-    MC-->>API: success
-    API-->>Client: response
-
-    Client->>API: GetDerotatorStatus()
-    API->>MC: getDerotatorStatus()
-    MC->>DC: getStatus()
-    DC-->>MC: status (angle, rate, homed, moving, mode)
-    MC-->>API: DerotatorStatus
-    API-->>Client: response
 ```
 
 ## 13. ASCOM Driver Data Flow

@@ -1,4 +1,5 @@
 #include "hal/canopen_hal/canopen_hal.h"
+#include "controllers/canopen_factory.h"
 #include "logging/logger.h"
 #include <chrono>
 #include <iomanip>
@@ -1199,6 +1200,47 @@ CanOpenHAL::CanOpenHAL(std::unique_ptr<controllers::ICanOpenInterface> canopen_i
     : canopen_interface_(std::move(canopen_interface)) {
 }
 
+std::unique_ptr<CanOpenHAL> CanOpenHAL::create(const HALConfig& config) {
+    using namespace astro_mount::controllers;
+    
+    #ifdef HAVE_CANOPEN
+    try {
+        ICanOpenInterface::Config canopen_config;
+        canopen_config.library = config.canopen.library;
+        canopen_config.interface_name = config.canopen.interface_name;
+        canopen_config.bitrate = config.canopen.bitrate;
+        canopen_config.node_id = config.canopen.node_id;
+        canopen_config.use_sync = config.canopen.use_sync;
+        canopen_config.sync_period_ms = config.canopen.sync_period_ms;
+        canopen_config.sdo_timeout_ms = config.canopen.sdo_timeout_ms;
+        canopen_config.pdo_config_enabled = config.canopen.pdo_config_enabled;
+
+        // Propagate counts-per-degree from axis encoder config
+        for (int i = 0; i < 2; ++i) {
+            if (i < (int)config.axes.size()) {
+                double cpd = config.axes[i].encoder_config.counts_per_degree;
+                canopen_config.axis_position_counts_per_degree[i] = cpd;
+                canopen_config.axis_velocity_counts_per_deg_s[i] = cpd;
+            }
+        }
+        
+        auto canopen_interface = CanOpenFactory::create(canopen_config);
+        if (!canopen_interface) {
+            logging::Logger::get("canopen")->error("Failed to create CANopen interface");
+            return nullptr;
+        }
+        
+        return std::make_unique<CanOpenHAL>(std::move(canopen_interface));
+    } catch (const std::exception& e) {
+        logging::Logger::get("canopen")->error("Failed to create CanOpenHAL: {}", e.what());
+        return nullptr;
+    }
+    #else
+    logging::Logger::get("canopen")->error("CANopen support not compiled");
+    return nullptr;
+    #endif
+}
+
 CanOpenHAL::~CanOpenHAL() {
     shutdown();
 }
@@ -1352,12 +1394,11 @@ std::string CanOpenHAL::getHardwareVersion() const {
 
 std::vector<HALFeature> CanOpenHAL::getSupportedFeatures() const {
     return {
-        HALFeature::CANOPEN_SUPPORT,
+        HALFeature::FIELD_BUS_SUPPORT,
         HALFeature::PID_CONTROL,
         HALFeature::ENCODER_FEEDBACK,
         HALFeature::SAFETY_MONITORING,
-        HALFeature::SENSOR_MONITORING,
-        HALFeature::DEROTATOR_SUPPORT
+        HALFeature::SENSOR_MONITORING
     };
 }
 
@@ -1503,7 +1544,7 @@ void CanOpenHAL::nmtMonitoringThread() {
     };
     
     // Maksymalna liczba obsługiwanych węzłów CANopen
-    constexpr int MAX_NODES = 3; // RA/Azm, Dec/Alt, Derotator
+    constexpr int MAX_NODES = 2; // RA/Azm, Dec/Alt
     // Rzeczywista liczba węzłów = liczba skonfigurowanych osi (bez derotatora jeśli nie skonfigurowany)
     const int NUM_NODES = std::min(static_cast<int>(config_.axes.size()), MAX_NODES);
     // Helper: pobiera CAN node ID dla osi o indeksie i, z fallbackiem do i+1
@@ -1861,50 +1902,4 @@ void CanOpenHAL::nmtMonitoringThread() {
     }
 }
 
-// ============================================================================
-// Derotator support for CANopen HAL
-// ============================================================================
-
-std::unique_ptr<MotorControl> CanOpenHAL::createDerotatorMotor() {
-    const int DEROTATOR_AXIS_ID = 2;
-    return createMotorControl(DEROTATOR_AXIS_ID);
-}
-
-std::unique_ptr<EncoderReader> CanOpenHAL::createDerotatorEncoder() {
-    const int DEROTATOR_AXIS_ID = 2;
-    return createEncoderReader(DEROTATOR_AXIS_ID);
-}
-
-bool CanOpenHAL::configureDerotator(const struct DerotatorConfig& config) {
-    if (!canopen_interface_) {
-        astro_mount::logging::Logger::get("canopen")->error("CANopen interface not available for derotator");
-        return false;
-    }
-    
-    const int DEROTATOR_AXIS_ID = 2;
-    
-    // Build configuration string for the derotator drive
-    std::string config_str = "type=derotator";
-    config_str += ",gear_ratio=" + std::to_string(config.gear_ratio);
-    config_str += ",max_speed=" + std::to_string(config.max_speed);
-    config_str += ",max_acceleration=" + std::to_string(config.max_acceleration);
-    config_str += ",backlash=" + std::to_string(config.backlash);
-    
-    if (!config.connection_string.empty()) {
-        config_str += ",connection=" + config.connection_string;
-    }
-    
-    // Configure derotator drive via CANopen
-    if (!canopen_interface_->configureDrive(DEROTATOR_AXIS_ID, config_str)) {
-        astro_mount::logging::Logger::get("canopen")->error("Failed to configure derotator drive (axis_id={})", DEROTATOR_AXIS_ID);
-        return false;
-    }
-    
-    // Configure encoder if absolute encoder is specified
-    if (config.absolute_encoder) {
-        // In real implementation: SDO writes to encoder configuration objects
-    }
-    
-    return true;
-}
 

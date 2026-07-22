@@ -801,7 +801,7 @@ Configuring the U2C converter on openSUSE comes down to a few steps:
 4. **Create persistent configuration** via wicked, systemd-networkd, or a custom systemd service.
 5. **Configure** [`astro-mount-controller`](installation.md) with parameters `can_interface: can0`, `bitrate: 1000000`.
 
-After completing these steps, the CAN bus will be ready for communication with CANopen drives (RA, Dec, derotator) according to the CiA 402 profile.
+After completing these steps, the CAN bus will be ready for communication with CANopen drives (RA, Dec) according to the CiA 402 profile.
 
 ---
 

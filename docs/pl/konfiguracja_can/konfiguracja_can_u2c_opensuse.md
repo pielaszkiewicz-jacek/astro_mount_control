@@ -791,7 +791,7 @@ Konfiguracja konwertera U2C na openSUSE sprowadza się do kilku kroków:
 4. **Utwórz trwałą konfigurację** przez wicked, systemd-networkd lub własną usługę systemd.
 5. **Skonfiguruj** [`astro-mount-controller`](installation.md) z parametrami `can_interface: can0`, `bitrate: 1000000`.
 
-Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napędami CANopen (RA, Dec, derotator) zgodnie z profilem CiA 402.
+Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napędami CANopen (RA, Dec) zgodnie z profilem CiA 402.
 
 ---
 

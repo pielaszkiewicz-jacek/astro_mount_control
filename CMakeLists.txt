@@ -185,6 +185,7 @@ set(CORE_SOURCES
     src/hal/serial_hal/serial_hal.cpp
     src/hal/ethernet_hal/ethernet_hal.cpp
     src/hal/gamepad_hal/gamepad_hal.cpp
+    src/hal/mf7025v2_hal/mf7025v2_hal.cpp
     src/hal/gamepad_hal/gamepad_input_evdev.cpp
 )
 
@@ -198,7 +199,7 @@ set(CONTROLLER_SOURCES
     src/controllers/mount_controller.cpp
     src/controllers/canopen_interface.cpp
     src/controllers/canopen_factory.cpp
-    src/controllers/derotator_controller.cpp
+    src/controllers/mf7025v2_interface.cpp
 )
 
 set(API_SOURCES

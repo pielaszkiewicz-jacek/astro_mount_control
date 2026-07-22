@@ -1,10 +1,10 @@
 #include "hal/hal_factory.h"
 #include "hal/simulated_hal/simulated_hal.h"
 #include "canopen_hal/canopen_hal.h"
+#include "hal/mf7025v2_hal/mf7025v2_hal.h"
 #include "serial_hal/serial_hal.h"
 #include "ethernet_hal/ethernet_hal.h"
 #include "gamepad_hal/gamepad_hal.h"
-#include "controllers/canopen_factory.h"
 #include <fstream>
 #include <stdexcept>
 #include <iostream>
@@ -20,6 +20,8 @@ std::unique_ptr<HALInterface> HALFactory::create(const HALConfig& config) {
             return createSimulatedHAL(config);
         case HALType::CANOPEN:
             return createCanOpenHAL(config);
+        case HALType::MF7025V2:
+            return createMf7025v2HAL(config);
         case HALType::SERIAL:
             return createSerialHAL(config);
         case HALType::ETHERNET:
@@ -80,6 +82,7 @@ std::vector<std::string> HALFactory::getAvailableTypeNames() {
         switch (type) {
             case HALType::SIMULATED: names.push_back("simulated"); break;
             case HALType::CANOPEN: names.push_back("canopen"); break;
+            case HALType::MF7025V2: names.push_back("mf7025v2"); break;
             case HALType::SERIAL: names.push_back("serial"); break;
             case HALType::ETHERNET: names.push_back("ethernet"); break;
             case HALType::GAMEPAD: names.push_back("gamepad"); break;
@@ -138,6 +141,19 @@ HALConfig HALFactory::getDefaultConfig(HALType type) {
     
     // Type-specific configuration
     switch (type) {
+        case HALType::MF7025V2:
+            config.mf7025v2.can_interface = "can0";
+            config.mf7025v2.bitrate = 1000000;
+            config.mf7025v2.sdo_timeout_ms = 100;
+            config.mf7025v2.position_units_per_degree = 100.0;
+            config.mf7025v2.velocity_units_per_dps = 100.0;
+            // Set motor type for MF7025v2
+            for (auto& axis : config.axes) {
+                axis.motor_config.type = MotorType::BRUSHLESS_DC;
+                axis.encoder_config.type = EncoderType::ABSOLUTE;
+            }
+            break;
+            
         case HALType::CANOPEN:
             config.canopen.interface_name = "can0";
             config.canopen.bitrate = 125000;
@@ -179,16 +195,6 @@ HALConfig HALFactory::getDefaultConfig(HALType type) {
         default:
             break;
     }
-    
-    // Konfiguracja derotatora (domyślna dla wszystkich typów)
-    config.derotator.enabled = true;
-    config.derotator.gear_ratio = 180.0;
-    config.derotator.max_speed = 5.0;
-    config.derotator.max_acceleration = 2.0;
-    config.derotator.backlash = 0.0;
-    config.derotator.absolute_encoder = true;
-    config.derotator.encoder_resolution = 36000.0;
-    config.derotator.connection_string = "canopen_node=3";
     
     return config;
 
@@ -258,40 +264,11 @@ std::unique_ptr<HALInterface> HALFactory::createSimulatedHAL(const HALConfig& co
 }
 
 std::unique_ptr<HALInterface> HALFactory::createCanOpenHAL(const HALConfig& config) {
-    using namespace astro_mount::controllers;
-    
-    try {
-        // Create CANopen interface using existing factory
-        ICanOpenInterface::Config canopen_config;
-        canopen_config.library = config.canopen.library;
-        canopen_config.interface_name = config.canopen.interface_name;
-        canopen_config.bitrate = config.canopen.bitrate;
-        canopen_config.node_id = config.canopen.node_id;
-        canopen_config.use_sync = config.canopen.use_sync;
-        canopen_config.sync_period_ms = config.canopen.sync_period_ms;
-        canopen_config.sdo_timeout_ms = config.canopen.sdo_timeout_ms;
-        canopen_config.pdo_config_enabled = config.canopen.pdo_config_enabled;
-
-        // Propagate counts-per-degree from axis encoder config
-        for (int i = 0; i < 2; ++i) {
-            if (i < (int)config.axes.size()) {
-                double cpd = config.axes[i].encoder_config.counts_per_degree;
-                canopen_config.axis_position_counts_per_degree[i] = cpd;
-                canopen_config.axis_velocity_counts_per_deg_s[i] = cpd;
-            }
-        }
-        
-        auto canopen_interface = CanOpenFactory::create(canopen_config);
-        if (!canopen_interface) {
-            throw std::runtime_error("Failed to create CANopen interface");
-        }
-        
-        // Create CanOpenHAL with the CANopen interface
-        return std::make_unique<CanOpenHAL>(std::move(canopen_interface));
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to create CanOpenHAL: " << e.what() << std::endl;
-        throw;
+    auto hal = CanOpenHAL::create(config);
+    if (!hal) {
+        throw std::runtime_error("Failed to create CanOpenHAL");
     }
+    return hal;
 }
 
 std::unique_ptr<HALInterface> HALFactory::createSerialHAL(const HALConfig& config) {
@@ -317,6 +294,19 @@ std::unique_ptr<HALInterface> HALFactory::createGamepadHAL(const HALConfig& conf
         return std::make_unique<GamepadHAL>(config);
     } catch (const std::exception& e) {
         std::cerr << "Failed to create GamepadHAL: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::unique_ptr<HALInterface> HALFactory::createMf7025v2HAL(const HALConfig& config) {
+    try {
+        auto hal = Mf7025v2Hal::create(config);
+        if (!hal) {
+            throw std::runtime_error("Failed to create Mf7025v2Hal");
+        }
+        return hal;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create Mf7025v2Hal: " << e.what() << std::endl;
         throw;
     }
 }

@@ -13,12 +13,7 @@
     - [3.3 `park()` — Parking Loop](#33-park--parking-loop)
     - [3.4 `startTracking()` — Tracking Thread](#34-starttracking--tracking-thread)
     - [3.5 `stop()` — Movement Stop (Synchronous)](#35-stop--movement-stop-synchronous)
-  - [4. Blocking Operations in MountController (Derotator, Calibration)](#4-blocking-operations-in-mountcontroller-derotator-calibration)
-    - [4.1 `homeDerotator()` — Homing with Blocking CANopen Polling](#41-homederotator--homing-with-blocking-canopen-polling)
-    - [4.2 `runDerotatorCalibration()` / `runCANopenDerotatorCalibration()` — Derotator Calibration](#42-runderotatorcalibration--runcanopenderotatorcalibration--derotator-calibration)
-    - [4.3 `measureBacklash()` — Backlash Measurement](#43-measurebacklash--backlash-measurement)
-    - [4.4 `calibrateAbsoluteEncoder()` — Absolute Encoder Calibration](#44-calibrateabsoluteencoder--absolute-encoder-calibration)
-    - [4.5 `generateCalibrationTable()` — Calibration Table Generation](#45-generatecalibrationtable--calibration-table-generation)
+  - [4. Blocking Operations in MountController — REMOVED](#4-blocking-operations-in-mountcontroller---removed)
   - [5. CanOpenInterface Threads](#5-canopeninterface-threads)
     - [5.1 `CanOpenMotor::controlLoop()` — PID Loop](#51-canopenmotorcontrolloop--pid-loop)
     - [5.2 `CanOpenEncoder::pdoReceiveThread()` — Actual PDO Reception](#52-canopenencoderpdoreceivethread--actual-pdo-reception)
@@ -333,84 +328,17 @@ bool MountController::Impl::stop() {
 
 ---
 
-## 4. Blocking Operations in MountController (Derotator, Calibration)
+## 4. Blocking Operations in MountController — REMOVED
 
-These operations block the calling thread (typically a gRPC handler thread) until they complete. They use polling loops to monitor CANopen state.
-
-### 4.1 `homeDerotator()` — Homing with Blocking CANopen Polling
-
-**Source:** [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp), lines 401–464
-
-```cpp
-bool MountController::Impl::homeDerotator() {
-    // Set derotator to homing mode via CANopen
-    canopen_interface_->setControlMode(DEROTATOR_AXIS, CiA402::HOMING_MODE);
-    canopen_interface_->startHoming(DEROTATOR_AXIS);
-    
-    // BLOCKING POLLING LOOP
-    const int MAX_WAIT_MS = 30000;  // 30s timeout
-    const int POLL_INTERVAL_MS = 100;
-    
-    for (int waited = 0; waited < MAX_WAIT_MS; waited += POLL_INTERVAL_MS) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(POLL_INTERVAL_MS));
-        
-        auto status = canopen_interface_->getDriveStatus(DEROTATOR_AXIS);
-        if (status.homing_complete) {
-            logger_->info("Derotator homing completed");
-            return true;
-        }
-        
-        if (status.error) {
-            logger_->error("Derotator homing error");
-            return false;
-        }
-    }
-    
-    logger_->error("Derotator homing timeout");
-    return false;
-}
-```
-
-### 4.2 `runDerotatorCalibration()` / `runCANopenDerotatorCalibration()` — Derotator Calibration
-
-**Source:** [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp), lines 465–495
-
-Follows the same pattern as `homeDerotator()`:
-1. Start calibration via CANopen
-2. Poll calibration status in a loop with timeout
-3. Handle errors and timeouts
-
-### 4.3 `measureBacklash()` — Backlash Measurement
-
-**Source:** [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp), lines 496–523
-
-Measures mechanical backlash by:
-1. Moving the axis in positive direction by a set distance
-2. Reading the final position via encoder
-3. Moving the axis in negative direction by the same distance
-4. Reading the final position again
-5. Calculating backlash = |pos_forward - pos_backward|
-6. Repeating for statistical significance
-
-### 4.4 `calibrateAbsoluteEncoder()` — Absolute Encoder Calibration
-
-**Source:** [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp), lines 524–548
-
-Calibrates absolute encoders against a reference position:
-1. Move to a known reference (e.g., mechanical zero)
-2. Read encoder value
-3. Calculate offset = reference_position - encoder_reading
-4. Store calibration offset
-
-### 4.5 `generateCalibrationTable()` — Calibration Table Generation
-
-**Source:** [`src/controllers/mount_controller.cpp`](../../src/controllers/mount_controller.cpp), lines 549–576
-
-Generates a PEC (Periodic Error Correction) table:
-1. Move axis through one full worm gear rotation
-2. Record encoder readings at regular intervals
-3. Analyze periodic error components
-4. Generate correction table (amplitude + phase per harmonic)
+> **⚠️ NOTE:** Derotator functionality (including `DerotatorController`, `homeDerotator()`, `runDerotatorCalibration()`) has been **completely eliminated** from the project.
+>
+> See: [`include/hal/hal_config.h:21`](../../include/hal/hal_config.h#L21):
+> ```cpp
+> // (Derotator types removed — derotator functionality eliminated from the project)
+> ```
+>
+> The system supports only 2 axes (RA/Azm, Dec/Alt) — no separate derotator axis.
+> Sections 4.1–4.5 described code that **was never implemented** in the repository and remained only as early design concepts.
 
 ---
 

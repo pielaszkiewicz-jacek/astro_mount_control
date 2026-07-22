@@ -263,34 +263,6 @@ int main(int argc, char* argv[]) {
         // Enable config persistence: changes from the UI will be saved to disk
         mount_controller->setConfigFilePath(config_file);
         
-        // Configure derotator from config file (if derotator section exists and is enabled)
-        {
-            auto derotator_cfg = config.getDerotatorConfig();
-            if (derotator_cfg.enabled) {
-                ::astro_mount::DerotatorConfig proto_config;
-                proto_config.set_type(static_cast<::astro_mount::DerotatorConfig::DerotatorType>(
-                    derotator_cfg.type));
-                proto_config.set_connection_string(derotator_cfg.connection_string);
-                proto_config.set_gear_ratio(derotator_cfg.gear_ratio);
-                proto_config.set_max_speed(derotator_cfg.max_speed);
-                proto_config.set_max_acceleration(derotator_cfg.max_acceleration);
-                proto_config.set_backlash(derotator_cfg.backlash);
-                proto_config.set_absolute_encoder(derotator_cfg.absolute_encoder);
-                proto_config.set_encoder_resolution(derotator_cfg.encoder_resolution);
-                proto_config.set_homing_offset(derotator_cfg.homing_offset);
-                for (const auto& val : derotator_cfg.calibration_table) {
-                    proto_config.add_calibration_table(val);
-                }
-                if (!mount_controller->configureDerotator(proto_config)) {
-                    logger->warn("Failed to configure derotator from config");
-                } else {
-                    logger->info("Derotator configured from config file");
-                }
-            } else {
-                logger->info("Derotator disabled in config");
-            }
-        }
-        
         // Configure field rotation from config file (if field_rotation section exists)
         {
             auto fr_params = config.getFieldRotationParams();

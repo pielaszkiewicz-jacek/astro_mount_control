@@ -24,8 +24,6 @@ który monitoruje plik pod kątem zmian czasu modyfikacji i automatycznie przeł
   "guider": { ... },
   "kalman": { ... },
   "tpoint": { ... },
-  "derotator": { ... },
-  "field_rotation": { ... },
   "hal": { ... }
 }
 ```
@@ -440,12 +438,12 @@ Tablica obiektów, każdy definiuje jedną oś napędową.
 
 | Parametr | Typ | Zakres | Wartość domyślna | Opis |
 |---|---|---|---|---|
-| `id` | integer | 0–N | `0` | Indeks osi (0 = HA/Azm, 1 = Dec/Alt, 2 = Derotator) |
+| `id` | integer | 0–N | `0` | Indeks osi (0 = HA/Azm, 1 = Dec/Alt) |
 | `name` | string | dowolny | `"Axis_0"` | Nazwa osi (dla logów/debug) |
 | [`can_node_id`](include/hal/hal_config.h:135) | integer | 0–127 | `0` (auto) | CANopen Node ID napędu. **`0` oznacza automatyczne mapowanie: `axis_id + 1`** |
 
-**Ważne:** `can_node_id` to adres serwonapędu na magistrali CAN. Wartość `0` (domyślna) zachowuje 
-kompatybilność wsteczną: oś 0 → node 1, oś 1 → node 2, oś 2 → node 3. 
+**Ważne:** `can_node_id` to adres serwonapędu na magistrali CAN. Wartość `0` (domyślna) zachowuje
+kompatybilność wsteczną: oś 0 → node 1, oś 1 → node 2.
 Dla niestandardowych adresów (np. 5, 6) należy jawnie ustawić tę wartość.
 
 Implementacja w [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp:1450):
@@ -566,36 +564,12 @@ Implementacja w [`include/hal/hal_config.h:152`](include/hal/hal_config.h:152).
 
 ---
 
-## 9. Sekcje `derotator` i `field_rotation`
+## 9. Sekcje usunięte (`derotator` i `field_rotation`)
 
-### 9.1 `derotator` — Derotator pola
-
-| Parametr | Typ | Zakres | Wartość domyślna | Opis |
-|---|---|---|---|---|
-| `type` | string | `"CANOPEN"`, `"STEPPER"`, `"SERVO"`, `"NONE"` | `"CANOPEN"` | Typ derotatora |
-| `enabled` | boolean | `true`, `false` | `false` | Czy włączony |
-| `connection_string` | string | dowolny | `""` | Ciąg połączenia |
-| `gear_ratio` | float | 0.1 do 1000.0 | `10.0` | Przełożenie derotatora |
-| `max_speed` | float | 0.1 do 50.0 | `5.0` | Max prędkość (deg/s) |
-| `max_acceleration` | float | 0.01 do 20.0 | `2.0` | Max przyspieszenie (deg/s²) |
-| `backlash` | float | 0.0 do 50.0 | `2.0` | Luz derotatora (arcsec) |
-| `absolute_encoder` | boolean | `true`, `false` | `true` | Enkoder absolutny |
-| `encoder_resolution` | integer | 1–2³² | `16384` | Rozdzielczość enkodera |
-| `homing_offset` | float | -360.0 do 360.0 | `0.0` | Offset pozycji domowej (deg) |
-| `calibration_table` | array | lista korekcji | `[]` | Tabela kalibracyjna |
-
-### 9.2 `field_rotation` — Rotacja pola (obliczona)
-
-| Parametr | Typ | Zakres | Wartość domyślna | Opis |
-|---|---|---|---|---|
-| `enabled` | boolean | `true`, `false` | `false` | Czy włączona korekcja rotacji |
-| `latitude` | float | -90.0 do 90.0 | `52.0` | Szerokość geograficzna |
-| `altitude` | float | 0.0 do 90.0 | `0.0` | Altitude celu |
-| `azimuth` | float | 0.0 do 360.0 | `0.0` | Azymut celu |
-| `computed_rate` | float | dowolna | `0.0` | Obliczona prędkość rotacji (deg/s) |
-| `applied_correction` | float | dowolna | `0.0` | Zastosowana korekcja (deg) |
-| `temperature` | float | -50.0 do 60.0 | `15.0` | Temperatura (°C) |
-| `flexure_correction` | float | dowolna | `0.0` | Korekcja flexury (deg) |
+Sekcje `derotator` i `field_rotation` zostały usunięte z projektu. Odpowiedzialne za nie klasy
+(`DerotatorController`, `DerotatorConfig`) oraz wsparcie HAL (`HALFeature::DEROTATOR_SUPPORT`)
+zostały wycofane. Wszelkie odniesienia do tych sekcji w istniejących plikach konfiguracyjnych
+są ignorowane przy ładowaniu konfiguracji.
 
 ---
 
@@ -631,12 +605,12 @@ Plik: [`config/dual_servo_config.json`](config/dual_servo_config.json)
 }
 ```
 
-### 10.2 Domyślna konfiguracja (3 osie, adresy 1, 2, 3)
+### 10.2 Domyślna konfiguracja (2 osie, adresy 1, 2)
 
 Plik: [`config/default.json`](config/default.json)
 
-W domyślnej konfiguracji brak sekcji `hal.axes[]` — system używa wartości domyślnych, 
-gdzie `can_node_id = 0` (auto) co daje mapowanie: oś 0 → node 1, oś 1 → node 2, oś 2 → node 3.
+W domyślnej konfiguracji brak sekcji `hal.axes[]` — system używa wartości domyślnych,
+gdzie `can_node_id = 0` (auto) co daje mapowanie: oś 0 → node 1, oś 1 → node 2.
 
 ---
 

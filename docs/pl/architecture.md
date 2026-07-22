@@ -23,13 +23,6 @@ Astronomical Mount Controller to system o architekturze modularnej, zaprojektowa
 - Integracja z systemem autoguiding
 - Zarządzanie kalibracją TPOINT
 
-#### Integracja z DerotatorController:
-`MountController` deleguje całe sterowanie derotatorem do `DerotatorController`:
-- Wstrzykuje prędkość rotacji pola przez `setFieldRotationRate()` w pętli śledzenia
-- `computeFieldRotationRate()` oblicza wymaganą prędkość na podstawie pozycji montażu i trybu śledzenia
-- `DerotatorController` działa w niezależnym wątku z własnym `shared_mutex`
-- Koordynacja stanu: MountController przekazuje aktualną pozycję montażu przez callback `state_provider`
-
 #### Stan wewnętrzny:
 ```cpp
 struct MountStatus {
@@ -85,59 +78,6 @@ struct MountStatus {
     std::string error_message;
 };
 ```
-
-### 2. DerotatorController
-
-Samodzielny kontroler derotatora, wydzielony z `MountController::Impl` podczas refaktoryzacji.
-
-#### Odpowiedzialności:
-- Sterowanie silnikiem derotatora przez HAL (wskaźniki `MotorControl` i `EncoderReader`)
-- Obliczanie i utrzymywanie docelowego kąta derotatora
-- Wykonywanie sekwencji homingu (AUTO, LIMIT_SWITCH, ENCODER_ZERO, MANUAL)
-- Kompensacja rotacji pola w czasie rzeczywistym
-
-#### Architektura:
-
-```cpp
-class DerotatorController {
-public:
-    enum class RotationMode {
-        DISABLED,      // Rotacja wyłączona
-        ALT_AZ,        // Kompensacja ALT-AZ
-        EQUATORIAL,    // Kompensacja EQ (szybkość pola)
-        CUSTOM,        // Ręczna prędkość kątowa
-        FIXED_ANGLE,   // Utrzymanie stałego kąta
-        TRACKING       // Śledzenie prędkością gwiazdową
-    };
-
-    enum class HomingMethod {
-        AUTO,           // Automatyczna sekwencja
-        LIMIT_SWITCH,   // Wyłącznik krańcowy
-        ENCODER_ZERO,   // Pozycja zerowa enkodera
-        MANUAL          // Ręczne ustawienie pozycji
-    };
-
-    // Publiczne metody
-    bool configure(const DerotatorConfig& config);
-    bool enableFieldRotation(const FieldRotationParams& params);
-    bool home(HomingMethod method);
-    bool controlFieldRotation(RotationMode mode, double param);
-    DerotatorStatus getStatus() const;
-    void setFieldRotationRate(double rate_deg_per_sec);
-};
-```
-
-#### Kluczowe pliki:
-- [`include/controllers/derotator_controller.h`](../../include/controllers/derotator_controller.h) (~224 linie)
-- [`src/controllers/derotator_controller.cpp`](../../src/controllers/derotator_controller.cpp) (~858 linii)
-
-#### Tryby rotacji pola:
-- `DISABLED` — rotacja wyłączona, derotator w trybie bezczynności
-- `ALT_AZ` — pełna kompensacja obrotu pola dla montażu ALT-AZ
-- `EQUATORIAL` — kompensacja szybkości pola dla montażu EQ
-- `CUSTOM` — ręczne ustawienie prędkości kątowej (stopnie/sekundę)
-- `FIXED_ANGLE` — utrzymanie określonego kąta derotatora
-- `TRACKING` — śledzenie z prędkością gwiazdową (sidereal)
 
 ### 3. AstronomicalCalculations
 

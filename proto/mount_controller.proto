@@ -413,30 +413,8 @@ service MountControllerService {
     // Get axis status
     rpc GetAxisStatus(google.protobuf.Empty) returns (AxisStatus);
     
-    // ============================================
-    // FIELD ROTATION / DEROTATOR CONTROL
-    // ============================================
-    
-    // Configure derotator hardware
-    rpc ConfigureDerotator(DerotatorConfig) returns (google.protobuf.Empty);
-    
-    // Enable/disable field rotation compensation
-    rpc EnableFieldRotation(FieldRotationParams) returns (google.protobuf.Empty);
-    
-    // Control field rotation (position/rate control)
-    rpc ControlFieldRotation(FieldRotationControlRequest) returns (google.protobuf.Empty);
-    
-    // Get derotator status
-    rpc GetDerotatorStatus(google.protobuf.Empty) returns (DerotatorStatus);
-    
-    // Home derotator (find zero position)
-    rpc HomeDerotator(DerotatorHomingRequest) returns (google.protobuf.Empty);
-    
     // Home mount (set reference position for tracking origin)
     rpc Home(MountHomingRequest) returns (google.protobuf.Empty);
-    
-    // Get field rotation parameters (computed rates)
-    rpc GetFieldRotationParams(google.protobuf.Empty) returns (FieldRotationParams);
     
     // ============================================
     // HARDWARE ABSTRACTION LAYER (HAL) CONFIGURATION
@@ -693,16 +671,6 @@ message Configuration {
     double meridian_flip_timeout_seconds = 73;  // Max time for flip slew before ERROR state [s]
 
     reserved 55, 56;
-
-    // Field rotation parameters
-    optional bool field_rotation_enabled = 57;
-    double field_rotation_latitude = 63;       // Observer latitude for field rotation [deg]
-    double field_rotation_altitude = 58;
-    double field_rotation_azimuth = 64;        // Current azimuth for field rotation [deg]
-    double field_rotation_computed_rate = 59;
-    double field_rotation_applied_correction = 60;
-    double field_rotation_temperature = 61;
-    double field_rotation_flexure_correction = 62;
 
     // Enable/disable the CANopen position rewind mechanism entirely.
     // When disabled, the drive's absolute position counter is never reset,
@@ -993,91 +961,6 @@ message AutoBootstrapStatus {
 }
 
 // ============================================
-// FIELD ROTATION / DEROTATOR CONTROL
-// ============================================
-
-// Derotator configuration
-message DerotatorConfig {
-    enum DerotatorType {
-        CANOPEN = 0;          // CanOpen-based derotator
-        STEPPER = 1;          // Stepper motor derotator  
-        SERVO = 2;            // Servo motor derotator
-        CUSTOM = 3;           // Custom interface
-    }
-    
-    DerotatorType type = 1;
-    string connection_string = 2;   // e.g., "can0:1" for CanOpen
-    double gear_ratio = 3;          // Gear ratio (motor:output)
-    double max_speed = 4;           // Max rotation speed [deg/s]
-    double max_acceleration = 5;    // Max acceleration [deg/s²]
-    double backlash = 6;            // Backlash [arcsec]
-    bool absolute_encoder = 7;      // Has absolute encoder
-    double encoder_resolution = 8;  // Encoder counts per revolution
-    double homing_offset = 9;       // Homing offset [deg]
-    repeated double calibration_table = 10; // Calibration table [deg]
-}
-
-// Field rotation control request
-message FieldRotationControlRequest {
-    enum RotationMode {
-        DISABLED = 0;          // No field rotation
-        ALT_AZ = 1;            // Alt-Az field rotation compensation
-        EQUATORIAL = 2;        // Equatorial mount (no rotation)
-        CUSTOM = 3;            // Custom rotation rate
-        FIXED_ANGLE = 4;       // Fixed rotation angle
-        TRACKING = 5;          // Track rotation for moving object
-        CASUAL = 6;            // Field rotation for randomly oriented mount
-    }
-    
-    RotationMode mode = 1;
-    double target_angle = 2;   // Target angle [deg] (for FIXED_ANGLE)
-    double rotation_rate = 3;  // Rotation rate [deg/s] (for CUSTOM)
-    bool relative = 4;         // Relative to current position
-    bool wait_for_completion = 5; // Wait until rotation complete
-}
-
-// Derotator status
-message DerotatorStatus {
-    bool enabled = 1;
-    bool moving = 2;
-    bool homed = 3;
-    double current_angle = 4;      // Current angle [deg]
-    double target_angle = 5;       // Target angle [deg]
-    double rotation_rate = 6;      // Current rotation rate [deg/s]
-    double field_rotation_rate = 7; // Calculated field rotation rate [deg/s]
-    DerotatorConfig derotator_config = 8;
-    string error_message = 9;
-    google.protobuf.Timestamp timestamp = 10;
-}
-
-// Field rotation compensation parameters
-message FieldRotationParams {
-    bool enabled = 1;
-    double latitude = 2;           // Observer latitude [deg]
-    double altitude = 3;           // Current altitude [deg]
-    double azimuth = 4;            // Current azimuth [deg]
-    double computed_rate = 5;      // Computed field rotation rate [deg/s]
-    double applied_correction = 6; // Applied correction [deg]
-    double temperature = 7;        // Temperature for thermal correction
-    double flexure_correction = 8; // Flexure correction term
-}
-
-// Derotator homing request
-message DerotatorHomingRequest {
-    enum HomingMethod {
-        AUTO = 0;           // Automatic homing
-        LIMIT_SWITCH = 1;   // Use limit switch
-        ENCODER_ZERO = 2;   // Use encoder zero position
-        MANUAL = 3;         // Manual homing
-    }
-    
-    HomingMethod method = 1;
-    double search_speed = 2;    // Speed for homing [deg/s]
-    double offset = 3;          // Homing offset [deg]
-    bool calibrate_after = 4;   // Run calibration after homing
-}
-
-// ============================================
 // HARDWARE ABSTRACTION LAYER (HAL) CONFIGURATION
 // ============================================
 
@@ -1329,7 +1212,7 @@ enum HALFeature {
     HAL_FEATURE_SAFETY_MONITORING = 2;
     HAL_FEATURE_SENSOR_INTERFACE = 3;
     HAL_FEATURE_SIMULATION = 4;
-    HAL_FEATURE_CANOPEN = 5;
+    HAL_FEATURE_FIELD_BUS = 5;
     HAL_FEATURE_MODBUS = 6;
     HAL_FEATURE_ETHERCAT = 7;
 }

@@ -16,7 +16,7 @@ class SensorInterface;
 struct HALConfig;
 
 enum class HALFeature {
-    CANOPEN_SUPPORT,      // Wsparcie CANopen/CiA 402
+    FIELD_BUS_SUPPORT,    // Wsparcie magistrali polowej (CANopen, EtherCAT, itp.)
     SERIAL_SUPPORT,       // Wsparcie portów szeregowych
     ETHERNET_SUPPORT,     // Wsparcie Ethernet (EtherCAT, Modbus TCP)
     PID_CONTROL,          // Wsparcie kontrolerów PID
@@ -25,7 +25,6 @@ enum class HALFeature {
     SAFETY_MONITORING,    // Monitorowanie bezpieczeństwa
     SENSOR_MONITORING,    // Monitorowanie czujników
     REAL_TIME_CONTROL,    // Sterowanie w czasie rzeczywistym
-    DEROTATOR_SUPPORT,    // Wsparcie derotatora (pole obserwacyjne)
     MANUAL_CONTROL        // Ręczne sterowanie (gamepad/joystick)
 };
 
@@ -44,15 +43,13 @@ public:
     virtual std::unique_ptr<EncoderReader> createEncoderReader(int axis_id) = 0;
     virtual std::unique_ptr<SafetyMonitor> createSafetyMonitor() = 0;
     virtual std::unique_ptr<SensorInterface> createSensorInterface() = 0;
-    
-    // Fabryka derotatora
-    virtual std::unique_ptr<MotorControl> createDerotatorMotor() { return nullptr; }
-    virtual std::unique_ptr<EncoderReader> createDerotatorEncoder() { return nullptr; }
-    
-    // Konfiguracja derotatora (parametry specyficzne dla sterownika CANopen/step/servo)
-    virtual bool configureDerotator(const struct DerotatorConfig& config) { return false; }
+// Metody dla pozycjonowania i statusu magistrali polowej
+// (eliminuj¹ potrzebê dostêpu do ICanOpenInterface z kontrolerów)
+virtual bool setActualPosition(int axis_id, double position_deg) { return false; }
+virtual bool isFieldBusConnected() const { return false; }
 
-    // Informacje o platformie
+// Informacje o platformie
+
 
     virtual std::string getPlatformName() const = 0;
     virtual std::string getHardwareVersion() const = 0;

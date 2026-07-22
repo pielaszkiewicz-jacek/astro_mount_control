@@ -174,28 +174,6 @@ private:
     std::array<std::unique_ptr<SimulatedMotor>, 3> motors_;
     std::array<std::unique_ptr<SimulatedEncoder>, 3> encoders_;
     
-    // Derotator support
-    std::unique_ptr<MotorControl> createDerotatorMotor() override {
-        const int DEROTATOR_AXIS_ID = 2;
-        if (DEROTATOR_AXIS_ID < motors_.size() && motors_[DEROTATOR_AXIS_ID]) {
-            return std::make_unique<SimulatedMotor>(DEROTATOR_AXIS_ID);
-        }
-        return nullptr;
-    }
-    
-    std::unique_ptr<EncoderReader> createDerotatorEncoder() override {
-        const int DEROTATOR_AXIS_ID = 2;
-        if (DEROTATOR_AXIS_ID < encoders_.size() && encoders_[DEROTATOR_AXIS_ID]) {
-            return std::make_unique<SimulatedEncoder>(DEROTATOR_AXIS_ID);
-        }
-        return nullptr;
-    }
-    
-    bool configureDerotator(const struct DerotatorConfig& config) override {
-        (void)config;
-        return true; // Simulated HAL accepts any config
-    }
-    
     // Helper methods
     void updateSimulation();
 

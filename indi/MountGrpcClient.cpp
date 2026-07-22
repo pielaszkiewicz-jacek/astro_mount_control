@@ -424,64 +424,6 @@ void MountGrpcClient::sendGuiderCorrection(const astro_mount::GuiderCorrection& 
 }
 
 // ============================================
-// Faza 5: Derotator / Field Rotation
-// ============================================
-
-void MountGrpcClient::enableFieldRotation(const astro_mount::FieldRotationParams& params)
-{
-    ensureConnected();
-    grpc::ClientContext context;
-    google::protobuf::Empty response;
-    auto status = stub_->EnableFieldRotation(&context, params, &response);
-    if (!status.ok())
-    {
-        throw std::runtime_error(
-            "MountGrpcClient::enableFieldRotation failed: " + status.error_message());
-    }
-}
-
-void MountGrpcClient::controlFieldRotation(const astro_mount::FieldRotationControlRequest& req)
-{
-    ensureConnected();
-    grpc::ClientContext context;
-    google::protobuf::Empty response;
-    auto status = stub_->ControlFieldRotation(&context, req, &response);
-    if (!status.ok())
-    {
-        throw std::runtime_error(
-            "MountGrpcClient::controlFieldRotation failed: " + status.error_message());
-    }
-}
-
-astro_mount::DerotatorStatus MountGrpcClient::getDerotatorStatus()
-{
-    ensureConnected();
-    grpc::ClientContext context;
-    google::protobuf::Empty request;
-    astro_mount::DerotatorStatus response;
-    auto status = stub_->GetDerotatorStatus(&context, request, &response);
-    if (!status.ok())
-    {
-        throw std::runtime_error(
-            "MountGrpcClient::getDerotatorStatus failed: " + status.error_message());
-    }
-    return response;
-}
-
-void MountGrpcClient::homeDerotator(const astro_mount::DerotatorHomingRequest& req)
-{
-    ensureConnected();
-    grpc::ClientContext context;
-    google::protobuf::Empty response;
-    auto status = stub_->HomeDerotator(&context, req, &response);
-    if (!status.ok())
-    {
-        throw std::runtime_error(
-            "MountGrpcClient::homeDerotator failed: " + status.error_message());
-    }
-}
-
-// ============================================
 // Helper methods
 // ============================================
 

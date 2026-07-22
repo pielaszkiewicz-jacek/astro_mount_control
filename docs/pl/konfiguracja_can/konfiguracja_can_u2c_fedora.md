@@ -770,7 +770,7 @@ Konfiguracja konwertera U2C na Fedora/RHEL sprowadza się do kilku kroków:
 6. **Skonfiguruj** [`astro-mount-controller`](installation.md) z parametrami `can_interface: can0`, `bitrate: 1000000`.
 7. W razie problemów z dostępem — **sprawdź SELinux** (sekcja 8.5).
 
-Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napędami CANopen (RA, Dec, derotator) zgodnie z profilem CiA 402.
+Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napędami CANopen (RA, Dec) zgodnie z profilem CiA 402.
 
 ---
 

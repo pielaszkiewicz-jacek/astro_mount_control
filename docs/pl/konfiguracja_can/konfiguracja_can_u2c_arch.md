@@ -794,7 +794,7 @@ Konfiguracja konwertera U2C na Arch Linux sprowadza się do kilku kroków:
 5. Jeśli używasz NetworkManagera — **wyłącz go dla can0** przez `unmanaged-devices`.
 6. **Skonfiguruj** [`astro-mount-controller`](installation.md) z parametrami `can_interface: can0`, `bitrate: 1000000`.
 
-Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napędami CANopen (RA, Dec, derotator) zgodnie z profilem CiA 402.
+Po wykonaniu tych kroków magistrala CAN będzie gotowa do komunikacji z napędami CANopen (RA, Dec) zgodnie z profilem CiA 402.
 
 ---
 

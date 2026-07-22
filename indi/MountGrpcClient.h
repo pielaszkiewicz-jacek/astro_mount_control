@@ -188,30 +188,6 @@ public:
      */
     void sendGuiderCorrection(const astro_mount::GuiderCorrection& correction);
 
-    // ============================================
-    // Faza 5: Derotator / Field Rotation
-    // ============================================
-
-    /**
-     * @brief Enable/disable field rotation compensation.
-     */
-    void enableFieldRotation(const astro_mount::FieldRotationParams& params);
-
-    /**
-     * @brief Control field rotation (position, rate, mode).
-     */
-    void controlFieldRotation(const astro_mount::FieldRotationControlRequest& req);
-
-    /**
-     * @brief Get current derotator status.
-     */
-    astro_mount::DerotatorStatus getDerotatorStatus();
-
-    /**
-     * @brief Home the derotator (find zero position).
-     */
-    void homeDerotator(const astro_mount::DerotatorHomingRequest& req);
-
 private:
     std::string host_;
     int port_;

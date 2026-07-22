@@ -8,6 +8,16 @@
 #include <chrono>
 #include <cstdint>
 
+// Forward declarations for fromHALConfig() factory method
+namespace astro_mount {
+namespace hal {
+struct CanOpenConfig;
+} // namespace hal
+namespace config {
+struct AxisPhysicalParameters;
+} // namespace config
+} // namespace astro_mount
+
 namespace astro_mount {
 namespace controllers {
 
@@ -57,6 +67,26 @@ public:
         /** Custom SDO sequence sent to each axis during initialization */
         bool servo_init_enabled = false;
         std::vector<ServoInitEntry> servo_init_sequence;
+
+        /**
+         * @brief Create Config from HALConfig::canopen (single source of truth)
+         *
+         * Factory method that converts the canonical CANopen configuration
+         * (hal::CanOpenConfig) to ICanOpenInterface::Config, eliminating
+         * the 4-way duplication that existed before refactoring.
+         *
+         * @param hal_config The source CANopen configuration from HAL
+         * @param ha_axis_params HA axis parameters (for scaling factors)
+         * @param dec_axis_params Dec axis parameters (for scaling factors)
+         * @param servo_init_sequence Optional SDO init sequence
+         * @return Fully populated Config struct
+         */
+        static Config fromHALConfig(
+            const astro_mount::hal::CanOpenConfig& hal_config,
+            const astro_mount::config::AxisPhysicalParameters& ha_axis_params,
+            const astro_mount::config::AxisPhysicalParameters& dec_axis_params,
+            bool servo_init_enabled = false,
+            const std::vector<ServoInitEntry>& servo_init_sequence = {});
     };
 
     struct DriveStatus {

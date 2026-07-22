@@ -24,8 +24,6 @@ which monitors the file for modification time changes and automatically reloads 
   "guider": { ... },
   "kalman": { ... },
   "tpoint": { ... },
-  "derotator": { ... },
-  "field_rotation": { ... },
   "hal": { ... }
 }
 ```
@@ -438,12 +436,12 @@ Array of objects, each defining one drive axis.
 
 | Parameter | Type | Range | Default Value | Description |
 |---|---|---|---|---|
-| `id` | integer | 0–N | `0` | Axis index (0 = HA/Azm, 1 = Dec/Alt, 2 = Derotator) |
+| `id` | integer | 0–N | `0` | Axis index (0 = HA/Azm, 1 = Dec/Alt) |
 | `name` | string | any | `"Axis_0"` | Axis name (for logs/debug) |
 | [`can_node_id`](include/hal/hal_config.h:135) | integer | 0–127 | `0` (auto) | Drive CANopen Node ID. **`0` means automatic mapping: `axis_id + 1`** |
 
 **Important:** `can_node_id` is the servo drive's address on the CAN bus. A value of `0` (default) provides
-backward compatibility: axis 0 → node 1, axis 1 → node 2, axis 2 → node 3.
+backward compatibility: axis 0 → node 1, axis 1 → node 2.
 For non-standard addresses (e.g. 5, 6) this value must be explicitly set.
 
 Implementation in [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp:1450):
@@ -564,36 +562,11 @@ Implementation in [`include/hal/hal_config.h:152`](include/hal/hal_config.h:152)
 
 ---
 
-## 9. `derotator` and `field_rotation` Sections
+## 9. Removed Sections (`derotator` and `field_rotation`)
 
-### 9.1 `derotator` — Field Derotator
-
-| Parameter | Type | Range | Default Value | Description |
-|---|---|---|---|---|
-| `type` | string | `"CANOPEN"`, `"STEPPER"`, `"SERVO"`, `"NONE"` | `"CANOPEN"` | Derotator type |
-| `enabled` | boolean | `true`, `false` | `false` | Whether enabled |
-| `connection_string` | string | any | `""` | Connection string |
-| `gear_ratio` | float | 0.1 to 1000.0 | `10.0` | Derotator gear ratio |
-| `max_speed` | float | 0.1 to 50.0 | `5.0` | Maximum speed (deg/s) |
-| `max_acceleration` | float | 0.01 to 20.0 | `2.0` | Maximum acceleration (deg/s²) |
-| `backlash` | float | 0.0 to 50.0 | `2.0` | Derotator backlash (arcsec) |
-| `absolute_encoder` | boolean | `true`, `false` | `true` | Absolute encoder |
-| `encoder_resolution` | integer | 1–2³² | `16384` | Encoder resolution |
-| `homing_offset` | float | -360.0 to 360.0 | `0.0` | Home position offset (deg) |
-| `calibration_table` | array | list of corrections | `[]` | Calibration table |
-
-### 9.2 `field_rotation` — Computed Field Rotation
-
-| Parameter | Type | Range | Default Value | Description |
-|---|---|---|---|---|
-| `enabled` | boolean | `true`, `false` | `false` | Whether rotation correction is enabled |
-| `latitude` | float | -90.0 to 90.0 | `52.0` | Geographic latitude |
-| `altitude` | float | 0.0 to 90.0 | `0.0` | Target altitude |
-| `azimuth` | float | 0.0 to 360.0 | `0.0` | Target azimuth |
-| `computed_rate` | float | any | `0.0` | Computed rotation rate (deg/s) |
-| `applied_correction` | float | any | `0.0` | Applied correction (deg) |
-| `temperature` | float | -50.0 to 60.0 | `15.0` | Temperature (°C) |
-| `flexure_correction` | float | any | `0.0` | Flexure correction (deg) |
+The `derotator` and `field_rotation` configuration sections have been removed from the project. The underlying classes
+(`DerotatorController`, `DerotatorConfig`) and HAL support (`HALFeature::DEROTATOR_SUPPORT`) have been deprecated
+and removed. Any references to these sections in existing configuration files are silently ignored during config loading.
 
 ---
 
@@ -629,12 +602,12 @@ File: [`config/dual_servo_config.json`](config/dual_servo_config.json)
 }
 ```
 
-### 10.2 Default Configuration (3 Axes, Addresses 1, 2, 3)
+### 10.2 Default Configuration (2 Axes, Addresses 1, 2)
 
 File: [`config/default.json`](config/default.json)
 
 In the default configuration the `hal.axes[]` section is absent — the system uses default values,
-where `can_node_id = 0` (auto) resulting in mapping: axis 0 → node 1, axis 1 → node 2, axis 2 → node 3.
+where `can_node_id = 0` (auto) resulting in mapping: axis 0 → node 1, axis 1 → node 2.
 
 ---
 

@@ -805,8 +805,7 @@ std::vector<HALFeature> SerialHAL::getSupportedFeatures() const {
         HALFeature::PID_CONTROL,
         HALFeature::ENCODER_FEEDBACK,
         HALFeature::SAFETY_MONITORING,
-        HALFeature::SENSOR_MONITORING,
-        HALFeature::DEROTATOR_SUPPORT
+        HALFeature::SENSOR_MONITORING
     };
 }
 
@@ -817,7 +816,6 @@ bool SerialHAL::supportsFeature(HALFeature feature) const {
         case HALFeature::ENCODER_FEEDBACK:
         case HALFeature::SAFETY_MONITORING:
         case HALFeature::SENSOR_MONITORING:
-        case HALFeature::DEROTATOR_SUPPORT:
             return true;
         default:
             return false;

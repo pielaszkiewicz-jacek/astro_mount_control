@@ -52,6 +52,7 @@ private:
     // Tworzenie konkretnych implementacji
     static std::unique_ptr<HALInterface> createSimulatedHAL(const HALConfig& config);
     static std::unique_ptr<HALInterface> createCanOpenHAL(const HALConfig& config);
+    static std::unique_ptr<HALInterface> createMf7025v2HAL(const HALConfig& config);
     static std::unique_ptr<HALInterface> createSerialHAL(const HALConfig& config);
     static std::unique_ptr<HALInterface> createEthernetHAL(const HALConfig& config);
     static std::unique_ptr<HALInterface> createGamepadHAL(const HALConfig& config);

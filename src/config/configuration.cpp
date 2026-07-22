@@ -241,21 +241,6 @@ public:
             errors.push_back("Invalid tpoint.min_measurements (must be > 0)");
         }
         
-        // ==========================================
-        // Validate derotator configuration
-        // ==========================================
-        auto derotator = config_.value("derotator", json::object());
-        if (!derotator.empty()) {
-            double d_gear_ratio = derotator.value("gear_ratio", 0.0);
-            if (d_gear_ratio <= 0.0) {
-                errors.push_back("Invalid derotator.gear_ratio (must be > 0)");
-            }
-            double d_max_speed = derotator.value("max_speed", 0.0);
-            if (d_max_speed <= 0.0) {
-                errors.push_back("Invalid derotator.max_speed (must be > 0)");
-            }
-        }
-        
         return errors;
     }
     
@@ -703,40 +688,6 @@ public:
         modified_ = true;
     }
     
-    DerotatorConfig getDerotatorConfig() const {
-        DerotatorConfig config;
-        auto derotator = config_.value("derotator", json::object());
-        
-        // Map string type to enum
-        std::string type_str = derotator.value("type", "STEPPER");
-        if (type_str == "CANOPEN") config.type = DerotatorConfig::CANOPEN;
-        else if (type_str == "STEPPER") config.type = DerotatorConfig::STEPPER;
-        else if (type_str == "SERVO") config.type = DerotatorConfig::SERVO;
-        else if (type_str == "CUSTOM") config.type = DerotatorConfig::CUSTOM;
-        else config.type = DerotatorConfig::STEPPER;
-        
-        config.enabled = derotator.value("enabled", false);
-        config.connection_string = derotator.value("connection_string", "");
-        config.gear_ratio = derotator.value("gear_ratio", 180.0);
-        config.max_speed = derotator.value("max_speed", 5.0);
-        config.max_acceleration = derotator.value("max_acceleration", 2.0);
-        config.backlash = derotator.value("backlash", 15.0);
-        config.absolute_encoder = derotator.value("absolute_encoder", false);
-        config.encoder_resolution = derotator.value("encoder_resolution", 4096.0);
-        config.homing_offset = derotator.value("homing_offset", 0.0);
-        
-        // Load calibration table
-        config.calibration_table.clear();
-        auto calib_array = derotator.value("calibration_table", json::array());
-        for (const auto& val : calib_array) {
-            if (val.is_number()) {
-                config.calibration_table.push_back(val.get<double>());
-            }
-        }
-        
-        return config;
-    }
-    
     FieldRotationParams getFieldRotationParams() const {
         FieldRotationParams config;
         auto field_rotation = config_.value("field_rotation", json::object());
@@ -778,39 +729,6 @@ public:
         }
         
         return config;
-    }
-    
-    void setDerotatorConfig(const DerotatorConfig& config) {
-        json derotator;
-        
-        // Map enum to string type
-        std::string type_str;
-        switch (config.type) {
-            case DerotatorConfig::CANOPEN: type_str = "CANOPEN"; break;
-            case DerotatorConfig::STEPPER: type_str = "STEPPER"; break;
-            case DerotatorConfig::SERVO: type_str = "SERVO"; break;
-            case DerotatorConfig::CUSTOM: type_str = "CUSTOM"; break;
-            default: type_str = "STEPPER";
-        }
-        derotator["type"] = type_str;
-        derotator["connection_string"] = config.connection_string;
-        derotator["gear_ratio"] = config.gear_ratio;
-        derotator["max_speed"] = config.max_speed;
-        derotator["max_acceleration"] = config.max_acceleration;
-        derotator["backlash"] = config.backlash;
-        derotator["absolute_encoder"] = config.absolute_encoder;
-        derotator["encoder_resolution"] = config.encoder_resolution;
-        derotator["homing_offset"] = config.homing_offset;
-        
-        // Save calibration table
-        json calib_array = json::array();
-        for (const auto& val : config.calibration_table) {
-            calib_array.push_back(val);
-        }
-        derotator["calibration_table"] = calib_array;
-        
-        config_["derotator"] = derotator;
-        modified_ = true;
     }
     
     void setFieldRotationParams(const FieldRotationParams& config) {
@@ -1180,10 +1098,6 @@ Configuration::TPointConfig Configuration::getTPointConfig() const {
     return pimpl->getTPointConfig();
 }
 
-Configuration::DerotatorConfig Configuration::getDerotatorConfig() const {
-    return pimpl->getDerotatorConfig();
-}
-
 Configuration::ServoInitConfig Configuration::getServoInitConfig() const {
     return pimpl->getServoInitConfig();
 }
@@ -1226,10 +1140,6 @@ void Configuration::setKalmanConfig(const KalmanConfig& config) {
 
 void Configuration::setTPointConfig(const TPointConfig& config) {
     pimpl->setTPointConfig(config);
-}
-
-void Configuration::setDerotatorConfig(const DerotatorConfig& config) {
-    pimpl->setDerotatorConfig(config);
 }
 
 void Configuration::setFieldRotationParams(const FieldRotationParams& config) {

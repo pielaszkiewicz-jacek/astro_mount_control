@@ -4,19 +4,6 @@
         "interface_name": "can0",
         "node_id": 1
     },
-    "derotator": {
-        "absolute_encoder": true,
-        "backlash": 2.0,
-        "calibration_table": [],
-        "connection_string": "",
-        "enabled": false,
-        "encoder_resolution": 16384,
-        "gear_ratio": 10.0,
-        "homing_offset": 0.0,
-        "max_acceleration": 2.0,
-        "max_speed": 5.0,
-        "type": "CANOPEN"
-    },
     "field_rotation": {
         "altitude": 0.0,
         "applied_correction": 0.0,
@@ -38,10 +25,10 @@
     "hal": {
         "axes": [
             {
-                "can_node_id": 5,
+                "can_node_id": 1,
                 "encoder_config": {
                     "calibration_offset": 0.0,
-                    "counts_per_degree": 142.222222222,
+                    "counts_per_degree": 100.0,
                     "enable_error_detection": true,
                     "error_threshold": 10,
                     "interface": "CANOPEN",
@@ -57,13 +44,13 @@
                     "default_mode": "POSITION",
                     "enable_current_limit": true,
                     "enable_temperature_protection": true,
-                    "encoder_counts_per_degree": 142.222222222,
+                    "encoder_counts_per_degree": 100.0,
                     "gear_ratio": 360.0,
                     "max_acceleration": 1.0,
                     "max_temperature": 80.0,
                     "max_torque": 100.0,
                     "max_velocity": 5.0,
-                    "type": "CANOPEN_SERVO"
+                    "type": "BRUSHLESS_DC"
                 },
                 "name": "HA_Axis",
                 "safety_limits": {
@@ -76,10 +63,10 @@
                 }
             },
             {
-                "can_node_id": 6,
+                "can_node_id": 2,
                 "encoder_config": {
                     "calibration_offset": 0.0,
-                    "counts_per_degree": 142.222222222,
+                    "counts_per_degree": 100.0,
                     "enable_error_detection": true,
                     "error_threshold": 10,
                     "interface": "CANOPEN",
@@ -95,13 +82,13 @@
                     "default_mode": "POSITION",
                     "enable_current_limit": true,
                     "enable_temperature_protection": true,
-                    "encoder_counts_per_degree": 142.222222222,
+                    "encoder_counts_per_degree": 100.0,
                     "gear_ratio": 360.0,
                     "max_acceleration": 1.0,
                     "max_temperature": 80.0,
                     "max_torque": 100.0,
                     "max_velocity": 5.0,
-                    "type": "CANOPEN_SERVO"
+                    "type": "BRUSHLESS_DC"
                 },
                 "name": "Dec_Axis",
                 "safety_limits": {
@@ -128,19 +115,6 @@
             "sdo_timeout_ms": 1000,
             "sync_period_ms": 100,
             "use_sync": true
-        },
-        "derotator": {
-            "absolute_encoder": false,
-            "backlash": 0.0,
-            "calibration_table": [],
-            "connection_string": "",
-            "enabled": false,
-            "encoder_resolution": 36000.0,
-            "gear_ratio": 180.0,
-            "homing_offset": 0.0,
-            "max_acceleration": 2.0,
-            "max_speed": 5.0,
-            "type": "STEPPER"
         },
         "ethernet": {
             "ip_address": "192.168.1.100",
@@ -184,7 +158,14 @@
             "speed_presets": [],
             "update_rate_hz": 50.0
         },
-        "name": "DualServo_CANopen",
+        "mf7025v2": {
+            "can_interface": "can0",
+            "bitrate": 1000000,
+            "sdo_timeout_ms": 100,
+            "position_units_per_degree": 100.0,
+            "velocity_units_per_dps": 100.0
+        },
+        "name": "Mount_MF7025v2_BLDC",
         "pid_params": {
             "anti_windup_gain": 0.1,
             "enable_anti_windup": true,
@@ -222,7 +203,7 @@
             "simulation_update_rate": 100.0,
             "velocity_noise_stddev": 0.0001
         },
-        "type": "canopen"
+        "type": "mf7025v2"
     },
     "kalman": {
         "adaptive_q": true,
@@ -431,7 +412,7 @@
                 "subindex": 0,
                 "value": 15
             }
-           
+            
         ]
     },
     "telescope": {

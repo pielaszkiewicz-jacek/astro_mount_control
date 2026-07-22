@@ -899,40 +899,6 @@ const Api = (() => {
     });
   }
 
-  // ─── Field Rotation / Derotator API Methods ────────────────────────────
-
-  /**
-   * Get current derotator status.
-   * GET /api/derotator/status
-   * @returns {Promise<object>} DerotatorStatus
-   */
-  async function getDerotatorStatus() {
-    return request('/derotator/status');
-  }
-
-  /**
-   * Get current field rotation parameters.
-   * GET /api/field-rotation/params
-   * @returns {Promise<object>} FieldRotationParams
-   */
-  async function getFieldRotationParams() {
-    return request('/field-rotation/params');
-  }
-
-  /**
-   * Enable or disable field rotation compensation.
-   * POST /api/field-rotation/enable
-   * @param {object} params - { enabled: boolean, latitude?: number, ... }
-   * @returns {Promise<object>}
-   */
-  async function enableFieldRotation(params) {
-    return request('/field-rotation/enable', {
-      method: 'POST',
-      body: JSON.stringify(params),
-    });
-  }
-
-
   /**
    * Get current gamepad/joystick state (axes, buttons, connection).
    * GET /api/hal/gamepad/state
@@ -1055,10 +1021,6 @@ const Api = (() => {
     importCatalogFromUrl,
     getImportPresets,
     importPreset,
-    // Field Rotation / Derotator methods
-    getDerotatorStatus,
-    getFieldRotationParams,
-    enableFieldRotation,
     // Gamepad
     getGamepadState,
     startGamepad,

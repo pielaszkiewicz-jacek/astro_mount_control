@@ -30,10 +30,13 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
 
 ### ⚙️ Hardware Abstraction
 - **CANopen/CiA 402** interface for industrial servo/stepper drives
-- **Simulated HAL** for testing and development (no hardware required)
-- **Extensible HAL architecture** supporting Serial, Ethernet, and custom implementations
+- **MF7025v2 (LingKong BLDC)** — proprietary CAN protocol V2.36, fully stabilized (thread-safe, dead-node detection, error logging)
+- **Serial HAL** — RS-232/485 Modbus RTU with CRC16 and connection monitoring
+- **Ethernet HAL** — Modbus TCP with configurable retry
+- **Gamepad HAL** — Linux evdev joystick with hotplug, speed presets, mock-testable
+- **Simulated HAL** — for testing and development (no hardware required)
+- **Extensible HAL architecture** supporting custom implementations
 - **Absolute and incremental encoder** support
-- **Derotator (field rotator)** control with homing and calibration
 
 ### 🌐 Remote Control & Integration
 - **Complete gRPC API** for remote operation from any language
@@ -48,6 +51,10 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
 
 ### 🛡️ Safety & Reliability
 - **11 NaN/Inf propagation guards** in tracking loop
+- **Watchdog timer** — 5s iteration timeout → automatic ERROR state
+- **CAN dead-node detection** — 5 consecutive failures → emergency stop (MF7025v2)
+- **Thread-safe design** — shared_mutex + atomic flags + re-entrancy guard
+- **~340 unit/integration tests** covering edge cases, concurrency, invalid inputs
 - **State machine** with safe transitions and error recovery
 - **Configurable logging** with rotation and multiple levels
 - **Systemd service** integration for headless operation
@@ -160,15 +167,16 @@ flowchart TB
     subgraph HAL["Hardware Abstraction Layer"]
         HAL_IF["HALInterface"]
         CAN_IMPL["CANopen (CiA 402)<br/>Servo drives"]
+        MF_IMPL["MF7025v2 BLDC<br/>Proprietary CAN"]
         SIM_IMPL["Simulated<br/>Testing/Dev"]
-        SERIAL_IMPL["Serial<br/>(Planned)"]
-        ETH_IMPL["Ethernet<br/>(Planned)"]
+        SERIAL_IMPL["Serial<br/>Modbus RTU/ASCII"]
+        ETH_IMPL["Ethernet<br/>Modbus TCP"]
+        GAMEPAD["Gamepad<br/>Joystick/manual"]
     end
 
     subgraph HW["Physical Hardware"]
         MOT["Motors<br/>Stepper / Servo"]
         ENC["Encoders<br/>Absolute / Incremental"]
-        DEROT["Derotator<br/>Field Rotation"]
         SENS["Sensors<br/>Temp / Pressure"]
     end
 

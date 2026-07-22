@@ -69,7 +69,6 @@ flowchart TB
 
     subgraph CORE["⚙️ Mount Controller Core"]
         MC["MountController<br/>src/controllers/mount_controller.cpp<br/>State machine · Tracking loop · Meridian flip"]
-        DC["DerotatorController<br/>src/controllers/derotator_controller.cpp<br/>Independent thread · Field rotation control"]
     end
 
     subgraph MODELS["🧮 Mathematical Models"]
@@ -98,7 +97,6 @@ flowchart TB
         HW1["Servo drives"]
         HW2["Absolute encoders"]
         HW3["Sensors<br/>Temperature · Pressure"]
-        DEROT_HW["Derotator<br/>Motor · Encoder"]
     end
 
     SPA -->|"HTTP/JSON"| PROXY
@@ -111,13 +109,11 @@ flowchart TB
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
-    MC -.->|"setFieldRotationRate()"| DC
     ASTRO --> KF
     TPOINT --> KF
     KF --> CAN
     CONFIG --> CAN
     CAN --> HW
-    DC --> DEROT_HW
 
     ASCOM_TEL -.->|"gRPC (local/network)"| GRPC
     ASCOM_ROT -.->|"gRPC (local/network)"| GRPC
@@ -127,10 +123,10 @@ flowchart TB
     class SPA,PROXY client
     class PY,CPP client
     class GRPC,DB_GRPC api
-    class MC,DC core
+    class MC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
-    class HW1,HW2,HW3,DEROT_HW hw
+    class HW1,HW2,HW3 hw
 ```
 
 ### System Components
@@ -143,30 +139,6 @@ Main component integrating all modules:
 - TPOINT calibration
 - Bootstrap calibration (initial alignment)
 - Ephemeris tracking (moving objects)
-- Delegates derotator operations to [`DerotatorController`](include/controllers/derotator_controller.h)
-- Integration with DerotatorController via field rotation rate injection
-
-#### 2. **DerotatorController**
-Standalone derotator controller extracted from MountController (Phase 1 refactoring):
-
-- **Independent thread**: Own worker thread for homing and calibration
-- **Own mutex**: State protection with `shared_mutex`
-- **HAL pointers**: Derotator motor and encoder passed via `DerotatorConfig`
-- **Rotation modes**:
-  - `DISABLED` — rotation off
-  - `ALT_AZ` — compensation for ALT-AZ mount
-  - `EQUATORIAL` — compensation for EQ mount (field rate)
-  - `CUSTOM` — manual angular velocity
-  - `FIXED_ANGLE` — hold fixed angle
-  - `TRACKING` — sidereal rate tracking
-- **Homing methods**:
-  - `AUTO` — automatic sequence
-  - `LIMIT_SWITCH` — limit switch
-  - `ENCODER_ZERO` — encoder zero position
-  - `MANUAL` — manual position set
-- **Public methods**: `home()`, `controlFieldRotation()`, `getStatus()`, `enableFieldRotation()`, `configure()`
-- Synchronization with MountController via `setFieldRotationRate()` called in tracking loop
-
 #### 3. **AstronomicalCalculations**
 Astronomical calculations based on SOFA library:
 - Coordinate system transformations (equatorial ↔ horizontal)
@@ -231,18 +203,10 @@ C# ASCOM Alpaca-compatible telescope driver implementing `ITelescopeV3`:
 - PulseGuide for autoguider integration
 - MoveAxis with velocity control (VELOCITY_CONTROL via gRPC [`ControlAxis`](proto/mount_controller.proto))
 - Park/Unpark, SyncToCoordinates
-- Action() queries: `tpoint_status`, `temperature`, `pressure`, `humidity`, `tracking_rate_ra`, `tracking_rate_dec`, `guider_status`, `derotator_status`
+- Action() queries: `tpoint_status`, `temperature`, `pressure`, `humidity`, `tracking_rate_ra`, `tracking_rate_dec`, `guider_status`
 - State cache for low-latency property reads
 
-#### 12. **ASCOM Rotator Driver** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs))
-C# ASCOM Rotator driver implementing `IRotatorV3`:
-- MoveAbsolute(position) → `FIXED_ANGLE` mode via gRPC [`ControlFieldRotation`](proto/mount_controller.proto)
-- Move(rate) → `CUSTOM` mode rotation rate control
-- Halt() → `DISABLED` mode
-- Home() → `HomeDerotator(SEQUENTIAL)` homing sequence
-- Position/Moving/CanReverse properties
-
-#### 13. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
+#### 12. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
 C++ INDI-compatible telescope driver for Ekos/KStars:
 - Full `INDI::Telescope` interface: Slew, Track, Park, Sync, Abort
 - MoveNS/MoveWE velocity control (axis_id=0 RA/WE, axis_id=1 Dec/NS)
@@ -250,14 +214,6 @@ C++ INDI-compatible telescope driver for Ekos/KStars:
 - `EnvironmentNP` number property (temperature, pressure, humidity)
 - SetCurrentPark from controller [`state.current_position()`](proto/mount_controller.proto)
 - MountGrpcClient for all gRPC communication
-
-#### 14. **INDI Rotator Driver** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp))
-C++ INDI Rotator driver implementing `INDI::Rotator`:
-- MoveRotator(angle) → `FIXED_ANGLE` mode via gRPC [`ControlFieldRotation`](proto/mount_controller.proto)
-- AbortRotator() → `DISABLED` mode emergency stop
-- HomeRotator() → `HomeDerotator(AUTO)` automatic homing
-- `CONNECTION_NONE` mode (gRPC-only, no serial/TCP)
-- Polling status updates via [`GetDerotatorStatus`](proto/mount_controller.proto)
 
 ## Mathematical Models
 
@@ -426,14 +382,6 @@ service MountControllerService {
     rpc StopAxis(AxisStopRequest) returns (google.protobuf.Empty);
     rpc EmergencyStop(EmergencyStopRequest) returns (google.protobuf.Empty);
     rpc GetAxisStatus(google.protobuf.Empty) returns (AxisStatus);
-    
-    // Field rotation / derotator control
-    rpc ConfigureDerotator(DerotatorConfig) returns (google.protobuf.Empty);
-    rpc EnableFieldRotation(FieldRotationParams) returns (google.protobuf.Empty);
-    rpc ControlFieldRotation(FieldRotationControlRequest) returns (google.protobuf.Empty);
-    rpc GetDerotatorStatus(google.protobuf.Empty) returns (DerotatorStatus);
-    rpc HomeDerotator(DerotatorHomingRequest) returns (google.protobuf.Empty);
-    rpc GetFieldRotationParams(google.protobuf.Empty) returns (FieldRotationParams);
     
     // Hardware Abstraction Layer configuration
     rpc GetHALConfig(google.protobuf.Empty) returns (HALConfig);
@@ -744,21 +692,6 @@ The system is configured through [`config/default.json`](config/default.json). B
     "max_residual": 30.0,
     "min_measurements": 10
   },
-  "derotator": {
-    "type": "stepper",
-    "enabled": false,
-    "gear_ratio": 180.0,
-    "max_speed": 5.0,
-    "max_acceleration": 2.0,
-    "backlash": 2.0,
-    "absolute_encoder": false,
-    "encoder_resolution": 36000.0
-  },
-  "field_rotation": {
-    "enabled": false,
-    "latitude": 52.0,
-    "longitude": 21.0
-  },
   "servo_init": {
     "enabled": true,
     "sequence": [
@@ -944,9 +877,7 @@ The project includes four astronomy-standard drivers for integration with popula
 | Driver | Language | Standard | Software | File |
 |--------|----------|----------|----------|------|
 | Telescope Driver | C# | ASCOM ITelescopeV3 | N.I.N.A., SGP, APT, etc. | [`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) |
-| Rotator Driver | C# | ASCOM IRotatorV3 | N.I.N.A., SGP, APT, etc. | [`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) |
 | Telescope Driver | C++ | INDI Telescope | Ekos/KStars | [`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) |
-| Rotator Driver | C++ | INDI Rotator | Ekos/KStars | [`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) |
 
 See [`docs/en/drivers.md`](drivers.md) for complete driver documentation including build instructions, registration, and usage examples.
 
@@ -963,8 +894,23 @@ npm install
 npm start                   # Starts on http://localhost:8080
 ```
 
+## Configuration Files
+
+The project includes pre-built configuration files for supported HAL types:
+
+| File | HAL Type | Usage |
+|------|----------|-------|
+| [`config/canopen.json`](../config/canopen.json) | CANopen/CiA 402 | `./astro_mount_control config/canopen.json` |
+| [`config/mf7025v2.json`](../config/mf7025v2.json) | LingKong MF7025v2 BLDC | `./astro_mount_control config/mf7025v2.json` |
+| [`config/default.json`](../config/default.json) | Default (MF7025v2) | `./astro_mount_control` |
+| [`config/test_no_hardware.json`](../config/test_no_hardware.json) | Test (no hardware) | `./astro_mount_control config/test_no_hardware.json` |
+
+## Verification Report
+
+Full stability and numerical correctness report: [`VERIFICATION_REPORT.md`](../VERIFICATION_REPORT.md)
+
 ---
 
-*Last updated: June 22, 2026*
+*Last updated: July 19, 2026*
 
 *For detailed information on specific components, please refer to the dedicated documentation files.*

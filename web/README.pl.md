@@ -165,7 +165,7 @@ Wyświetla port proxy, interwał pollingu i informacje o wersji.
 - Kliknij **Save & Reconnect**, aby zastosować zmiany
 
 #### Grupy konfiguracyjne
-Konfiguracja jest podzielona na 23 zwijane grupy, każda z przyciskami **Save** i **Restore Defaults**:
+Konfiguracja jest podzielona na 21 zwijanych grup, każda z przyciskami **Save** i **Restore Defaults**:
 
 | # | Grupa | Kluczowe pola |
 |---|-------|-------------|
@@ -188,10 +188,8 @@ Konfiguracja jest podzielona na 23 zwijane grupy, każda z przyciskami **Save** 
 | 17 | Guider | włączony, ciąg_połączenia, max_korekcja, agresja, czas_ekspozycji_ms, binning |
 | 18 | Filtr Kalmana | szum_procesu, szum_pomiaru, adaptacyjne_q, adaptacyjne_r, próg_innowacji, max_iteracji |
 | 19 | Kalibracja TPOINT | maska_włączonych_wyrazów, min_pomiarów, max_residuum, auto_kalibruj |
-| 20 | Derotator | typ, włączony, ciąg_połączenia, przełożenie, max_prędkość, max_przyspieszenie, luz, enkoder_absolutny, rozdzielczość_enkodera, offset_dojazdu |
-| 21 | Rotacja Pola | włączona, szerokość_geograficzna, wysokość, azymut, obliczona_szybkość, zastosowana_korekcja, temperatura, korekcja_ugięcia |
-| 22 | HAL | typ_interfejsu, interfejs_can, id_węzła_can, prędkość_can, interwał_heartbeat_ms, tryb_mapowania_pdo |
-| 23 | HAL - Gamepad | ścieżka_urządzenia, strefa_neutralna, czułość, interwał_odpytywania_ms |
+| 20 | HAL | typ_interfejsu, interfejs_can, id_węzła_can, prędkość_can, interwał_heartbeat_ms, tryb_mapowania_pdo |
+| 21 | HAL - Gamepad | ścieżka_urządzenia, strefa_neutralna, czułość, interwał_odpytywania_ms |
 
 **Akcje globalne:**
 - **Export Config** — Pobierz całą konfigurację jako plik JSON (`mount-config-YYYYMMDDTHHMMSS.json`)

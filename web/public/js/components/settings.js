@@ -329,22 +329,6 @@ const SettingsComponent = (() => {
       ],
     },
     {
-      id: 'derotator',
-      label: 'Derotator',
-      fields: [
-        { key: 'derotator_type', label: 'Type', type: 'select', options: ['CANOPEN', 'STEPPER', 'SERVO', 'CUSTOM'] },
-        { key: 'derotator_enabled', label: 'Enabled', type: 'checkbox' },
-        { key: 'derotator_connection_string', label: 'Connection String', type: 'text' },
-        { key: 'derotator_gear_ratio', label: 'Gear Ratio', type: 'number', min: 0.1, max: 10000, step: 0.1 },
-        { key: 'derotator_max_speed', label: 'Max Speed (°/s)', type: 'number', min: 0.1, max: 180, step: 0.1 },
-        { key: 'derotator_max_acceleration', label: 'Max Acceleration (°/s²)', type: 'number', min: 0.1, max: 180, step: 0.1 },
-        { key: 'derotator_backlash', label: 'Backlash (arcsec)', type: 'number', min: 0, max: 1000, step: 0.1 },
-        { key: 'derotator_absolute_encoder', label: 'Absolute Encoder', type: 'checkbox' },
-        { key: 'derotator_encoder_resolution', label: 'Encoder Resolution', type: 'number', min: 1, max: 10000000 },
-        { key: 'derotator_homing_offset', label: 'Homing Offset (°)', type: 'number', angleType: 'deg' },
-      ],
-    },
-    {
       id: 'loop_timing',
       label: 'Loop Timing',
       fields: [
@@ -378,12 +362,23 @@ const SettingsComponent = (() => {
       id: 'hal',
       label: 'HAL (Hardware Abstraction Layer)',
       fields: [
-        { key: 'hal_interface_type', label: 'Interface Type', type: 'select', options: ['CANopen', 'Serial', 'Ethernet', 'Simulated', 'Custom'] },
+        { key: 'hal_interface_type', label: 'Interface Type', type: 'select', options: ['CANopen', 'MF7025v2', 'Serial', 'Ethernet', 'Simulated', 'Custom'] },
         { key: 'hal_can_interface', label: 'CAN Interface', type: 'text' },
         { key: 'hal_can_node_id', label: 'CAN Node ID', type: 'number', min: 1, max: 127 },
         { key: 'hal_can_baud_rate', label: 'CAN Baud Rate', type: 'number', min: 10000, max: 10000000 },
         { key: 'hal_heartbeat_interval_ms', label: 'Heartbeat Interval (ms)', type: 'number', min: 10, max: 60000 },
         { key: 'hal_pdo_mapping_mode', label: 'PDO Mapping Mode', type: 'text' },
+      ],
+    },
+    {
+      id: 'hal_mf7025v2',
+      label: 'HAL - MF7025v2 (LingKong BLDC)',
+      fields: [
+        { key: 'hal_mf7025v2_can_interface', label: 'CAN Interface', type: 'text', help: 'SocketCAN interface for MF7025v2 drives (e.g. can0)' },
+        { key: 'hal_mf7025v2_bitrate', label: 'CAN Bitrate (bps)', type: 'number', min: 10000, max: 10000000, step: 10000 },
+        { key: 'hal_mf7025v2_sdo_timeout_ms', label: 'SDO Timeout (ms)', type: 'number', min: 10, max: 10000 },
+        { key: 'hal_mf7025v2_position_units_per_degree', label: 'Position Units/°', type: 'number', min: 0.1, max: 100000, step: 0.1, help: 'Multi-turn angle units per degree (default: 100.0 = 0.01°/LSB)' },
+        { key: 'hal_mf7025v2_velocity_units_per_dps', label: 'Velocity Units per °/s', type: 'number', min: 0.1, max: 100000, step: 0.1, help: 'Speed units per deg/s (default: 100.0 = 0.01dps/LSB)' },
       ],
     },
     {
@@ -422,11 +417,10 @@ const SettingsComponent = (() => {
     guider:           '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="3"/></svg>',
     kalman:           '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
     tpoint:           '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="2" x2="12" y2="12"/><line x1="12" y1="12" x2="16" y2="16"/></svg>',
-    derotator:        '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
-    field_rotation:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>',
     loop_timing:      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
     servo_init:       '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>',
     hal:              '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="4" x2="9" y2="9"/><line x1="15" y1="4" x2="15" y2="9"/><line x1="9" y1="15" x2="9" y2="20"/><line x1="15" y1="15" x2="15" y2="20"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="15" y1="9" x2="20" y2="9"/></svg>',
+    hal_mf7025v2:     '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="17" y1="6.5" x2="14" y2="10.5"/><line x1="7" y1="6.5" x2="10" y2="10.5"/><line x1="17" y1="17.5" x2="14" y2="13.5"/><line x1="7" y1="17.5" x2="10" y2="13.5"/></svg>',
     hal_gamepad:      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>',
     // Sub-group icons (axis physical parameters)
     ha_encoder:       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/><line x1="12" y1="12" x2="17" y2="7"/><line x1="12" y1="12" x2="8" y2="16"/></svg>',
@@ -463,11 +457,10 @@ const SettingsComponent = (() => {
     guider: 'Konfiguracja autoguidera: w\u0142\u0105czenie, parametry po\u0142\u0105czenia, korekcja, agresywno\u015b\u0107, ekspozycja.',
     kalman: 'Filtr Kalmana do estymacji pozycji: szumy procesu i pomiaru, adaptacyjno\u015b\u0107, próg innowacji.',
     tpoint: 'Model TPoint do korekcji b\u0142\u0119dów systematycznych monta\u017cu: aktywne terminy, pomiary, residua.',
-    derotator: 'Derotator pola obrazu: typ, prze\u0142o\u017cenie, pr\u0119dko\u015bci, enkoder, pozycja domowa.',
-    field_rotation: 'Obliczona rotacja pola: korekcja flexury, temperatura, parametry geometryczne.',
     loop_timing: 'Czasy p\u0119tli g\u0142ównej sterownika: interwa\u0142 odpytywania CANopen i cz\u0119stotliwo\u015b\u0107 aktualizacji trackingu.',
     servo_init: 'Sekwencja inicjalizacyjna SDO dla serwonap\u0119dów: w\u0142\u0105czenie/wy\u0142\u0105czenie oraz lista wpisów JSON ({axis, index, subindex, value, description}) wysy\u0142anych podczas startu.',
     hal: 'Warstwa abstrakcji sprz\u0119towej (HAL): typ interfejsu, parametry CAN, heartbeat i mapowanie PDO.',
+    hal_mf7025v2: 'Konfiguracja sterownik\u00f3w LingKong MF7025v2 BLDC: w\u0142asny protok\u00f3\u0142 CAN (V2.36), parametry magistrali CAN i skalowanie jednostek pozycji/pr\u0119dko\u015bci.',
     hal_gamepad: 'Konfiguracja gamepada: \u015bcie\u017cka urz\u0105dzenia, strefa martwa, czu\u0142o\u015b\u0107, cz\u0119stotliwo\u015b\u0107 odczytu.',
     // Sub-group help
     ha_encoder: 'Konfiguracja enkodera osi HA: rozdzielczo\u015b\u0107, liczba impulsów, b\u0142\u0105d kwantyzacji.',
@@ -944,68 +937,6 @@ const SettingsComponent = (() => {
       range: 'true / false',
     },
 
-    // ── Derotator ──
-    derotator_type: {
-      description: 'Typ derotatora: CANOPEN (przez magistral\u0119 CANopen), STEPPER (silnik krokowy), SERVO (serwonap\u0119d), CUSTOM (w\u0142asna implementacja).',
-      defaultValue: 'CANOPEN',
-      type: 'select',
-      range: 'CANOPEN, STEPPER, SERVO, CUSTOM',
-    },
-    derotator_enabled: {
-      description: 'Czy w\u0142\u0105czy\u0107 derotator. Derotator kompensuje rotacj\u0119 pola obrazu spowodowan\u0105 ruchem monta\u017cu.',
-      defaultValue: 'false (wy\u0142\u0105czone)',
-      type: 'boolean',
-      range: 'true / false',
-    },
-    derotator_connection_string: {
-      description: 'Ci\u0105g po\u0142\u0105czenia derotatora (je\u015bli dotyczy). Format zale\u017cny od typu i protoko\u0142u.',
-      defaultValue: '"" (pusty)',
-      type: 'string',
-      range: 'dowolny ci\u0105g znaków',
-    },
-    derotator_gear_ratio: {
-      description: 'Prze\u0142o\u017cenie mechaniczne derotatora. Stosunek obrotów silnika do obrotów derotatora.',
-      defaultValue: '10.0',
-      type: 'float',
-      range: '0.1 – 10000.0',
-    },
-    derotator_max_speed: {
-      description: 'Maksymalna pr\u0119dko\u015b\u0107 obrotowa derotatora w stopniach na sekund\u0119 (°/s).',
-      defaultValue: '5.0',
-      type: 'float',
-      range: '0.1 – 180.0',
-    },
-    derotator_max_acceleration: {
-      description: 'Maksymalne przyspieszenie derotatora w stopniach na sekund\u0119 kwadrat (°/s²).',
-      defaultValue: '2.0',
-      type: 'float',
-      range: '0.1 – 180.0',
-    },
-    derotator_backlash: {
-      description: 'Luz mechaniczny derotatora w sekundach k\u0105towych (arcsec). Kompensowany przez system sterowania.',
-      defaultValue: '2.0',
-      type: 'float',
-      range: '0.0 – 1000.0',
-    },
-    derotator_absolute_encoder: {
-      description: 'Czy derotator ma enkoder absolutny. Enkoder absolutny zna swoj\u0105 pozycj\u0119 po w\u0142\u0105czeniu zasilania, nie wymaga homingu.',
-      defaultValue: 'true (absolutny)',
-      type: 'boolean',
-      range: 'true / false',
-    },
-    derotator_encoder_resolution: {
-      description: 'Rozdzielczo\u015b\u0107 enkodera derotatora w liczbie impulsów na obrót.',
-      defaultValue: '16384',
-      type: 'integer',
-      range: '1 – 10000000',
-    },
-    derotator_homing_offset: {
-      description: 'Offset (przesuni\u0119cie) pozycji domowej derotatora w stopniach (°). Umo\u017cliwia kalibracj\u0119 punktu zerowego.',
-      defaultValue: '0.0',
-      type: 'float',
-      range: '-360.0 do 360.0',
-    },
-
     canopen_pdo_config_enabled: {
       description: 'Zapisuje mapowanie PDO (Process Data Objects) do serwonap\u0119du podczas inicjalizacji. Mo\u017ce nadpisa\u0107 parametry fabryczne nap\u0119du.',
       defaultValue: 'false (wy\u0142\u0105czone)',
@@ -1277,6 +1208,37 @@ const SettingsComponent = (() => {
     defaultValue: 'false (wy\u0142\u0105czone)',
     type: 'boolean',
     range: 'true / false',
+  },
+  // ── MF7025v2 ──
+  hal_mf7025v2_can_interface: {
+    description: 'Nazwa interfejsu SocketCAN dla sterownik\u00f3w MF7025v2. Sterowniki u\u017cywaj\u0105 w\u0142asnego protoko\u0142u CAN (ID = 0x140 + node_id, standard frame, DLC=8) zamiast CANopen/CiA 402.',
+    defaultValue: 'can0',
+    type: 'string',
+    range: 'nazwa interfejsu CAN (can0, can1, vcan0)',
+  },
+  hal_mf7025v2_bitrate: {
+    description: 'Szybko\u015b\u0107 transmisji magistrali CAN dla MF7025v2 w bodach. Dla kr\u00f3tkich przewod\u00f3w (< 1m) mo\u017cna u\u017cy\u0107 1 Mbps. Dla d\u0142u\u017cszych przewod\u00f3w zalecane 125000-500000.',
+    defaultValue: '1000000 (1 Mbit/s)',
+    type: 'integer',
+    range: '10000 – 10000000',
+  },
+  hal_mf7025v2_sdo_timeout_ms: {
+    description: 'Timeout odpowiedzi na komendy SDO w milisekundach. MF7025v2 odpowiada w < 0.25ms, wi\u0119c 100ms jest bezpieczne.',
+    defaultValue: '100',
+    type: 'integer',
+    range: '10 – 10000',
+  },
+  hal_mf7025v2_position_units_per_degree: {
+    description: 'Liczba jednostek k\u0105ta wieloobrotowego (multi-turn angle 0x92) na stopie\u0144. Domy\u015blnie 100.0 = 0.01°/LSB. Dla wi\u0119kszej precyzji mo\u017cna zwi\u0119kszy\u0107 (np. 1000 = 0.001°/LSB), ale nale\u017cy wtedy skonfigurowa\u0107 nap\u0119d.',
+    defaultValue: '100.0',
+    type: 'float',
+    range: '0.1 – 100000',
+  },
+  hal_mf7025v2_velocity_units_per_dps: {
+    description: 'Liczba jednostek pr\u0119dko\u015bci na stopie\u0144 na sekund\u0119. Domy\u015blnie 100.0 = 0.01 dps/LSB. Musi by\u0107 zgodne z konfiguracj\u0105 parametr\u00f3w sterowania nap\u0119du (0xC0/C1).',
+    defaultValue: '100.0',
+    type: 'float',
+    range: '0.1 – 100000',
   },
   servo_init_sequence: {
     description: 'Tablica JSON wpisów SDO do wys\u0142ania. Ka\u017cdy wpis: {"axis": 0|1, "index": "0x2005", "subindex": 0, "value": 16, "description": "HA axis microstep"}. O\u015b 0 = HA, O\u015b 1 = Dec. Indeksy per instrukcja serwonap\u0119du (sekcja 3.2.1).',

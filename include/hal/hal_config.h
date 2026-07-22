@@ -6,82 +6,76 @@
 #include "hal/hal_interface.h"
 #include "hal/motor_control.h"
 #include "hal/encoder_reader.h"
-#include "controllers/icanopen_interface.h"
-
 namespace astro_mount {
 namespace hal {
 
 enum class HALType {
     SIMULATED,   // Symulowany hardware
     CANOPEN,     // CANopen/CiA 402
+    MF7025V2,    // LingKong MF7025v2 BLDC Servo (własny protokół CAN)
     SERIAL,      // Port szeregowy (RS-232/485)
     ETHERNET,    // Ethernet (EtherCAT, Modbus TCP)
     GAMEPAD,     // Ręczne sterowanie (gamepad/joystick)
     CUSTOM       // Własna implementacja
 };
+// (Derotator types removed — derotator functionality eliminated from the project)
 
-// Typ derotatora
-enum class DerotatorType {
-    CANOPEN = 0,
-    STEPPER = 1,
-    SERVO = 2,
-    CUSTOM = 3
-};
+/**
+ * @brief CANopen-specific configuration subsection of HALConfig
+ *
+ * Extracted as a named type to allow referencing from other config classes,
+ * eliminating the 4-way CANopen config duplication that existed before.
+ */
+struct CanOpenConfig {
+    std::string library{"mock"};  // "mock", "canopensocket", "libedssharp", "canfestival"
+    std::string interface_name{"can0"};
+    uint32_t bitrate{125000};
+    uint8_t node_id{1};
+    bool use_sync{true};
+    uint32_t sync_period_ms{100};
+    uint32_t sdo_timeout_ms{1000};
+    uint32_t pdo_update_rate{100}; // Hz
+    std::string accel_mode{"time"}; // "time" or "rate" (CiA 402 acceleration interpretation)
+    bool pdo_config_enabled{false}; // Write PDO mappings to drive (may overwrite mfgr params)
 
-// Konfiguracja derotatora (pole obserwacyjne)
-struct DerotatorConfig {
-    DerotatorType type{DerotatorType::STEPPER};
-    bool enabled{false};
-    double gear_ratio{180.0};
-    double max_speed{5.0};
-    double max_acceleration{2.0};
-    double backlash{0.0};
-    bool absolute_encoder{false};
-    double encoder_resolution{36000.0};
-    double homing_offset{0.0};
-    std::vector<double> calibration_table;
-    std::string connection_string;
+    // CANopen position rewind: periodically reset the drive's absolute position
+    // counter to prevent overflow beyond the drive's target position limit
+    // (typically ±1,000,000 encoder counts).
+    bool position_rewind_enabled{true};
+    double position_rewind_interval_seconds{3600.0};  // 0 = disabled
+    double position_rewind_threshold_percent{80.0};    // 0 = disabled
+    
+    // === Konfiguracja NMT (Network Management) ===
+    struct {
+        bool enable_nmt{true};                       // Włączenie monitorowania NMT
+        uint32_t heartbeat_period_ms{100};           // Oczekiwany okres heartbeat (100ms)
+        uint32_t heartbeat_timeout_ms{500};          // Timeout heartbeat (5x period)
+        uint32_t max_missed_heartbeats{3};           // Maksymalna liczba pominiętych heartbeat
+        bool enable_bootup_check{true};              // Sprawdzanie bootup po resecie
+        uint32_t bootup_timeout_ms{5000};            // Timeout na bootup (5s)
+        bool enable_auto_recovery{true};             // Automatyczne przywracanie węzłów
+        uint32_t recovery_interval_s{5};             // Min. odstęp między recovery (5s)
+        bool enable_node_guarding{false};            // Node Guarding (alternatywa dla heartbeat)
+        uint32_t node_guarding_period_ms{1000};      // Okres node guarding (1s)
+    } nmt;
 };
 
 struct HALConfig {
     HALType type{HALType::SIMULATED};
     std::string name{"Default_HAL"};
     
-    // Konfiguracja CANopen
+    // Konfiguracja CANopen (named type for external reference)
+    CanOpenConfig canopen;
+    
+    // Konfiguracja MF7025v2 (LingKong BLDC Servo)
     struct {
-        controllers::ICanOpenInterface::Config canopen_config;
-        std::string library{"mock"};  // "mock", "canopensocket", "libedssharp", "canfestival"
-        std::string interface_name{"can0"};
-        uint32_t bitrate{125000};
-        uint8_t node_id{1};
-        bool use_sync{true};
-        uint32_t sync_period_ms{100};
-        uint32_t sdo_timeout_ms{1000};
-        uint32_t pdo_update_rate{100}; // Hz
-        std::string accel_mode{"time"}; // "time" or "rate" (CiA 402 acceleration interpretation)
-        bool pdo_config_enabled{false}; // Write PDO mappings to drive (may overwrite mfgr params)
-
-        // CANopen position rewind: periodically reset the drive's absolute position
-        // counter to prevent overflow beyond the drive's target position limit
-        // (typically ±1,000,000 encoder counts).
-        bool position_rewind_enabled{true};
-        double position_rewind_interval_seconds{3600.0};  // 0 = disabled
-        double position_rewind_threshold_percent{80.0};    // 0 = disabled
-        
-        // === Konfiguracja NMT (Network Management) ===
-        struct {
-            bool enable_nmt{true};                       // Włączenie monitorowania NMT
-            uint32_t heartbeat_period_ms{100};           // Oczekiwany okres heartbeat (100ms)
-            uint32_t heartbeat_timeout_ms{500};          // Timeout heartbeat (5x period)
-            uint32_t max_missed_heartbeats{3};           // Maksymalna liczba pominiętych heartbeat
-            bool enable_bootup_check{true};              // Sprawdzanie bootup po resecie
-            uint32_t bootup_timeout_ms{5000};            // Timeout na bootup (5s)
-            bool enable_auto_recovery{true};             // Automatyczne przywracanie węzłów
-            uint32_t recovery_interval_s{5};             // Min. odstęp między recovery (5s)
-            bool enable_node_guarding{false};            // Node Guarding (alternatywa dla heartbeat)
-            uint32_t node_guarding_period_ms{1000};      // Okres node guarding (1s)
-        } nmt;
-    } canopen;
+        std::string can_interface{"can0"};
+        uint32_t bitrate{1000000};
+        uint32_t sdo_timeout_ms{100};
+        double position_units_per_degree{100.0};   // 0.01°/LSB
+        double velocity_units_per_dps{100.0};       // 0.01dps/LSB
+    } mf7025v2;
+    
     
     // Konfiguracja Serial
     struct {
@@ -136,8 +130,6 @@ struct HALConfig {
         //       "trigger_l", "trigger_r", "pov_x", "pov_y", "none"
         std::map<int, std::string> axis_mapping;
     } gamepad;
-    
-    DerotatorConfig derotator;
     
     // Konfiguracja osi
     struct AxisConfig {
@@ -288,6 +280,14 @@ struct HALConfig {
             config.gamepad.axis_mapping[idx] = it->get<std::string>();
         }
         
+        // Parse MF7025v2 configuration
+        auto mf7025v2 = json.value("mf7025v2", nlohmann::json::object());
+        config.mf7025v2.can_interface = mf7025v2.value("can_interface", "can0");
+        config.mf7025v2.bitrate = mf7025v2.value("bitrate", 1000000);
+        config.mf7025v2.sdo_timeout_ms = mf7025v2.value("sdo_timeout_ms", 100);
+        config.mf7025v2.position_units_per_degree = mf7025v2.value("position_units_per_degree", 100.0);
+        config.mf7025v2.velocity_units_per_dps = mf7025v2.value("velocity_units_per_dps", 100.0);
+        
         // Parse axes configurations
         config.axes.clear();
         auto axes = json.value("axes", nlohmann::json::array());
@@ -362,33 +362,6 @@ struct HALConfig {
             config.axes.push_back(axis);
         }
         
-        // Parse derotator configuration
-        auto derotator = json.value("derotator", nlohmann::json::object());
-        std::string derotator_type_str = derotator.value("type", "STEPPER");
-        if (derotator_type_str == "CANOPEN") config.derotator.type = DerotatorType::CANOPEN;
-        else if (derotator_type_str == "STEPPER") config.derotator.type = DerotatorType::STEPPER;
-        else if (derotator_type_str == "SERVO") config.derotator.type = DerotatorType::SERVO;
-        else if (derotator_type_str == "CUSTOM") config.derotator.type = DerotatorType::CUSTOM;
-        else config.derotator.type = DerotatorType::STEPPER;
-        config.derotator.enabled = derotator.value("enabled", false);
-        config.derotator.gear_ratio = derotator.value("gear_ratio", 180.0);
-        config.derotator.max_speed = derotator.value("max_speed", 5.0);
-        config.derotator.max_acceleration = derotator.value("max_acceleration", 2.0);
-        config.derotator.backlash = derotator.value("backlash", 0.0);
-        config.derotator.absolute_encoder = derotator.value("absolute_encoder", false);
-        config.derotator.encoder_resolution = derotator.value("encoder_resolution", 36000.0);
-        config.derotator.homing_offset = derotator.value("homing_offset", 0.0);
-        config.derotator.connection_string = derotator.value("connection_string", "");
-        
-        // Load calibration table
-        config.derotator.calibration_table.clear();
-        auto calib_array = derotator.value("calibration_table", nlohmann::json::array());
-        for (const auto& val : calib_array) {
-            if (val.is_number()) {
-                config.derotator.calibration_table.push_back(val.get<double>());
-            }
-        }
-        
         // Parse PID parameters
         auto pid_json = json.value("pid_params", nlohmann::json::object());
         config.pid_params.kp = pid_json.value("kp", 1.5);
@@ -422,12 +395,22 @@ struct HALConfig {
         switch (type) {
             case HALType::SIMULATED: type_str = "simulated"; break;
             case HALType::CANOPEN: type_str = "canopen"; break;
+            case HALType::MF7025V2: type_str = "mf7025v2"; break;
             case HALType::SERIAL: type_str = "serial"; break;
             case HALType::ETHERNET: type_str = "ethernet"; break;
             case HALType::GAMEPAD: type_str = "gamepad"; break;
             case HALType::CUSTOM: type_str = "custom"; break;
             default: type_str = "simulated";
         }
+        // Save MF7025v2 configuration
+        nlohmann::json mf7025v2_json;
+        mf7025v2_json["can_interface"] = mf7025v2.can_interface;
+        mf7025v2_json["bitrate"] = mf7025v2.bitrate;
+        mf7025v2_json["sdo_timeout_ms"] = mf7025v2.sdo_timeout_ms;
+        mf7025v2_json["position_units_per_degree"] = mf7025v2.position_units_per_degree;
+        mf7025v2_json["velocity_units_per_dps"] = mf7025v2.velocity_units_per_dps;
+        hal["mf7025v2"] = mf7025v2_json;
+
         hal["type"] = type_str;
         hal["name"] = name;
         
@@ -604,35 +587,6 @@ struct HALConfig {
         }
         hal["axes"] = axes_array;
         
-        // Save derotator configuration
-        nlohmann::json derotator_json;
-        std::string derotator_type_str;
-        switch (derotator.type) {
-            case DerotatorType::CANOPEN: derotator_type_str = "CANOPEN"; break;
-            case DerotatorType::STEPPER: derotator_type_str = "STEPPER"; break;
-            case DerotatorType::SERVO: derotator_type_str = "SERVO"; break;
-            case DerotatorType::CUSTOM: derotator_type_str = "CUSTOM"; break;
-            default: derotator_type_str = "STEPPER";
-        }
-        derotator_json["type"] = derotator_type_str;
-        derotator_json["enabled"] = derotator.enabled;
-        derotator_json["gear_ratio"] = derotator.gear_ratio;
-        derotator_json["max_speed"] = derotator.max_speed;
-        derotator_json["max_acceleration"] = derotator.max_acceleration;
-        derotator_json["backlash"] = derotator.backlash;
-        derotator_json["absolute_encoder"] = derotator.absolute_encoder;
-        derotator_json["encoder_resolution"] = derotator.encoder_resolution;
-        derotator_json["homing_offset"] = derotator.homing_offset;
-        derotator_json["connection_string"] = derotator.connection_string;
-        
-        // Save calibration table
-        nlohmann::json calib_array = nlohmann::json::array();
-        for (const auto& val : derotator.calibration_table) {
-            calib_array.push_back(val);
-        }
-        derotator_json["calibration_table"] = calib_array;
-        hal["derotator"] = derotator_json;
-        
         // Save PID parameters
         nlohmann::json pid_json;
         pid_json["kp"] = pid_params.kp;
@@ -671,6 +625,7 @@ struct HALConfig {
         switch (type) {
             case HALType::SIMULATED: return "simulated";
             case HALType::CANOPEN: return "canopen";
+            case HALType::MF7025V2: return "mf7025v2";
             case HALType::SERIAL: return "serial";
             case HALType::ETHERNET: return "ethernet";
             case HALType::GAMEPAD: return "gamepad";
@@ -682,6 +637,7 @@ struct HALConfig {
     static HALType typeFromString(const std::string& type_str) {
         if (type_str == "simulated") return HALType::SIMULATED;
         if (type_str == "canopen") return HALType::CANOPEN;
+        if (type_str == "mf7025v2") return HALType::MF7025V2;
         if (type_str == "serial") return HALType::SERIAL;
         if (type_str == "ethernet") return HALType::ETHERNET;
         if (type_str == "gamepad") return HALType::GAMEPAD;

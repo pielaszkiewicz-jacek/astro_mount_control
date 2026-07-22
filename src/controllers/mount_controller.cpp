@@ -1,5 +1,4 @@
 #include "controllers/mount_controller.h"
-#include "controllers/derotator_controller.h"
 #include "controllers/icanopen_interface.h"
 #include "controllers/canopen_factory.h"
 #include "core/astronomical_calculations.h"
@@ -494,69 +493,6 @@ public:
             astro_calc_->setObserverLocation(config_.latitude, config_.longitude, config_.altitude);
         }
         
-        // --- Create DerotatorController (internal module) ---
-        // The derotator gets its own HAL motor/encoder instances and a raw pointer
-        // to the shared CANopen interface. MountController retains field rotation
-        // rate calculation (depends on mount axis positions) and pushes the result
-        // to DerotatorController via setFieldRotationRate().
-        {
-            // Mount type conversion for DerotatorController
-            DerotatorController::MountType derotator_mount_type;
-            switch (config_.mount_type) {
-                case MountType::EQUATORIAL:
-                    derotator_mount_type = DerotatorController::MountType::EQUATORIAL;
-                    break;
-                case MountType::ALT_AZ:
-                    derotator_mount_type = DerotatorController::MountType::ALT_AZ;
-                    break;
-                case MountType::CASUAL:
-                    derotator_mount_type = DerotatorController::MountType::CASUAL;
-                    break;
-                default:
-                    derotator_mount_type = DerotatorController::MountType::UNKNOWN;
-                    break;
-            }
-            
-            DerotatorController::Config derotator_cfg;
-            // Keep default derotator config (may be updated later via configureDerotator)
-            derotator_cfg.mount_type = derotator_mount_type;
-            derotator_cfg.latitude_deg = config_.latitude;
-            
-            // MountStateProvider: provides current altitude from mount position
-            auto state_provider = [this]() -> DerotatorController::MountState {
-                std::shared_lock<std::shared_mutex> lock(*state_mutex_);
-                DerotatorController::MountState s;
-                // For ALT_AZ: axis2 = altitude, For CASUAL: axis1 = altitude-like
-                if (config_.mount_type == MountType::CASUAL) {
-                    s.altitude_deg = axis1_position_;
-                } else {
-                    s.altitude_deg = axis2_position_;
-                }
-                return s;
-            };
-            
-            // Create HAL derotator components (optional — derotator may not be present)
-            auto derotator_motor = hal_interface_ ? hal_interface_->createDerotatorMotor() : nullptr;
-            auto derotator_encoder = hal_interface_ ? hal_interface_->createDerotatorEncoder() : nullptr;
-            
-            if (derotator_motor) {
-                MOUNT_LOG_DEBUG("HAL derotator motor created");
-            }
-            if (derotator_encoder) {
-                MOUNT_LOG_DEBUG("HAL derotator encoder created");
-            }
-            
-            derotator_ = std::make_unique<DerotatorController>(
-                canopen_interface_.get(),
-                std::move(derotator_motor),
-                std::move(derotator_encoder),
-                std::move(state_provider),
-                derotator_cfg
-            );
-            
-            MOUNT_LOG_DEBUG("DerotatorController created");
-        }
-        
         // Open the gamepad device for live state reporting (UI) only.
         // The axis-control loop (gamepadLoop) is NEVER auto-started —
         // it would flood CANopen with velocity commands and fight
@@ -588,13 +524,6 @@ public:
         joinWorkThread();
         
         // Shut down HAL components in reverse creation order.
-        // Reset unique_ptrs to destroy component instances before shutting down
-        // the HAL interface itself, ensuring clean teardown.
-        // Shut down DerotatorController first (it has its own thread and HAL components)
-        if (derotator_) {
-            derotator_->shutdown();
-        }
-        derotator_.reset();
         hal_sensor_interface_.reset();
         hal_safety_monitor_.reset();
         hal_axis1_encoder_.reset();
@@ -608,76 +537,6 @@ public:
             hal_interface_->shutdown();
         }
         stopGamepad();
-    }
-    
-    /**
-     * @brief Recreate the DerotatorController instance after HAL re-initialization.
-     *
-     * Called by setHALConfig() and reinitializeHAL() after the HAL interface has
-     * been re-created. Creates fresh derotator motor/encoder components from the
-     * new HAL interface and constructs a new DerotatorController with the current
-     * mount config.
-     *
-     * @return true if the DerotatorController was created successfully, false if
-     *         derotator HAL components are unavailable (non-fatal).
-     */
-    bool recreateDerotator() {
-        if (!hal_interface_) {
-            return false;
-        }
-        
-        // DerotatorController::MountType conversion
-        DerotatorController::MountType derotator_mount_type;
-        switch (config_.mount_type) {
-            case MountType::EQUATORIAL:
-                derotator_mount_type = DerotatorController::MountType::EQUATORIAL;
-                break;
-            case MountType::ALT_AZ:
-                derotator_mount_type = DerotatorController::MountType::ALT_AZ;
-                break;
-            case MountType::CASUAL:
-                derotator_mount_type = DerotatorController::MountType::CASUAL;
-                break;
-            default:
-                derotator_mount_type = DerotatorController::MountType::UNKNOWN;
-                break;
-        }
-        
-        DerotatorController::Config derotator_cfg;
-        derotator_cfg.mount_type = derotator_mount_type;
-        derotator_cfg.latitude_deg = config_.latitude;
-        
-        // MountStateProvider: provides current altitude from mount position
-        auto state_provider = [this]() -> DerotatorController::MountState {
-            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
-            DerotatorController::MountState s;
-            if (config_.mount_type == MountType::CASUAL) {
-                s.altitude_deg = axis1_position_;
-            } else {
-                s.altitude_deg = axis2_position_;
-            }
-            return s;
-        };
-        
-        // Create HAL derotator components (optional — derotator may not be present)
-        auto derotator_motor = hal_interface_->createDerotatorMotor();
-        auto derotator_encoder = hal_interface_->createDerotatorEncoder();
-        
-        if (!derotator_motor) {
-            MOUNT_LOG_DEBUG("recreateDerotator: HAL derotator motor not available");
-            return false;
-        }
-        
-        derotator_ = std::make_unique<DerotatorController>(
-            canopen_interface_.get(),
-            std::move(derotator_motor),
-            std::move(derotator_encoder),
-            std::move(state_provider),
-            derotator_cfg
-        );
-        
-        MOUNT_LOG_DEBUG("DerotatorController recreated after HAL re-initialization");
-        return true;
     }
     
     bool slewToEquatorial(double ra, double dec) {
@@ -3478,11 +3337,6 @@ public:
                 meridian_flip_in_progress_ = false;
                 flip_soft_limit_cooldown_ = 0;
                 
-                // Clear derotator errors
-                if (derotator_) {
-                    derotator_->clearErrors();
-                }
-                
                 // Clear error state
                 state_ = MountStatus::State::IDLE;
                 error_message_.clear();
@@ -4530,8 +4384,7 @@ public:
             
             double field_rotation_rate = -sidereal_rate_rad * std::cos(lat_rad) / std::sin(alt_rad);
             
-            // Clamp field rotation rate to prevent extreme values from propagating
-            // to the derotator. Same limit as enableFieldRotation() uses.
+            // Clamp field rotation rate to prevent extreme values
             const double MAX_RATE_RAD = 20.0 * M_PI / 180.0;  // 20 deg/s
             field_rotation_rate = std::clamp(field_rotation_rate, -MAX_RATE_RAD, MAX_RATE_RAD);
             
@@ -5540,96 +5393,6 @@ public:
         return ephemeris_manager_->getMetrics();
     }
     
-    // ============================================
-    // FIELD ROTATION / DEROTATOR CONTROL
-    // ============================================
-    
-    bool configureDerotator(const ::astro_mount::DerotatorConfig& config) {
-        return derotator_->configure(config);
-    }
-    
-    bool enableFieldRotation(const ::astro_mount::FieldRotationParams& params) {
-        // Compute field rotation rate based on mount type and position.
-        // MountController retains this calculation because it depends on
-        // mount axis positions (axis1_position_, axis2_position_) which are
-        // owned by Impl. The result is pushed to DerotatorController via
-        // setFieldRotationRate(), which is then consumed by controlFieldRotation().
-        double rate_deg_s = 0.0;
-        if ((config_.mount_type == MountType::ALT_AZ || config_.mount_type == MountType::CASUAL) && params.enabled()) {
-            // Formula: rate = -ω * cos(lat) / sin(alt)
-            // where ω = sidereal rate, lat = latitude, alt = altitude.
-            //
-            // For ALT_AZ mounts, alt is the true altitude (axis2).
-            // For CASUAL mounts, alt is the mount-frame altitude-like axis (axis1).
-            
-            // NaN/Inf guard on latitude
-            double lat_rad;
-            if (std::isfinite(config_.latitude)) {
-                lat_rad = config_.latitude * M_PI / 180.0;
-            } else {
-                MOUNT_LOG_WARN("enableFieldRotation: non-finite latitude {}, using 52° default",
-                         config_.latitude);
-                lat_rad = 52.0 * M_PI / 180.0;
-            }
-            
-            // Get altitude from mount position (CASUAL uses axis1, ALT_AZ uses params)
-            double altitude_deg;
-            if (config_.mount_type == MountType::CASUAL) {
-                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                altitude_deg = axis1_position_;
-            } else {
-                altitude_deg = params.altitude();
-            }
-            
-            // NaN/Inf guard on altitude
-            if (!std::isfinite(altitude_deg)) {
-                MOUNT_LOG_WARN("enableFieldRotation: non-finite altitude {}, using 45° default",
-                         altitude_deg);
-                altitude_deg = 45.0;
-            }
-            
-            double alt_rad = altitude_deg * M_PI / 180.0;
-            double sin_alt = std::sin(alt_rad);
-            
-            // Clamp sin(alt) away from zero to prevent division by zero
-            const double MIN_SIN_ALT = std::sin(1.0 * M_PI / 180.0);
-            if (std::abs(sin_alt) < MIN_SIN_ALT) {
-                sin_alt = std::copysign(MIN_SIN_ALT, sin_alt);
-                MOUNT_LOG_DEBUG("Field rotation alt clamp: altitude={:.2f}° clamped to sin(alt)={:.6f}",
-                         altitude_deg, sin_alt);
-            }
-            
-            double cos_lat = std::cos(lat_rad);
-            double sidereal_rate_rad = 2.0 * M_PI / 86164.0905;
-            double field_rotation_rate = -sidereal_rate_rad * cos_lat / sin_alt;
-            
-            // Clamp final rate to ±20 deg/s
-            const double MAX_RATE_DEG_S = 20.0;
-            rate_deg_s = std::clamp(
-                field_rotation_rate * 180.0 / M_PI,
-                -MAX_RATE_DEG_S, MAX_RATE_DEG_S);
-            
-            MOUNT_LOG_DEBUG("Field rotation rate computed: {:.4f} deg/s (lat={:.1f}°, alt={:.1f}°)",
-                     rate_deg_s, config_.latitude, altitude_deg);
-        }
-        
-        // Push computed rate to DerotatorController, then delegate enable/disable
-        derotator_->setFieldRotationRate(rate_deg_s);
-        return derotator_->enableFieldRotation(params);
-    }
-    
-    bool controlFieldRotation(const ::astro_mount::FieldRotationControlRequest& request) {
-        return derotator_->controlFieldRotation(request);
-    }
-    
-    ::astro_mount::DerotatorStatus getDerotatorStatus() const {
-        return derotator_->getStatus();
-    }
-    
-    bool homeDerotator(const ::astro_mount::DerotatorHomingRequest& request) {
-        return derotator_->home(request);
-    }
-    
     /**
      * @brief Home mount — set internal reference position.
      *
@@ -5727,10 +5490,6 @@ public:
         }
         
         return true;
-    }
-    
-    ::astro_mount::FieldRotationParams getFieldRotationParams() const {
-        return derotator_->getFieldRotationParams();
     }
     
     ICanOpenInterface* getCanOpenInterfacePtr() {
@@ -6061,12 +5820,6 @@ public:
         
         hal_sensor_interface_.reset();
         hal_safety_monitor_.reset();
-        // DerotatorController manages its own HAL components; reset it so it gets
-        // recreated with new HAL components after the HAL re-initialization.
-        if (derotator_) {
-            derotator_->shutdown();
-        }
-        derotator_.reset();
         hal_axis1_encoder_.reset();
         hal_axis2_encoder_.reset();
         hal_axis1_motor_.reset();
@@ -6098,10 +5851,6 @@ public:
         if (hal_interface_->start()) {
             hal_config_ = new_config;
             MOUNT_LOG_INFO("setHALConfig: HAL reinit successful");
-            // Recreate DerotatorController with new HAL components
-            if (!recreateDerotator()) {
-                MOUNT_LOG_WARN("setHALConfig: failed to recreate DerotatorController, continuing without derotator");
-            }
             // Persist to disk
             if (!config_file_path_.empty()) {
                 saveConfigToFile();
@@ -6198,8 +5947,8 @@ public:
         auto features = hal_interface_->getSupportedFeatures();
         for (const auto& feature : features) {
             switch (feature) {
-                case hal::HALFeature::CANOPEN_SUPPORT:
-                    status.add_supported_features("CANOPEN_SUPPORT");
+                case hal::HALFeature::FIELD_BUS_SUPPORT:
+                    status.add_supported_features("FIELD_BUS_SUPPORT");
                     break;
                 case hal::HALFeature::SERIAL_SUPPORT:
                     status.add_supported_features("SERIAL_SUPPORT");
@@ -6250,12 +5999,6 @@ public:
         
         hal_sensor_interface_.reset();
         hal_safety_monitor_.reset();
-        // DerotatorController manages its own HAL components; reset it so it gets
-        // recreated with new HAL components after re-initialization.
-        if (derotator_) {
-            derotator_->shutdown();
-        }
-        derotator_.reset();
         hal_axis1_encoder_.reset();
         hal_axis2_encoder_.reset();
         hal_axis1_motor_.reset();
@@ -6289,11 +6032,6 @@ public:
             if (!hal_interface_->start()) {
                 return false;
             }
-        }
-        
-        // Recreate DerotatorController with new HAL components
-        if (!recreateDerotator()) {
-            MOUNT_LOG_WARN("reinitializeHAL: failed to recreate DerotatorController, continuing without derotator");
         }
         
         return true;
@@ -7158,9 +6896,6 @@ private:
     std::unique_ptr<hal::SafetyMonitor> hal_safety_monitor_;
     std::unique_ptr<hal::SensorInterface> hal_sensor_interface_;
     
-    // DerotatorController instance (internal module with own mutex and thread)
-    std::unique_ptr<DerotatorController> derotator_;
-    
     // Encoder type storage
     bool encoder_absolute_;
     
@@ -7542,45 +7277,12 @@ void MountController::clearEphemerisCache() {
     return pimpl->getEphemerisMetrics();
 }
 
-// ============================================
-// FIELD ROTATION / DEROTATOR CONTROL
-// ============================================
-
-bool MountController::configureDerotator(const ::astro_mount::DerotatorConfig& config) {
-    return pimpl->configureDerotator(config);
-}
-
-bool MountController::enableFieldRotation(const ::astro_mount::FieldRotationParams& params) {
-    return pimpl->enableFieldRotation(params);
-}
-
-bool MountController::controlFieldRotation(const ::astro_mount::FieldRotationControlRequest& request) {
-    return pimpl->controlFieldRotation(request);
-}
-
-::astro_mount::DerotatorStatus MountController::getDerotatorStatus() const {
-    return pimpl->getDerotatorStatus();
-}
-
-bool MountController::homeDerotator(const ::astro_mount::DerotatorHomingRequest& request) {
-    return pimpl->homeDerotator(request);
-}
-
 bool MountController::home(const ::astro_mount::MountHomingRequest& request) {
     bool result = pimpl->home(request);
     if (result) {
         pimpl->notifyStatusChanged();
     }
     return result;
-}
-
-::astro_mount::FieldRotationParams MountController::getFieldRotationParams() const {
-    return pimpl->getFieldRotationParams();
-}
-
-std::shared_ptr<ICanOpenInterface> MountController::getCanOpenInterface() {
-    // Use helper method from Impl
-    return pimpl->getCanOpenInterfaceShared();
 }
 
 // ============================================

@@ -9,8 +9,11 @@
 #include <functional>
 #include "proto/mount_controller.pb.h"
 #include "models/ephemeris_tracker.h"
-#include "controllers/icanopen_interface.h"
 #include "hal/hal_config.h"
+#include "config/mount_config.h"
+#include "config/tracking_config.h"
+#include "config/safety_config.h"
+#include "config/calibration_config.h"
 
 // Forward declaration for HAL
 namespace astro_mount {
@@ -22,6 +25,13 @@ class HALInterface;
 namespace astro_mount {
 namespace controllers {
 
+// Import domain config types into controllers namespace for backward compatibility
+using config::MountType;
+using config::MountOrientation;
+using config::TrackingMode;
+using config::BootstrapMode;
+using config::AxisPhysicalParameters;
+
 /**
  * @brief Main mount controller class
  * 
@@ -30,27 +40,6 @@ namespace controllers {
  */
 class MountController {
 public:
-    enum class MountType {
-        EQUATORIAL,
-        ALT_AZ,
-        UNKNOWN,
-        CASUAL   ///< Randomly oriented mount with quaternion orientation
-    };
-
-    /**
-     * @brief Bootstrap calibration mode
-     *
-     * Determines how bootstrap measurements are collected:
-     * - MANUAL: User manually points at stars (gamepad), adds measurements
-     * - HYBRID: First 3 measurements manual, then automatic slews
-     * - AUTOMATIC: Fully automatic with plate solver orchestrator
-     */
-    enum class BootstrapMode {
-        BOOTSTRAP_MANUAL = 0,       ///< Fully manual pointing
-        BOOTSTRAP_HYBRID = 1,       ///< Manual + automatic after 3 measurements
-        BOOTSTRAP_AUTOMATIC = 2     ///< Fully automatic with plate solver
-    };
-
     /**
      * @brief Gamepad navigation mode — how joystick axes map to mount motion
      */
@@ -62,220 +51,62 @@ public:
     };
 
     /**
-     * @brief Mount orientation represented as a unit quaternion
+     * @brief Servo initialization SDO sequence entry
      *
-     * Describes the rotation from the local horizontal frame (ENU: East, North, Up)
-     * to the mount's axis frame. The identity quaternion [1,0,0,0] corresponds to
-     * an Alt-Az mount at the equator (or an equatorial mount at the pole).
-     *
-     * The quaternion is stored as [qx, qy, qz, qw] where qw is the scalar part.
+     * Defines a single SDO write to be sent during servo drive initialization.
      */
-    struct MountOrientation {
-        std::array<double, 4> quaternion{0.0, 0.0, 0.0, 1.0};  // [qx, qy, qz, qw] — identity
-
-        /// Check if this orientation is valid (unit quaternion within tolerance)
-        bool isValid() const;
-
-        /// Build orientation from axis angles (axis1 altitude, axis1 azimuth)
-        void setFromAxisAngles(double axis1_altitude, double axis1_azimuth);
-
-        /// Convert to 3x3 rotation matrix (row-major)
-        std::array<double, 9> toRotationMatrix() const;
+    struct ServoInitEntry {
+        int axis = 0;
+        uint16_t index = 0;
+        uint8_t  subindex = 0;
+        int32_t  value = 0;
+        std::string description;
+        uint8_t data_size = 4;
     };
 
-    enum class TrackingMode {
-        SIDEREAL,
-        SOLAR,
-        LUNAR,
-        CUSTOM,
-        OFF
-    };
-
-    struct AxisPhysicalParameters {
-        // CANopen scaling factors (per-axis)
-        double position_counts_per_degree{4000.0 / 360.0};
-        double velocity_counts_per_deg_s{4000.0 / 360.0};
-
-        // Encoder parameters
-        double encoder_resolution{1000.0};      // Encoder resolution [counts/rev]
-        double encoder_counts_per_arcsec{0.0};  // Counts per arcsecond
-        double encoder_quantization_error{0.0}; // Quantization error [arcseconds]
-        
-        // Gear parameters
-        double gear_ratio{360.0};               // Total gear ratio (motor:output)
-        double worm_ratio{180.0};               // Worm gear ratio (if applicable)
-        int worm_teeth{1};                      // Number of worm teeth
-        int worm_wheel_teeth{180};              // Number of worm wheel teeth
-        
-        // Cyclic errors (periodic errors)
-        double cyclic_error_amplitude{0.0};     // Amplitude of cyclic error [arcseconds]
-        double cyclic_error_period{360.0};      // Period of cyclic error [degrees]
-        std::array<double, 8> cyclic_harmonics{}; // Harmonic coefficients for cyclic error
-        
-        // Backlash parameters
-        double backlash{0.0};                   // Backlash [arcseconds]
-        double backlash_temp_coeff{0.0};        // Backlash temperature coefficient [arcseconds/°C]
-        
-        // Stiffness and compliance
-        double axis_stiffness{0.0};             // Axis stiffness [arcseconds/Nm]
-        double torsional_compliance{0.0};       // Torsional compliance [rad/Nm]
-        
-        // Temperature coefficients
-        double expansion_coeff{0.0};            // Thermal expansion coefficient [1/°C]
-        double temp_gear_error_coeff{0.0};      // Gear error temperature coefficient [arcseconds/°C]
-        
-        // Calibration data
-        std::vector<double> calibration_table;  // Calibration table [counts → arcseconds]
-        double calibration_temp{20.0};           // Temperature during calibration [°C]
-    };
-
+    /**
+     * @brief Combined controller configuration using domain-specific sub-configs
+     *
+     * Replaces the monolithic ControllerConfig (~150 fields) with
+     * domain-specific configuration structs. CANopen parameters are
+     * now solely in hal::HALConfig::canopen (single source of truth).
+     *
+     * Fields kept at this level: network, logging, telescope, servo init,
+     * and HAL config — these are coordination-level settings that don't
+     * belong in any single domain config.
+     */
     struct ControllerConfig {
-        // Mount type
-        MountType mount_type{MountType::EQUATORIAL};
+        // Domain-specific configurations (single source of truth)
+        config::MountConfig mount_config;           ///< Mount type, location, rates, encoders, axis physics
+        config::TrackingConfig tracking_config;     ///< Loop timing, guider, field rotation
+        config::SafetyConfig safety_config;         ///< Soft limits, meridian flip, park, refraction
+        config::CalibrationConfig calibration_config; ///< TPOINT, bootstrap
         
-        // Location
-        double latitude{0.0};
-        double longitude;
-        double altitude;
+        // HAL configuration (from JSON "hal" section) — single source of truth for CANopen
+        hal::HALConfig hal_config;
         
-        // Mount parameters
-        double max_slew_rate;
-        double max_tracking_rate;
-        double slew_acceleration;
-        double tracking_acceleration;
-        double position_tolerance;
-        double rate_tolerance;
-        
-        // Environmental defaults
-        double default_temperature;
-        double default_pressure;
-        double default_humidity;
-        
-        // Encoder configuration
-        bool use_encoders;
-        bool encoders_absolute;
-        double encoder_resolution;
-        
-        // Kalman filter parameters
-        // process_noise: kinematic model uncertainty (deg/sqrt(s)), default ~0.001° ≈ 3.6"
-        // measurement_noise: encoder/position measurement uncertainty (deg), default ~0.001°
-        double process_noise{0.001};
-        double measurement_noise{0.001};
-        
-        // TPOINT parameters
-        uint32_t tpoint_enabled_terms{0};
-        
-        // CANopen communication parameters (source: hal.canopen)
-        std::string canopen_interface;
-        int canopen_node_id{1};
-        int canopen_bitrate{1000000};               // CAN bus bitrate (bps)
-        bool canopen_use_sync{true};                // Enable SYNC message generation
-        int canopen_sync_period_ms{100};            // SYNC interval (ms)
-        int canopen_sdo_timeout_ms{1000};           // SDO response timeout (ms)
-        std::string canopen_accel_mode = "time";    // "time" or "rate"
-        bool canopen_pdo_config_enabled{false};     // Write PDO mappings to drive
-        int controller_poll_ms{50};                  // Main loop poll interval (ms), default 20Hz
-        int tracking_update_ms{20};                  // Tracking update interval (ms), default 50Hz
-        std::string grpc_address;
-        int grpc_port;
+        // Network configuration
+        std::string grpc_address{"0.0.0.0"};
+        int grpc_port{50051};
         int network_max_connections{10};
         bool network_enable_ssl{false};
         std::string network_ssl_cert_path;
         std::string network_ssl_key_path;
         
         // Logging configuration
-        std::string log_level;
-        std::string log_directory;
-        int log_rotation_days;
+        std::string log_level{"info"};
+        std::string log_directory{"/var/log/astro-mount"};
+        int log_rotation_days{30};
         int log_max_file_size_mb{100};
         bool log_console_output{true};
         
         // Telescope parameters
-        double focal_length;
-        double aperture;
+        double focal_length{1000.0};
+        double aperture{100.0};
         
-        // Guider configuration
-        bool enable_guider;
-        double guider_max_correction;
-        double guider_aggression;
-        
-        // Meridian flip configuration
-        bool meridian_flip_enabled{true};
-        double meridian_flip_delay_minutes{5.0};
-        double meridian_flip_hysteresis_degrees{0.5};
-        double meridian_flip_timeout_seconds{120.0};  ///< Max time for flip slew before ERROR state
-        
-        // Soft limits
-        bool soft_limits_enabled{true};
-        double soft_limit_axis1_min{-270.0};
-        double soft_limit_axis1_max{270.0};
-        double soft_limit_axis2_min{-5.0};
-        double soft_limit_axis2_max{185.0};
-        double soft_limit_warning_degrees{10.0};       ///< Distance from hard limit to start warning [degrees]
-        double soft_limit_deceleration_degrees{5.0};   ///< Distance from hard limit to start deceleration [degrees]
-        double soft_limit_tracking_rate_factor{0.1};    ///< Minimum tracking rate factor at hard limit (0..1)
-        
-        // Park position (configurable, e.g. NCP for equatorial: HA=0°, Dec=90°)
-        double park_position_axis1{0.0};   ///< Park target for axis 1 (HA) [degrees]
-        double park_position_axis2{90.0};  ///< Park target for axis 2 (Dec) [degrees] — NCP default
-        
-        // Atmospheric refraction correction
-        bool enable_refraction_correction{true};  ///< Apply real-time refraction correction in tracking loop
-        
-        // Equatorial tracking mode: false = Profile Position (default, stable),
-        // true = Profile Velocity (experimental — 0x606C reports incorrect velocity
-        // on some hardware, causing the velocity PID to misbehave).
-        bool equatorial_tracking_velocity_mode{false};
-
-        // Per-axis rotation direction inversion.
-        // When true, the motor target position/velocity for this axis is negated,
-        // reversing the physical rotation direction relative to the computed target.
-        // Use this when the telescope/motor wiring causes reversed axis movement.
-        bool invert_axis1{false};
-        bool invert_axis2{false};
-        
-        // Mount orientation (for CASUAL mount type)
-        MountOrientation mount_orientation;
-
         // Servo initialization via custom SDO sequence
         bool servo_init_enabled{false};
-        std::vector<ICanOpenInterface::ServoInitEntry> servo_init_sequence;
-
-        // Axis physical parameters
-        AxisPhysicalParameters ha_axis_params;
-        AxisPhysicalParameters dec_axis_params;
-
-        // Field rotation parameters (initial values from config)
-        bool field_rotation_enabled{false};
-        double field_rotation_latitude{52.0};
-        double field_rotation_altitude{0.0};
-        double field_rotation_azimuth{0.0};
-        double field_rotation_computed_rate{0.0};
-        double field_rotation_applied_correction{0.0};
-        double field_rotation_temperature{15.0};
-        double field_rotation_flexure_correction{0.0};
-
-        // Enable/disable the CANopen position rewind mechanism entirely.
-        // When false, the drive's absolute position counter is never reset,
-        // regardless of the interval or threshold settings below.
-        bool canopen_position_rewind_enabled{true};
-
-        // CANopen position rewind: periodically reset the drive's absolute position
-        // counter to prevent overflow beyond the drive's target position limit
-        // (typically ±1,000,000 encoder counts). When rewinding, the drive's
-        // actual position is read, set as the new reference via setActualPosition(),
-        // and the position_offset_ is updated — no physical movement occurs.
-        // Set to 0 to disable periodic rewinding.
-        double canopen_position_rewind_interval_seconds{3600.0};
-
-        // CANopen position rewind threshold: if the drive's absolute position
-        // counter reaches this percentage of the 1,000,000 count limit, an
-        // immediate rewind is triggered regardless of the time interval.
-        // Range: 0.0–100.0 (0 = only use time interval, never trigger on threshold).
-        double canopen_position_rewind_threshold_percent{80.0};
-
-        // HAL configuration (from JSON "hal" section)
-        hal::HALConfig hal_config;
+        std::vector<ServoInitEntry> servo_init_sequence;
     };
 
     struct MountStatus {
@@ -833,12 +664,6 @@ public:
      * @return Current mount orientation
      */
     MountOrientation getMountOrientation() const;
-
-    /**
-     * @brief Get CanOpen interface reference
-     * @return Reference to ICanOpenInterface (abstract interface)
-     */
-    std::shared_ptr<ICanOpenInterface> getCanOpenInterface();
     
     /**
      * @brief Upload ephemeris data for moving object tracking
@@ -934,44 +759,6 @@ public:
      * @return Metrics object with tracking statistics
      */
     ::astro_mount::EphemerisMetrics getEphemerisMetrics() const;
-    
-    // ============================================
-    // FIELD ROTATION / DEROTATOR CONTROL
-    // ============================================
-    
-    /**
-     * @brief Configure derotator hardware
-     * @param config Derotator configuration
-     * @return True if configuration successful
-     */
-    bool configureDerotator(const ::astro_mount::DerotatorConfig& config);
-    
-    /**
-     * @brief Enable or disable field rotation compensation
-     * @param params Field rotation parameters
-     * @return True if operation successful
-     */
-    bool enableFieldRotation(const ::astro_mount::FieldRotationParams& params);
-    
-    /**
-     * @brief Control field rotation (position/rate control)
-     * @param request Field rotation control request
-     * @return True if operation successful
-     */
-    bool controlFieldRotation(const ::astro_mount::FieldRotationControlRequest& request);
-    
-    /**
-     * @brief Get derotator status
-     * @return Derotator status object
-     */
-    ::astro_mount::DerotatorStatus getDerotatorStatus() const;
-    
-    /**
-     * @brief Home derotator (find zero position)
-     * @param request Homing request parameters
-     * @return True if homing successful
-     */
-    bool homeDerotator(const ::astro_mount::DerotatorHomingRequest& request);
     
     /**
      * @brief Home mount — set reference position for tracking origin.

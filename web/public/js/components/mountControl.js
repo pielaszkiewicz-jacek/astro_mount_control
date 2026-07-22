@@ -288,6 +288,12 @@ const MountControlComponent = (() => {
     if (btn) btn.disabled = true;
 
     try {
+      // Stop any active mount movement before slewing to a new target.
+      // Without this, if the mount is already tracking a previous object,
+      // the new startTracking command may be ignored because the mount
+      // is already in TRACKING state (pre-condition failure on the backend).
+      await Api.stopMount();
+
       const result = await Api.trackObject(ra, dec);
       const raStr = Utils.formatRA(ra);
       const decStr = Utils.formatDec(dec);

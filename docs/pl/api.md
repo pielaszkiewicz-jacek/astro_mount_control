@@ -895,93 +895,6 @@ message AxisStatus {
 }
 ```
 
-### Derotator / Field Rotation — Pole Rotacyjne
-
-Sterowanie derotatorem i kompensacją pola rotacyjnego dla montaży alt-az i CASUAL.
-
-```protobuf
-rpc ConfigureDerotator(DerotatorConfig) returns (google.protobuf.Empty);
-rpc EnableFieldRotation(FieldRotationParams) returns (google.protobuf.Empty);
-rpc ControlFieldRotation(FieldRotationControlRequest) returns (google.protobuf.Empty);
-rpc GetDerotatorStatus(google.protobuf.Empty) returns (DerotatorStatus);
-rpc HomeDerotator(DerotatorHomingRequest) returns (google.protobuf.Empty);
-rpc GetFieldRotationParams(google.protobuf.Empty) returns (FieldRotationParams);
-```
-
-```protobuf
-message DerotatorConfig {
-    enum DerotatorType {
-        NONE = 0;
-        CANOPEN = 1;
-        STEPPER = 2;
-        SERVO = 3;
-    }
-    DerotatorType type = 1;
-    double gear_ratio = 2;
-    double max_speed = 3;
-    double acceleration = 4;
-    double home_position = 5;
-    bool invert_direction = 6;
-    repeated double calibration_table = 7;
-    int32 canopen_node_id = 8;
-}
-
-message FieldRotationParams {
-    bool enabled = 1;
-    CompensationMode compensation_mode = 2;
-    double max_rate = 3;
-    double update_interval_ms = 4;
-    bool feedforward_enabled = 5;
-    // PID gains
-    double pid_p = 6;
-    double pid_i = 7;
-    double pid_d = 8;
-}
-
-message FieldRotationControlRequest {
-    enum RotationMode {
-        DISABLED = 0;          // Brak rotacji pola
-        ALT_AZ = 1;            // Kompensacja dla montażu alt-az
-        EQUATORIAL = 2;        // Montaż równikowy (brak rotacji)
-        CUSTOM = 3;            // Niestandardowa prędkość rotacji
-        FIXED_ANGLE = 4;       // Stały kąt rotacji
-        TRACKING = 5;          // Śledzenie rotacji dla obiektu ruchomego
-        CASUAL = 6;            // Rotacja pola dla przypadkowo zorientowanego montażu
-    }
-    RotationMode mode = 1;
-    double target_angle = 2;   // Docelowy kąt [deg] (dla FIXED_ANGLE)
-    double rotation_rate = 3;  // Prędkość rotacji [deg/s] (dla CUSTOM)
-    bool relative = 4;         // Względem aktualnej pozycji
-    bool wait_for_completion = 5; // Czekaj do zakończenia rotacji
-}
-
-message DerotatorStatus {
-    double current_position_deg = 1;
-    double current_rate_deg_s = 2;
-    bool is_homed = 3;
-    bool is_enabled = 4;
-    bool is_moving = 5;
-    double motor_current_a = 6;
-    double temperature_c = 7;
-    string error_message = 8;
-}
-
-message DerotatorHomingRequest {
-    enum HomingMethod {
-        TARGET_POSITION = 0;
-        LIMIT_SWITCH = 1;
-        INDEX_PULSE = 2;
-        ABSOLUTE_ENCODER = 3;
-    }
-    HomingMethod method = 1;
-    double target_position = 2;
-    double search_speed = 3;
-    double home_speed = 4;
-    double acceleration = 5;
-    double timeout_seconds = 6;
-}
-```
-
 ### HAL Configuration — Konfiguracja HAL
 
 Odczyt i zapis konfiguracji warstwy abstrakcji sprzętowej (HAL).
@@ -1014,7 +927,6 @@ message HALConfig {
         string interface = 1;
         int32 node_id_ra = 2;
         int32 node_id_dec = 3;
-        int32 node_id_derotator = 4;
         int32 baud_rate = 5;
         int32 sync_interval_ms = 6;
         bool enable_watchdog = 7;
@@ -1077,7 +989,6 @@ message HALConfig {
     
     AxisConfig axis1_config = 6;
     AxisConfig axis2_config = 7;
-    AxisConfig derotator_config = 8;
     PIDParams pid_params = 9;
     SafetyConfig safety = 10;
 }

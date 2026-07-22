@@ -5,16 +5,17 @@
 1. [Wprowadzenie](#1-wprowadzenie)
 2. [Architektura wielowątkowa — przegląd](#2-architektura-wielowątkowa--przegląd)
 3. [Wątki MountController](#3-wątki-mountcontroller)
-4. [Operacje blokujące w MountController (derotator, kalibracja)](#4-operacje-blokujące-w-mountcontroller-derotator-kalibracja)
-5. [Wątki CanOpenInterface (ICanOpenInterface)](#5-wątki-canopeninterface)
+4. [Operacje blokujące w MountController — USUNIĘTE](#4-operacje-blokujące-w-mountcontroller---usunięte)
+5. [Wątki CanOpenInterface](#5-wątki-canopeninterface)
 6. [Wątki HAL — CanOpenHAL](#6-wątki-hal--canopenhal)
-7. [Wątki HAL — SimulatedHAL](#7-wątki-hal--simulatedhal)
-8. [Wątki EphemerisTracker](#8-wątki-ephemeristracker)
-9. [Wątki EphemerisTrackerManager](#9-wątki-ephemeristrackermanager)
-10. [Wątki Mock/Test (CanOpenFactory)](#10-wątki-mocktest)
-11. [Diagram przepływu wątków](#11-diagram-przepływu-wątków)
-12. [Synchronizacja i współdzielone zasoby](#12-synchronizacja)
-13. [Typowe problemy i debugowanie](#13-typoweproblemy)
+7. [Wątki HAL — Mf7025v2Hal](#7-wątki-hal--mf7025v2hal)
+8. [Wątki HAL — SimulatedHAL](#8-wątki-hal--simulatedhal)
+9. [Wątki EphemerisTracker](#9-wątki-ephemeristracker)
+10. [Wątki EphemerisTrackerManager](#10-wątki-ephemeristrackermanager)
+11. [Wątki Mock/Test](#11-wątki-mocktest)
+12. [Diagram przepływu wątków](#12-diagram-przepływu-wątków)
+13. [Synchronizacja i współdzielone zasoby](#13-synchronizacja)
+14. [Typowe problemy i debugowanie](#14-typoweproblemy)
 
 ---
 
@@ -46,6 +47,10 @@ flowchart TB
         SYNC["syncThreadFunction()<br/>SYNC heartbeat (100ms)"]:::can
         SIM_KIN["simulateMovement()<br/>symulacja kinematyki (100Hz)"]:::can
     end
+    subgraph MF_HAL["🟠 WĄTKI HAL — Mf7025v2Hal"]
+        POLL["MfMotor::pollLoop()<br/>status (20Hz)"]:::hal
+        MFS["MfSafetyMonitor::monitorLoop()<br/>bezpieczeństwo (2Hz)"]:::hal
+    end
     subgraph CAN_HAL["🟠 WĄTKI HAL — CanOpenHAL"]
         PID["CanOpenMotor::controlLoop()<br/>pętla PID (100Hz)"]:::hal
         PDO["CanOpenEncoder::pdoReceiveThread()<br/>PDO odbiór"]:::hal
@@ -59,6 +64,7 @@ flowchart TB
     subgraph MODELS["🟣 WĄTKI MODELI"]
         EPHEM["EphemerisTracker::Impl::trackingLoop()<br/>śledzenie (1-10Hz)"]:::models
     end
+    HIGH --> MF_HAL
     HIGH --> CAN --> CAN_HAL
     HIGH --> SIM_HAL
     HIGH --> MODELS
@@ -390,187 +396,17 @@ void stop() {
 
 ---
 
-## 4. Operacje blokujące w MountController (derotator, kalibracja)
+## 4. Operacje blokujące w MountController — USUNIĘTE
 
-W przeciwieństwie do wątków slewu/park/track (które są uruchamiane w `detach()` i
-działają niezależnie), operacje związane z derotatorem i kalibracją są wykonywane
-**synchronicznie i blokująco** na wątku wywołującym. Nie tworzą własnych wątków,
-ale zawierają pętle `sleep()` i pollingu CANopen, które mogą blokować wątek
-przez dłuższy czas (setki ms do kilku sekund).
-
-### 4.1 `homeDerotator()` — homing z blokującym pollingiem CANopen
-
-**Plik**: `src/controllers/mount_controller.cpp`
-
-```cpp
-bool homeDerotator(const ::astro_mount::DerotatorHomingRequest& request) {
-    if (!derotator_enabled_) return false;
-    
-    derotator_moving_ = true;
-    derotator_target_angle_ = request.offset();
-    
-    if (canopen_interface_) {
-        const int DEROTATOR_AXIS_ID = 2;
-        const double HOME_VELOCITY = 3.0;  // deg/s
-        const double HOME_ACCELERATION = 5.0;
-        
-        canopen_interface_->enableDrive(DEROTATOR_AXIS_ID);
-        canopen_interface_->setPositionTarget(DEROTATOR_AXIS_ID, request.offset(),
-                                              HOME_VELOCITY, HOME_ACCELERATION);
-        
-        // BLOKUJĄCA pętla pollingu (w wątku wywołującego)
-        const int POLL_MS = 50;
-        const double TOLERANCE = 0.1;
-        int timeout_ms = 10000;
-        int elapsed_ms = 0;
-        
-        while (elapsed_ms < timeout_ms) {
-            auto status = canopen_interface_->getDriveStatus(DEROTATOR_AXIS_ID);
-            auto pos = canopen_interface_->getPositionData(DEROTATOR_AXIS_ID);
-            
-            if (status.target_reached &&
-                std::abs(pos.actual_position - request.offset()) < TOLERANCE) {
-                derotator_current_angle_ = pos.actual_position;
-                break;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
-            elapsed_ms += POLL_MS;
-        }
-    } else {
-        // Symulacja: sleep 2s
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        derotator_current_angle_ = request.offset();
-    }
-    
-    derotator_moving_ = false;
-    derotator_homed_ = true;
-    
-    // Opcjonalnie: uruchom kalibrację po homingu (również blokująca)
-    if (request.calibrate_after()) {
-        runDerotatorCalibration();
-    }
-    return true;
-}
-```
-
-| Właściwość | Wartość |
-|-----------|---------|
-| **Typ** | Synchroniczna, blokująca (brak detached thread) |
-| **Czas blokowania** | Do 10s (timeout) + opcjonalnie kalibracja |
-| **Częstotliwość pollingu** | 50 ms (20 Hz) |
-| **CANopen** | Wymaga `enableDrive()` + `setPositionTarget()` na osi derotatora (axis_id=2) |
-| **Symulacja** | `sleep(2s)` + natychmiastowe ustawienie pozycji |
-| **Efekt uboczny** | Blokuje wątek wywołującego (np. API gRPC) na czas trwania |
-
-### 4.2 `runDerotatorCalibration()` / `runCANopenDerotatorCalibration()` — kalibracja derotatora
-
-```cpp
-bool runCANopenDerotatorCalibration() {
-    const int DEROTATOR_AXIS_ID = 2;
-    
-    // Krok 1: Pomiar backlashu (blokujący, ~1s)
-    double backlash_measured = measureBacklash(DEROTATOR_AXIS_ID);
-    derotator_config_.set_backlash(backlash_measured);
-    
-    // Krok 2: Kalibracja enkodera absolutnego (blokująca, 4 punkty × ~300ms)
-    if (derotator_config_.absolute_encoder()) {
-        calibrateAbsoluteEncoder(DEROTATOR_AXIS_ID);
-    }
-    
-    // Krok 3: Tabela kalibracyjna (blokująca, 8 punktów × ~300ms)
-    std::vector<double> calibration_table;
-    generateCalibrationTable(DEROTATOR_AXIS_ID, calibration_table);
-    // ... zapisz do configu
-    
-    return true;
-}
-```
-
-| Krok | Metoda | Czas | Opis |
-|------|--------|------|------|
-| 1 | `measureBacklash()` | ~1s (2 × 500ms sleep) | Ruch +10°, powrót, pomiar różnicy |
-| 2 | `calibrateAbsoluteEncoder()` | ~1.2s (4 × 300ms) | Sprawdzenie enkodera w 4 punktach (0°, 90°, 180°, 270°) |
-| 3 | `generateCalibrationTable()` | ~2.4s (8 × 300ms) | Tablica błędów w 8 punktach (co 45°, 0-315°) |
-| **Razem** | | **~4.6s** | Wszystkie kroki blokują wątek wywołującego |
-
-### 4.3 `measureBacklash()` — pomiar luzu
-
-```cpp
-double measureBacklash(int axis_id) {
-    // 1. Odczyt pozycji startowej
-    auto current_pos = canopen_interface_->getPositionData(axis_id);
-    double start_pos = current_pos.actual_position;
-    
-    // 2. Ruch w kierunku dodatnim (+10°)
-    canopen_interface_->setPositionTarget(axis_id, start_pos + 10.0, 5.0, 10.0);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));  // blokujące
-    
-    // 3. Ruch powrotny do start_pos
-    canopen_interface_->setPositionTarget(axis_id, start_pos, 5.0, 10.0);
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));  // blokujące
-    
-    // 4. Obliczenie backlashu = |rzeczywista_pozycja_końcowa - start_pos|
-    return backlash;
-}
-```
-
-| Właściwość | Wartość |
-|-----------|---------|
-| **Typ** | Blokująca pętla z `sleep()` |
-| **Czas** | ~1s (minimum, zależy od czasu ruchu CANopen) |
-| **CANopen** | `getPositionData()` + `setPositionTarget()` |
-| **Synchronizacja** | Brak mutexu (wykonywana w kontekście wywołującego) |
-
-### 4.4 `calibrateAbsoluteEncoder()` — kalibracja enkodera absolutnego
-
-```cpp
-bool calibrateAbsoluteEncoder(int axis_id) {
-    const int CALIBRATION_POINTS = 4;
-    const double CALIBRATION_ANGLES[] = {0.0, 90.0, 180.0, 270.0};
-    const double TOLERANCE = 0.1;
-    
-    for (int i = 0; i < CALIBRATION_POINTS; i++) {
-        double target_angle = CALIBRATION_ANGLES[i];
-        canopen_interface_->setPositionTarget(axis_id, target_angle, 5.0, 10.0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));  // blokujące
-        
-        // Weryfikacja: porównaj odczyt enkodera z pozycją napędu
-        auto encoder_data = canopen_interface_->getEncoderData(axis_id);
-        auto position_data = canopen_interface_->getPositionData(axis_id);
-        double error = std::abs(encoder_angle - drive_angle);
-        if (error > TOLERANCE) {
-            MOUNT_LOG_WARN("Encoder-drive mismatch at {:.1f}°", target_angle);
-        }
-    }
-    return true;
-}
-```
-
-### 4.5 `generateCalibrationTable()` — generowanie tablicy kalibracyjnej
-
-```cpp
-bool generateCalibrationTable(int axis_id, std::vector<double>& table) {
-    const int TABLE_POINTS = 8;  // 0°, 45°, 90°, ..., 315°
-    table.clear();
-    
-    // Powrót do home (0°)
-    canopen_interface_->setPositionTarget(axis_id, 0.0, 5.0, 10.0);
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
-    
-    for (int i = 0; i < TABLE_POINTS; i++) {
-        double target_angle = i * 45.0;
-        canopen_interface_->setPositionTarget(axis_id, target_angle, 5.0, 10.0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(300));  // blokujące
-        
-        // Odczyt rzeczywistej pozycji i obliczenie błędu
-        auto position_data = canopen_interface_->getPositionData(axis_id);
-        double error = position_data.actual_position - target_angle;
-        table.push_back(target_angle);
-        table.push_back(error);
-    }
-    return true;
-}
-```
+> **⚠️ UWAGA:** Funkcjonalność derotatora (w tym `DerotatorController`, `homeDerotator()`, `runDerotatorCalibration()`) została **całkowicie wyeliminowana** z projektu.
+>
+> Patrz: [`include/hal/hal_config.h:21`](../include/hal/hal_config.h#L21):
+> ```cpp
+> // (Derotator types removed — derotator functionality eliminated from the project)
+> ```
+>
+> System obsługuje wyłącznie 2 osie (RA/Azm, Dec/Alt) — brak osobnej osi derotatora.
+> Dokumentacja w sekcjach 4.1–4.5 opisuje kod, który **nigdy nie został zaimplementowany** w repozytorium — pozostał jedynie jako koncept w早期 fazie projektowej.
 
 ---
 
@@ -674,7 +510,7 @@ void simulateMovement(int axis_id, double target_position) {
 
 ---
 
-## 5. Wątki HAL — CanOpenHAL
+## 6. Wątki HAL — CanOpenHAL
 
 ### 5.1 `CanOpenMotor::controlLoop()` — pętla PID
 
@@ -1024,7 +860,85 @@ void CanOpenHAL::nmtMonitoringThread() {
 
 ---
 
-## 6. Wątki HAL — SimulatedHAL
+## 7. Wątki HAL — Mf7025v2Hal
+
+**Pliki**: [`include/hal/mf7025v2_hal/mf7025v2_hal.h`](../include/hal/mf7025v2_hal/mf7025v2_hal.h), [`src/hal/mf7025v2_hal/mf7025v2_hal.cpp`](../src/hal/mf7025v2_hal/mf7025v2_hal.cpp)
+
+Implementacja HAL dla serwonapędów LingKong MF7025v2 BLDC z wykorzystaniem protokołu CAN V2.36 przez SocketCAN. **Dostępna wyłącznie na Linuksie.**
+
+### 6.1 `MfMotor::pollLoop()` — pętla statusu (20 Hz)
+
+```
+MfMotor ──pollLoop()──▶ updateStatus() ──▶ readStatus1() (0x9A)
+                                        ──▶ readStatus2() (0x9C)
+                                        ──▶ readMultiTurnAngle() (0x92)
+                                        ──▶ callbacki pozycji/błędów
+```
+
+| Właściwość | Wartość |
+|-----------|---------|
+| **Typ** | `std::thread` przechowywany w `poll_thread_` |
+| **Czas życia** | Od `enable()` do `disable()` lub `emergencyStop()` |
+| **Częstotliwość** | 50 ms (20 Hz) |
+| **Synchronizacja** | `poll_running_` (atomic) — brak blokady mutex w pętli |
+| **Flaga stop** | `poll_running_ = false` (w `disable()`, `emergencyStop()`, destruktorze) |
+
+**Kod** ([`mf7025v2_hal.cpp:219`](../src/hal/mf7025v2_hal/mf7025v2_hal.cpp:219)):
+```cpp
+void MfMotor::pollLoop() {
+    while (poll_running_) {
+        updateStatus();
+        std::this_thread::sleep_for(std::chrono::milliseconds(poll_interval_ms_));
+    }
+}
+```
+
+**`updateStatus()`** ([`mf7025v2_hal.cpp:226`](../src/hal/mf7025v2_hal/mf7025v2_hal.cpp:226)) wykonuje 3 transakcje CAN na cykl:
+1. `readStatus2()` (0x9C) — temperatura, iq, speed (1dps/LSB), encoder
+2. `readStatus1()` (0x9A) — temperatura, voltage (0.01V), current (0.01A), motorState, errorState
+3. `readMultiTurnAngle()` (0x92) — bezwzględna pozycja wieloobrotowa (0.01°/LSB)
+
+Przy 20 Hz i 2 osiach = **120 transakcji CAN/s** na magistrali 1 Mbps — poniżej limitu.
+
+**Po zakończeniu**: Wątek jest łączony (`join()`) w `disable()` i destruktorze `MfMotor`.
+
+---
+
+### 6.2 `MfSafetyMonitor::monitorLoop()` — monitoring bezpieczeństwa (2 Hz)
+
+```
+MfSafetyMonitor ──monitorLoop()──▶ readStatus1() dla każdego monitored_node
+                               ──▶ callback błędów
+```
+
+| Właściwość | Wartość |
+|-----------|---------|
+| **Typ** | `std::thread` przechowywany w `monitor_thread_` |
+| **Czas życia** | Od `initialize()` do `shutdown()` |
+| **Częstotliwość** | 500 ms (2 Hz) |
+| **Synchronizacja** | `monitor_running_` (atomic) |
+| **Monitorowane węzły** | Z konfiguracji `HALConfig::axes[].can_node_id` (domyślnie 1, 2) |
+
+**Kod** ([`mf7025v2_hal.cpp:502`](../src/hal/mf7025v2_hal/mf7025v2_hal.cpp:502)):
+```cpp
+void MfSafetyMonitor::monitorLoop() {
+    while (monitor_running_) {
+        for (uint8_t node : monitored_nodes_) {
+            auto status = can_.readStatus1(node);
+            if (status.error_state != 0) {
+                if (error_callback_) {
+                    error_callback_("MF7025v2 node " + ... + " error: 0x" + ...);
+                }
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+}
+```
+
+---
+
+## 8. Wątki HAL — SimulatedHAL
 
 ### 6.1 `SimulatedMotor::simulationThread()` — symulacja fizyki
 
@@ -1133,7 +1047,7 @@ void SimulatedEncoder::readingThread() {
 
 ---
 
-## 7. Wątki EphemerisTracker
+## 9. Wątki EphemerisTracker
 
 ### 7.1 `Impl::trackingLoop()` — pętla śledzenia efemeryd
 
@@ -1226,7 +1140,7 @@ void updateTracking() {
 
 ---
 
-## 8. Wątki EphemerisTrackerManager
+## 10. Wątki EphemerisTrackerManager
 
 **Plik**: `src/models/ephemeris_tracker.cpp`, linie 1166-1376
 
@@ -1237,7 +1151,7 @@ void updateTracking() {
 
 ---
 
-## 9. Wątki Mock/Test
+## 11. Wątki Mock/Test
 
 **Plik**: `src/controllers/canopen_factory.cpp`, klasy wewnątrz `CanOpenFactory::create()`
 
@@ -1254,9 +1168,9 @@ Klasa `CanOpenInterfaceAdapter` (linie 272-541) deleguje wszystkie operacje do `
 
 ---
 
-## 10. Diagram przepływu wątków
+## 12. Diagram przepływu wątków
 
-### 10.1 Inicjalizacja systemu — sekwencja uruchamiania wątków
+### 12.1 Inicjalizacja systemu — sekwencja uruchamiania wątków
 
 ```mermaid
 flowchart TD
@@ -1304,12 +1218,25 @@ flowchart TD
     SAFETY_OBJ --> SAFETY_INIT["initialize(config)"]
     SAFETY_INIT --> MON_ON["monitoring_running_ = true"]
     MON_ON --> MON_THREAD["monitoring_thread_ = std::thread(monitoringLoop)"]
-    MON_THREAD --> MON_LOOP["Loop: co 10ms:<br/>checkLimits(0..2) → sleep(10ms)"]
+    MON_THREAD --> MON_LOOP["Loop: co 10ms:<br/>checkLimits(0..1) → sleep(10ms)"]
+
+    %% ── Gamepad ──────────────────────────────────────────────
+    START --> GAMEPAD["initGamepadInput() — otwarcie urządzenia"]
+    GAMEPAD --> GP_DEV["EvdevGamepadInput::initialize(device)"]
+    GP_DEV --> GP_OK{"sukces?"}
+    GP_OK -->|tak| GP_READY["gamepad_input_ gotowy<br/>(odczyt stanu dla UI)"]
+    GP_OK -->|nie| GP_FAIL["log: failed to open device"]
+
+    %% Gamepad loop — uruchamiany osobno przez startGamepadLoop()
+    START -.-> GP_START["startGamepadLoop() (opcjonalnie)"]
+    GP_START -.-> GP_RUN["gamepad_running_ = true"]
+    GP_RUN -.-> GP_THREAD["gamepad_thread_ = std::thread(gamepadLoop)"]
+    GP_THREAD -.-> GP_LOOP["Loop: co 200-500ms:<br/>readState() → button actions<br/>→ axis velocity → sleep"]
 
     START --> STATE["state_ = IDLE"]
 ```
 
-### 10.2 Wykonanie ruchu — interakcja wątków
+### 12.2 Wykonanie ruchu — interakcja wątków
 
 ```mermaid
 sequenceDiagram
@@ -1375,7 +1302,7 @@ sequenceDiagram
     end
 ```
 
-### 10.3 Śledzenie efemeryd — interakcja wątków
+### 12.3 Śledzenie efemeryd — interakcja wątków
 
 ```mermaid
 sequenceDiagram
@@ -1412,7 +1339,7 @@ sequenceDiagram
 
 ---
 
-## 11. Synchronizacja i współdzielone zasoby
+## 13. Synchronizacja i współdzielone zasoby
 
 ### 11.1 Macierz synchronizacji
 
@@ -1474,7 +1401,7 @@ while (!stop_requested_) { ... }
 
 ---
 
-## 12. Typowe problemy i debugowanie
+## 14. Typowe problemy i debugowanie
 
 ### 12.1 Jak sprawdzić jakie wątki są aktywne
 

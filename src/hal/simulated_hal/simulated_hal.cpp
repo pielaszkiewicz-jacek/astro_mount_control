@@ -580,8 +580,7 @@ std::vector<HALFeature> SimulatedHAL::getSupportedFeatures() const {
     return {
         HALFeature::PID_CONTROL,
         HALFeature::ENCODER_FEEDBACK,
-        HALFeature::REAL_TIME_CONTROL,
-        HALFeature::DEROTATOR_SUPPORT
+        HALFeature::REAL_TIME_CONTROL
     };
 }
 

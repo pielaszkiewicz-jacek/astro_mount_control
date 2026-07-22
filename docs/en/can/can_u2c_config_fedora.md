@@ -770,7 +770,7 @@ Configuring the U2C converter on Fedora/RHEL involves a few steps:
 6. **Configure** [`astro-mount-controller`](installation.md) with parameters `can_interface: can0`, `bitrate: 1000000`.
 7. If you encounter access issues — **check SELinux** (section 8.5).
 
-After completing these steps, the CAN bus will be ready for communication with CANopen drives (RA, Dec, derotator) according to the CiA 402 profile.
+After completing these steps, the CAN bus will be ready for communication with CANopen drives (RA, Dec) according to the CiA 402 profile.
 
 ---
 

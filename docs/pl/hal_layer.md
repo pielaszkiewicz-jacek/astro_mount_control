@@ -30,11 +30,11 @@ flowchart TB
             ENC["🔹 EncoderReader<br/>odczyt · home · rozdzielczość"]:::component
             SAFE["🔹 SafetyMonitor<br/>limity · awaryjne · monitoring"]:::component
             SENS["🔹 SensorInterface<br/>temp · ciśnienie · prąd"]:::component
-            DEROT_IF["🔹 Obsługa derotatora<br/>silnik · enkoder · konfiguracja"]:::component
         end
 
         subgraph IMPL["Implementacje HAL"]
-            CAN_IMPL["✅ CANopen (CiA 402)<br/>Komunikacja PDO/SDO/NMT<br/>Węzły: RA, Dec, Derotator"]:::done
+            MF_IMPL["✅ MF7025v2 (LingKong BLDC)<br/>Własny protokół CAN V2.36<br/>CAN ID 0x140+node_id · SocketCAN<br/>Węzły: HA (ID=1), Dec (ID=2)"]:::done
+            CAN_IMPL["✅ CANopen (CiA 402)<br/>Komunikacja PDO/SDO/NMT<br/>Węzły: RA, Dec"]:::done
             SIM_IMPL["✅ Symulowana<br/>Testy/rozwój<br/>Konfigurowalny szum i błędy"]:::done
             GAM_IMPL["✅ Gamepad<br/>Ręczne sterowanie joystickiem<br/>Evdev + legacy joystick API"]:::done
             SER_IMPL["✅ Szeregowa<br/>RS-232/485<br/>Modbus RTU/ASCII"]:::done
@@ -43,7 +43,7 @@ flowchart TB
     end
 
     subgraph HW["Sprzęt fizyczny"]
-        MOT_HW["🔄 Silniki serwo/krokowe<br/>Oś HA · Oś Dec · Derotator"]:::hw
+        MOT_HW["🔄 Silniki serwo/krokowe<br/>Oś HA · Oś Dec"]:::hw
         ENC_HW["📏 Enkodery<br/>Absolutne · Inkrementalne"]:::hw
         SENS_HW["🌡️ Czujniki<br/>Temperatura · Ciśnienie · Prąd"]:::hw
         GAM_HW["🎮 Gamepad/Joystick<br/>USB / Bluetooth<br/>Linux evdev"]:::hw
@@ -54,12 +54,11 @@ flowchart TB
     HAL_IF --> ENC
     HAL_IF --> SAFE
     HAL_IF --> SENS
-    HAL_IF --> DEROT_IF
-    MOTOR --> CAN_IMPL & SIM_IMPL & GAM_IMPL & SER_IMPL & ETH_IMPL
-    ENC --> CAN_IMPL & SIM_IMPL & GAM_IMPL
-    SAFE --> CAN_IMPL & SIM_IMPL & GAM_IMPL
-    SENS --> CAN_IMPL & SIM_IMPL & GAM_IMPL
-    DEROT_IF --> CAN_IMPL & SIM_IMPL
+    MOTOR --> MF_IMPL & CAN_IMPL & SIM_IMPL & GAM_IMPL & SER_IMPL & ETH_IMPL
+    ENC --> MF_IMPL & CAN_IMPL & SIM_IMPL & GAM_IMPL
+    SAFE --> MF_IMPL & CAN_IMPL & SIM_IMPL & GAM_IMPL
+    SENS --> MF_IMPL & CAN_IMPL & SIM_IMPL & GAM_IMPL
+    MF_IMPL --> MOT_HW & ENC_HW & SENS_HW
     CAN_IMPL --> MOT_HW & ENC_HW & SENS_HW
     SIM_IMPL -.->|symuluje| MOT_HW
     GAM_IMPL -.->|odczytuje| GAM_HW
@@ -83,6 +82,7 @@ flowchart TB
 |-----|------|------|--------|
 | Symulowany | `HALType::SIMULATED` | Symulowany sprzęt do testów/rozwoju | ✅ Zaimplementowany |
 | CANopen | `HALType::CANOPEN` | Napędy CANopen/CiA 402 | ✅ Zaimplementowany |
+| **MF7025v2** | **`HALType::MF7025V2`** | **LingKong BLDC Servo (własny protokół CAN)** | **✅ Zaimplementowany** |
 | Gamepad | `HALType::GAMEPAD` | Sterowanie ręczne przez gamepad/joystick | ✅ Zaimplementowany |
 | Szeregowy | `HALType::SERIAL` | Komunikacja szeregowa RS-232/485 (Modbus) | ✅ Zaimplementowany |
 | Ethernet | `HALType::ETHERNET` | Modbus TCP przez Ethernet | ✅ Zaimplementowany |
@@ -107,11 +107,6 @@ public:
     virtual std::unique_ptr<EncoderReader> createEncoderReader(int axis_id) = 0;
     virtual std::unique_ptr<SafetyMonitor> createSafetyMonitor() = 0;
     virtual std::unique_ptr<SensorInterface> createSensorInterface() = 0;
-    
-    // Obsługa derotatora (pole obserwacyjne)
-    virtual std::unique_ptr<MotorControl> createDerotatorMotor();
-    virtual std::unique_ptr<EncoderReader> createDerotatorEncoder();
-    virtual bool configureDerotator(const DerotatorConfig& config);
     
     // Informacje o platformie
     virtual std::string getPlatformName() const = 0;
@@ -144,7 +139,6 @@ public:
 | `SAFETY_MONITORING` | Monitorowanie bezpieczeństwa |
 | `SENSOR_MONITORING` | Monitorowanie czujników |
 | `REAL_TIME_CONTROL` | Sterowanie w czasie rzeczywistym |
-| `DEROTATOR_SUPPORT` | Obsługa derotatora pola |
 | `MANUAL_CONTROL` | Sterowanie ręczne (gamepad/joystick) |
 
 ---
@@ -436,7 +430,6 @@ struct HALConfig {
         std::map<int, std::string> axis_mapping;   // Mapowanie osi physical→funkcja
     } gamepad;
     
-    DerotatorConfig derotator;           // Konfiguracja derotatora
     std::vector<AxisConfig> axes;        // Konfiguracje osi
     PIDParams pid_params;                // Parametry regulatora PID
     
@@ -953,36 +946,6 @@ hal->shutdown();
 
 ---
 
-## Obsługa Derotatora (Pola Obserwacyjnego)
-
-Warstwa HAL zawiera obsługę derotatora pola:
-
-```cpp
-// Typ derotatora
-enum class DerotatorType {
-    CANOPEN = 0,
-    STEPPER = 1,
-    SERVO = 2,
-    CUSTOM = 3
-};
-
-// Konfiguracja derotatora
-struct DerotatorConfig {
-    DerotatorType type{DerotatorType::STEPPER};
-    bool enabled{false};
-    double gear_ratio{180.0};
-    double max_speed{5.0};           // °/s
-    double max_acceleration{2.0};    // °/s²
-    double backlash{0.0};            // stopnie
-    bool absolute_encoder{false};
-    double encoder_resolution{36000.0};
-    double homing_offset{0.0};
-    std::vector<double> calibration_table;
-    std::string connection_string;
-};
-```
-
----
 
 ## Przykłady Użycia
 
@@ -1032,9 +995,6 @@ if (hal->supportsFeature(HALFeature::PID_CONTROL)) {
 }
 if (hal->supportsFeature(HALFeature::ENCODER_FEEDBACK)) {
     std::cout << "Dostępne sprzężenie zwrotne enkodera" << std::endl;
-}
-if (hal->supportsFeature(HALFeature::DEROTATOR_SUPPORT)) {
-    auto derotator = hal->createDerotatorMotor();
 }
 ```
 

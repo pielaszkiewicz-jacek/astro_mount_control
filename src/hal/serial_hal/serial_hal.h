@@ -198,21 +198,6 @@ private:
     std::thread monitor_thread_;
     void monitorLoop();
     
-    // Derotator support (optional, inlined for clarity)
-    std::unique_ptr<MotorControl> createDerotatorMotor() override {
-        int derotator_axis = 2;
-        return std::make_unique<SerialMotor>(derotator_axis, this);
-    }
-    
-    std::unique_ptr<EncoderReader> createDerotatorEncoder() override {
-        int derotator_axis = 2;
-        return std::make_unique<SerialEncoder>(derotator_axis, this);
-    }
-    
-    bool configureDerotator(const struct DerotatorConfig& config) override {
-        (void)config;
-        return initialized_.load();
-    }
 };
 
 } // namespace hal

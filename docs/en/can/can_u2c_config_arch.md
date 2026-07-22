@@ -794,7 +794,7 @@ Configuring the U2C converter on Arch Linux involves a few steps:
 5. If using NetworkManager — **disable it for can0** via `unmanaged-devices`.
 6. **Configure** [`astro-mount-controller`](installation.md) with parameters `can_interface: can0`, `bitrate: 1000000`.
 
-After completing these steps, the CAN bus will be ready for communication with CANopen drives (RA, Dec, derotator) according to the CiA 402 profile.
+After completing these steps, the CAN bus will be ready for communication with CANopen drives (RA, Dec) according to the CiA 402 profile.
 
 ---
 

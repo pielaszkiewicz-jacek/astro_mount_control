@@ -22,13 +22,6 @@ Astronomical Mount Controller is a modular architecture system designed to provi
 - Coordination of RA and Dec axis movement
 - Integration with autoguiding system
 - TPOINT calibration management
-- Delegates derotator hardware control to DerotatorController
-
-#### Derotator Integration:
-The MountController no longer manages derotator hardware directly. As of Phase 1 refactoring, all derotator-specific logic was extracted into the standalone [`DerotatorController`](include/controllers/derotator_controller.h) class. MountController retains:
-- Field rotation rate calculation (depends on mount axis positions)
-- Pimpl delegator methods for backward-compatible gRPC API
-- Injects computed field rotation rate via [`DerotatorController::setFieldRotationRate()`](src/controllers/derotator_controller.cpp)
 
 #### Internal State:
 ```cpp
@@ -86,44 +79,6 @@ struct MountStatus {
 };
 ```
 ```
-
-### 2. DerotatorController
-
-A standalone controller extracted from [`MountController::Impl`](src/controllers/mount_controller.cpp) during Phase 1 refactoring. Reduces coupling by encapsulating all derotator-specific hardware and logic.
-
-#### Responsibilities:
-- Field rotation compensation for alt-az and CASUAL mounts
-- Derotator motor and encoder management via HAL
-- Derotator homing (multiple methods: AUTO, LIMIT_SWITCH, ENCODER_ZERO, MANUAL)
-- Position/rate control via `controlFieldRotation()` with modes:
-  - `DISABLED` — no rotation compensation
-  - `ALT_AZ` — automatic field rotation for alt-az mounts
-  - `EQUATORIAL` — field rotation for equatorial mounts
-  - `CUSTOM` — user-defined rotation rate
-  - `FIXED_ANGLE` — absolute position control
-  - `TRACKING` — tracking-based compensation
-
-#### Architecture:
-```cpp
-class DerotatorController {
-    // Own shared_mutex and work thread (thread-safe, async homing)
-    ICanOpenInterface* canopen_;          // Non-owning pointer
-    std::unique_ptr<hal::MotorControl> motor_;   // HAL motor
-    std::unique_ptr<hal::EncoderReader> encoder_; // HAL encoder
-    
-    // MountController injects the computed field rotation rate
-    void setFieldRotationRate(double rate_deg_s);
-    
-    // Public API called by MountController pimpl delegators
-    bool home(const DerotatorHomingRequest& request);
-    bool controlFieldRotation(const FieldRotationControlRequest& request);
-    ::astro_mount::DerotatorStatus getStatus() const;
-};
-```
-
-#### Key Files:
-- [`include/controllers/derotator_controller.h`](include/controllers/derotator_controller.h) — Class declaration (~224 lines)
-- [`src/controllers/derotator_controller.cpp`](src/controllers/derotator_controller.cpp) — Implementation (~858 lines)
 
 ### 3. AstronomicalCalculations
 

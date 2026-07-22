@@ -14,7 +14,6 @@ flowchart TB
     classDef traj fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#006064
     classDef boot fill:#fff8e1,stroke:#f9a825,stroke-width:2px,color:#f57f17
     classDef axis fill:#ffebee,stroke:#d32f2f,stroke-width:2px,color:#b71c1c
-    classDef derot fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
     classDef hal fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#311b92
     classDef sys fill:#eceff1,stroke:#546e7a,stroke-width:2px,color:#37474f
 
@@ -65,12 +64,6 @@ flowchart TB
         CA["ControlAxis"]:::axis
         SA["StopAxis / EmergencyStop"]:::axis
         GAS["GetAxisStatus"]:::axis
-    end
-    
-    subgraph DEROT["🔄 Derotator & Field Rotation"]
-        CD["ConfigureDerotator"]:::derot
-        EFR["EnableFieldRotation / ControlFieldRotation"]:::derot
-        HD["HomeDerotator / GetDerotatorStatus"]:::derot
     end
     
     subgraph HAL_CFG["🔧 HAL Configuration"]
@@ -595,102 +588,6 @@ def check_system_health():
         print(f"  Uptime: {metrics.uptime_seconds:.0f} seconds")
     
     return response
-```
-
-### 11. Derotator / Field Rotation Control
-
-#### ConfigureDerotator - Configure Derotator Hardware
-
-```python
-def configure_derotator():
-    """Configure derotator hardware parameters."""
-    config = proto.DerotatorConfig()
-    config.type = proto.DerotatorConfig.CANOPEN
-    config.connection_string = "can0:3"
-    config.gear_ratio = 5.0
-    config.max_speed = 5.0
-    config.max_acceleration = 1.0
-    config.backlash = 2.5
-    config.absolute_encoder = True
-    config.encoder_resolution = 131072
-    config.homing_offset = 0.0
-    
-    stub.ConfigureDerotator(config)
-    print("Derotator configured")
-```
-
-```cpp
-// C++ example
-astro_mount::DerotatorConfig config;
-config.set_type(astro_mount::DerotatorConfig::CANOPEN);
-config.set_connection_string("can0:3");
-config.set_gear_ratio(5.0);
-config.set_max_speed(5.0);
-config.set_max_acceleration(1.0);
-config.set_backlash(2.5);
-config.set_absolute_encoder(true);
-config.set_encoder_resolution(131072);
-
-grpc::ClientContext context;
-google::protobuf::Empty response;
-stub->ConfigureDerotator(&context, config, &response);
-```
-
-#### EnableFieldRotation - Enable Field Rotation Compensation
-
-```python
-def enable_field_rotation(latitude, altitude, azimuth):
-    """Enable field rotation compensation for alt-az mounts."""
-    params = proto.FieldRotationParams()
-    params.enabled = True
-    params.latitude = latitude
-    params.altitude = altitude
-    params.azimuth = azimuth
-    
-    stub.EnableFieldRotation(params)
-    print("Field rotation compensation enabled")
-```
-
-#### ControlFieldRotation - Direct Field Rotation Control
-
-```python
-def control_field_rotation(mode, target_angle=None, rate=None):
-    """Control field rotation angle or rate."""
-    request = proto.FieldRotationControlRequest()
-    
-    if mode == "alt_az":
-        request.mode = proto.FieldRotationControlRequest.ALT_AZ
-    elif mode == "fixed_angle":
-        request.mode = proto.FieldRotationControlRequest.FIXED_ANGLE
-        request.target_angle = target_angle
-    elif mode == "custom":
-        request.mode = proto.FieldRotationControlRequest.CUSTOM
-        request.rotation_rate = rate
-    
-    stub.ControlFieldRotation(request)
-    print(f"Field rotation control set to mode: {mode}")
-```
-
-#### HomeDerotator - Home Derotator
-
-```python
-def home_derotator():
-    """Home the derotator to find zero position."""
-    request = proto.DerotatorHomingRequest()
-    request.method = proto.DerotatorHomingRequest.AUTO
-    request.search_speed = 2.0
-    request.calibrate_after = True
-    
-    stub.HomeDerotator(request)
-    print("Derotator homing initiated")
-    
-    # Poll until homed
-    while True:
-        status = stub.GetDerotatorStatus(google_dot_protobuf_dot_empty__pb2.Empty())
-        if status.homed:
-            print(f"Derotator homed at angle: {status.current_angle:.2f} deg")
-            break
-        time.sleep(0.5)
 ```
 
 ### 12. HAL Configuration

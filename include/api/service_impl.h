@@ -217,30 +217,6 @@ public:
                                const google::protobuf::Empty* request,
                                astro_mount::AxisStatus* response) override;
     
-    // ============================================
-    // FIELD ROTATION / DEROTATOR CONTROL
-    // ============================================
-    
-    grpc::Status ConfigureDerotator(grpc::ServerContext* context,
-                                    const astro_mount::DerotatorConfig* request,
-                                    google::protobuf::Empty* response) override;
-    
-    grpc::Status EnableFieldRotation(grpc::ServerContext* context,
-                                     const astro_mount::FieldRotationParams* request,
-                                     google::protobuf::Empty* response) override;
-    
-    grpc::Status ControlFieldRotation(grpc::ServerContext* context,
-                                      const astro_mount::FieldRotationControlRequest* request,
-                                      google::protobuf::Empty* response) override;
-    
-    grpc::Status GetDerotatorStatus(grpc::ServerContext* context,
-                                    const google::protobuf::Empty* request,
-                                    astro_mount::DerotatorStatus* response) override;
-    
-    grpc::Status HomeDerotator(grpc::ServerContext* context,
-                               const astro_mount::DerotatorHomingRequest* request,
-                               google::protobuf::Empty* response) override;
-    
     grpc::Status Home(grpc::ServerContext* context,
                       const astro_mount::MountHomingRequest* request,
                       google::protobuf::Empty* response) override;

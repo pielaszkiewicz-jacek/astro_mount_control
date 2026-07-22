@@ -36,17 +36,10 @@ public:
         std::string ssl_key_path;
     };
 
-    struct CanOpenConfig {
-        std::string interface;
-        int node_id;
-        int baud_rate;
-        bool enable_sync;
-        int sync_interval_ms;
-        std::string accel_mode = "time";  // "time" = drive interprets 0x6083/0x6084 as ramp time,
-                                           // "rate" = drive interprets as acceleration rate (°/s²)
-        bool pdo_config_enabled = false;  // Write PDO mappings to drive
-    };
-
+    // CanOpenConfig removed — use hal::HALConfig::canopen directly as single source of truth.
+    // The CANopen configuration was duplicated across 4 structures (ControllerConfig,
+    // CanOpenConfig, HALConfig::canopen, ICanOpenInterface::Config).
+    // HALConfig::canopen is now the canonical source.
     struct AxisPhysicalParameters {
         // CANopen scaling factors (per-axis)
         double position_counts_per_degree;  // counts per degree for 0x6064
@@ -185,27 +178,6 @@ public:
         bool auto_calibrate;
     };
 
-    struct DerotatorConfig {
-        enum DerotatorType {
-            CANOPEN = 0,
-            STEPPER = 1,
-            SERVO = 2,
-            CUSTOM = 3
-        };
-
-        DerotatorType type;
-        bool enabled;
-        std::string connection_string;
-        double gear_ratio;
-        double max_speed;
-        double max_acceleration;
-        double backlash;
-        bool absolute_encoder;
-        double encoder_resolution;
-        double homing_offset;
-        std::vector<double> calibration_table;
-    };
-
     struct FieldRotationParams {
         bool enabled;
         double latitude;
@@ -293,12 +265,16 @@ public:
      * @return Network configuration
      */
     NetworkConfig getNetworkConfig() const;
+/**
+ * @brief Get CANopen configuration from HALConfig (single source of truth)
+ * @return Reference to the CANopen configuration subsection
+ *
+ * Note: The old Configuration::CanOpenConfig was removed to eliminate
+ * 4-way duplication. astro_mount::hal::CanOpenConfig (via HALConfig::canopen)
+ * is now the canonical source for all CANopen parameters.
+ */
+const astro_mount::hal::CanOpenConfig& getCanOpenConfig() const;
 
-    /**
-     * @brief Get CanOpen configuration
-     * @return CanOpen configuration
-     */
-    CanOpenConfig getCanOpenConfig() const;
 
     /**
      * @brief Get mount configuration
@@ -337,12 +313,6 @@ public:
     TPointConfig getTPointConfig() const;
 
     /**
-     * @brief Get derotator configuration
-     * @return Derotator configuration
-     */
-    DerotatorConfig getDerotatorConfig() const;
-
-    /**
      * @brief Get servo initialization configuration
      * @return Servo init configuration (SDO sequence)
      */
@@ -365,12 +335,12 @@ public:
      * @param config Network configuration
      */
     void setNetworkConfig(const NetworkConfig& config);
+/**
+ * @brief Set CANopen configuration (stored in HALConfig::canopen)
+ * @param config CANopen configuration
+ */
+void setCanOpenConfig(const astro_mount::hal::CanOpenConfig& config);
 
-    /**
-     * @brief Set CanOpen configuration
-     * @param config CanOpen configuration
-     */
-    void setCanOpenConfig(const CanOpenConfig& config);
 
     /**
      * @brief Set mount configuration
@@ -401,12 +371,6 @@ public:
      * @param config TPOINT configuration
      */
     void setTPointConfig(const TPointConfig& config);
-
-    /**
-     * @brief Set derotator configuration
-     * @param config Derotator configuration
-     */
-    void setDerotatorConfig(const DerotatorConfig& config);
 
     /**
      * @brief Set field rotation parameters

@@ -48,7 +48,6 @@ flowchart TD
         DRV2["⚡ Napęd Osi 2<br/>(Deklinacja/Alt)"]:::hw
         ENC1["📏 Enkoder Osi 1"]:::hw
         ENC2["📏 Enkoder Osi 2"]:::hw
-        DEROT["🔄 Derotator"]:::hw
     end
 
     GUI -->|"slewToEquatorial()<br/>startTracking()<br/>park()"| API
@@ -418,8 +417,6 @@ flowchart TD
         TEL_CFG["Konfiguracja Teleskopu<br/>• focal_length, aperture<br/>• camera_model, pixel_size<br/>• wymiary sensora"]
         KF_CFG["Konfiguracja Filtra Kalmana<br/>• process_noise<br/>• measurement_noise<br/>• adaptive_q/r<br/>• innovation_threshold"]
         TP_CFG["Konfiguracja TPOINT<br/>• enabled_terms<br/>• min_measurements<br/>• max_residual"]
-        DEROT_CFG["Konfiguracja Derotatora<br/>• type (none/canopen/stepper)<br/>• gear_ratio, max_speed<br/>• acceleration, backlash<br/>• calibration_table"]
-        FR_CFG["Konfiguracja Pola Rotacyjnego<br/>• enabled<br/>• compensation_mode<br/>• max_rate<br/>• PID gains"]
         HAL_CFG["Konfiguracja HAL<br/>• type (canopen/simulated)<br/>• parametry CAN<br/>• watchdog timeout<br/>• PDO update rate"]
         NET["Konfiguracja Sieci<br/>• adres gRPC<br/>• port gRPC<br/>• SSL settings"]
         GUID_CFG["Konfiguracja Gajdera<br/>• enabled<br/>• connection_string<br/>• max_correction<br/>• aggression, exposure"]
@@ -451,8 +448,6 @@ flowchart TD
     TEL_CFG -->|"telescope focal_length"| CONTROLLER
     KF_CFG -->|"process_noise, measurement_noise"| CONTROLLER
     TP_CFG -->|"enabled_terms, min_measurements"| CONTROLLER
-    DEROT_CFG -->|"parametry derotatora"| CONTROLLER
-    FR_CFG -->|"parametry pola rotacyjnego"| CONTROLLER
     HAL_CFG -->|"hal_type, can config"| CONTROLLER
     GUID_CFG -->|"ustawienia gajdera"| CONTROLLER
     NET -->|"grpc_address, grpc_port"| GRPC

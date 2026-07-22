@@ -165,7 +165,7 @@ Displays proxy port, poll interval, and version information.
 - Click **Save & Reconnect** to apply changes
 
 #### Configuration Groups
-The configuration is organized into 18 collapsible groups, each with **Save** and **Restore Defaults** buttons:
+The configuration is organized into 21 collapsible groups, each with **Save** and **Restore Defaults** buttons:
 
 | # | Group | Key Fields |
 |---|-------|------------|
@@ -188,10 +188,8 @@ The configuration is organized into 18 collapsible groups, each with **Save** an
 | 17 | Guider | enabled, connection_string, max_correction, aggression, exposure_time_ms, binning |
 | 18 | Kalman Filter | process_noise, measurement_noise, adaptive_q, adaptive_r, innovation_threshold, max_iterations |
 | 19 | TPOINT Calibration | enabled_terms bitmask, min_measurements, max_residual, auto_calibrate |
-| 20 | Derotator | type, enabled, connection_string, gear_ratio, max_speed, max_acceleration, backlash, absolute_encoder, encoder_resolution, homing_offset |
-| 21 | Field Rotation | enabled, latitude, altitude, azimuth, computed_rate, applied_correction, temperature, flexure_correction |
-| 22 | HAL | interface_type, can_interface, can_node_id, can_baud_rate, heartbeat_interval_ms, pdo_mapping_mode |
-| 23 | HAL - Gamepad | device_path, deadzone, sensitivity, poll_interval_ms |
+| 20 | HAL | interface_type, can_interface, can_node_id, can_baud_rate, heartbeat_interval_ms, pdo_mapping_mode |
+| 21 | HAL - Gamepad | device_path, deadzone, sensitivity, poll_interval_ms |
 
 **Global Actions:**
 - **Export Config** — Download all configuration as a JSON file (`mount-config-YYYYMMDDTHHMMSS.json`)

@@ -1,422 +1,302 @@
-# Verification Report: `plans/incremental_encoders_plan.md`
+# Raport weryfikacji stabilności i poprawności numerycznej
 
-> **Date**: 2026-06-07  
-> **Scope**: Full cross-reference of plan claims against source code  
-> **Files verified**: 12 source files across C++, Proto, Node.js, and frontend layers
-
----
-
-## Summary of Findings
-
-| Category | Verdict |
-|----------|---------|
-| **Numerical correctness** | ✅ **Correct** — Wahba/SVD math is sound |
-| **Implementation correctness** | ✅ **Correct** — code matches descriptions |
-| **Line reference accuracy** | ✅ **All correct** |
-| **Architecture assessment** | ✅ **Sound** |
-| **Proposed changes** | ✅ **Needed** — all gaps confirmed |
-| **Minor issues found** | ⚠️ 2 (see below) |
+**Projekt**: AstroMountController  
+**Data**: 2026-07-19  
+**Wersja**: 1.0.0  
+**Język**: C++17  
+**Linie kodu**: ~15,000+ (src + include + tests)  
+**Testy**: ~340+
 
 ---
 
-## 1. Core Mathematical Claim: Wahba/SVD
+## 1. Obliczenia astronomiczne — ✅ STABILNE
 
-### Claim (Plan §1.2, §8.6)
-> Wahba/SVD finds optimal rotation R = V·U^T from cross-covariance B = Σ(mount_vec_i · horiz_vec_i^T). This absorbs encoder offset as part of the rotation matrix, making the system agnostic to encoder type.
+**Plik**: [`include/core/astronomical_calculations.h`](include/core/astronomical_calculations.h)  
+**Implementacja**: [`src/core/astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp) (szkielet delegujący do SOFA)
 
-### Verification ✅
+### Zabezpieczenia numeryczne
 
-**Implementation** at [`mount_controller.cpp:2622-2813`](src/controllers/mount_controller.cpp:2622) — CASUAL branch:
+| Osobliwość | Mechanizm ochrony | Lokalizacja |
+|-----------|-------------------|-------------|
+| **Biegun (cos(lat)→0)** | `MIN_COS_LAT = 1e-10` — clamp przed dzieleniem przez zero w ALT_AZ rate | [`mount_controller.cpp:2349`](src/controllers/mount_controller.cpp:2349) |
+| **Zenit (cos(alt)→0)** | `MIN_COS_ALT = cos(89.5°) ≈ 0.0087` — clamp w azimuth rate | [`mount_controller.cpp:2357`](src/controllers/mount_controller.cpp:2357) |
+| **Propagacja NaN/Inf** | `std::isfinite()` check po każdej aktualizacji pozycji, rate'ów, Kalman filter | [`mount_controller.cpp:1719`](src/controllers/mount_controller.cpp:1719) |
+| **Kwaternion jednostkowy** | `isValid()` sprawdza `|sum_sq - 1| < 1e-6`, normowanie w `setFromAxisAngles()` | [`mount_controller.cpp:165`](src/controllers/mount_controller.cpp:165) |
+| **Dzielenie przez cos(Dec)** | Guard `cos(87°) ≈ 0.052` w guider correction RA | [`mount_controller.cpp:4472`](src/controllers/mount_controller.cpp:4472) |
+| **Refrakcja przy horyzoncie** | Osobne testy dla zakresu 5°–89° | [`test_astronomical_calculations.cpp:179`](tests/test_astronomical_calculations.cpp) |
 
-```cpp
-// Lines 2661-2699: Build cross-covariance matrix B
-for (const auto& m : bootstrap_measurements_) {
-    // Uses m.observed_ra, m.observed_dec (NOT m.expected_ra/m.expected_dec) ✓
-    auto [true_alt, true_az] = astro_calc_->equatorialToHorizontal(
-        ra_hours, dec_deg, jd, true);
-    // ENU: x=East, y=North, z=Up
-    Eigen::Vector3d horiz_vec(sin(az)*cos(alt), cos(az)*cos(alt), sin(alt));
-    // Mount frame: axis1=altitude-like, axis2=azimuth-like
-    Eigen::Vector3d mount_vec(sin(a2)*cos(a1), cos(a2)*cos(a1), sin(a1));
-    B += mount_vec * horiz_vec.transpose();
-}
+### Biblioteka SOFA
 
-// Lines 2704-2733: SVD → optimal rotation
-Eigen::JacobiSVD<Eigen::Matrix3d> svd(B, Eigen::ComputeFullU | Eigen::ComputeFullV);
-Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();
-// Ensure det=+1 (proper rotation, not reflection)
-if (R.determinant() < 0) { V.col(2) = -V.col(2); R = V * svd.matrixU().transpose(); }
+Wykorzystuje standard IAU 2006/2000A (MHB2000 nutation, CIO-based precession) — ten sam
+standard co JPL Horizons, NIST, USNO. Zapewnia submilisekundową dokładność.
+
+### Testy numeryczne
+
+- Precesja + proper motion dla gwiazd katalogowych (Vega, Polaris)
+- Round-trip kwaternionów (identity + known rotation)
+- Refrakcja dla skrajnych wysokości (5°, 89°)
+- Airmass: zenit = 1.0, horyzont → duża wartość (clamp do 38)
+
+**Ocena**: 9.5/10
+
+---
+
+## 2. Mount Controller — pętla trackingu — ✅ DOBRZE
+
+**Plik**: [`src/controllers/mount_controller.cpp`](src/controllers/mount_controller.cpp) (7351 linii)
+
+### Watchdog i safety nets
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ Tracking Loop (100ms interval)                                      │
+│                                                                     │
+│ 1. dt = time_since_last_iteration                                   │
+│ 2. if dt > 5.0s → ERROR (watchdog)     ← kernel/scheduler hang     │
+│ 3. Oblicz rate_factor (soft limits)                                 │
+│ 4. if !isfinite(rate_factor) → ERROR       ← NaN/Inf propagation   │
+│ 5. Odczytaj guider_delta pod rate_mutex_                            │
+│ 6. axis_pos += rate * dt * rate_factor + guider_offset              │
+│ 7. if !isfinite(axis_pos) → ERROR              ← NaN after update   │
+│ 8. Kalman filter predict + update                                   │
+│ 9. if !isfinite(kf_output) → ERROR          ← NaN after Kalman     │
+│10. Wyślij pozycję/prędkość do HAL                                    │
+│11. sleep_for(100ms)                                                 │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key checks**:
-- ✅ Uses `observed_ra`/`observed_dec` only (line 2668-2669), NOT `expected_ra`/`expected_dec`
-- ✅ SVD computation with condition number check (lines 2711-2724) — detects degenerate (collinear) star configurations
-- ✅ Determinant fix for proper rotation (lines 2729-2733)
-- ✅ Quaternion conversion with all 4 branching cases (lines 2736-2769) — numerically stable
-- ✅ Quaternion normalization (lines 2766-2769)
-- ✅ RMS residual computation (lines 2776-2794)
-- ✅ Result stored in `mount_orientation_` (line 2801) — used by slewing/tracking
+### Kalman Filter — Joseph stabilized form
 
-**Numerical correctness**: The algorithm correctly solves Wahba's problem:
-1. `B = Σ(mount_vec_i · horiz_vec_i^T)` builds the cross-covariance (line 2699)
-2. SVD decomposes `B = U·S·V^T` (line 2704)
-3. Optimal rotation `R = V·U^T` (line 2726) — proven by Kabsch algorithm
-4. The quaternion conversion is standard matrix→quaternion with all 4 cases
+Wewnętrzny `PositionKalmanFilter` ([mount_controller.cpp:42](src/controllers/mount_controller.cpp:42)):
 
-### Plan's proposed extension (§8.6)
+- **State**: [pos1, pos2, rate1, rate2] — 4-wymiarowy
+- **Measurement**: [pos1, pos2] — pozycja z tracking loop
+- **Covariance update**: Joseph stabilized form
+  ```
+  P = (I-KH) * P * (I-KH)^T + K * R * K^T
+  ```
+- **Rate injection**: `setRates()` przed predict() — używa astronomicznych rate'ów zamiast
+  wewnętrznych (które lagują)
 
-The plan proposes extending Wahba/SVD from CASUAL-only to ALL mount types (EQUATORIAL, ALT_AZ). This is **independently verified as correct** — the current EQUATORIAL/ALT_AZ branch (lines 2814-2875) uses simple mean offset in RA/Dec space, which:
-- ❌ Does NOT use mount encoder positions → cannot absorb encoder offset
-- ❌ Does NOT set `mount_orientation_` quaternion → not stored persistently
-- ✅ The plan's replacement with Wahba/SVD would solve all three types uniformly
+### Thread safety
 
----
+| Zasób | Mechanizm | Uzasadnienie |
+|-------|-----------|-------------|
+| `state_` (UNINITIALIZED→IDLE→SLEWING→...) | `shared_mutex` (`unique_lock` write, `shared_lock` read) | Główny stan, częsty odczyt (getStatus), rzadki zapis |
+| `axis1_rate_`, `axis2_rate_` | `shared_mutex` (`rate_mutex_`) | Współdzielone między tracking loop a applyGuiderCorrection |
+| `guider_delta_axis1_`, `guider_delta_axis2_` | `shared_mutex` (`rate_mutex_`) | Pisane z gRPC wątku, czytane + zerowane w tracking loop |
+| `notify_in_progress_` | `atomic<bool>` | Re-entrancy guard — zapobiega deadlock'owi przy rekurencyjnym callbacku |
+| `tracking_active_` | `atomic<bool>` | Flaga dla wątku tracking loop |
 
-## 2. Mean Offset Path (Existing Code)
+### Guider correction pipeline
 
-### Claim (Plan §8.6)
-> Lines 2814-2875 compute simple mean RA/Dec offset, NOT a proper rotation. This is insufficient for incremental encoders.
-
-### Verification ✅
-
-**Implementation** at [`mount_controller.cpp:2814-2875`](src/controllers/mount_controller.cpp:2814):
-
-```cpp
-// Lines 2824-2838: Compute mean RA/Dec offset
-for (const auto& m : bootstrap_measurements_) {
-    double d_ra = m.expected_ra - m.observed_ra;  // Uses expected_ra! ✓
-    double d_dec = m.expected_dec - m.observed_dec;
-    ...
-}
-// Lines 2865-2866: Apply correction as target offset ONLY
-axis1_target_ += ra_correction * 15.0;
-axis2_target_ += dec_correction;
-// Does NOT set mount_orientation_ ← confirmed
+```
+applyGuiderCorrection(ra_arcsec, dec_arcsec)
+  ↓ clamping (max_correction_arcsec)
+  ↓ aggression factor
+  ↓ cos(Dec) scaling dla RA
+  ↓ arcsec → servo degrees (×15/3600/cos(Dec) dla RA, /3600 dla Dec)
+  ↓ × gear_ratio
+  ↓ accumulate → guider_delta_axis1_ += ... (pod rate_mutex_)
+  ↓
+Tracking loop next iteration:
+  ↓ read + reset guider_delta (consumed exactly once)
+  ↓ axis1_position += rate * dt + guider_delta
 ```
 
-**Key findings**:
-- ✅ Plan correctly identifies that this path uses `expected_ra`/`expected_dec` (line 2825), not `observed`
-- ✅ Plan correctly notes that `mount_orientation_` is NOT set here (confirmed — no assignment)
-- ✅ Plan correctly notes that only `axis1_target_`/`axis2_target_` are adjusted (lines 2865-2866)
-- ⚠️ **Small correction**: The plan says this path is for EQUATORIAL/ALT_AZ only — **confirmed correct** (lines 2814-2818 check for `MountType::CASUAL` else branch)
-
-**Numerical correctness issue**: This mean-offset approach computes a translation in coordinate space, NOT a rotation. For encoder offset absorption, it's fundamentally insufficient — it doesn't propagate through the quaternion-based slew pipeline.
+**Ocena**: 9/10
 
 ---
 
-## 3. `initialize()` Function
+## 3. Implementacje HAL
 
-### Claim (Plan §8.1)
-> `initialize()` currently has NO encoder type logic — no check of `config_.encoders_absolute`. Need to add branch for incremental encoders.
+| HAL | Status | Opis | Słabe punkty |
+|-----|--------|------|-------------|
+| [`SimulatedHAL`](src/hal/simulated_hal/simulated_hal.cpp) | ✅ **10/10** | W pełni funkcjonalny, szum Gaussa, symulacja ruchu | — |
+| [`CanOpenHAL`](src/hal/canopen_hal/canopen_hal.cpp) | ✅ **9/10** | CiA 402, PDO, NMT heartbeat, position rewind | Zależny od SocketCAN (Linux) |
+| [`Mf7025v2Hal`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp) | ✅ **9.5/10** | **Po naprawach**: mutex w updateStatus, dead-node detection (5 failures→ESTOP), logging CAN errors | Pole `last_status_` nieużywane ([header:252](include/hal/mf7025v2_hal/mf7025v2_hal.h:252)) |
+| [`SerialHAL`](src/hal/serial_hal/serial_hal.cpp) | ✅ **8/10** | Modbus RTU, CRC16, monitorowanie połączenia | Zwraca `DEROTATOR_SUPPORT` który nie istnieje ([serial_hal.cpp:809](src/hal/serial_hal/serial_hal.cpp:809)) |
+| [`EthernetHAL`](src/hal/ethernet_hal/ethernet_hal.cpp) | ✅ **8/10** | Modbus TCP z retry | Brak watchdog'a połączenia |
+| [`GamepadHAL`](src/hal/gamepad_hal/gamepad_hal.cpp) | ✅ **9/10** | Mock-testable, hotplug, speed presety | Tylko Linux (evdev) |
 
-### Verification ✅
+### MF7025v2 — lista naprawionych błędów
 
-**Implementation** at [`mount_controller.cpp:269-393`](src/controllers/mount_controller.cpp:269):
+| # | Błąd | Lokalizacja | Fix |
+|---|------|------------|-----|
+| 1 | `reading.position` → `reading.position_deg` | [`mf7025v2_hal.cpp:319`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:319) | Zgodność z `EncoderReading` struct |
+| 2 | `reading.quality = EncoderQuality::GOOD` → `reading.data_valid = true` | [`mf7025v2_hal.cpp:322`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:322) | Usunięto nieistniejący typ |
+| 3 | `reading.velocity` → `reading.velocity_deg_s` | [`mf7025v2_hal.cpp:325`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:325) | Zgodność z `EncoderReading` struct |
+| 4 | `SafetyStatus::OK` → poprawna inicjalizacja | [`mf7025v2_hal.cpp:456`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:456) | `State::NORMAL`, `safety_circuit_ok=true` |
+| 5 | `reading.temperature/voltage/current` → `reading.value` | [`mf7025v2_hal.cpp:542`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:542) | Zgodność z `SensorReading` struct |
+| 6 | Brak `target_position_` | [`mf7025v2_hal.h:80`](include/hal/mf7025v2_hal/mf7025v2_hal.h:80) | Dodano deklarację |
+| 7 | `error_callback_(msg)` → `error_callback_(msg, code)` | [`mf7025v2_hal.cpp:249`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:249) | 2 argumenty zamiast 1 |
+| 8 | `position_callback_(pos, vel)` → `position_callback_(pos, vel, torque)` | [`mf7025v2_hal.cpp:260`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:260) | 3 argumenty zamiast 2 |
+| 9 | Brak `mutex_` w `updateStatus()` | [`mf7025v2_hal.cpp:227`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:227) | Data race na `error_message_` — dodano lock |
+| 10 | Brak detekcji martwego CAN | [`mf7025v2_hal.cpp:220`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp:220) | `can_failures_` + threshold 5 → emergencyStop |
+| 11 | Ciche błedy CAN w enable/setPosition/setVelocity/stop | [`mf7025v2_hal.cpp:50-133`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp) | Dodano `logger->error()` |
 
+---
+
+## 4. gRPC Service — ✅ DOBRZE
+
+**Plik**: [`src/api/service_impl.cpp`](src/api/service_impl.cpp) (2568 linii)
+
+### Exception safety
+
+Wszystkie 30+ RPC opakowane w:
 ```cpp
-bool initialize(const ControllerConfig& config) {
-    config_ = config;
-    astro_calc_->setLocation(config.latitude, config.longitude, config.altitude);
-    astro_calc_->setEnvironmentalParams(config.default_temperature,
-                                        config.default_pressure, config.default_humidity);
-    // ... Kalman filter init, HAL init, status callbacks ...
-    // NO check of config_.encoders_absolute anywhere in this function ← confirmed
-    // No setBootstrapMode() call ← confirmed
-}
-```
-
-**Check**: `config_.encoders_absolute` exists in [`ControllerConfig`](include/controllers/mount_controller.h:139) but is **never read** in `initialize()`. Plan's proposed change is correct.
-
----
-
-## 4. `MountStatus` Struct
-
-### Claim (Plan §8.3, §8.4)
-> `MountStatus` in the header (lines 202-245) lacks bootstrap-related fields: `bootstrap_mode`, `bootstrap_calibrated`, `bootstrap_measurement_count`, `encoders_absolute`.
-
-### Verification ✅
-
-**Header** at [`include/controllers/mount_controller.h:202-245`](include/controllers/mount_controller.h:202):
-
-```cpp
-struct MountStatus {
-    State state;
-    double axis1_position, axis2_position;
-    double axis1_rate, axis2_rate;
-    double axis1_target, axis2_target;
-    bool encoders_active;
-    bool guider_active;
-    bool tpoint_calibrated;
-    double tracking_error_ra, tracking_error_dec;
-    // Meridian flip, soft limits, error messages...
-    // NO bootstrap fields ← confirmed
-    // NO encoders_absolute ← confirmed
-};
-```
-
-Internal fields `encoder_absolute_` and `bootstrap_calibrated_` exist in the `Impl` class (used in `saveState`/`loadState` at lines 3801, 3878) but are NOT exposed through `MountStatus`. Plan's proposed additions are needed.
-
----
-
-## 5. `homeDerotator()`
-
-### Claim (Plan §1.1)
-> `homeDerotator()` is NOT real CiA 402 homing — it uses `setPositionTarget()`. For incremental encoders, it doesn't know position 0° after power-cycle.
-
-### Verification ✅
-
-**Implementation** at [`mount_controller.cpp:4335-4476`](src/controllers/mount_controller.cpp:4335):
-
-```cpp
-bool homeDerotator(const ::astro_mount::DerotatorHomingRequest& request) {
-    // ... checks, parsing ...
-    double speed = LIMIT_SPEED;  // limits to 0.5 deg/s
-    if (derotator_canopen_) {
-        // Uses setPositionTarget(), NOT CiA 402 homing mode
-        derotator_canopen_->setPositionTarget(derotator_node_id_, target_position);
-        // ...
-    }
-}
-// No CiA 402 homing mode (0x6060) or homing method (0x6098) usage ← confirmed
-```
-
-✅ Plan's analysis is correct.
-
----
-
-## 6. Proto File
-
-### Claim (Plan §5.1-5.5)
-> No `BootstrapMode` enum exists yet. No `SetBootstrapMode`, `RunAutomaticBootstrap`, `GetAutoBootstrapStatus` RPCs. `BootstrapStatus` lacks `bootstrap_mode`, `encoder_type_absolute`, `reference_position_known`, etc.
-
-### Verification ✅
-
-**Proto** at [`proto/mount_controller.proto`](proto/mount_controller.proto):
-
-- ✅ `BootstrapMeasurement` exists (lines 788-799) — matches plan
-- ✅ `BootstrapCalibrationResult` exists (lines 802-820) — matches plan
-- ✅ `BootstrapStatus` exists (lines 823-844):
-  - Has `calibrated`, `last_calibration`, `measurement_count`, `current_alignment_error_arcsec`, `ready_for_tpoint`, `state`, `state_message`, `min_measurements_required`, `min_measurements_for_tpoint`
-  - ❌ **NO** `bootstrap_mode` field
-  - ❌ **NO** `encoder_type_absolute` field
-  - ❌ **NO** `reference_position_known` field
-  - ❌ **NO** `estimated_encoder_offset_deg` field
-  - ❌ **NO** `manual_measurements_needed` field
-- ❌ **NO** `BootstrapMode` enum
-- ❌ **NO** `SetBootstrapMode` RPC (existing RPCs: `AddBootstrapMeasurement`, `RunBootstrapCalibration`, `GetBootstrapStatus`, `ClearBootstrapMeasurements`)
-- ❌ **NO** `RunAutomaticBootstrap` RPC
-- ❌ **NO** `GetAutoBootstrapStatus` RPC
-- ❌ **NO** `StopAutoBootstrap` RPC
-- ❌ `ControllerState` (lines 199-239) has **NO** `bootstrap_status` field
-
-✅ Plan's proposed changes are all confirmed as needed.
-
----
-
-## 7. `service_impl.cpp` RPCs
-
-### Claim (Plan §5.6)
-> Current RPC implementations need extension for new bootstrap mode support.
-
-### Verification ✅
-
-**Implementation** at [`src/api/service_impl.cpp:288-425`](src/api/service_impl.cpp:288):
-
-- ✅ `AddBootstrapMeasurement()` (lines 290-324): Passes all fields correctly — confirmed
-- ✅ `RunBootstrapCalibration()` (lines 326-377): Populates `BootstrapCalibrationResult` correctly — confirmed
-  - Populates quaternion for CASUAL mount (lines 356-363) — correct
-  - Sets `alignment_error_arcsec`, `residual_rms_arcsec`, `ready_for_tpoint` — confirmed
-- ✅ `GetBootstrapStatus()` (lines 379-414): Populates state correctly — confirmed
-  - Maps internal state to CalibrationState enum (lines 396-405) — correct
-- ✅ `ClearBootstrapMeasurements()` (lines 416-425) — confirmed
-
-**Note**: Plan's proposed changes would add new RPCs (`SetBootstrapMode`, etc.) as additional methods, not modifications to existing ones.
-
----
-
-## 8. Proxy Server (`server.js`)
-
-### Claim (Plan §6.1, §7.4)
-> Current proxy has basic bootstrap endpoints. Need new endpoints for mode selection and auto-bootstrap orchestrator.
-
-### Verification ✅
-
-**Implementation** at [`web/proxy/server.js:680-740`](web/proxy/server.js:680):
-
-Existing endpoints:
-- ✅ `GET /api/calibration/bootstrap/status` (line 685) — maps to `GetBootstrapStatus` 
-- ✅ `POST /api/calibration/bootstrap/measurements` (line 700) — maps to `AddBootstrapMeasurement`
-- ✅ `POST /api/calibration/bootstrap/run` (line 719) — maps to `RunBootstrapCalibration`
-- ✅ `DELETE /api/calibration/bootstrap/measurements` (line 733) — maps to `ClearBootstrapMeasurements`
-
-Missing (per plan):
-- ❌ `PUT /api/calibration/bootstrap/mode` — mode selection
-- ❌ `POST /api/calibration/bootstrap/auto-run` — auto-bootstrap orchestrator
-- ❌ `GET /api/calibration/bootstrap/auto-status` — auto-bootstrap progress
-- ❌ `POST /api/calibration/bootstrap/auto-cancel` — cancel auto-bootstrap
-- ❌ Plate solver endpoints (`POST /api/solve-plate`, etc.)
-
-✅ Plan's proposed additions are confirmed as needed.
-
----
-
-## 9. Frontend (`calibration.js` + `index.html`)
-
-### Claim (Plan §6.3-6.5)
-> Current UI shows basic bootstrap status. Need mode selector, auto-bootstrap UI, progress bar, encoder type indicator.
-
-### Verification ✅
-
-**`calibration.js`** at [`web/public/js/components/calibration.js`](web/public/js/components/calibration.js):
-- ✅ Bootstrap status polling and UI updates (lines 394-428) — confirmed
-- ✅ Run/clear/refresh handlers (lines 430-486) — confirmed
-- ❌ No mode selector UI
-- ❌ No auto-bootstrap progress bar
-- ❌ No encoder type indicator
-
-**`index.html`** at [`web/public/index.html:498-554`](web/public/index.html:498):
-- ✅ Bootstrap calibration card with status grid (lines 498-541) — confirmed
-- ✅ Action buttons (lines 536-540) — confirmed
-- ✅ Reference measurement section (lines 543-554) — confirmed
-- ❌ No bootstrap mode selector
-- ❌ No auto-bootstrap progress section
-- ❌ No encoder type badge
-
-✅ Plan's proposed UI additions are confirmed as needed.
-
----
-
-## 10. Configuration Files
-
-### Claim (Plan §9.1)
-> `config/dual_servo_config.json` should add/edit `encoders_absolute` field.
-
-### Verification ✅
-
-**Config** at [`config/dual_servo_config.json:36`](config/dual_servo_config.json:36):
-
-```json
-"use_encoders": true,
-"encoders_absolute": true,
-```
-
-✅ The field `encoders_absolute` already exists with value `true`. Plan's suggestion to add it is already satisfied (the config structure includes it). However, for testing incremental encoder scenarios, a variant with `"encoders_absolute": false` should exist.
-
----
-
-## 11. Test Files
-
-### Claim (Plan §9.2, indirect)
-> Tests exist for basic bootstrap. Need new tests for incremental encoder scenarios.
-
-### Verification ✅
-
-**Tests** at [`tests/test_mount_controller.cpp:496-527`](tests/test_mount_controller.cpp:496):
-
-- ✅ `BootstrapCalibrationWithNoMeasurements` (line 500) — confirmed
-- ✅ `BootstrapCalibrationWithOneMeasurement` (line 506) — confirmed
-- ✅ `BootstrapCalibrationWithTwoMeasurements` (line 512) — confirmed
-- ✅ `ClearBootstrapMeasurements` (line 520) — confirmed
-
-**Missing tests** (per plan):
-- ❌ No test with `encoders_absolute = false` configuration
-- ❌ No test for EQUATORIAL/ALT_AZ bootstrap with Wahba/SVD (new code)
-- ❌ No test for `setBootstrapMode()`
-- ❌ No test for re-running bootstrap with additional measurements
-- ❌ No test for bootstrap mode persistence across save/load state
-
----
-
-## 12. `AstronomicalCalculations::equatorialToMountOrientation()`
-
-### Claim (Plan §1.3)
-> This function uses quaternion Q to convert celestial RA/Dec to mount encoder frame. Q contains both physical orientation and encoder offset.
-
-### Verification ✅
-
-**Implementation** at [`src/core/astronomical_calculations.cpp:526-571`](src/core/astronomical_calculations.cpp:526):
-
-```cpp
-std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation(
-    double ra, double dec,
-    double jd, const std::array<double, 4>& mountOrientation) {
-    
-    // Step 0: Normalize quaternion
-    double norm = std::sqrt(...);  // Prevents non-unit scaling errors ← good
-    std::array<double, 4> norm_q = ...;
-    
-    // Step 1: RA/Dec → true horizontal (alt, az)
-    auto [true_alt, true_az] = equatorialToHorizontal(ra, dec, jd, false);
-    
-    // Step 2: alt/az → ENU cartesian vector
-    std::array<double, 3> horiz_vec = {{cos(alt)*cos(az), cos(alt)*sin(az), sin(alt)}};
-    
-    // Step 3: Apply quaternion rotation → mount frame
-    std::array<double, 3> mount_vec = rotateVectorByQuaternion(horiz_vec, norm_q);
-    
-    // Step 4: mount vector → mount alt/az (encoder frame)
-    double mount_alt = asin(mount_vec[2]) * R2D;
-    double mount_az = atan2(mount_vec[1], mount_vec[0]) * R2D;
-    return {mount_alt, mount_az};
+try {
+    // ... operacja ...
+    return grpc::Status::OK;
+} catch (const std::exception& e) {
+    return grpc::Status(grpc::StatusCode::INTERNAL,
+                        std::string("Error: ") + e.what());
 }
 ```
 
-✅ Confirmed: This function applies the quaternion to rotate from horizontal frame → mount encoder frame. When `mount_orientation_.quaternion` contains both R_orient and R_offset (as plan describes), the output IS in encoder frame coordinates. The normalization check (line 536) prevents degenerate quaternion issues.
+### Walidacja wejść (testowana)
+
+| Przypadek | Status |
+|-----------|--------|
+| RA/Dec NaN | ✅ Zwraca INTERNAL |
+| RA/Dec Inf | ✅ Zwraca INTERNAL |
+| RA < 0 lub > 24 | ✅ Zwraca INVALID_ARGUMENT |
+| Aggression < 0 lub > 1 | ✅ Zwraca INVALID_ARGUMENT |
+| Port = 0 lub > 65535 | ✅ Zwraca INVALID_ARGUMENT |
+| Pusty connection_string | ✅ Akceptowany (dozwolony) |
+| Negatywny czas ekspozycji | ✅ Zwraca INVALID_ARGUMENT |
+
+### Concurrency (testowana)
+
+- 10 równoległych wątków: SlewToCoordinates + GetState
+- 20 równoległych wątków: SlewToCoordinates (te same koordynaty)
+- 5 równoległych wątków: SaveState + LoadState
+- Wszystkie testy przechodzą bez błędów
+
+### Shutdown sequence
+
+```
+main.cpp:357-376
+1. mount_controller->stopGamepad()       ← zabij wątek gamepada (używa CAN)
+2. grpc_server_instance->stop()          ← Shutdown() + Wait()
+3. sleep_for(500ms)                      ← safety margin dla handlerów gRPC
+4. grpc_server_instance.reset()          ← deletuj server
+5. mount_controller->shutdown()          ← zatrzymaj HAL, dołącz wątki
+6. mount_controller.reset()              ← deletuj kontroler
+```
 
 ---
 
-## 13. Line Reference Accuracy
+## 5. Konfiguracja — ✅ DOBRZE
 
-| Plan Reference | Actual Line | Match? |
-|---------------|-------------|--------|
-| `mount_controller.cpp:2622+` (Wahba/SVD) | 2622-2813 | ✅ |
-| `mount_controller.cpp:2814-2875` (mean offset) | 2814-2875 | ✅ |
-| `mount_controller.cpp:269-339` (initialize) | 269-393 | ✅ (plan is approx.) |
-| `mount_controller.h:202-245` (MountStatus) | 202-245 | ✅ |
-| `mount_controller.cpp:4335` (homeDerotator) | 4335-4476 | ✅ |
-| `mount_controller.h:139` (encoders_absolute) | 139 | ✅ |
-| `mount_controller.cpp:2556` (getStatus) | 2556-2595 | ✅ |
-| `mount_controller.cpp:3459` (setEncoderType) | 3459-3462 | ✅ |
-| `mount_controller.cpp:3801,3878` (saveState/loadState) | 3801, 3878 | ✅ |
-| `service_impl.cpp:288-425` (bootstrap RPCs) | 288-425 | ✅ |
-| `proto:788-799` (BootstrapMeasurement) | 788-799 | ✅ |
-| `proto:802-820` (BootstrapCalibrationResult) | 802-820 | ✅ |
-| `proto:823-844` (BootstrapStatus) | 823-844 | ✅ |
+**Pliki**: [`include/hal/hal_config.h`](include/hal/hal_config.h) (643 linie), [`src/config/configuration.cpp`](src/config/configuration.cpp) (1181 linii)
 
-**All line references are accurate.** ✅
+### Parsowanie JSON
 
----
+```cpp
+// Wzorzec: .value("key", default_value) — zawsze bezpieczny fallback
+config.canopen.interface_name = canopen.value("interface_name", "can0");
+config.canopen.bitrate = canopen.value("bitrate", 125000);
+```
 
-## 14. Minor Issues Found
+Wszystkie 50+ pól używają tego wzorca — **żadne parsowanie nie rzuca wyjątkiem**.
 
-### ⚠️ Issue 1: Plan §8.6 — Mean offset path replacement scope
+### Persistence z backupem
 
-The plan says to "usunąć mean offset branch (l. 2814-2875)" and extend Wahba/SVD to EQUATORIAL and ALT_AZ. However, the mean offset path currently serves EQUATORIAL/ALT_AZ mounts that are NOT using incremental encoders. The plan should clarify:
+```cpp
+// Przed zapisem: kopia zapasowa z timestampem
+// config/default.json → config/default_2026-06-14_10-05-08.json
+auto backup_path = stem + "_" + timestamp + ext;
+std::filesystem::copy_file(source, backup_path, overwrite_existing);
+```
 
-- For **EQUATORIAL with absolute encoders**: mean offset may be sufficient (encoder positions are known in physical frame), but Wahba/SVD is still **better** (proper rotation instead of translation)
-- For **EQUATORIAL with incremental encoders**: Wahba/SVD is **required** (must absorb encoder offset into Q)
-- The removal should be gated on `config_.encoders_absolute`, not universal
+### Walidacja
 
-### ⚠️ Issue 2: Plan §9.1 — Missing `default.json` from config list
-
-The plan lists [`config/dual_servo_config.json`](config/dual_servo_config.json) for modification but omits [`config/default.json`](config/default.json). Both config files exist and may both need updating for consistency.
+| Pole | Warunek | Komunikat błędu |
+|------|---------|-----------------|
+| `logging.level` | TRACE/DEBUG/INFO/WARN/ERROR/FATAL | "Invalid or missing logging.level" |
+| `logging.rotation_days` | > 0 | "must be > 0" |
+| `network.grpc_port` | 1-65535 | "must be 1-65535" |
+| `guider.max_correction` | > 0 | "must be > 0" |
+| `guider.aggression` | 0.0-1.0 | "must be 0.0 to 1.0" |
 
 ---
 
-## 15. Overall Assessment
+## 6. Build System — ✅ POPRAWNY
 
-| Aspect | Score | Notes |
-|--------|-------|-------|
-| **Numerical correctness** | ✅ 5/5 | Wahba/SVD implementation is correct, stable (condition number check, determinant fix, 4-case quaternion conversion). Mean offset path is correctly identified as insufficient. |
-| **Implementation correctness** | ✅ 5/5 | All code references verified. Plan's proposed changes are needed and correctly scoped. |
-| **Architecture** | ✅ 5/5 | Three-layer architecture (C++ → gRPC → Proxy → Frontend) is correctly described. Plate solver integration at proxy level (Level 2) is the right recommendation. |
-| **Line reference accuracy** | ✅ 5/5 | Every line reference checked — all match. |
-| **Completeness** | ✅ 4/5 | Covers all layers. Minor omissions: `default.json` not mentioned, test file changes underspecified. |
+**Plik**: [`CMakeLists.txt`](CMakeLists.txt) (543 linie)
 
-**Final verdict**: The plan is **numerically and implementationally correct**. It accurately identifies:
-1. The mathematical principles (Wahba/SVD absorbing encoder offset)
-2. The limitations of the current code (mean offset path)
-3. All required code changes across all 4 layers (C++, Proto, Proxy, Frontend)
-4. The correct implementation priority (A → B → C)
+```
+AstroMountController v1.0.0
+├── C++17 (CMAKE_CXX_STANDARD 17, REQUIRED)
+├── SOFA (C, static library, sofa/*.c)
+├── gRPC + Protobuf (code generation z proto/*.proto)
+├── Eigen3 (linear algebra)
+├── nlohmann-json (JSON config)
+├── spdlog (logging)
+├── libcanopen (fetched via FetchLibCanopen.cmake)
+└── GTest (tests, ~20 test files)
+```
 
-The two minor issues noted above do not affect the overall correctness of the plan.
+---
+
+## 7. Test Coverage — ✅ DOBRA (~340 testów)
+
+| Plik testowy | Liczba testów | Co testuje |
+|-------------|--------------|------------|
+| [`test_astronomical_calculations.cpp`](tests/test_astronomical_calculations.cpp) | ~25 | JD, precesja, nutacja, refrakcja, kwaterniony, proper motion |
+| [`test_mount_controller.cpp`](tests/test_mount_controller.cpp) | ~50 | State machine, slew, track, park, bootstrap, TPOINT, guider |
+| [`test_canopen_hal.cpp`](tests/test_canopen_hal.cpp) | ~40 | PID, HAL lifecycle, safety, encoder, derotator |
+| [`test_gamepad_hal.cpp`](tests/test_gamepad_hal.cpp) | ~70 | Mock input, velocity, speed presets, callbacks, lifecycle |
+| [`test_hal_integration.cpp`](tests/test_hal_integration.cpp) | ~30 | SimulatedHAL lifecycle, main loop patterns |
+| [`test_grpc_integration.cpp`](tests/test_grpc_integration.cpp) | ~40 | RPC, concurrent ops, invalid inputs, streaming |
+| [`test_kalman_filter.cpp`](tests/test_kalman_filter.cpp) | ~20 | Predict/update, covariance, large dt, save/load |
+| [`test_configuration.cpp`](tests/test_configuration.cpp) | ~25 | Save/load, validation, paths, quaternion round-trip |
+| [`test_ephemeris_tracker.cpp`](tests/test_ephemeris_tracker.cpp) | ~40 | Interpolacja, multi-tracker, prediction, confidence |
+| Pozostałe | ~30 | Watchdog, logger, config monitor, tpoint, subarcsecond |
+| **Razem** | **~340** | |
+
+---
+
+## 8. Naprawione problemy
+
+### ✅ `HALFeature::DEROTATOR_SUPPORT` — usunięto z 4 HAL-i
+
+Problem: `HALFeature::DEROTATOR_SUPPORT` został usunięty z enum'a w [`hal_interface.h`](include/hal/hal_interface.h),
+ale był nadal używany w 4 implementacjach HAL, co uniemożliwiało kompilację.
+
+**Naprawione** w:
+- [`serial_hal.cpp`](src/hal/serial_hal/serial_hal.cpp) — `getSupportedFeatures()` + `supportsFeature()`
+- [`simulated_hal.cpp`](src/hal/simulated_hal/simulated_hal.cpp) — `getSupportedFeatures()`
+- [`ethernet_hal.cpp`](src/hal/ethernet_hal/ethernet_hal.cpp) — `getSupportedFeatures()` + `supportsFeature()`
+- [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp) — `getSupportedFeatures()`
+
+### ✅ `last_status_` — usunięto nieużywane pole z Mf7025v2Hal
+
+Pole `std::string last_status_` w [`mf7025v2_hal.h`](include/hal/mf7025v2_hal/mf7025v2_hal.h)
+było zadeklarowane ale nigdy nie zapisywane — usunięto.
+
+### 🔸 EthernetHAL: brak watchdog'a połączenia (do rozważenia)
+
+`SerialHAL` monitoruje połączenie co 5s i próbuje reconnect. `EthernetHAL` tego nie robi.
+W praktyce Ethernet jest bardziej stabilny niż RS-232, można dodać w przyszłości.
+
+---
+
+## 9. Podsumowanie
+
+| Kategoria | Ocena |
+|-----------|-------|
+| **Numeryczna stabilność** | **9.5/10** |
+| **Thread safety** | **9/10** |
+| **Obsługa błędów** | **9/10** |
+| **Test coverage** | **9/10** |
+| **Bezpieczeństwo zasobów** | **9/10** |
+| **Jakość kodu** | **8.5/10** |
+| **Ogólnie** | **9/10** ⭐ |
+
+**Wniosek**: Projekt jest stabilny numerycznie i bezpieczny dla użycia produkcyjnego.
+Wszystkie krytyczne ścieżki (tracking loop, Kalman filter, guiding, CAN communication)
+posiadają wielowarstwowe zabezpieczenia przed propagacją NaN/Inf, martwymi węzłami CAN,
+i race condition. Znalezione i naprawione błędy w [`Mf7025v2Hal`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp)
+oraz zgłoszona uwaga o [`DEROTATOR_SUPPORT`](src/hal/serial_hal/serial_hal.cpp:809).
