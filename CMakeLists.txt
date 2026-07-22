@@ -189,6 +189,15 @@ set(CORE_SOURCES
     src/hal/gamepad_hal/gamepad_input_evdev.cpp
 )
 
+set(DEROTATOR_SOURCES
+    src/hal/derotator_hal/derotator_hal.cpp
+    src/hal/derotator_hal/derotator_simulated.cpp
+    src/hal/derotator_hal/derotator_tmc5160.cpp
+    src/hal/derotator_hal/derotator_home.cpp
+    src/models/field_rotation_model.cpp
+    src/controllers/derotator_controller.cpp
+)
+
 set(DOME_SOURCES
     src/hal/dome_hal/dome_hal.cpp
     src/hal/dome_hal/dome_serial.cpp
@@ -278,6 +287,7 @@ set(DB_SOURCES
 add_library(astro_mount_core STATIC
     ${CORE_SOURCES}
     ${CAMERA_SOURCES}
+    ${DEROTATOR_SOURCES}
     ${DOME_SOURCES}
     ${FOCUSER_SOURCES}
     ${SEQUENCER_SOURCES}

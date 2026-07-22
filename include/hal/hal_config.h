@@ -644,6 +644,98 @@ struct HALConfig {
         if (type_str == "custom") return HALType::CUSTOM;
         return HALType::SIMULATED;
     }
+
+    // ─── Focuser configuration ───────────────────────────────────────────
+    struct {
+        std::string type{"simulated"};
+        std::string device_path{"/dev/ttyUSB0"};
+        int baud_rate{9600};
+        int max_position{100000};
+        int default_speed{50};
+        double temperature_coefficient{0.0};
+    } focuser;
+
+    // ─── Camera configuration ────────────────────────────────────────────
+    struct {
+        std::string type{"simulated"};
+        std::string camera_id;
+        double default_gain{0};
+        double default_exposure_s{1.0};
+        int default_binning{1};
+        double cooler_target_c{20.0};
+        bool cooler_enabled{false};
+    } camera;
+
+    // ─── Dome configuration ──────────────────────────────────────────────
+    struct {
+        std::string type{"simulated"};
+        std::string device_path{"/dev/ttyUSB1"};
+        int baud_rate{9600};
+        double home_azimuth_deg{0.0};
+        double park_azimuth_deg{180.0};
+        int open_time_s{30};
+        std::string gpio_open_pin{"gpio17"};
+        std::string gpio_close_pin{"gpio18"};
+    } dome;
+
+    // ─── Sequencer configuration ─────────────────────────────────────────
+    struct {
+        bool auto_focus{true};
+        bool auto_guide{true};
+        bool dither{true};
+        int focus_interval{5};
+        bool weather_auto_park{true};
+    } sequencer;
+
+    // ─── Notifications configuration ─────────────────────────────────────
+    struct {
+        struct {
+            bool enabled{false};
+            std::string smtp_host{"localhost"};
+            int smtp_port{587};
+            bool use_tls{true};
+            std::string username;
+            std::string password;
+            std::string from_address{"astro-mount@localhost"};
+            std::string to_addresses;
+            std::string subject_prefix{"[AstroMount]"};
+        } email;
+        struct {
+            bool enabled{false};
+            std::string url;
+            std::string method{"POST"};
+            std::string auth_token;
+            int timeout_seconds{10};
+            int retry_count{3};
+        } webhook;
+        struct {
+            bool enabled{false};
+            std::string broker_url{"localhost"};
+            int broker_port{1883};
+            std::string client_id{"astro-mount"};
+            std::string topic_prefix{"astro-mount/notifications"};
+            bool use_tls{false};
+            std::string username;
+            std::string password;
+            int qos{1};
+        } mqtt;
+        int min_severity{1};
+        bool notify_on_error{true};
+        bool notify_on_weather_alert{true};
+        bool aggregate_messages{false};
+        int aggregation_interval_minutes{5};
+    } notifications;
+
+    // ─── Derotator configuration ─────────────────────────────────────────
+    struct {
+        std::string type{"simulated"};
+        bool enabled{false};
+        std::string device_path{""};
+        double home_position_deg{0.0};
+        double max_rate_deg_s{5.0};
+        int microsteps{256};
+        bool invert_direction{false};
+    } derotator;
 };
 
 } // namespace hal

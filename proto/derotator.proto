@@ -1,0 +1,49 @@
+syntax = "proto3";
+package astro_mount;
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service DerotatorService {
+    rpc SetDerotatorMode(DerotatorModeRequest) returns (google.protobuf.Empty);
+    rpc SetDerotatorAngle(DerotatorAngleRequest) returns (google.protobuf.Empty);
+    rpc SetDerotatorRate(DerotatorRateRequest) returns (google.protobuf.Empty);
+    rpc HomeDerotator(google.protobuf.Empty) returns (stream DerotatorHomeProgress);
+    rpc GetDerotatorStatus(google.protobuf.Empty) returns (DerotatorStatus);
+    rpc GetFieldRotationAngle(google.protobuf.Empty) returns (FieldRotationInfo);
+}
+
+enum DerotatorMode {
+    DEROTATOR_DISABLED = 0;
+    DEROTATOR_AUTO = 1;
+    DEROTATOR_FIXED_ANGLE = 2;
+    DEROTATOR_MANUAL_RATE = 3;
+}
+
+message DerotatorModeRequest { DerotatorMode mode = 1; }
+message DerotatorAngleRequest { double angle_deg = 1; }
+message DerotatorRateRequest { double rate_deg_s = 1; }
+
+message DerotatorHomeProgress {
+    bool homing = 1;
+    double progress_percent = 2;
+    bool complete = 3;
+}
+
+message DerotatorStatus {
+    DerotatorMode mode = 1;
+    bool homed = 2;
+    double current_position_deg = 3;
+    double target_position_deg = 4;
+    double current_rate_deg_s = 5;
+    bool moving = 6;
+    bool error = 7;
+    string error_message = 8;
+}
+
+message FieldRotationInfo {
+    double current_angle_deg = 1;
+    double current_rate_arcsec_s = 2;
+    double predicted_angle_10min = 3;
+    string mount_type = 4;
+    string mount_type_name = 5;
+}
