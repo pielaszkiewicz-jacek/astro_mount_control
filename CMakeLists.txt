@@ -211,6 +211,11 @@ set(FOCUSER_SOURCES
     src/hal/focuser_hal/focuser_simulated.cpp
 )
 
+set(SEQUENCER_SOURCES
+    src/sequencer/observation_plan.cpp
+    src/sequencer/observation_sequencer.cpp
+)
+
 set(MODEL_SOURCES
     src/models/tpoint_model.cpp
     src/models/kalman_filter.cpp
@@ -275,6 +280,7 @@ add_library(astro_mount_core STATIC
     ${CAMERA_SOURCES}
     ${DOME_SOURCES}
     ${FOCUSER_SOURCES}
+    ${SEQUENCER_SOURCES}
     ${MODEL_SOURCES}
     ${CONTROLLER_SOURCES}
     ${CONFIG_SOURCES}

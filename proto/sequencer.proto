@@ -1,0 +1,56 @@
+syntax = "proto3";
+package astro_mount;
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service SequencerService {
+    rpc LoadPlan(ObservationPlanProto) returns (SequencerResult);
+    rpc StartSequencer(google.protobuf.Empty) returns (SequencerResult);
+    rpc StopSequencer(google.protobuf.Empty) returns (SequencerResult);
+    rpc PauseSequencer(google.protobuf.Empty) returns (SequencerResult);
+    rpc GetSequencerStatus(google.protobuf.Empty) returns (SequencerStatus);
+}
+
+message TargetProto {
+    string name = 1;
+    string catalog_name = 2;
+    double ra = 3;
+    double dec = 4;
+    double magnitude = 5;
+    string type = 6;
+    double exposure_time_s = 7;
+    int32 gain = 8;
+    int32 binning = 9;
+    int32 filter_position = 10;
+    string filter_name = 11;
+    int32 exposure_count = 12;
+}
+
+message ObservationPlanProto {
+    string name = 1;
+    string observer = 2;
+    string notes = 3;
+    repeated TargetProto targets = 4;
+    bool auto_focus = 5;
+    bool auto_guide = 6;
+    bool dither = 7;
+    int32 focus_interval = 8;
+}
+
+message SequencerResult {
+    bool success = 1;
+    string message = 2;
+}
+
+message SequencerStatus {
+    string state = 1;
+    string current_target = 2;
+    int32 current_target_index = 3;
+    int32 total_targets = 4;
+    int32 current_exposure = 5;
+    int32 total_exposures = 6;
+    double progress_percent = 7;
+    string current_action = 8;
+    double elapsed_time_s = 9;
+    double remaining_time_s = 10;
+}
