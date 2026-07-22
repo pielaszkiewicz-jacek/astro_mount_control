@@ -189,6 +189,14 @@ set(CORE_SOURCES
     src/hal/gamepad_hal/gamepad_input_evdev.cpp
 )
 
+set(DOME_SOURCES
+    src/hal/dome_hal/dome_hal.cpp
+    src/hal/dome_hal/dome_serial.cpp
+    src/hal/dome_hal/dome_rolloff.cpp
+    src/hal/dome_hal/dome_simulated.cpp
+    src/controllers/dome_controller.cpp
+)
+
 set(CAMERA_SOURCES
     src/hal/camera_hal/camera_hal.cpp
     src/hal/camera_hal/camera_zwo.cpp
@@ -265,6 +273,7 @@ set(DB_SOURCES
 add_library(astro_mount_core STATIC
     ${CORE_SOURCES}
     ${CAMERA_SOURCES}
+    ${DOME_SOURCES}
     ${FOCUSER_SOURCES}
     ${MODEL_SOURCES}
     ${CONTROLLER_SOURCES}
