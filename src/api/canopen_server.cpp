@@ -8,6 +8,7 @@
 #include <memory>
 #include <chrono>
 #include <iostream>
+#include <fstream>
 
 using google::protobuf::util::TimeUtil;
 
@@ -365,10 +366,15 @@ private:
 
 // CanOpenServer implementation
 CanOpenServer::CanOpenServer(const std::string& address, int port,
-                           std::unique_ptr<controllers::ICanOpenInterface> canopen_interface)
+                           std::unique_ptr<controllers::ICanOpenInterface> canopen_interface,
+                           bool enable_ssl, const std::string& ssl_cert_path,
+                           const std::string& ssl_key_path)
     : address_(address)
     , port_(port)
-    , running_(false) {
+    , running_(false)
+    , enable_ssl_(enable_ssl)
+    , ssl_cert_path_(ssl_cert_path)
+    , ssl_key_path_(ssl_key_path) {
     service_impl_ = std::make_unique<ServiceImpl>(std::move(canopen_interface));
 }
 
@@ -385,7 +391,34 @@ bool CanOpenServer::start() {
     try {
         std::string server_address = address_ + ":" + std::to_string(port_);
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+        
+        // Conditionally use SSL or insecure credentials
+        if (enable_ssl_) {
+            std::string cert, key;
+            std::ifstream cert_file(ssl_cert_path_);
+            std::ifstream key_file(ssl_key_path_);
+            
+            if (!cert_file.is_open() || !key_file.is_open()) {
+                API_LOG_ERROR("Failed to open SSL certificate or key file for CANopen server");
+                return false;
+            }
+            
+            cert = std::string(std::istreambuf_iterator<char>(cert_file), {});
+            key = std::string(std::istreambuf_iterator<char>(key_file), {});
+            
+            grpc::SslServerCredentialsOptions::PemKeyCertPair key_cert_pair;
+            key_cert_pair.private_key = key;
+            key_cert_pair.cert_chain = cert;
+            
+            grpc::SslServerCredentialsOptions ssl_opts;
+            ssl_opts.pem_key_cert_pairs.push_back(key_cert_pair);
+            
+            auto creds = grpc::SslServerCredentials(ssl_opts);
+            builder.AddListeningPort(server_address, creds);
+        } else {
+            builder.AddListeningPort(server_address, grpc::InsecureServerCredentials());
+        }
+        
         builder.RegisterService(service_impl_.get());
         
         server_ = builder.BuildAndStart();
@@ -395,7 +428,8 @@ bool CanOpenServer::start() {
         }
         
         running_ = true;
-        API_LOG_INFO("CANopen server started on {}", server_address);
+        API_LOG_INFO("CANopen server started on {} ({})",
+                     server_address, enable_ssl_ ? "TLS" : "insecure");
         return true;
         
     } catch (const std::exception& e) {

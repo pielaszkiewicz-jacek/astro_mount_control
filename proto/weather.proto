@@ -1,0 +1,167 @@
+/**
+ * Weather Monitoring Service Protobuf Definition
+ *
+ * Defines the gRPC API for environmental monitoring, weather alerts,
+ * and automatic safety actions (auto-park, dome close).
+ */
+syntax = "proto3";
+
+package astro_mount;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Service Definition ──────────────────────────────────────────────────────
+
+service WeatherService {
+    /** Get current weather conditions and status */
+    rpc GetWeatherStatus(google.protobuf.Empty) returns (WeatherStatus);
+
+    /** Get historical weather data */
+    rpc GetWeatherHistory(WeatherHistoryRequest) returns (WeatherHistoryResponse);
+
+    /** Configure weather alert rules */
+    rpc SetWeatherRules(WeatherRules) returns (google.protobuf.Empty);
+
+    /** Subscribe to real-time weather alert stream */
+    rpc SubscribeWeatherAlerts(google.protobuf.Empty) returns (stream WeatherAlert);
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+/** Weather alert severity */
+enum WeatherAlertSeverity {
+    WEATHER_CLEAR = 0;
+    WEATHER_CAUTION = 1;
+    WEATHER_WARNING = 2;
+    WEATHER_DANGER = 3;
+}
+
+/** Weather condition categories */
+enum WeatherCondition {
+    CONDITION_UNKNOWN = 0;
+    CONDITION_CLEAR = 1;
+    CONDITION_CLOUDY = 2;
+    CONDITION_RAIN = 3;
+    CONDITION_SNOW = 4;
+    CONDITION_FOG = 5;
+    CONDITION_WINDY = 6;
+    CONDITION_STORM = 7;
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+/** Current sensor readings */
+message WeatherStatus {
+    // Temperature
+    double temperature_c = 1;           // Current temperature [°C]
+    double temperature_trend = 2;       // Rate of change [°C/hour]
+    double dew_point_c = 3;             // Calculated dew point [°C]
+    double wind_chill_c = 4;            // Wind chill factor [°C]
+
+    // Humidity
+    double humidity_percent = 5;        // Relative humidity [0-100%]
+    double pressure_hpa = 6;            // Atmospheric pressure [hPa]
+    double pressure_trend = 7;          // Pressure change [hPa/hour]
+
+    // Wind
+    double wind_speed_ms = 8;           // Current wind speed [m/s]
+    double wind_gust_ms = 9;            // Wind gust speed [m/s]
+    double wind_direction_deg = 10;     // Wind direction [0-360°]
+
+    // Rain
+    bool rain_detected = 11;            // Rain sensor triggered
+    double rain_rate_mmh = 12;          // Rainfall rate [mm/hour]
+    double rain_total_mm = 13;          // Total rainfall today [mm]
+
+    // Cloud cover
+    double cloud_cover_percent = 14;    // Sky clarity / cloud cover [0-100%]
+    double sky_brightness_mpsas = 15;   // Sky brightness [mag/arcsec²]
+    double ambient_light_lux = 16;      // Ambient light level [lux]
+
+    // Derived status
+    WeatherCondition current_condition = 17;
+    WeatherAlertSeverity alert_level = 18;
+    bool safe_to_observe = 19;          // Overall safety flag
+    string safety_message = 20;
+
+    // Timestamp
+    google.protobuf.Timestamp timestamp = 21;
+}
+
+/** Sensor reading point for history */
+message WeatherReading {
+    google.protobuf.Timestamp timestamp = 1;
+    double temperature_c = 2;
+    double humidity_percent = 3;
+    double pressure_hpa = 4;
+    double wind_speed_ms = 5;
+    double rain_rate_mmh = 6;
+    double cloud_cover_percent = 7;
+}
+
+/** Request historical weather data */
+message WeatherHistoryRequest {
+    google.protobuf.Timestamp start_time = 1;
+    google.protobuf.Timestamp end_time = 2;
+    int32 max_points = 3;               // Max data points to return
+}
+
+/** Historical weather data response */
+message WeatherHistoryResponse {
+    repeated WeatherReading readings = 1;
+    int32 total_points = 2;
+}
+
+/** Weather alert rules configuration */
+message WeatherRules {
+    // Temperature limits
+    double min_temperature_c = 1;       // Min safe temp [°C]
+    double max_temperature_c = 2;       // Max safe temp [°C]
+
+    // Wind limits
+    double max_wind_speed_ms = 3;       // Max safe wind speed [m/s]
+    double max_wind_gust_ms = 4;        // Max safe gust [m/s]
+
+    // Rain
+    bool auto_park_on_rain = 5;         // Park mount when rain detected
+    double max_rain_rate_mmh = 6;       // Max rain rate before park [mm/h]
+
+    // Cloud cover
+    double max_cloud_cover_percent = 7; // Max cloud cover for observing [%]
+
+    // Humidity/dew
+    double max_humidity_percent = 8;    // Max safe humidity [%]
+    double dew_point_tolerance_c = 9;   // Degrees above dew point required [°C]
+
+    // General
+    bool auto_park_enabled = 10;        // Enable automatic parking on alerts
+    int32 check_interval_seconds = 11;  // Sensor check interval [s]
+    int32 debounce_seconds = 12;        // Debounce time before triggering [s]
+    bool notify_on_alert = 13;          // Send notification F1 on alerts
+    bool close_dome_on_danger = 14;     // Auto-close dome (requires F5)
+}
+
+/** Weather alert event (streamed) */
+message WeatherAlert {
+    string id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    WeatherAlertSeverity severity = 3;
+    string condition = 4;               // What triggered the alert (e.g. "wind", "rain")
+    string message = 5;
+    double current_value = 6;           // Current sensor value
+    double threshold_value = 7;         // Threshold that was exceeded
+    string suggested_action = 8;        // e.g. "park_mount", "close_dome", "none"
+    bool auto_action_taken = 9;         // Whether auto-park was triggered
+}
+
+/** GPS position data */
+message GpsPosition {
+    double latitude = 1;
+    double longitude = 2;
+    double altitude_m = 3;
+    google.protobuf.Timestamp timestamp = 4;
+    int32 satellites_visible = 5;
+    double hdop = 6;                    // Horizontal dilution of precision
+    bool fix_valid = 7;
+}

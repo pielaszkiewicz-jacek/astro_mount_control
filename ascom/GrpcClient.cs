@@ -18,6 +18,7 @@ namespace AstroMount
     {
         private readonly string _host;
         private readonly int _port;
+        private readonly bool _useSsl;
         private Channel _channel;
         private MountControllerService.MountControllerServiceClient _stub;
         private bool _disposed;
@@ -31,10 +32,17 @@ namespace AstroMount
         /// <summary>Underlying service stub (exposed for advanced scenarios).</summary>
         public MountControllerService.MountControllerServiceClient Stub => _stub;
 
-        public GrpcClient(string host = "localhost", int port = 50051)
+        /// <summary>
+        /// Initializes a new instance of the GrpcClient class.
+        /// </summary>
+        /// <param name="host">gRPC server hostname or IP.</param>
+        /// <param name="port">gRPC server port.</param>
+        /// <param name="useSsl">Enable TLS encryption (requires server-side SSL). Default: false.</param>
+        public GrpcClient(string host = "localhost", int port = 50051, bool useSsl = false)
         {
             _host = host ?? throw new ArgumentNullException(nameof(host));
             _port = port;
+            _useSsl = useSsl;
         }
 
         /// <summary>
@@ -46,7 +54,11 @@ namespace AstroMount
             if (IsConnected)
                 return;
 
-            _channel = new Channel($"{_host}:{_port}", ChannelCredentials.Insecure);
+            var credentials = _useSsl
+                ? new SslCredentials()  // Uses system default CA certificates
+                : ChannelCredentials.Insecure;
+
+            _channel = new Channel($"{_host}:{_port}", credentials);
             _stub = new MountControllerService.MountControllerServiceClient(_channel);
 
             // Verify connectivity with a health check

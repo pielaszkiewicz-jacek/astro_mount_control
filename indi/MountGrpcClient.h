@@ -21,10 +21,11 @@ class MountGrpcClient
 {
 public:
     /**
-     * @param host  gRPC server hostname or IP (default "localhost")
-     * @param port  gRPC server port (default 50051)
+     * @param host      gRPC server hostname or IP (default "localhost")
+     * @param port      gRPC server port (default 50051)
+     * @param useSsl    Enable TLS encryption (requires server-side SSL). Default: false.
      */
-    MountGrpcClient(const std::string& host = "localhost", int port = 50051);
+    MountGrpcClient(const std::string& host = "localhost", int port = 50051, bool useSsl = false);
 
     ~MountGrpcClient();
 
@@ -191,6 +192,7 @@ public:
 private:
     std::string host_;
     int port_;
+    bool use_ssl_;
     std::shared_ptr<grpc::Channel> channel_;
     std::unique_ptr<astro_mount::MountControllerService::Stub> stub_;
 

@@ -23,9 +23,15 @@ public:
      * @param address Network address to bind to
      * @param port Port to listen on
      * @param canopen_interface Underlying CANopen interface implementation
+     * @param enable_ssl Enable TLS encryption (requires valid cert/key)
+     * @param ssl_cert_path Path to PEM certificate file
+     * @param ssl_key_path Path to PEM private key file
      */
     CanOpenServer(const std::string& address, int port,
-                  std::unique_ptr<controllers::ICanOpenInterface> canopen_interface);
+                  std::unique_ptr<controllers::ICanOpenInterface> canopen_interface,
+                  bool enable_ssl = false,
+                  const std::string& ssl_cert_path = "",
+                  const std::string& ssl_key_path = "");
     
     ~CanOpenServer();
     
@@ -69,6 +75,9 @@ private:
     std::string address_;
     int port_;
     bool running_;
+    bool enable_ssl_;
+    std::string ssl_cert_path_;
+    std::string ssl_key_path_;
 };
 
 } // namespace canopen

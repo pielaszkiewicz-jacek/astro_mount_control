@@ -1182,3 +1182,122 @@ for obj in results.objects:
     print(f"Found: {obj.name} ({obj.catalog_name})")
 ```
 
+---
+
+## SSL/TLS Configuration
+
+The gRPC API supports optional TLS encryption for secure communication. SSL/TLS is **disabled by default** for development convenience and can be enabled via configuration.
+
+### Server-Side Configuration
+
+The **main gRPC server** (port 50051) and all secondary servers support conditional SSL:
+
+| Server | File | Default |
+|--------|------|---------|
+| Mount Controller (gRPC main) | `src/api/grpc_server.cpp` | Uses SSL if configured |
+| Object Database | `db/src/object_database_service.cpp` | Insecure (configurable) |
+| CANopen gRPC | `src/api/canopen_server.cpp` | Insecure (configurable) |
+
+To enable SSL on a server, provide:
+- Certificate file (PEM format, `.crt` or `.pem`)
+- Private key file (PEM format, `.key`)
+
+**Main server** — configure via `config/default.json`:
+```json
+{
+  "network": {
+    "enable_ssl": true,
+    "ssl_cert_path": "/etc/astro-mount/certs/server.crt",
+    "ssl_key_path": "/etc/astro-mount/certs/server.key"
+  }
+}
+```
+
+**Object Database / CANopen** — pass parameters to constructors:
+```cpp
+// Object Database with SSL
+ObjectDatabaseServer db_server(
+    "0.0.0.0:50052", "/path/to/database.db",
+    true,                                    // enable_ssl
+    "/path/to/server.crt",                   // ssl_cert_path
+    "/path/to/server.key"                    // ssl_key_path
+);
+
+// CANopen server with SSL
+CanOpenServer canopen_server(
+    "0.0.0.0", 50053, std::move(canopen_interface),
+    true,                                    // enable_ssl
+    "/path/to/server.crt",                   // ssl_cert_path
+    "/path/to/server.key"                    // ssl_key_path
+);
+```
+
+### Client-Side Configuration
+
+All gRPC clients support optional SSL connections.
+
+**C++ (INDI, examples):**
+```cpp
+// Insecure (default)
+auto channel = grpc::CreateChannel(address, grpc::InsecureChannelCredentials());
+
+// SSL/TLS
+auto channel = grpc::CreateChannel(address, grpc::SslChannelCredentials());
+
+// MountGrpcClient with SSL
+MountGrpcClient client("localhost", 50051, true);  // useSsl = true
+```
+
+**C# (ASCOM):**
+```csharp
+// Insecure (default)
+var client = new GrpcClient("localhost", 50051);
+
+// SSL/TLS
+var client = new GrpcClient("localhost", 50051, useSsl: true);
+client.Connect();
+```
+
+**Python:**
+```python
+# Insecure (default)
+client = MountControllerClient('localhost:50051')
+
+# SSL/TLS
+client = MountControllerClient('localhost:50051', use_ssl=True)
+```
+
+**Node.js (Web Proxy):**
+```javascript
+// Configure via .env:
+// ENABLE_SSL=true
+// SSL_CERT_PATH=/path/to/cert.pem
+// SSL_KEY_PATH=/path/to/key.pem
+
+// The proxy automatically uses SSL gRPC credentials when enabled
+const credentials = config.ssl.enabled
+    ? grpc.credentials.createSsl()
+    : grpc.credentials.createInsecure();
+```
+
+### Generating Self-Signed Certificates (Development)
+
+For development/testing, generate self-signed certificates:
+
+```bash
+# Generate CA key and certificate
+openssl req -new -x509 -days 365 -nodes -out ca.crt -keyout ca.key
+
+# Generate server key and CSR
+openssl genrsa -out server.key 2048
+openssl req -new -key server.key -out server.csr
+
+# Sign server certificate with CA
+openssl x509 -req -days 365 -in server.csr -CA ca.crt -CAkey ca.key \
+    -set_serial 01 -out server.crt
+
+# Place in certs/ directory
+cp server.crt server.key certs/
+```
+
+> **⚠️ Security Note:** Self-signed certificates are suitable for local networks. For production deployments over the internet, use certificates signed by a trusted Certificate Authority (e.g., Let's Encrypt).

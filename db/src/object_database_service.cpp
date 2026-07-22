@@ -7,6 +7,7 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <fstream>
 #include <google/protobuf/timestamp.pb.h>
 #include <google/protobuf/util/time_util.h>
 
@@ -1612,8 +1613,11 @@ void ObjectDatabaseServiceImpl::ConvertObjectToStatement(sqlite3_stmt* stmt, con
 }
 
 // ObjectDatabaseServer implementation
-ObjectDatabaseServer::ObjectDatabaseServer(const std::string& server_address, const std::string& db_path)
-    : server_address_(server_address), db_path_(db_path) {
+ObjectDatabaseServer::ObjectDatabaseServer(const std::string& server_address, const std::string& db_path,
+                                           bool enable_ssl, const std::string& ssl_cert_path,
+                                           const std::string& ssl_key_path)
+    : server_address_(server_address), db_path_(db_path),
+      enable_ssl_(enable_ssl), ssl_cert_path_(ssl_cert_path), ssl_key_path_(ssl_key_path) {
 }
 
 ObjectDatabaseServer::~ObjectDatabaseServer() {
@@ -1625,11 +1629,37 @@ bool ObjectDatabaseServer::Start() {
         service_ = std::make_unique<ObjectDatabaseServiceImpl>(db_path_);
         
         grpc::ServerBuilder builder;
-        builder.AddListeningPort(server_address_, grpc::InsecureServerCredentials());
+        
+        // Conditionally use SSL or insecure credentials
+        if (enable_ssl_) {
+            // Read certificate and key files
+            std::string cert, key;
+            std::ifstream cert_file(ssl_cert_path_);
+            std::ifstream key_file(ssl_key_path_);
+            
+            if (!cert_file.is_open() || !key_file.is_open()) {
+                return false;
+            }
+            
+            cert = std::string(std::istreambuf_iterator<char>(cert_file), {});
+            key = std::string(std::istreambuf_iterator<char>(key_file), {});
+            
+            grpc::SslServerCredentialsOptions::PemKeyCertPair key_cert_pair;
+            key_cert_pair.private_key = key;
+            key_cert_pair.cert_chain = cert;
+            
+            grpc::SslServerCredentialsOptions ssl_opts;
+            ssl_opts.pem_key_cert_pairs.push_back(key_cert_pair);
+            
+            auto creds = grpc::SslServerCredentials(ssl_opts);
+            builder.AddListeningPort(server_address_, creds);
+        } else {
+            builder.AddListeningPort(server_address_, grpc::InsecureServerCredentials());
+        }
+        
         builder.RegisterService(service_.get());
         
         // Allow large messages (e.g. HYG catalog ~14MB CSV data)
-        // Set to 64MB to accommodate future growth
         builder.SetMaxReceiveMessageSize(64 * 1024 * 1024);
         builder.SetMaxSendMessageSize(64 * 1024 * 1024);
         

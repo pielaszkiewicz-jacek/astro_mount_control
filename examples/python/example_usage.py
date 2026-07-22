@@ -28,11 +28,22 @@ except ImportError:
 class MountControllerClient:
     """Client for the Mount Controller gRPC service."""
     
-    def __init__(self, address='localhost:50051'):
-        """Initialize the client."""
-        self.channel = grpc.insecure_channel(address)
+    def __init__(self, address='localhost:50051', use_ssl=False):
+        """Initialize the client.
+        
+        Args:
+            address: gRPC server address (host:port)
+            use_ssl: Enable TLS encryption (requires server-side SSL)
+        """
+        if use_ssl:
+            # Load system default SSL credentials
+            creds = grpc.ssl_channel_credentials()
+            self.channel = grpc.secure_channel(address, creds)
+        else:
+            self.channel = grpc.insecure_channel(address)
         self.stub = pb_grpc.MountControllerServiceStub(self.channel)
-        print(f"Connected to mount controller at {address}")
+        ssl_status = "with TLS" if use_ssl else "insecure"
+        print(f"Connected to mount controller at {address} ({ssl_status})")
     
     def close(self):
         """Close the connection."""

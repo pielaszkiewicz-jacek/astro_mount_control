@@ -109,7 +109,18 @@ private:
 
 class ObjectDatabaseServer {
 public:
-    ObjectDatabaseServer(const std::string& server_address, const std::string& db_path);
+    /**
+     * @brief Construct a new Object Database Server
+     * @param server_address Address to bind (e.g. "0.0.0.0:50052")
+     * @param db_path Path to SQLite database file
+     * @param enable_ssl Enable TLS encryption (requires valid cert/key)
+     * @param ssl_cert_path Path to PEM certificate file
+     * @param ssl_key_path Path to PEM private key file
+     */
+    ObjectDatabaseServer(const std::string& server_address, const std::string& db_path,
+                         bool enable_ssl = false,
+                         const std::string& ssl_cert_path = "",
+                         const std::string& ssl_key_path = "");
     ~ObjectDatabaseServer();
     
     bool Start();
@@ -119,6 +130,9 @@ public:
 private:
     std::string server_address_;
     std::string db_path_;
+    bool enable_ssl_;
+    std::string ssl_cert_path_;
+    std::string ssl_key_path_;
     std::unique_ptr<ObjectDatabaseServiceImpl> service_;
     std::unique_ptr<grpc::Server> server_;
 };

@@ -917,15 +917,29 @@ int main(int argc, char** argv) {
     std::cout << "==========================================" << std::endl;
     
     try {
-        // Create gRPC channel
+        // Parse command line arguments
         std::string server_address = "localhost:50051";
-        if (argc > 1) {
-            server_address = argv[1];
+        bool use_ssl = false;
+        
+        for (int i = 1; i < argc; ++i) {
+            std::string arg = argv[i];
+            if (arg == "--ssl" || arg == "-s") {
+                use_ssl = true;
+            } else if (arg.find("--address=") == 0 || arg.find("-a=") == 0) {
+                server_address = arg.substr(arg.find('=') + 1);
+            } else if (arg[0] != '-') {
+                server_address = arg;
+            }
         }
         
-        std::cout << "\nConnecting to server at: " << server_address << std::endl;
+        std::cout << "\nConnecting to server at: " << server_address
+                  << (use_ssl ? " (TLS)" : " (insecure)") << std::endl;
         
-        auto channel = grpc::CreateChannel(server_address, grpc::InsecureChannelCredentials());
+        auto creds = use_ssl
+            ? grpc::SslChannelCredentials()
+            : grpc::InsecureChannelCredentials();
+        
+        auto channel = grpc::CreateChannel(server_address, creds);
         MountControllerClient client(channel);
         
         // Test connection with health check

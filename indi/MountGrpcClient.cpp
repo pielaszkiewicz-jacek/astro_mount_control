@@ -3,9 +3,10 @@
 #include <stdexcept>
 #include <iostream>
 
-MountGrpcClient::MountGrpcClient(const std::string& host, int port)
+MountGrpcClient::MountGrpcClient(const std::string& host, int port, bool useSsl)
     : host_(host)
     , port_(port)
+    , use_ssl_(useSsl)
 {
 }
 
@@ -19,10 +20,14 @@ void MountGrpcClient::connect()
     if (isConnected())
         return;
 
-    // Create insecure channel (production should use SSL)
+    // Create channel with optional SSL/TLS
+    auto creds = use_ssl_
+        ? grpc::SslChannelCredentials()
+        : grpc::InsecureChannelCredentials();
+
     channel_ = grpc::CreateChannel(
         host_ + ":" + std::to_string(port_),
-        grpc::InsecureChannelCredentials());
+        creds);
 
     stub_ = astro_mount::MountControllerService::NewStub(channel_);
 

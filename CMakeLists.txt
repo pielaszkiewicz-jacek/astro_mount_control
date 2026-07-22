@@ -212,6 +212,26 @@ set(CONFIG_SOURCES
     src/config/config_monitor.cpp
 )
 
+set(WEATHER_SOURCES
+    src/weather/weather_monitor.cpp
+    src/weather/weather_rules.cpp
+    src/weather/sensors/rain_sensor.cpp
+    src/weather/sensors/wind_sensor.cpp
+    src/weather/sensors/cloud_sensor.cpp
+    src/weather/sensors/gps_receiver.cpp
+    src/weather/sources/openweathermap_source.cpp
+    src/weather/sources/weathergov_source.cpp
+    src/weather/sources/imgw_source.cpp
+)
+
+set(NOTIFICATION_SOURCES
+    src/notifications/notification_engine.cpp
+    src/notifications/channels/email_channel.cpp
+    src/notifications/channels/webhook_channel.cpp
+    src/notifications/channels/mqtt_channel.cpp
+    src/notifications/notification_service.cpp
+)
+
 set(LOGGING_SOURCES
     src/logging/logger.cpp
 )
@@ -232,6 +252,8 @@ add_library(astro_mount_core STATIC
     ${CONTROLLER_SOURCES}
     ${CONFIG_SOURCES}
     ${LOGGING_SOURCES}
+    ${NOTIFICATION_SOURCES}
+    ${WEATHER_SOURCES}
 )
 
 # Ensure proto files are generated before compiling astro_mount_core

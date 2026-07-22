@@ -1,0 +1,166 @@
+/**
+ * Notification Service Protobuf Definition
+ *
+ * Defines the gRPC API for the notification and event monitoring system.
+ * Supports multiple notification channels (email, webhook, MQTT),
+ * event filtering by severity, and real-time event subscriptions.
+ */
+syntax = "proto3";
+
+package astro_mount;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Service Definition ──────────────────────────────────────────────────────
+
+service NotificationService {
+    /** Configure notification channels and event filters */
+    rpc ConfigureNotifications(NotificationConfig) returns (google.protobuf.Empty);
+
+    /** Get current notification system status */
+    rpc GetNotificationStatus(google.protobuf.Empty) returns (NotificationStatus);
+
+    /** Send a test notification through configured channels */
+    rpc SendTestNotification(TestNotificationRequest) returns (google.protobuf.Empty);
+
+    /** Subscribe to real-time event stream */
+    rpc SubscribeToEvents(EventSubscription) returns (stream NotificationEvent);
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+/** Severity level for notification events */
+enum EventSeverity {
+    DEBUG = 0;
+    INFO = 1;
+    WARNING = 2;
+    ERROR = 3;
+    CRITICAL = 4;
+}
+
+/** Notification channel type */
+enum ChannelType {
+    CHANNEL_UNSPECIFIED = 0;
+    CHANNEL_EMAIL = 1;
+    CHANNEL_WEBHOOK = 2;
+    CHANNEL_MQTT = 3;
+    CHANNEL_LOG = 4;
+    CHANNEL_SMS = 5;
+}
+
+/** Event category for filtering */
+enum EventCategory {
+    CATEGORY_UNSPECIFIED = 0;
+    CATEGORY_MOUNT = 1;         // Mount controller events (slew, track, park, errors)
+    CATEGORY_WEATHER = 2;       // Weather alerts
+    CATEGORY_SEQUENCER = 3;     // Observation sequencer events
+    CATEGORY_POWER = 4;         // Power management events
+    CATEGORY_SESSION = 5;       // Session logging events
+    CATEGORY_SYSTEM = 6;        // System-level events (startup, shutdown, config changes)
+    CATEGORY_GUIDER = 7;        // Guider events
+    CATEGORY_FOCUSER = 8;       // Focuser events
+    CATEGORY_CAMERA = 9;        // Camera events
+    CATEGORY_DOME = 10;         // Dome events
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+/** Configuration for a single notification channel */
+message NotificationChannel {
+    ChannelType type = 1;
+    bool enabled = 2;
+
+    // Channel-specific configuration (only one is used based on type)
+    EmailChannelConfig email = 10;
+    WebhookChannelConfig webhook = 11;
+    MqttChannelConfig mqtt = 12;
+}
+
+/** Email channel configuration */
+message EmailChannelConfig {
+    string smtp_host = 1;
+    int32 smtp_port = 2;
+    bool use_tls = 3;
+    string username = 4;
+    string password = 5;        // Consider using secrets management in production
+    string from_address = 6;
+    repeated string to_addresses = 7;
+    string subject_prefix = 8;  // e.g. "[AstroMount]"
+}
+
+/** Webhook channel configuration */
+message WebhookChannelConfig {
+    string url = 1;
+    string method = 2;          // "POST" (default) or "PUT"
+    map<string, string> headers = 3;
+    string auth_token = 4;      // Bearer token for Authorization header
+    int32 timeout_seconds = 5;
+    int32 retry_count = 6;
+}
+
+/** MQTT channel configuration */
+message MqttChannelConfig {
+    string broker_url = 1;
+    int32 broker_port = 2;
+    string client_id = 3;
+    string topic_prefix = 4;    // e.g. "astro-mount/notifications"
+    bool use_tls = 5;
+    string username = 6;
+    string password = 7;
+    int32 qos = 8;              // 0, 1, or 2
+    bool retain = 9;
+}
+
+/** Full notification configuration */
+message NotificationConfig {
+    repeated NotificationChannel channels = 1;
+    map<string, bool> enabled_events = 2;       // event_name → enabled
+    int32 min_severity = 3;                     // 0=DEBUG .. 4=CRITICAL
+    bool notify_on_error = 4;
+    bool notify_on_weather_alert = 5;
+    bool notify_on_session_end = 6;
+    bool notify_on_power_low = 7;
+    bool aggregate_messages = 8;
+    int32 aggregation_interval_minutes = 9;
+}
+
+/** A single notification event */
+message NotificationEvent {
+    string id = 1;
+    google.protobuf.Timestamp timestamp = 2;
+    EventSeverity severity = 3;
+    EventCategory category = 4;
+    string source = 5;              // Component name (e.g. "MountController", "WeatherMonitor")
+    string title = 6;               // Short human-readable title
+    string message = 7;             // Detailed message
+    map<string, string> metadata = 8; // Additional structured data
+    bool acknowledged = 9;           // Whether the event has been acknowledged
+}
+
+/** Notification system status */
+message NotificationStatus {
+    bool configured = 1;
+    int32 active_channels = 2;
+    int32 events_sent_total = 3;
+    int32 events_sent_last_hour = 4;
+    int32 events_queued = 5;
+    int32 events_failed = 6;
+    repeated NotificationChannel channel_status = 7;
+    google.protobuf.Timestamp last_event_time = 8;
+    string last_error = 9;
+}
+
+/** Request to send a test notification */
+message TestNotificationRequest {
+    string channel_type = 1;    // Optional: specific channel to test, empty = all
+    string message = 2;         // Optional custom test message
+}
+
+/** Event subscription filter */
+message EventSubscription {
+    repeated EventCategory categories = 1;   // Empty = all categories
+    int32 min_severity = 2;                 // Minimum severity to receive
+    string source_filter = 3;               // Optional: filter by source component
+    bool include_acknowledged = 4;          // Include already-acknowledged events
+}
