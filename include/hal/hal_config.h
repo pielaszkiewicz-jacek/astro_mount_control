@@ -735,6 +735,15 @@ struct HALConfig {
         double max_rate_deg_s{5.0};
         int microsteps{256};
         bool invert_direction{false};
+    // ─── LX200 configuration ─────────────────────────────────────────────
+    struct {
+        bool enabled{false};
+        std::string port{"/dev/ttyS0"};
+        int baud_rate{9600};
+        int update_interval_ms{1000};
+        bool simulate{true};
+    } lx200;
+
     } derotator;
 };
 

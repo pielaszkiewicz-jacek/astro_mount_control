@@ -233,6 +233,11 @@ set(MODEL_SOURCES
     src/models/exposure_planner.cpp
 )
 
+set(LX200_SOURCES
+    src/controllers/lx200_protocol.cpp
+    src/controllers/lx200_interface.cpp
+)
+
 set(CONTROLLER_SOURCES
     src/controllers/mount_controller.cpp
     src/controllers/canopen_interface.cpp
@@ -290,6 +295,7 @@ add_library(astro_mount_core STATIC
     ${DEROTATOR_SOURCES}
     ${DOME_SOURCES}
     ${FOCUSER_SOURCES}
+    ${LX200_SOURCES}
     ${SEQUENCER_SOURCES}
     ${MODEL_SOURCES}
     ${CONTROLLER_SOURCES}
