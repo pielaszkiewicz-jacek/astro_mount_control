@@ -742,6 +742,21 @@ struct HALConfig {
         int baud_rate{9600};
         int update_interval_ms{1000};
         bool simulate{true};
+    // ─── ST4 Guider configuration ────────────────────────────────────────
+    struct {
+        std::string interface_type{"simulated"};
+        std::string device_path{""};
+        int pin_ra_plus{17};
+        int pin_ra_minus{22};
+        int pin_dec_plus{23};
+        int pin_dec_minus{24};
+        double aggression{0.8};
+        uint32_t min_pulse_ms{10};
+        uint32_t max_pulse_ms{3000};
+        bool invert_ra{false};
+        bool invert_dec{false};
+    } st4_guider;
+
     } lx200;
 
     } derotator;

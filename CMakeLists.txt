@@ -233,6 +233,18 @@ set(MODEL_SOURCES
     src/models/exposure_planner.cpp
 )
 
+set(ST4_SOURCES
+    src/hal/st4_hal/st4_hal.cpp
+    src/hal/st4_hal/st4_simulated.cpp
+    src/hal/st4_hal/st4_gpio_sysfs.cpp
+    src/hal/st4_hal/st4_gpio_libgpiod.cpp
+    src/hal/st4_hal/st4_ftdi.cpp
+    src/hal/st4_hal/st4_mcp2221.cpp
+    src/hal/st4_hal/st4_arduino.cpp
+    src/controllers/st4_guider.cpp
+    src/controllers/st4_calibration.cpp
+)
+
 set(LX200_SOURCES
     src/controllers/lx200_protocol.cpp
     src/controllers/lx200_interface.cpp
@@ -296,6 +308,7 @@ add_library(astro_mount_core STATIC
     ${DOME_SOURCES}
     ${FOCUSER_SOURCES}
     ${LX200_SOURCES}
+    ${ST4_SOURCES}
     ${SEQUENCER_SOURCES}
     ${MODEL_SOURCES}
     ${CONTROLLER_SOURCES}

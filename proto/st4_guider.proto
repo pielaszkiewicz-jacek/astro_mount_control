@@ -1,0 +1,60 @@
+syntax = "proto3";
+package astro_mount;
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service St4GuiderService {
+    rpc StartGuiding(St4GuiderConfig) returns (google.protobuf.Empty);
+    rpc StopGuiding(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc GetStatus(google.protobuf.Empty) returns (St4Status);
+    rpc PulseGuide(St4Pulse) returns (google.protobuf.Empty);
+    rpc Calibrate(St4CalibrateRequest) returns (stream St4CalibrateProgress);
+}
+
+message St4GuiderConfig {
+    string interface_type = 1;
+    string device_path = 2;
+    int32 pin_ra_plus = 3;
+    int32 pin_ra_minus = 4;
+    int32 pin_dec_plus = 5;
+    int32 pin_dec_minus = 6;
+    double aggression = 7;
+    uint32 min_pulse_ms = 8;
+    uint32 max_pulse_ms = 9;
+    bool invert_ra = 10;
+    bool invert_dec = 11;
+}
+
+message St4Pulse {
+    enum Direction { NORTH = 0; SOUTH = 1; EAST = 2; WEST = 3; }
+    Direction direction = 1;
+    uint32 duration_ms = 2;
+}
+
+message St4Status {
+    bool guiding = 1;
+    string interface_type = 2;
+    bool connected = 3;
+    uint32 pulses_sent = 4;
+    uint32 pulses_failed = 5;
+    double ra_correction_arcsec = 6;
+    double dec_correction_arcsec = 7;
+    double rms_ra = 8;
+    double rms_dec = 9;
+    bool calibrated = 10;
+}
+
+message St4CalibrateRequest {
+    uint32 pulse_duration_ms = 1;
+    uint32 steps = 2;
+    uint32 step_delay_ms = 3;
+}
+
+message St4CalibrateProgress {
+    string direction = 1;
+    uint32 step = 2;
+    uint32 total_steps = 3;
+    double position_arcsec = 4;
+    bool complete = 5;
+    double calibration_arcsec_per_ms = 6;
+}
