@@ -1301,3 +1301,165 @@ cp server.crt server.key certs/
 ```
 
 > **⚠️ Security Note:** Self-signed certificates are suitable for local networks. For production deployments over the internet, use certificates signed by a trusted Certificate Authority (e.g., Let's Encrypt).
+
+---
+
+## Additional Services Reference
+
+The following services have been added to extend system capabilities. Each service follows the same gRPC pattern as the main `MountControllerService`.
+
+### NotificationService
+
+```protobuf
+service NotificationService {
+    rpc ConfigureNotifications(NotificationConfig) returns (Empty);
+    rpc GetNotificationStatus(Empty) returns (NotificationStatus);
+    rpc SendTestNotification(TestNotificationRequest) returns (Empty);
+    rpc SubscribeToEvents(EventSubscription) returns (stream NotificationEvent);
+}
+```
+
+Manages notification channels (email/SMTP, webhook, MQTT). Events are filtered by severity and category, with optional aggregation.
+
+### WeatherService
+
+```protobuf
+service WeatherService {
+    rpc GetWeatherStatus(Empty) returns (WeatherStatus);
+    rpc GetWeatherHistory(WeatherHistoryRequest) returns (WeatherHistoryResponse);
+    rpc SetWeatherRules(WeatherRules) returns (Empty);
+    rpc SubscribeWeatherAlerts(Empty) returns (stream WeatherAlert);
+}
+```
+
+Environmental monitoring with 20+ sensor fields. Supports local sensors (GPIO, I²C) and external APIs (OpenWeatherMap, Weather.gov, IMGW).
+
+### FocuserService
+
+```protobuf
+service FocuserService {
+    rpc MoveFocuser(FocuserMoveRequest) returns (Empty);
+    rpc HaltFocuser(Empty) returns (Empty);
+    rpc GetFocuserPosition(Empty) returns (FocuserStatus);
+    rpc RunAutoFocus(AutoFocusRequest) returns (stream AutoFocusProgress);
+    rpc SetTemperatureCompensation(TempCompConfig) returns (Empty);
+    rpc GetTempCompensationStatus(Empty) returns (TempCompStatus);
+}
+```
+
+Controls ZWO EAF, MoonLite, Pegasus FocusCube focusers. Auto-focus uses HFD V-curve fitting with parabolic/hyperbolic models.
+
+### CameraService
+
+```protobuf
+service CameraService {
+    rpc StartExposure(ExposureRequest) returns (stream ExposureProgress);
+    rpc AbortExposure(Empty) returns (Empty);
+    rpc GetCameraInfo(Empty) returns (CameraInfo);
+    rpc SetFilter(FilterRequest) returns (Empty);
+    rpc GetFilterPosition(Empty) returns (FilterPosition);
+    rpc StartVideoPreview(VideoPreviewRequest) returns (stream VideoFrame);
+    rpc StopVideoPreview(Empty) returns (Empty);
+}
+```
+
+Camera control for ZWO ASI cameras. Supports exposure, binning, ROI, filter wheel, cooler, and live video preview.
+
+### DomeService
+
+```protobuf
+service DomeService {
+    rpc OpenDome(Empty) returns (DomeResult);
+    rpc CloseDome(Empty) returns (DomeResult);
+    rpc RotateDome(DomeRotateRequest) returns (DomeResult);
+    rpc GetDomeStatus(Empty) returns (DomeStatus);
+    rpc ParkDome(Empty) returns (DomeResult);
+    rpc SetDomeSync(DomeSyncRequest) returns (Empty);
+}
+```
+
+Controls rotating domes (RS-232) and roll-off roofs (GPIO relay). Automatic azimuth sync with mount.
+
+### SequencerService
+
+```protobuf
+service SequencerService {
+    rpc LoadPlan(ObservationPlanProto) returns (SequencerResult);
+    rpc StartSequencer(Empty) returns (SequencerResult);
+    rpc StopSequencer(Empty) returns (SequencerResult);
+    rpc PauseSequencer(Empty) returns (SequencerResult);
+    rpc GetSequencerStatus(Empty) returns (SequencerStatus);
+}
+```
+
+Automated observation sequencer. State machine: IDLE → SLEW → TRACK → FOCUS → EXPOSE → (loop) → PARK. Integrates with mount, camera, focuser, dome, and weather systems.
+
+### DerotatorService
+
+```protobuf
+service DerotatorService {
+    rpc SetDerotatorMode(DerotatorMode) returns (Empty);
+    rpc SetDerotatorAngle(AngleRequest) returns (Empty);
+    rpc SetDerotatorRate(RateRequest) returns (Empty);
+    rpc HomeDerotator(Empty) returns (stream HomeProgress);
+    rpc GetDerotatorStatus(Empty) returns (DerotatorStatus);
+    rpc GetFieldRotationAngle(Empty) returns (FieldRotationInfo);
+}
+```
+
+Field derotation for alt-az and CASUAL mounts. Three modes: AUTO, FIXED_ANGLE, MANUAL_RATE.
+
+### St4GuiderService
+
+```protobuf
+service St4GuiderService {
+    rpc StartGuiding(St4GuiderConfig) returns (Empty);
+    rpc StopGuiding(Empty) returns (Empty);
+    rpc GetStatus(Empty) returns (St4Status);
+    rpc PulseGuide(St4Pulse) returns (Empty);
+    rpc Calibrate(CalibrateRequest) returns (stream CalibrateProgress);
+}
+```
+
+ST4 autoguiding port control via GPIO, FTDI, MCP2221, or Arduino. Supports PHD2 TCP integration.
+
+### PECService
+
+```protobuf
+service PECService {
+    rpc StartTraining(PECTrainingConfig) returns (stream PECTrainingProgress);
+    rpc StopTraining(Empty) returns (Empty);
+    rpc GetPECStatus(Empty) returns (PECStatus);
+    rpc SetPECEnabled(PECEnableRequest) returns (Empty);
+    rpc SavePECData(Empty) returns (Empty);
+    rpc LoadPECData(Empty) returns (Empty);
+}
+```
+
+Periodic Error Correction using FFT harmonic analysis. Learns worm gear errors and applies real-time compensation.
+
+### PowerService
+
+```protobuf
+service PowerService {
+    rpc GetPowerStatus(Empty) returns (PowerStatus);
+    rpc SetPowerOutput(PowerOutputRequest) returns (Empty);
+    rpc GetPowerHistory(HistoryRequest) returns (HistoryResponse);
+}
+```
+
+Power management with battery monitoring, output control, and auto-park on low voltage.
+
+### Configuration Files
+
+All services have corresponding configuration sections in `include/hal/hal_config.h`:
+- `focuser` — type, device path, baud rate, max position
+- `camera` — type, camera ID, gain, binning, cooler
+- `dome` — type, device path, home/park azimuth
+- `sequencer` — auto_focus, dither, focus_interval
+- `derotator` — type, microsteps, max rate
+- `lx200` — port, baud rate, simulate
+- `st4_guider` — interface type, pins, aggression
+- `pec` — worm cycle, harmonics, sample rate
+- `power` — type, I²C address, low voltage threshold
+- `notifications` — email SMTP, webhook URL, MQTT broker
