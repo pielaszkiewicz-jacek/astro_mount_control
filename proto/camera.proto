@@ -1,0 +1,142 @@
+/**
+ * Camera Service Protobuf Definition
+ *
+ * Defines the gRPC API for camera control (ZWO ASI, QHY, etc.):
+ * exposure control, filter wheels, and image data streaming.
+ */
+syntax = "proto3";
+
+package astro_mount;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Service Definition ─────────────────────────────────────────────────────
+
+service CameraService {
+    /** Start an exposure, streaming progress updates */
+    rpc StartExposure(ExposureRequest) returns (stream ExposureProgress);
+
+    /** Abort the current exposure */
+    rpc AbortExposure(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    /** Get camera information and capabilities */
+    rpc GetCameraInfo(google.protobuf.Empty) returns (CameraInfo);
+
+    /** Set active filter (for filter wheels) */
+    rpc SetFilter(FilterRequest) returns (google.protobuf.Empty);
+
+    /** Get current filter position */
+    rpc GetFilterPosition(google.protobuf.Empty) returns (FilterPosition);
+
+    /** Start live video preview mode */
+    rpc StartVideoPreview(VideoPreviewRequest) returns (stream VideoFrame);
+
+    /** Stop video preview mode */
+    rpc StopVideoPreview(google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+// ─── Messages ───────────────────────────────────────────────────────────────
+
+message CameraInfo {
+    string name = 1;                    // Camera model name
+    string manufacturer = 2;            // Manufacturer (ZWO, QHY, etc.)
+    string sensor_name = 3;             // Sensor model (e.g. "IMX571")
+    int32 width = 4;                    // Sensor width [pixels]
+    int32 height = 5;                   // Sensor height [pixels]
+    double pixel_size_um = 6;          // Pixel size [microns]
+    int32 max_bin = 7;                  // Maximum binning
+    bool has_filter_wheel = 8;         // Has integrated filter wheel
+    int32 num_filters = 9;             // Number of filter positions
+    repeated string filter_names = 10;  // Filter names
+    double e_ad = 11;                   // Gain (e-/ADU)
+    double read_noise_e = 12;          // Read noise [e-]
+    double full_well_capacity_e = 13;  // Full well capacity [e-]
+    double bit_depth = 14;             // ADC bit depth
+    bool has_cooler = 15;              // Has temperature cooler
+    double min_cooling_c = 16;         // Min cooling below ambient [°C]
+    bool connected = 17;               // Camera is connected
+    string driver_version = 18;
+}
+
+message ExposureRequest {
+    double exposure_time_s = 1;        // Exposure duration [seconds]
+    int32 gain = 2;                    // Gain (0-100 or camera-specific)
+    int32 offset = 3;                  // Offset/black level
+    int32 binning = 4;                 // Binning (1, 2, 3, 4)
+    int32 roi_x = 5;                   // ROI X start (0 = full frame)
+    int32 roi_y = 6;                   // ROI Y start
+    int32 roi_width = 7;              // ROI width (0 = full width)
+    int32 roi_height = 8;             // ROI height (0 = full height)
+    string image_type = 9;            // "raw", "fits", "png", "jpeg"
+    bool save_to_disk = 10;           // Auto-save to configured path
+    string filename = 11;             // Custom filename (auto-generated if empty)
+    FilterRequest filter = 12;        // Optional filter selection
+    bool high_speed = 13;             // High-speed mode (may increase read noise)
+}
+
+message ExposureProgress {
+    int32 elapsed_ms = 1;              // Elapsed exposure time [ms]
+    int32 remaining_ms = 2;           // Remaining exposure time [ms]
+    double progress_percent = 3;      // 0.0 - 100.0
+    string status = 4;                // "exposing", "reading", "saving", "complete"
+    ImageData image = 5;              // Final image (only sent on completion)
+    uint64 image_size_bytes = 6;      // Image file size (when saving to disk)
+    string saved_path = 7;            // Path where image was saved (if save_to_disk)
+}
+
+message ImageData {
+    int32 width = 1;
+    int32 height = 2;
+    int32 bit_depth = 3;
+    string format = 4;                // "raw", "fits", "png", "jpeg"
+    bytes data = 5;                   // Image pixel data
+    double exposure_time_s = 6;
+    int32 gain = 7;
+    int32 binning = 8;
+    double temperature_c = 9;
+    google.protobuf.Timestamp timestamp = 10;
+    // Statistics
+    double mean_adu = 11;
+    double median_adu = 12;
+    double std_dev_adu = 13;
+    double min_adu = 14;
+    double max_adu = 15;
+    // Star detection (for auto-focus integration)
+    double hfd = 16;                  // Half Flux Diameter [pixels]
+    int32 star_count = 17;            // Number of stars detected
+}
+
+message FilterRequest {
+    int32 position = 1;               // 0-based filter position
+    string filter_name = 2;           // Filter name (alternative to position)
+}
+
+message FilterPosition {
+    int32 current_position = 1;
+    string current_filter = 2;
+    int32 num_filters = 3;
+    repeated string filter_names = 4;
+}
+
+message VideoPreviewRequest {
+    int32 binning = 1;
+    int32 roi_x = 2;
+    int32 roi_y = 3;
+    int32 roi_width = 4;
+    int32 roi_height = 5;
+    int32 frame_divider = 6;          // Send every Nth frame (1 = all)
+    string image_type = 7;            // "jpeg" (default) or "png"
+    int32 jpeg_quality = 8;           // 1-100 (default 85)
+}
+
+message VideoFrame {
+    int32 frame_number = 1;
+    int32 width = 2;
+    int32 height = 3;
+    string format = 4;                // "jpeg", "png"
+    bytes data = 5;                   // Compressed frame data
+    double exposure_time_s = 6;
+    double temperature_c = 7;
+    google.protobuf.Timestamp timestamp = 8;
+}

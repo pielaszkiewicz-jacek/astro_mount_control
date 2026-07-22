@@ -189,6 +189,12 @@ set(CORE_SOURCES
     src/hal/gamepad_hal/gamepad_input_evdev.cpp
 )
 
+set(CAMERA_SOURCES
+    src/hal/camera_hal/camera_hal.cpp
+    src/hal/camera_hal/camera_zwo.cpp
+    src/hal/camera_hal/camera_simulated.cpp
+)
+
 set(FOCUSER_SOURCES
     src/hal/focuser_hal/focuser_hal.cpp
     src/hal/focuser_hal/focuser_zwo.cpp
@@ -202,6 +208,7 @@ set(MODEL_SOURCES
     src/models/kalman_filter.cpp
     src/models/ephemeris_tracker.cpp
     src/models/focus_curve.cpp
+    src/models/exposure_planner.cpp
 )
 
 set(CONTROLLER_SOURCES
@@ -257,6 +264,7 @@ set(DB_SOURCES
 # Create library
 add_library(astro_mount_core STATIC
     ${CORE_SOURCES}
+    ${CAMERA_SOURCES}
     ${FOCUSER_SOURCES}
     ${MODEL_SOURCES}
     ${CONTROLLER_SOURCES}
