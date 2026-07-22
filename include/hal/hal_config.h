@@ -763,6 +763,16 @@ struct HALConfig {
         double sample_rate_hz{10.0};
         int training_duration_cycles{3};
         bool auto_train{false};
+    // ─── Power management configuration ──────────────────────────────────
+    struct {
+        std::string type{"simulated"};
+        std::string i2c_device{"/dev/i2c-1"};
+        int i2c_address{0x0B};
+        double low_voltage_threshold_v{11.5};
+        int poll_interval_s{10};
+        bool auto_park_on_low_voltage{true};
+    } power;
+
     } pec;
 
     } st4_guider;

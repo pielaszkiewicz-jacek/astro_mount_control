@@ -225,6 +225,13 @@ set(SEQUENCER_SOURCES
     src/sequencer/observation_sequencer.cpp
 )
 
+set(POWER_SOURCES
+    src/hal/power_hal/power_hal.cpp
+    src/hal/power_hal/power_simulated.cpp
+    src/hal/power_hal/power_i2c.cpp
+    src/controllers/power_manager.cpp
+)
+
 set(PEC_SOURCES
     src/models/pec_model.cpp
 )
@@ -313,6 +320,7 @@ add_library(astro_mount_core STATIC
     ${FOCUSER_SOURCES}
     ${LX200_SOURCES}
     ${PEC_SOURCES}
+    ${POWER_SOURCES}
     ${ST4_SOURCES}
     ${SEQUENCER_SOURCES}
     ${MODEL_SOURCES}

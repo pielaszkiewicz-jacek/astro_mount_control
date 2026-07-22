@@ -1,0 +1,51 @@
+syntax = "proto3";
+package astro_mount;
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service PowerService {
+    rpc GetPowerStatus(google.protobuf.Empty) returns (PowerStatus);
+    rpc SetPowerOutput(PowerOutputRequest) returns (google.protobuf.Empty);
+    rpc GetPowerHistory(PowerHistoryRequest) returns (PowerHistoryResponse);
+}
+
+message PowerStatus {
+    double voltage_v = 1;
+    double current_a = 2;
+    double power_w = 3;
+    double capacity_ah = 4;
+    double charge_percent = 5;
+    bool charging = 6;
+    bool on_battery = 7;
+    double temperature_c = 8;
+    double estimated_runtime_min = 9;
+    double input_voltage_v = 10;
+    double output_voltage_v = 11;
+    repeated PowerOutput outputs = 12;
+    google.protobuf.Timestamp timestamp = 13;
+}
+
+message PowerOutput {
+    int32 id = 1;
+    string name = 2;
+    bool enabled = 3;
+    double voltage_v = 4;
+    double current_a = 5;
+    bool overload = 6;
+}
+
+message PowerOutputRequest {
+    int32 output_id = 1;
+    bool enabled = 2;
+}
+
+message PowerHistoryRequest {
+    google.protobuf.Timestamp start_time = 1;
+    google.protobuf.Timestamp end_time = 2;
+    int32 max_points = 3;
+}
+
+message PowerHistoryResponse {
+    repeated PowerStatus readings = 1;
+    int32 total_points = 2;
+}
