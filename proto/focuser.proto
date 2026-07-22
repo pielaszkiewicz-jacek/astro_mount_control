@@ -1,0 +1,111 @@
+/**
+ * Focuser Service Protobuf Definition
+ *
+ * Defines the gRPC API for controlling auto-focusers (ZWO EAF,
+ * MoonLite, Pegasus FocusCube, etc.) and performing automatic
+ * focusing using HFD/FWHM curve analysis.
+ */
+syntax = "proto3";
+
+package astro_mount;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Service Definition ──────────────────────────────────────────────────────
+
+service FocuserService {
+    /** Move focuser to absolute position */
+    rpc MoveFocuser(FocuserMoveRequest) returns (google.protobuf.Empty);
+
+    /** Halt focuser motion immediately */
+    rpc HaltFocuser(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    /** Get current focuser position and status */
+    rpc GetFocuserPosition(google.protobuf.Empty) returns (FocuserStatus);
+
+    /** Run automatic focus routine, streaming progress */
+    rpc RunAutoFocus(AutoFocusRequest) returns (stream AutoFocusProgress);
+
+    /** Configure temperature compensation */
+    rpc SetTemperatureCompensation(TempCompConfig) returns (google.protobuf.Empty);
+
+    /** Get current temperature compensation status */
+    rpc GetTempCompensationStatus(google.protobuf.Empty) returns (TempCompStatus);
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+/** Focuser move request */
+message FocuserMoveRequest {
+    int32 position = 1;         // Absolute target position in steps (0..max_position)
+    int32 speed = 2;            // Movement speed (0=silent..100=max, default 50)
+    bool synchronous = 3;       // Wait for move to complete before returning
+}
+
+/** Current focuser status */
+message FocuserStatus {
+    int32 position = 1;         // Current absolute position [steps]
+    int32 max_position = 2;     // Maximum position (hardware limit) [steps]
+    bool moving = 3;            // Focuser is currently moving
+    bool connected = 4;         // Focuser hardware is connected
+    double temperature_c = 5;   // Focuser internal temperature [°C]
+    double hfd = 6;             // Last measured HFD [pixels] (0 = not available)
+    string model_name = 7;      // Focuser model name (e.g. "ZWO EAF", "MoonLite")
+    string error_message = 8;   // Error details if any
+    int32 step_size_microns = 9; // Step size in microns (for position estimation)
+}
+
+/** Start auto-focus routine */
+message AutoFocusRequest {
+    int32 start_position = 1;   // Starting position [steps]
+    int32 end_position = 2;     // Ending position [steps]
+    int32 step_size = 3;        // Step size between measurements [steps]
+    int32 exposures_per_step = 4; // Number of exposures to average per step (default 1)
+    double tolerance = 5;       // V-curve tolerance for early termination [%]
+    bool use_temperature = 6;   // Include temperature compensation during focus
+    string algorithm = 7;       // "parabolic" (default) or "hyperbolic"
+}
+
+/** Progress update during auto-focus */
+message AutoFocusProgress {
+    int32 current_step = 1;     // Current step number
+    int32 total_steps = 2;      // Total steps
+    int32 position = 3;         // Current focuser position [steps]
+    double hfd = 4;             // Measured HFD at current position [pixels]
+    double temperature_c = 5;   // Temperature at measurement [°C]
+    int32 best_position = 6;    // Best position found so far [steps]
+    double best_hfd = 7;        // Best HFD found so far [pixels]
+    string status = 8;          // "scanning", "fitting", "complete", "error"
+    FocusCurve curve = 9;       // Accumulated focus curve data (sent on completion)
+}
+
+/** Focus curve data (HFD vs position) */
+message FocusCurve {
+    repeated int32 positions = 1;         // Position values [steps]
+    repeated double hfd_values = 2;       // HFD values [pixels]
+    double vcurve_a = 3;                  // Fitted parabola coefficient A
+    double vcurve_b = 4;                  // Fitted parabola coefficient B
+    double vcurve_c = 5;                  // Fitted parabola coefficient C
+    int32 focus_position = 6;             // Calculated best focus position [steps]
+    double focus_hfd = 7;                 // HFD at best focus [pixels]
+    double r_squared = 8;                 // Fit quality (1.0 = perfect)
+}
+
+/** Temperature compensation configuration */
+message TempCompConfig {
+    bool enabled = 1;           // Enable automatic temperature compensation
+    double coefficient = 2;     // Steps per degree Celsius (positive = expand)
+    int32 max_adjustment = 3;   // Maximum adjustment [steps] to prevent runaway
+    double temp_sensor_offset = 4; // Temperature sensor calibration offset [°C]
+}
+
+/** Temperature compensation status */
+message TempCompStatus {
+    bool enabled = 1;
+    double coefficient = 2;     // Steps/°C
+    double current_temp_c = 3;  // Current focuser temperature
+    double reference_temp_c = 4; // Temperature at last calibration
+    int32 total_adjustment = 5; // Total steps adjusted by compensation
+    int32 max_adjustment = 6;
+}
