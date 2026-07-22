@@ -755,6 +755,16 @@ struct HALConfig {
         uint32_t max_pulse_ms{3000};
         bool invert_ra{false};
         bool invert_dec{false};
+    // ─── PEC configuration ───────────────────────────────────────────────
+    struct {
+        bool enabled{false};
+        double worm_cycle_seconds{638.0};
+        int num_harmonics{8};
+        double sample_rate_hz{10.0};
+        int training_duration_cycles{3};
+        bool auto_train{false};
+    } pec;
+
     } st4_guider;
 
     } lx200;

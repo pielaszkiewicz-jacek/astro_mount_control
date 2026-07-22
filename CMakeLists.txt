@@ -225,6 +225,10 @@ set(SEQUENCER_SOURCES
     src/sequencer/observation_sequencer.cpp
 )
 
+set(PEC_SOURCES
+    src/models/pec_model.cpp
+)
+
 set(MODEL_SOURCES
     src/models/tpoint_model.cpp
     src/models/kalman_filter.cpp
@@ -308,6 +312,7 @@ add_library(astro_mount_core STATIC
     ${DOME_SOURCES}
     ${FOCUSER_SOURCES}
     ${LX200_SOURCES}
+    ${PEC_SOURCES}
     ${ST4_SOURCES}
     ${SEQUENCER_SOURCES}
     ${MODEL_SOURCES}

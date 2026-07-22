@@ -1,0 +1,45 @@
+syntax = "proto3";
+package astro_mount;
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+service PECService {
+    rpc StartTraining(PECTrainingConfig) returns (stream PECTrainingProgress);
+    rpc StopTraining(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc GetPECStatus(google.protobuf.Empty) returns (PECStatus);
+    rpc SetPECEnabled(PECEnableRequest) returns (google.protobuf.Empty);
+    rpc SavePECData(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc LoadPECData(google.protobuf.Empty) returns (google.protobuf.Empty);
+}
+
+message PECTrainingConfig {
+    int32 worm_cycle_seconds = 1;        // Worm period [s] (default 638s for 1rpm)
+    int32 num_harmonics = 2;             // Harmonics to extract (default 8)
+    double sample_rate_hz = 3;           // Encoder sample rate (default 10Hz)
+    int32 duration_cycles = 4;           // Number of worm cycles to train (default 3)
+}
+
+message PECTrainingProgress {
+    double progress_percent = 1;
+    int32 elapsed_seconds = 2;
+    int32 remaining_seconds = 3;
+    double current_error_arcsec = 4;
+    double peak_error_arcsec = 5;
+    double rms_error_arcsec = 6;
+    repeated double harmonics = 7;      // Extracted harmonic amplitudes
+    string status = 8;                   // "sampling", "fft", "complete"
+}
+
+message PECStatus {
+    bool enabled = 1;
+    bool trained = 2;
+    double peak_error_arcsec = 3;
+    double rms_error_arcsec = 4;
+    int32 num_harmonics = 5;
+    double worm_cycle_seconds = 6;
+    double correction_arcsec = 7;
+    double current_phase_deg = 8;
+    google.protobuf.Timestamp last_training = 9;
+}
+
+message PECEnableRequest { bool enabled = 1; }
