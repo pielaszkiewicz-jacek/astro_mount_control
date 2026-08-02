@@ -10,6 +10,8 @@ EmailChannel::EmailChannel(Config config)
     : config_(std::move(config)) {
 }
 
+EmailChannel::EmailChannel() : EmailChannel(Config{}) {}
+
 EmailChannel::~EmailChannel() {
     shutdown();
 }

@@ -11,6 +11,7 @@
 #include <queue>
 #include <atomic>
 #include <thread>
+#include <condition_variable>
 #include "proto/notification.pb.h"
 
 namespace astro_mount {

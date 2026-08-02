@@ -2,8 +2,6 @@
   "logging": {
     "level": "INFO",
     "directory": "/var/log/astro-mount",
-    "rotation_days": 7,
-    "max_file_size_mb": 100,
     "console_output": true
   },
   "network": {

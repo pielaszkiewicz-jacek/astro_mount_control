@@ -7,8 +7,6 @@
     "logging": {
         "level": "INFO",
         "directory": "/var/log/astro-mount",
-        "rotation_days": 7,
-        "max_file_size_mb": 100,
         "console_output": true
     },
 
@@ -355,11 +353,14 @@
             "button_mapping": {
                 "0": "home",
                 "1": "stop",
-                "2": "park",
+                "2": "bootstrap_calibrate",
                 "3": "emergency_stop",
                 "4": "speed_down",
                 "5": "speed_up",
-                "6": "manual_toggle"
+                "6": "manual_toggle",
+                "7": "park",
+                "9": "mode_cycle",
+                "10": "clear_errors"
             },
             "axis_mapping": {
                 "0": "lx",

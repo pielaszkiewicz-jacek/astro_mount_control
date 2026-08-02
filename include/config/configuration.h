@@ -22,8 +22,6 @@ public:
     struct LoggingConfig {
         std::string level;
         std::string directory;
-        int rotation_days;
-        int max_file_size_mb;
         bool console_output;
     };
 
@@ -36,14 +34,10 @@ public:
         std::string ssl_key_path;
     };
 
-    // CanOpenConfig removed — use hal::HALConfig::canopen directly as single source of truth.
-    // The CANopen configuration was duplicated across 4 structures (ControllerConfig,
-    // CanOpenConfig, HALConfig::canopen, ICanOpenInterface::Config).
-    // HALConfig::canopen is now the canonical source.
     struct AxisPhysicalParameters {
-        // CANopen scaling factors (per-axis)
-        double position_counts_per_degree;  // counts per degree for 0x6064
-        double velocity_counts_per_deg_s;   // counts per °/s for 0x606C
+        // Axis scaling factors (per-axis)
+        double position_counts_per_degree;  // counts per degree
+        double velocity_counts_per_deg_s;   // counts per °/s
 
         // Encoder parameters
         double encoder_resolution;       // Encoder resolution [counts/rev]
@@ -190,24 +184,34 @@ public:
     };
 
     /**
-     * @brief Servo initialization SDO sequence entry
+     * @brief External service integration configuration
      *
-     * Defines a single SDO write to be sent during servo drive initialization.
-     * Used to configure manufacturer-specific parameters like microstep resolution,
-     * electronic gearing, and encoder settings per the drive's manual.
+     * Controls whether the mount controller hosts the dome, derotator and
+     * focuser services in-process (all served on the unified gRPC port 50051).
+     * Weather, power and sequencer remain separate external gRPC processes.
+     * All integrations are disabled by default.
      */
-    struct ServoInitEntry {
-        int axis;
-        uint16_t index;
-        uint8_t  subindex;
-        int32_t  value;
-        std::string description;
-        uint8_t data_size = 4;  // 1, 2, or 4 bytes (default 4 for backward compat)
-    };
+    struct ExternalIntegrationConfig {
+        bool dome_enabled{false};
+        int dome_update_interval_ms{1000};
 
-    struct ServoInitConfig {
-        bool enabled{false};
-        std::vector<ServoInitEntry> sequence;
+        bool derotator_enabled{false};
+        int derotator_update_interval_ms{1000};
+
+        bool weather_enabled{false};
+        std::string weather_address{"127.0.0.1:50055"};
+        int weather_poll_interval_ms{10000};
+
+        bool power_enabled{false};
+        std::string power_address{"127.0.0.1:50056"};
+        int power_poll_interval_ms{10000};
+
+        bool sequencer_enabled{false};
+        std::string sequencer_address{"127.0.0.1:50057"};
+        int sequencer_poll_interval_ms{5000};
+
+        bool focuser_enabled{false};
+        int focuser_poll_interval_ms{5000};
     };
 
     // Forward declaration for HAL configuration (defined in hal/hal_config.h)
@@ -265,17 +269,6 @@ public:
      * @return Network configuration
      */
     NetworkConfig getNetworkConfig() const;
-/**
- * @brief Get CANopen configuration from HALConfig (single source of truth)
- * @return Reference to the CANopen configuration subsection
- *
- * Note: The old Configuration::CanOpenConfig was removed to eliminate
- * 4-way duplication. astro_mount::hal::CanOpenConfig (via HALConfig::canopen)
- * is now the canonical source for all CANopen parameters.
- */
-const astro_mount::hal::CanOpenConfig& getCanOpenConfig() const;
-
-
     /**
      * @brief Get mount configuration
      * @return Mount configuration
@@ -313,10 +306,10 @@ const astro_mount::hal::CanOpenConfig& getCanOpenConfig() const;
     TPointConfig getTPointConfig() const;
 
     /**
-     * @brief Get servo initialization configuration
-     * @return Servo init configuration (SDO sequence)
+     * @brief Get external service integration configuration
+     * @return External integration configuration
      */
-    ServoInitConfig getServoInitConfig() const;
+    ExternalIntegrationConfig getExternalIntegrationConfig() const;
 
     /**
      * @brief Get field rotation parameters
@@ -335,13 +328,6 @@ const astro_mount::hal::CanOpenConfig& getCanOpenConfig() const;
      * @param config Network configuration
      */
     void setNetworkConfig(const NetworkConfig& config);
-/**
- * @brief Set CANopen configuration (stored in HALConfig::canopen)
- * @param config CANopen configuration
- */
-void setCanOpenConfig(const astro_mount::hal::CanOpenConfig& config);
-
-
     /**
      * @brief Set mount configuration
      * @param config Mount configuration

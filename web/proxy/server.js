@@ -18,7 +18,7 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const config = require('./config');
-const { createGrpcClient, createDbGrpcClient } = require('./grpc/client');
+const { createGrpcClient, createDbGrpcClient, createDomeGrpcClient, createDerotatorGrpcClient } = require('./grpc/client');
 const errorHandler = require('./middleware/errorHandler');
 
 // ─── Express App Setup ───────────────────────────────────────────────────────
@@ -54,10 +54,24 @@ app.use('/api/axis', require('./routes/axis'));
 app.use('/api/calibration', require('./routes/calibration'));
 app.use('/api/tracking', require('./routes/tracking'));
 app.use('/api/config', require('./routes/config'));
+app.use('/api/hal', require('./routes/hal'));
 app.use('/api/state', require('./routes/state'));
 app.use('/api/db', require('./routes/database'));
 app.use('/api/db', require('./routes/health'));
 app.use('/api/logs', require('./routes/logs'));
+
+// ─── Extended Services ───────────────────────────────────────────────────────
+
+app.use('/api/pec', require('./routes/pec'));
+app.use('/api/power', require('./routes/power'));
+app.use('/api/guider', require('./routes/guider'));
+app.use('/api/derotator', require('./routes/derotator'));
+app.use('/api/sequencer', require('./routes/sequencer'));
+app.use('/api/camera', require('./routes/camera'));
+app.use('/api/focuser', require('./routes/focuser'));
+app.use('/api/dome', require('./routes/dome'));
+app.use('/api/weather', require('./routes/weather'));
+app.use('/api/pulley', require('./routes/pulley'));
 
 // ─── Error Handling ──────────────────────────────────────────────────────────
 
@@ -67,14 +81,18 @@ app.use(errorHandler);
 
 createGrpcClient();
 createDbGrpcClient();
+createDomeGrpcClient();
+createDerotatorGrpcClient();
 
 app.listen(config.proxy.port, config.proxy.host, () => {
   console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║   Astro Mount Controller - Web Proxy Server            ║
 ║   Listening on http://${config.proxy.host}:${config.proxy.port}             ║
-║   Mount gRPC:  ${config.grpc.host}:${config.grpc.port}                      ║
-║   Database gRPC: ${config.db.host}:${config.db.port}                        ║
+║   Mount gRPC:      ${config.grpc.host}:${config.grpc.port}                  ║
+║   Database gRPC:   ${config.db.host}:${config.db.port}                      ║
+║   Dome gRPC:       ${config.dome.host}:${config.dome.port}                  ║
+║   Derotator gRPC:  ${config.derotator.host}:${config.derotator.port}        ║
 ╚══════════════════════════════════════════════════════════╝
   `);
 });
@@ -86,6 +104,8 @@ process.on('SIGINT', () => {
     const gClient = require('./grpc/client');
     try { gClient.getGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getDbGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getDomeGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getDerotatorGrpcClient().close(); } catch (e) { /* not initialized */ }
   } catch (e) {
     // Ignore module loading errors during shutdown
   }
@@ -98,6 +118,8 @@ process.on('SIGTERM', () => {
     const gClient = require('./grpc/client');
     try { gClient.getGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getDbGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getDomeGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getDerotatorGrpcClient().close(); } catch (e) { /* not initialized */ }
   } catch (e) {
     // Ignore module loading errors during shutdown
   }

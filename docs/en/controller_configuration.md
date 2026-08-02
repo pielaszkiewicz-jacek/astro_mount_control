@@ -24,12 +24,18 @@ which monitors the file for modification time changes and automatically reloads 
   "guider": { ... },
   "kalman": { ... },
   "tpoint": { ... },
-  "hal": { ... }
+  "hal": { ... },
+  "external_services": { ... }
 }
 ```
 
 All sections are optional. If a section is missing, default values defined in
 [`Configuration::Impl::initializeDefaults()`](src/config/configuration.cpp:891) are used.
+
+> **Note**: The `external_services` section enables the in-process subsystems (dome, derotator,
+> focuser) and the stand-alone service clients (weather, power). For in-process subsystems the
+> `address` is the gRPC listening address exposed to clients. See
+> [External Services Configuration](external_services_configuration.md).
 
 ---
 
@@ -53,7 +59,7 @@ The logging system is based on the **spdlog** library. Initialization happens in
 
 #### Architecture
 
-- **File sink**: [`basic_file_sink_mt`](src/logging/logger.cpp:90) — append mode (`"ab"`, no rotation). Log file rotation is handled **externally** (e.g., via `logrotate`). The `rotation_days` and `max_file_size_mb` config parameters are retained for backward compatibility but are not functionally used.
+- **File sink**: [`basic_file_sink_mt`](src/logging/logger.cpp:90) — append mode (`"ab"`, no rotation). Log file rotation is handled **externally** (e.g., via `logrotate`).
 - **Console sink**: [`stdout_color_sink_mt`](src/logging/logger.cpp:97) — colorized stdout output.
 - **Syslog sink** (optional): [`syslog_sink_mt`](src/logging/logger.cpp:104).
 - **spdlog global registry registration**: All loggers are registered via [`spdlog::register_logger()`](src/logging/logger.cpp:384-386), enabling `spdlog::flush_every()` to find and flush them.
@@ -438,18 +444,15 @@ Array of objects, each defining one drive axis.
 |---|---|---|---|---|
 | `id` | integer | 0–N | `0` | Axis index (0 = HA/Azm, 1 = Dec/Alt) |
 | `name` | string | any | `"Axis_0"` | Axis name (for logs/debug) |
-| [`can_node_id`](include/hal/hal_config.h:135) | integer | 0–127 | `0` (auto) | Drive CANopen Node ID. **`0` means automatic mapping: `axis_id + 1`** |
+| [`can_node_id`](include/hal/hal_config.h:135) | integer | 1–127 | `1` | Drive CANopen Node ID. Must be set explicitly. |
 
-**Important:** `can_node_id` is the servo drive's address on the CAN bus. A value of `0` (default) provides
-backward compatibility: axis 0 → node 1, axis 1 → node 2.
-For non-standard addresses (e.g. 5, 6) this value must be explicitly set.
+**Important:** `can_node_id` is the servo drive's address on the CAN bus. It must be set explicitly
+for each axis (e.g. axis 0 → node 1, axis 1 → node 2).
 
-Implementation in [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp:1450):
+Implementation in [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp:1546):
 ```cpp
 auto getNodeId = [this](int axis_index) -> uint8_t {
-    if (axis_index < config_.axes.size() && config_.axes[axis_index].can_node_id > 0)
-        return config_.axes[axis_index].can_node_id;
-    return static_cast<uint8_t>(axis_index + 1);  // fallback
+    return static_cast<uint8_t>(config_.axes[axis_index].can_node_id);
 };
 ```
 
@@ -606,8 +609,8 @@ File: [`config/dual_servo_config.json`](config/dual_servo_config.json)
 
 File: [`config/default.json`](config/default.json)
 
-In the default configuration the `hal.axes[]` section is absent — the system uses default values,
-where `can_node_id = 0` (auto) resulting in mapping: axis 0 → node 1, axis 1 → node 2.
+In the default configuration the `hal.axes[]` section is absent — the factory provides default axes
+with `can_node_id = 1` and `can_node_id = 2` respectively.
 
 ---
 

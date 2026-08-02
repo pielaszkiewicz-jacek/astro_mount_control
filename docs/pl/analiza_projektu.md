@@ -373,10 +373,10 @@ Poprawka w [`mount_controller.cpp:1545`](src/controllers/mount_controller.cpp:15
 
 | Mutex | Typ | Zakres | Poziom |
 |-------|-----|--------|:------:|
-| `env_mutex_` | `std::mutex` | Ochrona env_temperature_, env_pressure_, env_humidity_ | 1 (najniższy) |
+| `env_mutex_` | `std::shared_mutex` | Ochrona env_temperature_, env_pressure_, env_humidity_ | 1 (najniższy) |
 | `rate_mutex_` | `std::shared_mutex` | Ochrona axis1_rate_, axis2_rate_ (współdzielone z guiderem) | 2 |
 | `state_mutex_` | `std::shared_mutex` | Ochrona state_, pozycji, celów, flag, derotatora | 3 |
-| `thread_mutex_` | `std::mutex` | Ochrona work_thread_ przed race condition join+assign | 4 (najwyższy) |
+| `thread_mutex_` | `std::shared_mutex` | Ochrona work_thread_ przed race condition join+assign | 4 (najwyższy) |
 
 **Kolejność blokowania** (zawsze rosnąco): `env_mutex_` → `rate_mutex_` → `state_mutex_` → `thread_mutex_`
 
@@ -427,7 +427,7 @@ bool isMeridianFlipPending() const {
 - Gettery tylko-do-odczytu (`getStatus()`, `isMeridianFlipPending()`, `getTimeToMeridian()`, `getPierSide()`, `getMountOrientation()`, `getRotationMatrix()`, `saveState()`, `notifyStatusChanged()`) używają `std::shared_lock<std::shared_mutex>` — czytelnicy nie blokują się nawzajem
 - Pętla trackingu używa `std::shared_lock<std::shared_mutex>` przy odczycie prędkości z `rate_mutex_` ([`mount_controller.cpp:1312`](src/controllers/mount_controller.cpp:1312))
 - Zapisujące operacje (slew, tracking, park, guider correction) nadal używają `std::lock_guard<std::shared_mutex>` — pisarze blokują czytelników i innych pisarzy
-- `env_mutex_` i `thread_mutex_` pozostały `std::mutex` (niska częstotliwość odczytów)
+- `env_mutex_` i `thread_mutex_` również zmienione na `std::shared_mutex` — odczyty parametrów środowiskowych (`saveState()`, snapshot trackingu, parametry field rotation) używają `std::shared_lock`, a usunięto wcześniejsze niechronione odczyty `env_temperature_` (data race z `setEnvironmentalParams()` z wątku gRPC). `thread_mutex_` pozostaje używany wyłącznie z `std::lock_guard` — operacje join/assign `work_thread_` są zawsze ekskluzywne
 - Eliminuje contention dla `getStatus()` wywoływanego ~10/sekundę z GUI/web
 
 ### 3.2 Maszyna Stanów
@@ -599,13 +599,13 @@ Ocena soft limitów jest wywoływana w każdej iteracji trackingu i ustawia flag
 
 | Aspekt | Ocena |
 |--------|:----:|
-| Thread safety | ⚠️ **Dobra** — poprawna hierarchia blokowania, brak deadlocków, ale std::mutex zamiast shared_mutex |
+| Thread safety | ✅ **Dobra** — poprawna hierarchia blokowania, brak deadlocków, wszystkie mutexy to `std::shared_mutex` (w tym `env_mutex_` i `thread_mutex_`), odczyty env z `shared_lock`, usunięte niechronione odczyty `env_temperature_` |
 | Maszyna stanów | ✅ **Solidna** — 9 stanów, clearErrors zaimplementowany |
 | NaN/Inf guards | ✅ **15 punktów** — kompletna ochrona przed propagacją NaN |
 | Exception handling | ✅ **Pełna hierarchia** — wszystkie wyjątki łapane |
 | shutdown() idempotentność | ✅ **W pełni idempotentny** — guard UNINITIALIZED na początku, joinWorkThread() sprawdza joinable(), HAL czyszczony w reverse order |
 | Watchdog w trackingu | ✅ **Zaimplementowany** — timeout 5s → ERROR ([`mount_controller.cpp:1318`](src/controllers/mount_controller.cpp:1318)) |
-| Slew timeout | ⚠️ **Częściowo** — symulowany SLEW ma timeout 60s ([`mount_controller.cpp:558-663`](src/controllers/mount_controller.cpp:558)), ale HAL/CANopen ścieżki (prawdziwy sprzęt) nie mają timeoutu |
+| Slew timeout | ✅ **Zaimplementowany** — symulowany SLEW ma timeout 60s, a ścieżki HAL/CANopen (prawdziwy sprzęt) mają watchdog liczony z dystansu i prędkości (min 60s, `3×czas_nominalny+60s`) → przejście do ERROR **z zatrzymaniem napędów** (`stop()`/`stopAxis()`) zamiast wiszącego wątku monitorującego ([`mount_controller.cpp:883`](src/controllers/mount_controller.cpp:883), [`mount_controller.cpp:1288`](src/controllers/mount_controller.cpp:1288)) |
 
 ---
 
@@ -821,7 +821,7 @@ return iauGst94(jd_ut1, 0.0);
 | 6 | ~~cos_lat singularity w determinePolePosition~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — guard MIN_COS_LAT w ścieżce TPoint (dodany ten sam guard co w drift-alignment) | [`mount_controller.cpp:3523`](src/controllers/mount_controller.cpp:3523), [`mount_controller.cpp:3726`](src/controllers/mount_controller.cpp:3726) |
 | 7 | ~~shutdown() nie idempotentny~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — guard UNINITIALIZED + joinable() check | [`mount_controller.cpp:385`](src/controllers/mount_controller.cpp:385) |
 | 8 | ~~Brak watchdoga w pętli trackingu~~ | ~~🟡 **Średnia**~~ | ✅ **NAPRAWIONO** — timeout 5s → ERROR | [`mount_controller.cpp:1318`](src/controllers/mount_controller.cpp:1318) |
-| 9 | Brak slew timeoutu dla HAL/CANopen | 🟢 **Niska** | Plan rozwoju | [`mount_controller.cpp:558-663`](src/controllers/mount_controller.cpp:558) — symulowany SLEW ma timeout 60s (`SIM_TIMEOUT_MS`), ale HAL i CANopen ścieżki (linie 570-588) czekają bezterminowo na `targetReached()` |
+| 9 | ~~Brak slew timeoutu dla HAL/CANopen~~ | ~~🟢 **Niska**~~ | ✅ **NAPRAWIONO** — watchdog w [`mount_controller.cpp:883`](src/controllers/mount_controller.cpp:883) i [`mount_controller.cpp:1288`](src/controllers/mount_controller.cpp:1288): timeout = `max(60s, 3×czas_nominalny+60s)` → ERROR **z zatrzymaniem napędów** (`stop()`/`stopAxis()`) zamiast bezterminowego czekania na `targetReached()` |
 | 10 | ~~Brak obsługi sekund przestępnych~~ | ~~🟢 **Niska**~~ | ✅ **NAPRAWIONO** — konwersja UTC→UT1 przez `iauDat()` (ΔAT) w `calculateGMST()` | [`astronomical_calculations.cpp:531`](src/core/astronomical_calculations.cpp:531) |
 | 11 | ~~Implementacja TPOINT tylko dla EQUATORIAL~~ | ~~🟢 **Niska**~~ | ✅ **JUŻ DZIAŁA DLA WSZYSTKICH** — TPoint stosowany zarówno w ścieżce EQUATORIAL (linia 1519) jak i ALT-AZ/CASUAL (linia 1667). Dokument był nieaktualny. | [`mount_controller.cpp:1519`](src/controllers/mount_controller.cpp:1519), [`mount_controller.cpp:1667`](src/controllers/mount_controller.cpp:1667) |
 | 12 | ~~Brak normalizacji axis1_position_ w pętli~~ | ~~🟢 **Niska**~~ | ✅ **NAPRAWIONO** — fmod co iterację do [-180, 180) | [`mount_controller.cpp:1364`](src/controllers/mount_controller.cpp:1364) |
@@ -852,7 +852,7 @@ return iauGst94(jd_ut1, 0.0);
 
 | Kategoria | Ocena |
 |-----------|:-----:|
-| **Kompletność Implementacji** | **95%** — wszystkie RPC, pola, metody zaimplementowane |
+| **Kompletność Implementacji** | **100%** — wszystkie RPC (38), pola konfiguracji (51) i metody API (~64) zaimplementowane; ostatni otwarty element z planu rozwoju (slew timeout dla HAL/CANopen, wiersz 9 w sekcji 5.2) również zaimplementowany — patrz sekcja 1 (pokrycie deklaracji 100%) |
 | **Kompletność Funkcjonalna** | **99%** — wszystkie scenariusze wspierane, wszystkie typy montaży mają pełne korekcje astronomiczne (nutacja, TPoint, refrakcja), KF w pełni zintegrowany z tracking loop przez setRates(), guider korekcje naprawione (clamping w arcsec, RA konwersja *15, position offset zamiast rate) |
-| **Stabilność Serwisu** | **95%** — dobra ochrona przed deadlockiem i NaN, `state_mutex_` i `rate_mutex_` zmienione na `std::shared_mutex` z `shared_lock` w getterach (eliminacja contention dla ~10 odczytów/sekundę), watchdog pętli trackingu (timeout 5s → ERROR), rate limiter CANopen (redukcja ruchu na magistrali w stanie ustalonym), **shutdown w pełni idempotentny** (guard UNINITIALIZED + joinable() check). Pozostało: `env_mutex_` i `thread_mutex_` jako `std::mutex` — niski priorytet (rzadki dostęp do env, thread_mutex_ tylko przy start/stop) |
+| **Stabilność Serwisu** | **98%** — dobra ochrona przed deadlockiem i NaN, wszystkie mutexy na `std::shared_mutex` (`state_mutex_`, `rate_mutex_`, `env_mutex_`, `thread_mutex_`) z `shared_lock` w getterach i odczytach env (eliminacja contention dla ~10 odczytów/sekundę, usunięte niechronione odczyty `env_temperature_`), watchdog pętli trackingu (timeout 5s → ERROR), rate limiter CANopen (redukcja ruchu na magistrali), **slew watchdog dla HAL/CANopen** (timeout = `max(60s, 3×czas_nominalny+60s)` → ERROR **+ zatrzymanie napędów** `stop()`/`stopAxis()`), **shutdown w pełni idempotentny** (guard UNINITIALIZED + joinable() check). Pozostały margines: timeout slewu jest heurystyczny (niekonfigurowalny), a pełna weryfikacja stabilności wymaga testów na rzeczywistym sprzęcie w pętli |
 | **Stabilność Numeryczna** | **99%** — 19 guardów NaN + 2 normalizacje quaternionu + IAU 2006 precesja (wszystkie ścieżki) + IAU 2006 nutacja + UTC→UT1, wszystkie znalezione problemy naprawione — **0 błędów krytycznych, 0 błędów średnich** 🎯, ~~sin(alt) clamp~~ ✅ (4 bugi field rotation), ~~quaternion normalizacja~~ ✅, ~~cos_lat singularity~~ ✅ (obie ścieżki: TPoint + drift-alignment), ~~sekundy przestępne~~ ✅ (UTC→UT1 przez `iauDat()`), ~~precesja IAU 1976~~ ✅ (IAU 2006 przez `iauPmat06()` w applyPrecession + calculateApparentPlace), ~~nutacja IAU 1980~~ ✅ (IAU 2006 przez `iauNut06a()` + `iauObl06()` w applyNutation + calculateApparentPlace), okresowa normalizacja axis1 do [-180, 180) zapobiega akumulacji błędu FP w długich sesjach trackingu |

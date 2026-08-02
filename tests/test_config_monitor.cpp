@@ -42,20 +42,11 @@ protected:
             "logging": {
                 "level": "INFO",
                 "directory": "/tmp/logs",
-                "rotation_days": 7,
-                "max_file_size_mb": 100,
                 "console_output": true
             },
             "network": {
                 "grpc_port": 50051,
                 "max_connections": 10
-            },
-            "hal": {
-                "canopen": {
-                    "node_id": 1,
-                    "bitrate": 1000000,
-                    "sync_period_ms": 100
-                }
             },
             "mount": {
                 "latitude": 52.0,
@@ -108,20 +99,11 @@ protected:
             "logging": {
                 "level": "DEBUG",
                 "directory": "/tmp/logs",
-                "rotation_days": 7,
-                "max_file_size_mb": 100,
                 "console_output": true
             },
             "network": {
                 "grpc_port": 50052,
                 "max_connections": 10
-            },
-            "hal": {
-                "canopen": {
-                    "node_id": 1,
-                    "bitrate": 1000000,
-                    "sync_period_ms": 100
-                }
             },
             "mount": {
                 "latitude": 52.0,
@@ -434,20 +416,11 @@ protected:
             "logging": {
                 "level": "INFO",
                 "directory": "/tmp/logs",
-                "rotation_days": 7,
-                "max_file_size_mb": 100,
                 "console_output": true
             },
             "network": {
                 "grpc_port": 50051,
                 "max_connections": 10
-            },
-            "hal": {
-                "canopen": {
-                    "node_id": 1,
-                    "bitrate": 1000000,
-                    "sync_period_ms": 100
-                }
             },
             "mount": {
                 "latitude": 52.0,

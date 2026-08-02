@@ -30,47 +30,44 @@ protected:
         controller_ = std::make_unique<controllers::MountController>();
 
         // Default config: equatorial mount, no CANopen (uses mock HAL internally)
-        config_.mount_type = controllers::MountController::MountType::EQUATORIAL;
-        config_.latitude = 52.0;
-        config_.longitude = 21.0;
-        config_.altitude = 100.0;
-        config_.max_slew_rate = 5.0;
-        config_.max_tracking_rate = 0.004178;
-        config_.slew_acceleration = 1.0;
-        config_.tracking_acceleration = 0.001;
-        config_.position_tolerance = 0.5;
-        config_.rate_tolerance = 0.001;
-        config_.default_temperature = 15.0;
-        config_.default_pressure = 1013.25;
-        config_.default_humidity = 0.5;
-        config_.use_encoders = false;
-        config_.encoders_absolute = false;
-        config_.encoder_resolution = 360000.0;
-        config_.process_noise = 0.01;
-        config_.measurement_noise = 1.0;
-        config_.tpoint_enabled_terms = 0;
-        config_.canopen_interface = "";  // empty → uses mock HAL
-        config_.canopen_node_id = 1;
+        config_.mount_config.mount_type = config::MountType::EQUATORIAL;
+        config_.mount_config.latitude = 52.0;
+        config_.mount_config.longitude = 21.0;
+        config_.mount_config.altitude = 100.0;
+        config_.mount_config.max_slew_rate = 5.0;
+        config_.mount_config.max_tracking_rate = 0.004178;
+        config_.mount_config.slew_acceleration = 1.0;
+        config_.mount_config.tracking_acceleration = 0.001;
+        config_.mount_config.position_tolerance = 0.5;
+        config_.mount_config.rate_tolerance = 0.001;
+        config_.mount_config.default_temperature = 15.0;
+        config_.mount_config.default_pressure = 1013.25;
+        config_.mount_config.default_humidity = 0.5;
+        config_.mount_config.use_encoders = false;
+        config_.mount_config.encoders_absolute = false;
+        config_.mount_config.encoder_resolution = 360000.0;
+        config_.mount_config.process_noise = 0.01;
+        config_.mount_config.measurement_noise = 1.0;
+        config_.calibration_config.tpoint_enabled_terms = 0;
         config_.grpc_address = "localhost:50051";
         config_.grpc_port = 50051;
         config_.log_level = "ERROR";
         config_.log_directory = "/tmp";
-        config_.log_rotation_days = 7;
         config_.focal_length = 2000.0;
         config_.aperture = 250.0;
-        config_.enable_guider = false;
-        config_.guider_max_correction = 100.0;
-        config_.guider_aggression = 0.5;
+        config_.tracking_config.enable_guider = false;
+        config_.tracking_config.guider_max_correction = 100.0;
+        config_.tracking_config.guider_aggression = 0.5;
 
         // Axis physical parameters
-        config_.ha_axis_params.gear_ratio = 360.0;
-        config_.dec_axis_params.gear_ratio = 360.0;
-        config_.ha_axis_params.backlash = 0.0;
-        config_.dec_axis_params.backlash = 0.0;
-        config_.ha_axis_params.encoder_resolution = 360000.0;
-        config_.dec_axis_params.encoder_resolution = 360000.0;
-        config_.ha_axis_params.cyclic_harmonics.fill(0.0);
-        config_.dec_axis_params.cyclic_harmonics.fill(0.0);
+        config_.mount_config.ha_axis_params.gear_ratio = 360.0;
+        config_.mount_config.dec_axis_params.gear_ratio = 360.0;
+        config_.mount_config.ha_axis_params.backlash = 0.0;
+        config_.mount_config.dec_axis_params.backlash = 0.0;
+        config_.mount_config.ha_axis_params.encoder_resolution = 360000.0;
+        config_.mount_config.dec_axis_params.encoder_resolution = 360000.0;
+        config_.mount_config.ha_axis_params.cyclic_harmonics.fill(0.0);
+        config_.mount_config.dec_axis_params.cyclic_harmonics.fill(0.0);
 
         // Initialize controller
         ASSERT_TRUE(controller_->initialize(config_));
@@ -272,20 +269,6 @@ TEST_F(GrpcIntegrationTest, SaveAndLoadState) {
 // MEASUREMENT & CALIBRATION TESTS
 // ============================================================================
 
-TEST_F(GrpcIntegrationTest, AddMeasurement) {
-    astro_mount::Measurement request;
-    request.mutable_observed()->set_ra(10.0);
-    request.mutable_observed()->set_dec(20.0);
-    request.mutable_expected()->set_ra(10.1);
-    request.mutable_expected()->set_dec(20.1);
-
-    grpc::ClientContext context;
-    google::protobuf::Empty response;
-
-    auto status = stub_->AddMeasurement(&context, request, &response);
-    EXPECT_TRUE(status.ok());
-}
-
 TEST_F(GrpcIntegrationTest, AddBootstrapMeasurement) {
     astro_mount::BootstrapMeasurement request;
     request.mutable_observed()->set_ra(10.0);
@@ -344,7 +327,7 @@ TEST_F(GrpcIntegrationTest, RunTPointCalibration) {
 
         grpc::ClientContext ctx;
         google::protobuf::Empty resp;
-        auto s = stub_->AddMeasurement(&ctx, req, &resp);
+        auto s = stub_->AddTPointMeasurement(&ctx, req, &resp);
         ASSERT_TRUE(s.ok()) << "Failed to add measurement " << i;
     }
 
@@ -413,75 +396,6 @@ TEST_F(GrpcIntegrationTest, DisconnectGuider) {
 
     auto status = stub_->DisconnectGuider(&context, request, &response);
     EXPECT_TRUE(status.ok());
-}
-
-// ============================================================================
-// DEROTATOR TESTS
-// ============================================================================
-
-TEST_F(GrpcIntegrationTest, ConfigureDerotator) {
-    astro_mount::DerotatorConfig request;
-    request.set_type(astro_mount::DerotatorConfig::CANOPEN);
-    request.set_connection_string("can0:1");
-    request.set_gear_ratio(10.0);
-    request.set_max_speed(5.0);
-
-    grpc::ClientContext context;
-    google::protobuf::Empty response;
-
-    auto status = stub_->ConfigureDerotator(&context, request, &response);
-    EXPECT_TRUE(status.ok()) << "gRPC error: " << status.error_code() << ": " << status.error_message();
-}
-
-TEST_F(GrpcIntegrationTest, GetDerotatorStatus) {
-    grpc::ClientContext context;
-    google::protobuf::Empty request;
-    astro_mount::DerotatorStatus response;
-
-    auto status = stub_->GetDerotatorStatus(&context, request, &response);
-    EXPECT_TRUE(status.ok());
-}
-
-TEST_F(GrpcIntegrationTest, ControlFieldRotation) {
-    // First configure the derotator (required to enable derotator subsystem)
-    {
-        astro_mount::DerotatorConfig config;
-        config.set_type(astro_mount::DerotatorConfig::CANOPEN);
-        config.set_connection_string("can0:1");
-        config.set_gear_ratio(10.0);
-        config.set_max_speed(5.0);
-
-        grpc::ClientContext ctx;
-        google::protobuf::Empty resp;
-        auto s = stub_->ConfigureDerotator(&ctx, config, &resp);
-        ASSERT_TRUE(s.ok()) << "Failed to configure derotator: "
-                            << s.error_code() << ": " << s.error_message();
-    }
-
-    // Set field rotation to ALT_AZ mode (requires derotator to be configured)
-    {
-        astro_mount::FieldRotationControlRequest request;
-        request.set_mode(astro_mount::FieldRotationControlRequest::ALT_AZ);
-        request.set_rotation_rate(15.0);
-
-        grpc::ClientContext context;
-        google::protobuf::Empty response;
-
-        auto status = stub_->ControlFieldRotation(&context, request, &response);
-        EXPECT_TRUE(status.ok()) << "gRPC error: " << status.error_code() << ": " << status.error_message();
-    }
-
-    // Disable field rotation
-    {
-        astro_mount::FieldRotationControlRequest request;
-        request.set_mode(astro_mount::FieldRotationControlRequest::DISABLED);
-
-        grpc::ClientContext context;
-        google::protobuf::Empty response;
-
-        auto status = stub_->ControlFieldRotation(&context, request, &response);
-        EXPECT_TRUE(status.ok());
-    }
 }
 
 // ============================================================================
@@ -1091,7 +1005,7 @@ TEST_F(GrpcIntegrationTest, Measurement_ZeroValues) {
     google::protobuf::Empty response;
 
     // Should handle empty measurement gracefully
-    auto status = stub_->AddMeasurement(&context, request, &response);
+    auto status = stub_->AddTPointMeasurement(&context, request, &response);
     EXPECT_TRUE(status.ok());
 }
 
@@ -1105,7 +1019,7 @@ TEST_F(GrpcIntegrationTest, Measurement_MissingObserved) {
     grpc::ClientContext context;
     google::protobuf::Empty response;
 
-    auto status = stub_->AddMeasurement(&context, request, &response);
+    auto status = stub_->AddTPointMeasurement(&context, request, &response);
     EXPECT_TRUE(status.ok());
 }
 
@@ -1121,7 +1035,7 @@ TEST_F(GrpcIntegrationTest, Measurement_ExtremeValues) {
     grpc::ClientContext context;
     google::protobuf::Empty response;
 
-    auto status = stub_->AddMeasurement(&context, request, &response);
+    auto status = stub_->AddTPointMeasurement(&context, request, &response);
     EXPECT_TRUE(status.ok());
 }
 
@@ -1138,7 +1052,7 @@ TEST_F(GrpcIntegrationTest, Measurement_NegativeEnvironmentalParams) {
     grpc::ClientContext context;
     google::protobuf::Empty response;
 
-    auto status = stub_->AddMeasurement(&context, request, &response);
+    auto status = stub_->AddTPointMeasurement(&context, request, &response);
     EXPECT_TRUE(status.ok());
 }
 

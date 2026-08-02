@@ -19,7 +19,6 @@ enum class EncoderInterface {
     SSI,            // Synchronous Serial Interface
     BISS,           // Bidirectional Synchronous Serial
     ENDAT,          // EnDat 2.2
-    CANOPEN,        // CANopen
     ANALOG          // Analogowy (0-10V, 4-20mA)
 };
 

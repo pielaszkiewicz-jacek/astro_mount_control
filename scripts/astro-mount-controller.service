@@ -2,7 +2,6 @@
 Description=Astronomical Mount Controller
 After=network.target
 Wants=network.target
-Requires=canopen.service
 
 [Service]
 Type=simple
@@ -27,7 +26,7 @@ ReadOnlyPaths=/etc/astro-mount-controller
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_CAN
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictNamespaces=true
 RestrictRealtime=true
 SystemCallFilter=@system-service

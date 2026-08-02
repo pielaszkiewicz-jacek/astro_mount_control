@@ -1,7 +1,5 @@
 #include "hal/hal_factory.h"
 #include "hal/simulated_hal/simulated_hal.h"
-#include "canopen_hal/canopen_hal.h"
-#include "hal/mf7025v2_hal/mf7025v2_hal.h"
 #include "serial_hal/serial_hal.h"
 #include "ethernet_hal/ethernet_hal.h"
 #include "gamepad_hal/gamepad_hal.h"
@@ -18,10 +16,6 @@ std::unique_ptr<HALInterface> HALFactory::create(const HALConfig& config) {
     switch (config.type) {
         case HALType::SIMULATED:
             return createSimulatedHAL(config);
-        case HALType::CANOPEN:
-            return createCanOpenHAL(config);
-        case HALType::MF7025V2:
-            return createMf7025v2HAL(config);
         case HALType::SERIAL:
             return createSerialHAL(config);
         case HALType::ETHERNET:
@@ -51,13 +45,6 @@ std::vector<HALType> HALFactory::getAvailableTypes() {
     // Simulated HAL is always available
     types.push_back(HALType::SIMULATED);
     
-    // Check for CANopen support
-#ifdef HAVE_CANOPENSOCKET
-    if (checkCANOpenSupport()) {
-        types.push_back(HALType::CANOPEN);
-    }
-#endif
-    
     // Check for serial support
     if (checkSerialSupport()) {
         types.push_back(HALType::SERIAL);
@@ -81,8 +68,6 @@ std::vector<std::string> HALFactory::getAvailableTypeNames() {
     for (const auto& type : types) {
         switch (type) {
             case HALType::SIMULATED: names.push_back("simulated"); break;
-            case HALType::CANOPEN: names.push_back("canopen"); break;
-            case HALType::MF7025V2: names.push_back("mf7025v2"); break;
             case HALType::SERIAL: names.push_back("serial"); break;
             case HALType::ETHERNET: names.push_back("ethernet"); break;
             case HALType::GAMEPAD: names.push_back("gamepad"); break;
@@ -100,10 +85,7 @@ bool HALFactory::isTypeAvailable(HALType type) {
 }
 
 HALType HALFactory::getDefaultType() {
-    // Try to use CANopen if available, otherwise simulated
-    if (isTypeAvailable(HALType::CANOPEN)) {
-        return HALType::CANOPEN;
-    }
+    // Simulated is always available and is the default
     return HALType::SIMULATED;
 }
 
@@ -117,17 +99,16 @@ HALConfig HALFactory::getDefaultConfig(HALType type) {
         HALConfig::AxisConfig axis;
         axis.id = i;
         axis.name = (i == 0) ? "RA_Axis" : "Dec_Axis";
+        axis.can_node_id = static_cast<uint8_t>(i + 1);
         
         // Motor config
-        axis.motor_config.type = (type == HALType::CANOPEN) ? 
-            MotorType::CANOPEN_SERVO : MotorType::VIRTUAL;
+        axis.motor_config.type = MotorType::VIRTUAL;
         axis.motor_config.max_velocity = 2.0;
         axis.motor_config.max_acceleration = 0.5;
         axis.motor_config.encoder_counts_per_degree = 10000.0;
         
         // Encoder config
-        axis.encoder_config.type = (type == HALType::CANOPEN) ? 
-            EncoderType::ABSOLUTE : EncoderType::VIRTUAL;
+        axis.encoder_config.type = EncoderType::VIRTUAL;
         axis.encoder_config.counts_per_degree = 10000.0;
         
         // Safety limits
@@ -141,27 +122,6 @@ HALConfig HALFactory::getDefaultConfig(HALType type) {
     
     // Type-specific configuration
     switch (type) {
-        case HALType::MF7025V2:
-            config.mf7025v2.can_interface = "can0";
-            config.mf7025v2.bitrate = 1000000;
-            config.mf7025v2.sdo_timeout_ms = 100;
-            config.mf7025v2.position_units_per_degree = 100.0;
-            config.mf7025v2.velocity_units_per_dps = 100.0;
-            // Set motor type for MF7025v2
-            for (auto& axis : config.axes) {
-                axis.motor_config.type = MotorType::BRUSHLESS_DC;
-                axis.encoder_config.type = EncoderType::ABSOLUTE;
-            }
-            break;
-            
-        case HALType::CANOPEN:
-            config.canopen.interface_name = "can0";
-            config.canopen.bitrate = 125000;
-            config.canopen.node_id = 1;
-            config.canopen.use_sync = true;
-            config.canopen.sync_period_ms = 100;
-            break;
-            
         case HALType::SERIAL:
             config.serial.port = "/dev/ttyUSB0";
             config.serial.baud_rate = 115200;
@@ -237,16 +197,6 @@ bool HALFactory::saveConfigToFile(const HALConfig& config, const std::string& fi
 }
 
 // Helper methods for checking support
-bool HALFactory::checkCANOpenSupport() {
-    // In a real implementation, this would check for CANopen libraries
-    // For now, we'll check compile-time defines
-#ifdef HAVE_CANOPENSOCKET
-    return true;
-#else
-    return false;
-#endif
-}
-
 bool HALFactory::checkSerialSupport() {
     // In a real implementation, this would check for serial ports
     // For now, we'll assume it's available on most systems
@@ -261,14 +211,6 @@ bool HALFactory::checkEthernetSupport() {
 // Implementation creation methods
 std::unique_ptr<HALInterface> HALFactory::createSimulatedHAL(const HALConfig& config) {
     return std::make_unique<SimulatedHAL>(config);
-}
-
-std::unique_ptr<HALInterface> HALFactory::createCanOpenHAL(const HALConfig& config) {
-    auto hal = CanOpenHAL::create(config);
-    if (!hal) {
-        throw std::runtime_error("Failed to create CanOpenHAL");
-    }
-    return hal;
 }
 
 std::unique_ptr<HALInterface> HALFactory::createSerialHAL(const HALConfig& config) {
@@ -294,19 +236,6 @@ std::unique_ptr<HALInterface> HALFactory::createGamepadHAL(const HALConfig& conf
         return std::make_unique<GamepadHAL>(config);
     } catch (const std::exception& e) {
         std::cerr << "Failed to create GamepadHAL: " << e.what() << std::endl;
-        throw;
-    }
-}
-
-std::unique_ptr<HALInterface> HALFactory::createMf7025v2HAL(const HALConfig& config) {
-    try {
-        auto hal = Mf7025v2Hal::create(config);
-        if (!hal) {
-            throw std::runtime_error("Failed to create Mf7025v2Hal");
-        }
-        return hal;
-    } catch (const std::exception& e) {
-        std::cerr << "Failed to create Mf7025v2Hal: " << e.what() << std::endl;
         throw;
     }
 }

@@ -49,6 +49,16 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
 - **INDI Telescope Driver** (C++) — full Ekos/KStars integration with TPOINT_STATUS, environment, MoveNS/MoveWE
 - **INDI Rotator Driver** (C++) — angle control, homing via gRPC rotator service
 
+### 🧩 Hybrid Service Architecture (config-gated, disabled by default)
+- **In-process subsystems** (hosted inside `astro_mount_controller`, all served on the unified gRPC port **50051**):
+  - **Dome** ([`dome/`](dome/)) — dome control on the unified port **50051**, auto-sync with mount azimuth (fed in-process via `setMountAzimuth()`)
+  - **Derotator** ([`derotator/`](derotator/)) — field derotation on the unified port **50051**, receives mount position updates in-process via `setMountPosition()`
+  - **Focuser** ([`focuser/`](focuser/)) — focuser control and auto-focus on the unified port **50051**
+- **Stand-alone services** (separate processes):
+  - **Weather service** ([`weather/`](weather/)) — gRPC weather monitoring on port **50055**, rain/wind/cloud sensors, OpenWeatherMap/Weather.gov/IMGW API sources, auto-park on dangerous conditions, notification engine integration
+  - **Power service** ([`power/`](power/)) — gRPC power management on port **50056**, battery voltage/current monitoring, low-battery auto-park
+- **All integrations** are configured via `ExternalIntegrationConfig` in `config/default.json` — each has `"enabled": false` by default
+
 ### 🛡️ Safety & Reliability
 - **11 NaN/Inf propagation guards** in tracking loop
 - **Watchdog timer** — 5s iteration timeout → automatic ERROR state
@@ -135,6 +145,8 @@ print(f"Status: {state.status}, Position: axis1={state.current_position.axis1:.4
 
 ## Architecture Overview
 
+The system follows a **hybrid architecture**: the mount controller is the central process and hosts the dome, derotator and focuser subsystems **in-process**, while the weather, power, sequencer and object-database services run as independent processes communicating via gRPC.
+
 ```mermaid
 flowchart TB
     %% Styles
@@ -144,6 +156,7 @@ flowchart TB
     classDef model fill:#fce4ec,stroke:#d32f2f,stroke-width:2px
     classDef hal fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px
     classDef hw fill:#efebe9,stroke:#4e342e,stroke-width:2px
+    classDef svc fill:#e0f2f1,stroke:#00796b,stroke-width:2px
 
     subgraph CLIENTS["Client Layer"]
         PY["Python Client<br/>(gRPC stub)"]
@@ -151,17 +164,30 @@ flowchart TB
         WEB["Web Dashboard<br/>(HTTP/JSON proxy)"]
     end
 
-    subgraph API["gRPC API Layer"]
-        GRPC["MountControllerServiceImpl<br/>50+ RPC methods"]
+    subgraph INPROC["In-process subsystems (in astro_mount_controller, unified on :50051)"]
+        DOME["DomeService<br/>:50051<br/>Dome control"]
+        DEROT["DerotatorService<br/>:50051<br/>Field derotation"]
+        FOCUSER["FocuserService<br/>:50051<br/>Focuser control"]
     end
 
-    subgraph CORE["Mount Controller (src/controllers/)"]
+    subgraph SVC["Stand-alone Services (config-gated, disabled by default)"]
+        WEATHER["astro_weather_server<br/>:50055<br/>Weather monitoring"]
+        POWER["astro_power_server<br/>:50056<br/>Power management"]
+    end
+
+    subgraph API["gRPC API Layer"]
+        GRPC["MountControllerServiceImpl<br/>50+ RPC methods<br/>:50051"]
+    end
+
+    subgraph CORE["Mount Controller (main.cpp + controllers/)"]
         MC["MountController<br/>State Machine<br/>9 states"]
         MODELS["Embedded Models:"]
         TPOINT["TPOINT Model<br/>21 params / QR solver"]
         KF["Kalman Filter<br/>EKF / Joseph form"]
         EPHEM["Ephemeris Tracker<br/>Moving objects"]
         ASTRO["Astro Calculations<br/>SOFA transforms"]
+        INPROCSVC["In-process subsystems:<br/>Dome / Derotator / Focuser"]
+        CLIENTSVC["Integration Clients:<br/>WeatherClient / PowerStub"]
     end
 
     subgraph HAL["Hardware Abstraction Layer"]
@@ -183,6 +209,11 @@ flowchart TB
     CLIENTS -->|gRPC| GRPC
     GRPC --> MC
     MC --> HAL_IF
+    MC --> CLIENTSVC
+    MC --> INPROCSVC
+    INPROCSVC --> INPROC
+    CLIENTSVC -->|gRPC :50055| WEATHER
+    CLIENTSVC -->|gRPC :50056| POWER
     HAL_IF --> CAN_IMPL
     HAL_IF --> SIM_IMPL
     HAL_IF --> SERIAL_IMPL
@@ -190,72 +221,103 @@ flowchart TB
     CAN_IMPL --> HW
 
     class PY,CPP,WEB client
+    class DOME,DEROT,FOCUSER,WEATHER,POWER svc
     class GRPC api
-    class MC,MODELS core
+    class MC,MODELS,INPROCSVC core
     class TPOINT,KF,EPHEM,ASTRO model
     class HAL_IF,CAN_IMPL,SIM_IMPL,SERIAL_IMPL,ETH_IMPL hal
-    class MOT,ENC,DEROT,SENS hw
+    class MOT,ENC,SENS hw
 ```
 
 **Key components:**
 - [`src/controllers/mount_controller.cpp`](src/controllers/mount_controller.cpp) — Core controller with state machine, tracking loop, meridian flip, soft limits, and 11 NaN/Inf guards
-- [`src/config/configuration.cpp`](src/config/configuration.cpp) — JSON-based configuration with 25+ field validations
+- [`src/main.cpp`](src/main.cpp) — Orchestrates the main process: creates mount controller, gRPC server, hosts dome/derotator/focuser in-process, and creates optional weather/power external clients based on config
+- [`src/api/grpc_server.cpp`](src/api/grpc_server.cpp) — gRPC server that registers the mount controller service plus the in-process dome, derotator and focuser services (with additional listening ports)
+- [`src/config/configuration.cpp`](src/config/configuration.cpp) — JSON-based configuration with 25+ field validations and external services section
 - [`src/models/tpoint_model.cpp`](src/models/tpoint_model.cpp) — TPOINT pointing error model with QR decomposition solver
 - [`src/models/kalman_filter.cpp`](src/models/kalman_filter.cpp) — Extended Kalman filter with Joseph form covariance update
 - [`src/core/astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp) — SOFA-based coordinate transforms and corrections
 - [`proto/mount_controller.proto`](proto/mount_controller.proto) — gRPC service definition (50+ RPCs)
+- [`dome/src/dome_service_impl.cpp`](dome/src/dome_service_impl.cpp) — In-process dome service (unified port 50051)
+- [`derotator/src/derotator_service_impl.cpp`](derotator/src/derotator_service_impl.cpp) — In-process derotator service (unified port 50051)
+- [`focuser/src/focuser_service_impl.cpp`](focuser/src/focuser_service_impl.cpp) — In-process focuser service (unified port 50051)
+- [`include/controllers/weather_client.h`](include/controllers/weather_client.h) — Weather service gRPC client with auto-park on danger
+- [`src/controllers/weather_client.cpp`](src/controllers/weather_client.cpp) — Weather polling loop, notification integration, auto-park callback
 
 ---
 
 ## Project Structure
 
 ```
-├── ascom/            # ASCOM Telescope driver (C#, ITelescopeV3)
-│   ├── AstroMountTelescope.cs  # Main telescope driver
-│   ├── GrpcClient.cs           # gRPC client wrapper for ASCOM
-│   ├── StateCache.cs           # Cached controller state
-│   ├── ConversionHelper.cs     # Coordinate conversion utilities
-│   ├── MountController.cs      # Generated gRPC stubs
-│   └── MountControllerGrpc.cs
-├── ascom_rotator/    # ASCOM Rotator driver (C#, IRotatorV3)
-│   └── AstroMountRotator.cs
-├── config/           # JSON configuration files
-│   └── default.json
-├── docs/             # Documentation (en + pl)
-│   ├── en/
-│   └── pl/
-├── include/          # C++ headers
+├── ascom/             # ASCOM Telescope driver (C#, ITelescopeV3)
+│   └── AstroMountTelescope.cs
+├── ascom_rotator/     # ASCOM Rotator driver (C#, IRotatorV3)
+├── config/            # JSON configuration files
+│   ├── default.json
+│   ├── weather_config.json     # Weather service config (disabled by default)
+│   ├── power_config.json       # Power service config (disabled by default)
+│   ├── dome_config.json        # Dome config (in-process subsystem)
+│   ├── derotator_config.json   # Derotator config (in-process subsystem)
+│   └── focuser_config.json     # Focuser config (in-process subsystem)
+├── db/                # Object database (SQLite + gRPC)
+│   ├── proto/
+│   ├── src/
+│   └── include/
+├── derotator/         # Derotator subsystem - in-process in mount controller (unified port 50051)
+│   ├── proto/
+│   ├── include/
+│   └── src/
+├── docs/              # Documentation (en + pl)
+├── dome/              # Dome subsystem - in-process in mount controller (unified port 50051)
+│   ├── proto/
+│   ├── include/
+│   └── src/
+├── examples/          # Python and C++ examples
+├── focuser/           # Focuser subsystem - in-process in mount controller (unified port 50051)
+│   ├── include/
+│   └── src/
+├── include/           # C++ headers
 │   ├── config/
-│   ├── controllers/
+│   ├── controllers/   # incl. weather_client.h, power_manager.h
 │   ├── core/
 │   ├── hal/
 │   ├── logging/
-│   └── models/
-├── indi/             # INDI Telescope driver (C++, Ekos/KStars)
-│   ├── astro_mount_driver.{h,cpp}  # Main INDI telescope driver
-│   ├── MountGrpcClient.{h,cpp}     # gRPC client wrapper for INDI
-│   ├── IndiPropertyMapper.{h,cpp}  # INDI <-> gRPC property mapping
-│   └── CMakeLists.txt
-├── indi_rotator/     # INDI Rotator driver (C++)
-│   ├── astro_mount_rotator_driver.{h,cpp}
-│   └── CMakeLists.txt
-├── proto/            # gRPC protobuf definitions
+│   ├── models/
+│   ├── notifications/
+│   └── weather/
+├── indi/              # INDI Telescope driver (C++, Ekos/KStars)
+├── indi_rotator/      # INDI Rotator driver (C++)
+├── power/             # Stand-alone power management gRPC service (port 50056)
+│   ├── include/
+│   └── src/
+├── proto/             # Shared gRPC protobuf definitions
 │   ├── mount_controller.proto
-│   └── canopen_service.proto
-├── src/              # C++ implementation
+│   ├── weather.proto
+│   ├── power.proto
+│   ├── dome.proto
+│   └── derotator.proto
+├── scripts/           # Build scripts + systemd service files
+│   ├── astro-mount-controller.service
+│   ├── astro-weather-server.service
+│   └── astro-power-server.service
+├── sofa/              # SOFA library (IAU standards)
+├── src/               # C++ implementation
 │   ├── api/
 │   ├── config/
-│   ├── controllers/
+│   ├── controllers/   # incl. weather_client.cpp
 │   ├── core/
 │   ├── hal/
 │   ├── logging/
-│   └── models/
-├── tests/            # Test suites (17 test binaries)
-├── examples/         # Python and C++ examples
-├── sofa/             # SOFA library
-├── scripts/          # Build and utility scripts
-├── web/              # Web dashboard (Express proxy + SPA)
-└── db/               # Object database (SQLite)
+│   ├── models/
+│   ├── notifications/
+│   └── weather/
+├── tests/             # Test suites (17+ test binaries)
+├── weather/           # Stand-alone weather monitoring gRPC service (port 50055)
+│   ├── include/
+│   └── src/
+└── web/               # Web dashboard (Express proxy + SPA)
+    ├── proxy/
+    └── public/
 ```
 
 ---

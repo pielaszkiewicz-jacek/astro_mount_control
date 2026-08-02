@@ -36,7 +36,7 @@ flowchart TB
             MF_IMPL["✅ MF7025v2 (LingKong BLDC)<br/>Własny protokół CAN V2.36<br/>CAN ID 0x140+node_id · SocketCAN<br/>Węzły: HA (ID=1), Dec (ID=2)"]:::done
             CAN_IMPL["✅ CANopen (CiA 402)<br/>Komunikacja PDO/SDO/NMT<br/>Węzły: RA, Dec"]:::done
             SIM_IMPL["✅ Symulowana<br/>Testy/rozwój<br/>Konfigurowalny szum i błędy"]:::done
-            GAM_IMPL["✅ Gamepad<br/>Ręczne sterowanie joystickiem<br/>Evdev + legacy joystick API"]:::done
+            GAM_IMPL["✅ Gamepad<br/>Ręczne sterowanie joystickiem<br/>Evdev API"]:::done
             SER_IMPL["✅ Szeregowa<br/>RS-232/485<br/>Modbus RTU/ASCII"]:::done
             ETH_IMPL["✅ Ethernet<br/>Modbus TCP<br/>Konfigurowalny IP/port"]:::done
         end
@@ -793,14 +793,13 @@ GamepadEncoderReader ← GamepadMotorControl (pozycja z całkowania)
 
 ### Backend Wejściowy — EvdevGamepadInput
 
-Klasa `EvdevGamepadInput` obsługuje oba podsystemy wejściowe Linux:
+Klasa `EvdevGamepadInput` używa podsystemu wejściowego **evdev** Linux:
 
 | Backend | Ścieżka urządzenia | Opis |
 |---------|-------------------|------|
-| Legacy joystick API | `/dev/input/js0` … `js3` | Starsze urządzenia, prosty format zdarzeń |
 | evdev API | `/dev/input/event*` | Nowoczesne urządzenia, zdarzenia ABS/EV_KEY |
 
-Auto-detekcja skanuje `/dev/input/js0…js3`, a następnie `/dev/input/event*` z obsługą `EV_ABS`. Dedykowany wątek w tle odpytuje urządzenie i aktualizuje współdzielony stan gamepada.
+Auto-detekcja skanuje `/dev/input/event*` z obsługą `EV_ABS`. Dedykowany wątek w tle odpytuje urządzenie i aktualizuje współdzielony stan gamepada.
 
 ### Mapowanie Przycisków
 

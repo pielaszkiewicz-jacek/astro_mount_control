@@ -43,11 +43,6 @@ public:
     virtual std::unique_ptr<EncoderReader> createEncoderReader(int axis_id) = 0;
     virtual std::unique_ptr<SafetyMonitor> createSafetyMonitor() = 0;
     virtual std::unique_ptr<SensorInterface> createSensorInterface() = 0;
-// Metody dla pozycjonowania i statusu magistrali polowej
-// (eliminuj¹ potrzebê dostêpu do ICanOpenInterface z kontrolerów)
-virtual bool setActualPosition(int axis_id, double position_deg) { return false; }
-virtual bool isFieldBusConnected() const { return false; }
-
 // Informacje o platformie
 
 

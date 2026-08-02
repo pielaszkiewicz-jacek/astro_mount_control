@@ -55,6 +55,7 @@ flowchart TD
 ### Minimum Requirements
 
 - **Operating System**: Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+, OpenSUSE Leap 15.4+, OpenSUSE Tumbleweed)
+  or **Windows with WSL2** (see WSL2 section below)
 - **Processor**: x86_64 or ARM64, 2+ cores
 - **Memory**: 4 GB RAM
 - **Disk Space**: 2 GB
@@ -66,6 +67,116 @@ flowchart TD
 - **Memory**: 8 GB RAM
 - **Disk Space**: 10 GB (for logs and calibration data)
 - **CAN Interface**: Isolated CAN adapter with high throughput
+
+---
+
+## Windows Build via WSL2
+
+The project can be built and run on Windows using **WSL2** (Windows Subsystem for Linux). This is the recommended way to develop on Windows, as it provides a full Linux environment for the C++ build while keeping the Windows tools for the web UI.
+
+### Step 1: Install WSL2
+
+Open **PowerShell as Administrator** and run:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+After installation, restart your computer. On first launch of WSL, you'll be prompted to create a Linux username and password.
+
+### Step 2: Access the Project
+
+Your Windows files are accessible from WSL under `/mnt/c/`:
+
+```bash
+cd /mnt/c/Users/jacek/OneDrive/Documents/astro_mount_control
+```
+
+### Step 3: Install Build Dependencies
+
+Inside WSL, run the automated setup script:
+
+```bash
+chmod +x scripts/setup_wsl_build.sh
+./scripts/setup_wsl_build.sh
+```
+
+This installs:
+- `build-essential`, `cmake`, `g++` — C++17 compiler
+- `libgrpc++-dev`, `protobuf-compiler-grpc` — gRPC
+- `libeigen3-dev` — matrix operations
+- `libsqlite3-dev` — database
+- `libspdlog-dev`, `libfmt-dev` — logging
+- `nlohmann-json3-dev` — JSON config
+- `libcurl4-openssl-dev` — HTTP/API requests
+- `libgpiod-dev`, `libftdi1-dev`, `libhidapi-dev` — hardware interfaces
+- `uuid-dev`, `googletest` — utilities and testing
+- `qtbase5-dev`, `qtcharts5-dev` — Qt5 GUI (optional)
+
+### Step 4: Build
+
+```bash
+chmod +x scripts/build_wsl.sh
+./scripts/build_wsl.sh
+```
+
+Or manually:
+
+```bash
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+### Step 5: Run
+
+```bash
+# Start the controller
+./build/bin/astro_mount_controller config/default.json
+
+# Start the web proxy (in another terminal)
+cd web/proxy
+npm install
+node server.js
+```
+
+Then open `http://localhost:8080` in your Windows browser.
+
+### Step 6: (Optional) Qt GUI
+
+If Qt5 was installed, build and run the native GUI:
+
+```bash
+mkdir -p build-gui && cd build-gui
+cmake ../gui
+make -j$(nproc)
+./astro_mount_gui
+```
+
+### VS Code from WSL
+
+```bash
+# Inside WSL, at the project directory
+code .
+```
+
+VS Code will automatically use the Remote-WSL extension, giving you full IntelliSense and debugging with the Linux compiler.
+
+### Troubleshooting WSL2
+
+| Problem | Solution |
+|---------|----------|
+| WSL won't start | `wsl --shutdown` then `wsl` |
+| Permission denied on scripts | `chmod +x scripts/*.sh` |
+| gRPC protobuf errors | `sudo apt install -y protobuf-compiler-grpc` |
+| Linker errors | `cd build && make clean && cmake .. && make -j$(nproc)` |
+| Access Windows files | Files are at `/mnt/c/Users/...` |
+| Firewall blocking gRPC | Open port 50051 in Windows Firewall |
+| Web UI not loading | Ensure Node.js is installed in WSL: `sudo apt install -y nodejs npm` |
+
+> **For more details**, see the dedicated [WSL2 Build Guide](wsl_build_guide.md).
+
+---
 
 ## Dependency Installation
 

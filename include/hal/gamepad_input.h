@@ -50,6 +50,21 @@ struct GamepadState {
     /// Return to home / center (Y / triangle).
     bool button_home{false};
 
+    // ---- NEW: Extended functionality buttons ----
+
+    /// Run bootstrap calibration (initial alignment).
+    bool button_bootstrap_calibrate{false};
+    /// Run TPOINT calibration (precision pointing model).
+    bool button_tpoint_calibrate{false};
+    /// Execute meridian flip immediately.
+    bool button_meridian_flip{false};
+    /// Cycle through gamepad navigation modes (RAW→CELESTIAL→ALT_AZ→PRECISION).
+    bool button_mode_cycle{false};
+    /// Clear error state and return to IDLE.
+    bool button_clear_errors{false};
+    /// Unpark mount (wake from parked state).
+    bool button_unpark{false};
+
     /// Whether the device is physically connected.
     bool connected{false};
 

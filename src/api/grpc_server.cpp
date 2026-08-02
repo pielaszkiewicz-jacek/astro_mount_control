@@ -5,6 +5,7 @@
 #include <memory>
 #include <thread>
 #include <atomic>
+#include <vector>
 #include <fstream>
 #include <sstream>
 
@@ -22,22 +23,26 @@ public:
         , ssl_key_path_(ssl_key_path)
         , server_(nullptr)
         , running_(false) {}
-    
+
     ~Impl() {
         stop();
     }
-    
+
+    void registerService(grpc::Service* service) {
+        extra_services_.push_back(service);
+    }
+
     bool start() {
         if (running_) {
             return false;
         }
-        
+
         grpc::ServerBuilder builder;
-        
-        // Configure SSL if enabled
+
+        std::shared_ptr<grpc::ServerCredentials> creds;
         if (enable_ssl_) {
             auto logger = logging::Logger::get("api");
-            
+
             // Read certificate
             std::ifstream cert_file(ssl_cert_path_);
             if (!cert_file.is_open()) {
@@ -48,7 +53,7 @@ public:
             cert_ss << cert_file.rdbuf();
             std::string cert_chain = cert_ss.str();
             cert_file.close();
-            
+
             // Read private key
             std::ifstream key_file(ssl_key_path_);
             if (!key_file.is_open()) {
@@ -59,66 +64,74 @@ public:
             key_ss << key_file.rdbuf();
             std::string private_key = key_ss.str();
             key_file.close();
-            
+
             grpc::SslServerCredentialsOptions ssl_opts;
             ssl_opts.pem_key_cert_pairs.push_back({private_key, cert_chain});
-            
-            builder.AddListeningPort(address_, grpc::SslServerCredentials(ssl_opts));
+
+            creds = grpc::SslServerCredentials(ssl_opts);
             logger->info("gRPC SSL enabled: cert={}, key={}", ssl_cert_path_, ssl_key_path_);
         } else {
-            builder.AddListeningPort(address_, grpc::InsecureServerCredentials());
+            creds = grpc::InsecureServerCredentials();
         }
-        
+
+        // Main mount controller address
+        builder.AddListeningPort(address_, creds);
+
         // Create service implementation
         service_ = std::make_unique<MountControllerServiceImpl>(controller_);
         builder.RegisterService(service_.get());
-        
+
+        // Register additional in-process services (dome, derotator, focuser)
+        for (auto* svc : extra_services_) {
+            builder.RegisterService(svc);
+        }
+
         // Set server options
         builder.SetMaxReceiveMessageSize(64 * 1024 * 1024); // 64MB
         builder.SetMaxSendMessageSize(64 * 1024 * 1024);    // 64MB
         builder.SetMaxMessageSize(64 * 1024 * 1024);        // 64MB
-        
+
         // Build and start server
         server_ = builder.BuildAndStart();
         if (!server_) {
             return false;
         }
-        
+
         running_ = true;
-        
+
         // Start server thread
         server_thread_ = std::thread([this]() {
             server_->Wait();
         });
-        
+
         return true;
     }
-    
+
     void stop() {
         if (!running_) {
             return;
         }
-        
+
         running_ = false;
-        
+
         if (server_) {
             server_->Shutdown();
             server_->Wait();
         }
-        
+
         if (server_thread_.joinable()) {
             server_thread_.join();
         }
     }
-    
+
     std::string getAddress() const {
         return address_;
     }
-    
+
     bool isRunning() const {
         return running_;
     }
-    
+
 private:
     std::string address_;
     controllers::MountController& controller_;
@@ -126,6 +139,7 @@ private:
     std::string ssl_cert_path_;
     std::string ssl_key_path_;
     std::unique_ptr<MountControllerServiceImpl> service_;
+    std::vector<grpc::Service*> extra_services_;
     std::unique_ptr<grpc::Server> server_;
     std::thread server_thread_;
     std::atomic<bool> running_;
@@ -155,6 +169,10 @@ std::string GrpcServer::getAddress() const {
 
 bool GrpcServer::isRunning() const {
     return pimpl->isRunning();
+}
+
+void GrpcServer::registerService(grpc::Service* service) {
+    pimpl->registerService(service);
 }
 
 } // namespace api

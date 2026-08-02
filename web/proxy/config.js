@@ -21,6 +21,14 @@ const config = {
     host: process.env.DB_GRPC_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_GRPC_PORT, 10) || 50052,
   },
+  dome: {
+    host: process.env.DOME_GRPC_HOST || '127.0.0.1',
+    port: parseInt(process.env.DOME_GRPC_PORT, 10) || 50053,
+  },
+  derotator: {
+    host: process.env.DEROTATOR_GRPC_HOST || '127.0.0.1',
+    port: parseInt(process.env.DEROTATOR_GRPC_PORT, 10) || 50054,
+  },
   proxy: {
     host: process.env.PROXY_HOST || '0.0.0.0',
     port: parseInt(process.env.PROXY_PORT, 10) || 8080,
@@ -37,6 +45,17 @@ const config = {
     directory: process.env.LOG_DIRECTORY || '/var/log/astro-mount',
     fileName: process.env.LOG_FILE_NAME || 'astro-mount.log',
   },
+};
+
+// External service integration flags — controls which tabs are shown in the UI.
+// Set these via environment variables (EXT_SERVICE_*) or leave disabled by default.
+config.external_services = {
+  dome:       process.env.EXT_SERVICE_DOME === 'true',
+  derotator:  process.env.EXT_SERVICE_DEROTATOR === 'true',
+  weather:    process.env.EXT_SERVICE_WEATHER === 'true',
+  power:      process.env.EXT_SERVICE_POWER === 'true',
+  sequencer:  process.env.EXT_SERVICE_SEQUENCER === 'true',
+  focuser:    process.env.EXT_SERVICE_FOCUSER === 'true',
 };
 
 module.exports = config;

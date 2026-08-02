@@ -72,10 +72,6 @@ public:
                              google::protobuf::Empty* response) override;
     
     // Measurement and calibration
-    grpc::Status AddMeasurement(grpc::ServerContext* context,
-                                const astro_mount::Measurement* request,
-                                google::protobuf::Empty* response) override;
-    
     // Bootstrap calibration API (for initial alignment)
     grpc::Status AddBootstrapMeasurement(grpc::ServerContext* context,
                                          const astro_mount::BootstrapMeasurement* request,
@@ -221,10 +217,6 @@ public:
                       const astro_mount::MountHomingRequest* request,
                       google::protobuf::Empty* response) override;
     
-    grpc::Status GetFieldRotationParams(grpc::ServerContext* context,
-                                        const google::protobuf::Empty* request,
-                                        astro_mount::FieldRotationParams* response) override;
-    
     // ============================================
     // HAL Configuration RPCs
     // ============================================
@@ -276,22 +268,6 @@ public:
     grpc::Status GetMountOrientation(grpc::ServerContext* context,
                                      const google::protobuf::Empty* request,
                                      astro_mount::MountOrientation* response) override;
-    
-    // ============================================
-    // Trajectory generation and execution
-    // ============================================
-    
-    grpc::Status GenerateTrajectory(grpc::ServerContext* context,
-                                    const astro_mount::TrajectoryParams* request,
-                                    astro_mount::Trajectory* response) override;
-    
-    grpc::Status ExecuteTrajectory(grpc::ServerContext* context,
-                                   const astro_mount::Trajectory* request,
-                                   google::protobuf::Empty* response) override;
-    
-    grpc::Status StopTrajectory(grpc::ServerContext* context,
-                                const google::protobuf::Empty* request,
-                                google::protobuf::Empty* response) override;
     
 private:
     controllers::MountController& controller_;

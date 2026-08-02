@@ -1,36 +1,82 @@
 /**
  * PEC (Periodic Error Correction) Panel Component
+ *
+ * Displays PEC status and controls in the unified card-based style.
  */
 const PECComponent = (() => {
   'use strict';
 
   function render() {
     return `
-      <div id="pec-panel" class="panel">
-        <h2>⚙ PEC (Periodic Error Correction)</h2>
-        <div class="pec-status">
-          <p>Status: <span id="pec-enabled">Disabled</span></p>
-          <p>Trained: <span id="pec-trained">No</span></p>
-          <p>Peak Error: <span id="pec-peak">--"</span></p>
-          <p>RMS Error: <span id="pec-rms">--"</span></p>
-          <p>Harmonics: <span id="pec-harmonics">--</span></p>
-          <label><input type="checkbox" id="pec-toggle" onchange="PECComponent.toggle()"> Enable PEC</label>
+      <div class="pec-dashboard">
+        <div class="sensor-grid">
+          <div class="sensor-card">
+            <span class="sensor-label">Status</span>
+            <span class="sensor-value" id="pec-enabled">Disabled</span>
+          </div>
+          <div class="sensor-card">
+            <span class="sensor-label">Trained</span>
+            <span class="sensor-value" id="pec-trained">No</span>
+          </div>
+          <div class="sensor-card">
+            <span class="sensor-label">Peak Error</span>
+            <span class="sensor-value" id="pec-peak">--"</span>
+          </div>
+          <div class="sensor-card">
+            <span class="sensor-label">RMS Error</span>
+            <span class="sensor-value" id="pec-rms">--"</span>
+          </div>
+          <div class="sensor-card">
+            <span class="sensor-label">Harmonics</span>
+            <span class="sensor-value" id="pec-harmonics">--</span>
+          </div>
+          <div class="sensor-card">
+            <span class="sensor-label">Phase</span>
+            <span class="sensor-value" id="pec-phase">0°</span>
+          </div>
         </div>
-        <div class="pec-training">
-          <h3>Training</h3>
-          <label>Worm Cycle: <input type="number" id="pec-worm-cycle" value="638"> s</label>
-          <label>Harmonics: <input type="number" id="pec-harmonics-count" value="8" min="1" max="20"></label>
-          <label>Duration: <input type="number" id="pec-duration" value="3" min="1" max="10"> cycles</label>
-          <button onclick="PECComponent.startTraining()">▶ Start Training</button>
-          <button onclick="PECComponent.stopTraining()">⏹ Stop Training</button>
-          <div class="progress-bar"><div id="pec-progress" style="width:0%"></div></div>
+
+        <div class="control-form" style="margin-top:12px;">
+          <label class="checkbox-label" style="gap:8px; font-size:0.9rem;">
+            <input type="checkbox" id="pec-toggle" onchange="PECComponent.toggle()">
+            Enable PEC Correction
+          </label>
         </div>
-        <div class="pec-data">
-          <h3>Data Management</h3>
-          <button onclick="PECComponent.save()">💾 Save</button>
-          <button onclick="PECComponent.load()">📂 Load</button>
+
+        <h3 style="margin:16px 0 8px; font-size:0.9rem; color:var(--color-text-secondary);">Training Configuration</h3>
+        <div class="control-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="pec-worm-cycle" class="form-label">Worm Cycle (s)</label>
+              <input type="number" id="pec-worm-cycle" class="form-input" value="638" min="10" max="3600">
+            </div>
+            <div class="form-group">
+              <label for="pec-harmonics-count" class="form-label">Harmonics</label>
+              <input type="number" id="pec-harmonics-count" class="form-input" value="8" min="1" max="20">
+            </div>
+            <div class="form-group">
+              <label for="pec-duration" class="form-label">Duration (cycles)</label>
+              <input type="number" id="pec-duration" class="form-input" value="3" min="1" max="10">
+            </div>
+          </div>
+          <div class="form-row" style="gap:8px;">
+            <button class="btn btn-primary" onclick="PECComponent.startTraining()">▶ Start Training</button>
+            <button class="btn btn-danger" onclick="PECComponent.stopTraining()">⏹ Stop Training</button>
+          </div>
+          <div class="progress-bar" style="margin-top:8px;">
+            <div id="pec-progress" style="width:0%; height:100%; background:var(--color-primary); border-radius:4px; transition:width 0.3s ease;"></div>
+          </div>
         </div>
-        <div id="pec-chart" class="chart-placeholder">Harmonics chart would appear here</div>
+
+        <h3 style="margin:16px 0 8px; font-size:0.9rem; color:var(--color-text-secondary);">Data Management</h3>
+        <div class="action-grid" style="grid-template-columns:1fr 1fr;">
+          <button class="btn btn-secondary" onclick="PECComponent.save()">💾 Save PEC Data</button>
+          <button class="btn btn-secondary" onclick="PECComponent.load()">📂 Load PEC Data</button>
+        </div>
+
+        <div id="pec-chart" class="chart-placeholder" style="margin-top:16px; padding:20px; text-align:center; color:var(--color-text-muted); border:1px dashed var(--color-border); border-radius:8px;">
+          Harmonics chart will appear here
+        </div>
       </div>`;
   }
 
@@ -50,5 +96,18 @@ const PECComponent = (() => {
   function save() { Api.post('/api/pec/save', {}); }
   function load() { Api.post('/api/pec/load', {}); }
 
-  return { render, toggle, startTraining, stopTraining, save, load };
+  function refreshStatus() {
+    Api.get('/api/pec/status').then(data => {
+      document.getElementById('pec-enabled').textContent = data.enabled ? 'Enabled' : 'Disabled';
+      document.getElementById('pec-trained').textContent = data.trained ? 'Yes' : 'No';
+      document.getElementById('pec-peak').textContent = data.peak_error_arcsec ? data.peak_error_arcsec.toFixed(1) + '"' : '--"';
+      document.getElementById('pec-rms').textContent = data.rms_error_arcsec ? data.rms_error_arcsec.toFixed(1) + '"' : '--"';
+      document.getElementById('pec-harmonics').textContent = data.num_harmonics || '--';
+      document.getElementById('pec-phase').textContent = (data.current_phase_deg || 0).toFixed(1) + '°';
+      const toggle = document.getElementById('pec-toggle');
+      if (toggle) toggle.checked = data.enabled;
+    }).catch(() => {});
+  }
+
+  return { render, toggle, startTraining, stopTraining, save, load, refreshStatus };
 })();

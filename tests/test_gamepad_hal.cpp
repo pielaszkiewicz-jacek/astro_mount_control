@@ -352,10 +352,10 @@ TEST_F(GamepadHALTest, DoesNotSupportOtherFeatures) {
     hal_ = createHALWithMock();
     ASSERT_NE(hal_, nullptr);
 
-    EXPECT_FALSE(hal_->supportsFeature(HALFeature::CANOPEN_SUPPORT));
+    EXPECT_FALSE(hal_->supportsFeature(HALFeature::FIELD_BUS_SUPPORT));
     EXPECT_FALSE(hal_->supportsFeature(HALFeature::PID_CONTROL));
     EXPECT_FALSE(hal_->supportsFeature(HALFeature::TRAJECTORY_CONTROL));
-    EXPECT_FALSE(hal_->supportsFeature(HALFeature::DEROTATOR_SUPPORT));
+    EXPECT_FALSE(hal_->supportsFeature(HALFeature::SERIAL_SUPPORT));
 }
 
 TEST_F(GamepadHALTest, GetSupportedFeatures) {
@@ -1029,6 +1029,25 @@ TEST_F(GamepadHALTest, MockGamepadInputApplyButtonMapping) {
     EXPECT_EQ(mock->last_button_mapping_[2], "park");
 }
 
+TEST_F(GamepadHALTest, MockGamepadInputApplyExtendedButtonMapping) {
+    auto mock = std::make_unique<MockGamepadInput>();
+    std::map<int, std::string> mapping = {
+        {0, "bootstrap_calibrate"},
+        {1, "tpoint_calibrate"},
+        {2, "meridian_flip"},
+        {3, "mode_cycle"},
+        {4, "clear_errors"},
+        {5, "unpark"}
+    };
+    mock->applyButtonMapping(mapping);
+    EXPECT_EQ(mock->last_button_mapping_[0], "bootstrap_calibrate");
+    EXPECT_EQ(mock->last_button_mapping_[1], "tpoint_calibrate");
+    EXPECT_EQ(mock->last_button_mapping_[2], "meridian_flip");
+    EXPECT_EQ(mock->last_button_mapping_[3], "mode_cycle");
+    EXPECT_EQ(mock->last_button_mapping_[4], "clear_errors");
+    EXPECT_EQ(mock->last_button_mapping_[5], "unpark");
+}
+
 TEST_F(GamepadHALTest, MockGamepadInputApplyAxisMapping) {
     auto mock = std::make_unique<MockGamepadInput>();
     std::map<int, std::string> mapping = {
@@ -1339,7 +1358,31 @@ TEST(GamepadStateTest, DefaultStateValues) {
     EXPECT_FALSE(state.button_speed_down);
     EXPECT_FALSE(state.button_manual_toggle);
     EXPECT_FALSE(state.button_home);
+    // NEW extended button defaults
+    EXPECT_FALSE(state.button_bootstrap_calibrate);
+    EXPECT_FALSE(state.button_tpoint_calibrate);
+    EXPECT_FALSE(state.button_meridian_flip);
+    EXPECT_FALSE(state.button_mode_cycle);
+    EXPECT_FALSE(state.button_clear_errors);
+    EXPECT_FALSE(state.button_unpark);
     EXPECT_FALSE(state.connected);
+}
+
+TEST(GamepadStateTest, SetExtendedButtonValues) {
+    GamepadState state;
+    state.button_bootstrap_calibrate = true;
+    state.button_tpoint_calibrate = true;
+    state.button_meridian_flip = true;
+    state.button_mode_cycle = true;
+    state.button_clear_errors = true;
+    state.button_unpark = true;
+
+    EXPECT_TRUE(state.button_bootstrap_calibrate);
+    EXPECT_TRUE(state.button_tpoint_calibrate);
+    EXPECT_TRUE(state.button_meridian_flip);
+    EXPECT_TRUE(state.button_mode_cycle);
+    EXPECT_TRUE(state.button_clear_errors);
+    EXPECT_TRUE(state.button_unpark);
 }
 
 // ============================================================================

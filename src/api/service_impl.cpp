@@ -1,6 +1,6 @@
+#include <deque>
 #include "api/service_impl.h"
 #include "controllers/mount_controller.h"
-#include "controllers/icanopen_interface.h"
 #include "logging/logger.h"
 #include "core/astronomical_calculations.h"
 #include "proto/mount_controller.pb.h"
@@ -50,15 +50,14 @@ grpc::Status MountControllerServiceImpl::TrackObject(grpc::ServerContext* contex
                                                     google::protobuf::Empty* response) {
     try {
         // Map proto tracking_mode (int32) to MountController::TrackingMode enum.
-        // Proto field 31 defaults to 0 (SIDEREAL) when not set, preserving
-        // backward compatibility with clients built before this field was added.
-        auto mode = controllers::MountController::TrackingMode::SIDEREAL;
+        // Proto field defaults to 0 (SIDEREAL) when not set.
+        auto mode = config::TrackingMode::SIDEREAL;
         switch (request->tracking_mode()) {
-            case 0: mode = controllers::MountController::TrackingMode::SIDEREAL; break;
-            case 1: mode = controllers::MountController::TrackingMode::SOLAR;    break;
-            case 2: mode = controllers::MountController::TrackingMode::LUNAR;    break;
-            case 3: mode = controllers::MountController::TrackingMode::CUSTOM;   break;
-            case 4: mode = controllers::MountController::TrackingMode::OFF;      break;
+            case 0: mode = config::TrackingMode::SIDEREAL; break;
+            case 1: mode = config::TrackingMode::SOLAR;    break;
+            case 2: mode = config::TrackingMode::LUNAR;    break;
+            case 3: mode = config::TrackingMode::CUSTOM;   break;
+            case 4: mode = config::TrackingMode::OFF;      break;
             default:
                 API_LOG_WARN("TrackObject: unknown tracking_mode={}, defaulting to SIDEREAL",
                             request->tracking_mode());
@@ -252,106 +251,6 @@ grpc::Status MountControllerServiceImpl::ClearErrors(grpc::ServerContext* contex
 }
 
 // Measurement and calibration
-grpc::Status MountControllerServiceImpl::AddMeasurement(grpc::ServerContext* context,
-                                                       const astro_mount::Measurement* request,
-                                                       google::protobuf::Empty* response) {
-    try {
-        // Extract mount position (convert from mount_position proto if available)
-        double mount_ha = 0.0;
-        double mount_dec = 0.0;
-        if (request->has_mount_position()) {
-            // Convert mount position to HA/Dec based on timestamp and location
-            auto config = controller_.getConfiguration();
-            double axis1 = request->mount_position().axis1(); // degrees
-            double axis2 = request->mount_position().axis2(); // degrees
-            
-            // Get timestamp from request (use current time if not provided)
-            double jd = 0.0;
-            if (request->has_timestamp()) {
-                // Convert timestamp to Julian Date
-                auto ts = request->timestamp();
-                auto tp = std::chrono::system_clock::from_time_t(ts.seconds()) + 
-                         std::chrono::nanoseconds(ts.nanos());
-                auto duration = tp.time_since_epoch();
-                auto days = std::chrono::duration_cast<std::chrono::duration<double, std::ratio<86400>>>(duration);
-                jd = 2440587.5 + days.count(); // Unix epoch to JD
-            } else {
-                jd = core::AstronomicalCalculations::getCurrentJulianDate();
-            }
-            
-            // Create astronomical calculations instance
-            core::AstronomicalCalculations astro_calc;
-            astro_calc.setObserverLocation(config.latitude, config.longitude, config.altitude);
-            astro_calc.setEnvironmentalParams(15.0, 1013.25, 0.5); // default values
-            
-            if (config.mount_type == controllers::MountController::MountType::ALT_AZ) {
-                // Alt-Az mount: convert altitude/azimuth to HA/Dec
-                double altitude = axis2; // degrees
-                double azimuth = axis1;  // degrees
-                auto [ha_hours, dec] = astro_calc.horizontalToEquatorial(altitude, azimuth, jd);
-                
-                // HA is already in hours, convert to degrees for mount_ha
-                mount_ha = ha_hours * 15.0; // hours to degrees
-                mount_dec = dec;
-                
-                API_LOG_DEBUG("Alt-Az conversion: alt={:.3f}°, az={:.3f}° -> HA={:.3f}°, Dec={:.3f}°",
-                             altitude, azimuth, mount_ha, mount_dec);
-            } else if (config.mount_type == controllers::MountController::MountType::CASUAL) {
-                // CASUAL mount: axis1 and axis2 directly are the mount position
-                mount_ha = axis1; // axis1 in degrees (altitude-like)
-                mount_dec = axis2; // axis2 in degrees (azimuth-like)
-                
-                API_LOG_DEBUG("CASUAL mount: axis1={:.3f}°, axis2={:.3f}°", mount_ha, mount_dec);
-            } else {
-                // Equatorial mount: axis1 is HA in degrees, axis2 is Dec in degrees
-                mount_ha = axis1; // already in degrees
-                mount_dec = axis2;
-                
-                // Optionally, we could convert HA to hours if needed, but keep in degrees for consistency
-                API_LOG_DEBUG("Equatorial mount: HA={:.3f}°, Dec={:.3f}°", mount_ha, mount_dec);
-            }
-        }
-        
-        // Extract environmental parameters with defaults
-        // Note: In proto3, scalar fields don't have has_* methods
-        // We use the field value directly and apply defaults if value is 0.0 (default proto3 value)
-        double temperature = request->temperature();
-        double pressure = request->pressure();
-        double humidity = request->humidity();
-        
-        // Apply defaults if values are zero (proto3 default)
-        if (temperature == 0.0) temperature = 15.0;
-        if (pressure == 0.0) pressure = 1013.25;
-        if (humidity == 0.0) humidity = 0.5;
-        
-        // Extract astrometric parameters from expected coordinates
-        // Note: Same proto3 limitation - no has_* methods for scalar fields
-        double proper_motion_ra = request->expected().pm_ra();
-        double proper_motion_dec = request->expected().pm_dec();
-        double parallax = request->expected().parallax();
-        double epoch = request->expected().epoch();
-        
-        // Apply defaults for astrometric parameters
-        if (epoch == 0.0) epoch = 2000.0;
-        
-        if (controller_.addCalibrationMeasurement(
-                request->observed().ra(),
-                request->observed().dec(),
-                request->expected().ra(),
-                request->expected().dec(),
-                mount_ha, mount_dec,
-                temperature, pressure, humidity,
-                proper_motion_ra, proper_motion_dec,
-                parallax, epoch)) {
-            return grpc::Status::OK;
-        } else {
-            return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to add measurement");
-        }
-    } catch (const std::exception& e) {
-        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
-    }
-}
-
 // Bootstrap calibration API
 grpc::Status MountControllerServiceImpl::AddBootstrapMeasurement(grpc::ServerContext* context,
                                                                 const astro_mount::BootstrapMeasurement* request,
@@ -405,15 +304,12 @@ grpc::Status MountControllerServiceImpl::RunBootstrapCalibration(grpc::ServerCon
     try {
         if (controller_.runBootstrapCalibration()) {
             int count = static_cast<int>(controller_.getBootstrapMeasurementCount());
-            double rms_ra = controller_.getBootstrapRmsRaArcsec();
-            double rms_dec = controller_.getBootstrapRmsDecArcsec();
+            double residual_rms = controller_.getBootstrapQuaternionErrorArcsec();
             double ra_corr = controller_.getBootstrapRaCorrectionArcsec();
             double dec_corr = controller_.getBootstrapDecCorrectionArcsec();
             
             // Combined alignment error from both axes
             double alignment_error = std::sqrt(ra_corr * ra_corr + dec_corr * dec_corr);
-            // Combined RMS residual
-            double residual_rms = std::sqrt(rms_ra * rms_ra + rms_dec * rms_dec);
             // Estimate max residual as 2x RMS as a reasonable upper bound
             double max_residual = residual_rms * 2.0;
             // Initial rotation angle estimate from RA correction (converted to degrees)
@@ -518,11 +414,11 @@ grpc::Status MountControllerServiceImpl::SetBootstrapMode(
     google::protobuf::Empty* response) {
     try {
         auto proto_mode = request->mode();
-        auto cpp_mode = static_cast<controllers::MountController::BootstrapMode>(
+        auto cpp_mode = static_cast<config::BootstrapMode>(
             static_cast<int>(proto_mode));
         
-        if (cpp_mode < controllers::MountController::BootstrapMode::BOOTSTRAP_MANUAL ||
-            cpp_mode > controllers::MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC) {
+        if (cpp_mode < config::BootstrapMode::BOOTSTRAP_MANUAL ||
+            cpp_mode > config::BootstrapMode::BOOTSTRAP_AUTOMATIC) {
             return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
                               "Invalid bootstrap mode value");
         }
@@ -556,9 +452,9 @@ grpc::Status MountControllerServiceImpl::RunAutomaticBootstrap(
         
         // Verify bootstrap mode is set to automatic or hybrid
         if (status.bootstrap_mode != static_cast<int>(
-                controllers::MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC) &&
+                config::BootstrapMode::BOOTSTRAP_AUTOMATIC) &&
             status.bootstrap_mode != static_cast<int>(
-                controllers::MountController::BootstrapMode::BOOTSTRAP_HYBRID)) {
+                config::BootstrapMode::BOOTSTRAP_HYBRID)) {
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
                               "Bootstrap mode must be HYBRID or AUTOMATIC for auto-bootstrap");
         }
@@ -566,13 +462,13 @@ grpc::Status MountControllerServiceImpl::RunAutomaticBootstrap(
         // Verify absolute encoders or reference position for automatic mode
         bool has_reference = status.encoders_absolute;
         if (!has_reference && status.bootstrap_mode == static_cast<int>(
-                controllers::MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC)) {
+                config::BootstrapMode::BOOTSTRAP_AUTOMATIC)) {
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
                               "AUTOMATIC bootstrap requires absolute encoders or prior calibration");
         }
         
         // Set the bootstrap mode on the controller
-        auto mode = static_cast<controllers::MountController::BootstrapMode>(status.bootstrap_mode);
+        auto mode = static_cast<config::BootstrapMode>(status.bootstrap_mode);
         controller_.setBootstrapMode(mode);
         
         // The actual orchestration (slewing, plate solving, measurement) is handled
@@ -819,20 +715,18 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         auto config = controller_.getConfiguration();
         
         // Fill response with configuration
-        response->set_latitude(config.latitude);
-        response->set_longitude(config.longitude);
-        response->set_altitude(config.altitude);
+        response->set_latitude(config.mount_config.latitude);
+        response->set_longitude(config.mount_config.longitude);
+        response->set_altitude(config.mount_config.altitude);
         response->set_focal_length(config.focal_length);
         response->set_aperture(config.aperture);
-        response->set_default_temperature(config.default_temperature);
-        response->set_default_pressure(config.default_pressure);
-        response->set_default_humidity(config.default_humidity);
-        response->set_process_noise(config.process_noise);
-        response->set_measurement_noise(config.measurement_noise);
+        response->set_default_temperature(config.mount_config.default_temperature);
+        response->set_default_pressure(config.mount_config.default_pressure);
+        response->set_default_humidity(config.mount_config.default_humidity);
+        response->set_process_noise(config.mount_config.process_noise);
+        response->set_measurement_noise(config.mount_config.measurement_noise);
         response->set_log_level(config.log_level);
         response->set_log_directory(config.log_directory);
-        response->set_log_rotation_days(config.log_rotation_days);
-        response->set_log_max_file_size_mb(config.log_max_file_size_mb);
         response->set_log_console_output(config.log_console_output);
         response->set_grpc_address(config.grpc_address);
         response->set_grpc_port(config.grpc_port);
@@ -840,178 +734,137 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_network_enable_ssl(config.network_enable_ssl);
         response->set_network_ssl_cert_path(config.network_ssl_cert_path);
         response->set_network_ssl_key_path(config.network_ssl_key_path);
-        response->set_canopen_interface(config.canopen_interface);
-        response->set_canopen_node_id(config.canopen_node_id);
-        response->set_canopen_baud_rate(config.canopen_bitrate);
-        response->set_canopen_enable_sync(config.canopen_use_sync);
-        response->set_canopen_sync_interval_ms(config.canopen_sync_period_ms);
-        response->set_canopen_accel_mode(config.canopen_accel_mode);
-        response->set_canopen_position_rewind_enabled(config.canopen_position_rewind_enabled);
-        response->set_canopen_position_rewind_interval_seconds(config.canopen_position_rewind_interval_seconds);
-        response->set_canopen_position_rewind_threshold_percent(config.canopen_position_rewind_threshold_percent);
         
         // Mount control parameters
-        response->set_max_slew_rate(config.max_slew_rate);
-        response->set_max_tracking_rate(config.max_tracking_rate);
-        response->set_slew_acceleration(config.slew_acceleration);
-        response->set_tracking_acceleration(config.tracking_acceleration);
+        response->set_max_slew_rate(config.mount_config.max_slew_rate);
+        response->set_max_tracking_rate(config.mount_config.max_tracking_rate);
+        response->set_slew_acceleration(config.mount_config.slew_acceleration);
+        response->set_tracking_acceleration(config.mount_config.tracking_acceleration);
         
         // Park position
-        response->set_park_position_axis1(config.park_position_axis1);
-        response->set_park_position_axis2(config.park_position_axis2);
+        response->set_park_position_axis1(config.safety_config.park_position_axis1);
+        response->set_park_position_axis2(config.safety_config.park_position_axis2);
         
         // Encoder configuration
-        response->set_use_encoders(config.use_encoders);
-        response->set_encoders_absolute(config.encoders_absolute);
-        response->set_encoder_resolution_config(config.encoder_resolution);
+        response->set_use_encoders(config.mount_config.use_encoders);
+        response->set_encoders_absolute(config.mount_config.encoders_absolute);
+        response->set_encoder_resolution_config(config.mount_config.encoder_resolution);
         
         // TPOINT configuration
-        response->set_tpoint_enabled_terms(config.tpoint_enabled_terms);
+        response->set_tpoint_enabled_terms(config.calibration_config.tpoint_enabled_terms);
         
         // Guider configuration
-        response->set_enable_guider(config.enable_guider);
-        response->set_guider_max_correction(config.guider_max_correction);
-        response->set_guider_aggression(config.guider_aggression);
+        response->set_enable_guider(config.tracking_config.enable_guider);
+        response->set_guider_max_correction(config.tracking_config.guider_max_correction);
+        response->set_guider_aggression(config.tracking_config.guider_aggression);
         
         // Atmospheric refraction correction
-        response->set_enable_refraction_correction(config.enable_refraction_correction);
+        response->set_enable_refraction_correction(config.safety_config.enable_refraction_correction);
         
         // Mount type configuration
-        response->set_mount_type(static_cast<astro_mount::MountType>(config.mount_type));
+        response->set_mount_type(static_cast<astro_mount::MountType>(config.mount_config.mount_type));
         
         // Mount orientation quaternion (for CASUAL mount type)
         {
             auto* orientation = response->mutable_mount_orientation();
-            orientation->set_qx(config.mount_orientation.quaternion[0]);
-            orientation->set_qy(config.mount_orientation.quaternion[1]);
-            orientation->set_qz(config.mount_orientation.quaternion[2]);
-            orientation->set_qw(config.mount_orientation.quaternion[3]);
+            orientation->set_qx(config.mount_config.mount_orientation.quaternion[0]);
+            orientation->set_qy(config.mount_config.mount_orientation.quaternion[1]);
+            orientation->set_qz(config.mount_config.mount_orientation.quaternion[2]);
+            orientation->set_qw(config.mount_config.mount_orientation.quaternion[3]);
         }
-        
-        // Servo initialization configuration
-        response->set_servo_init_enabled(config.servo_init_enabled);
-        {
-            json seq_array = json::array();
-            for (const auto& entry : config.servo_init_sequence) {
-                json e;
-                e["axis"] = entry.axis;
-                std::ostringstream idx_hex;
-                idx_hex << "0x" << std::hex << std::uppercase << std::setw(4) << std::setfill('0') << entry.index;
-                e["index"] = idx_hex.str();
-                e["subindex"] = entry.subindex;
-                e["value"] = entry.value;
-                e["description"] = entry.description;
-                e["data_size"] = entry.data_size;
-                seq_array.push_back(e);
-            }
-            response->set_servo_init_sequence(seq_array.dump());
-        }
-        
-        // CANopen PDO config
-        response->set_canopen_pdo_config_enabled(config.canopen_pdo_config_enabled);
         
         // Loop timing
-        response->set_controller_poll_ms(config.controller_poll_ms);
-        response->set_tracking_update_ms(config.tracking_update_ms);
-        
-        // Field rotation parameters
-        response->set_field_rotation_enabled(config.field_rotation_enabled);
-        response->set_field_rotation_latitude(config.field_rotation_latitude);
-        response->set_field_rotation_altitude(config.field_rotation_altitude);
-        response->set_field_rotation_azimuth(config.field_rotation_azimuth);
-        response->set_field_rotation_computed_rate(config.field_rotation_computed_rate);
-        response->set_field_rotation_applied_correction(config.field_rotation_applied_correction);
-        response->set_field_rotation_temperature(config.field_rotation_temperature);
-        response->set_field_rotation_flexure_correction(config.field_rotation_flexure_correction);
+        response->set_controller_poll_ms(config.tracking_config.controller_poll_ms);
+        response->set_tracking_update_ms(config.tracking_config.tracking_update_ms);
         
         // Position/rate tolerances for slew operations
-        response->set_position_tolerance(config.position_tolerance);
-        response->set_rate_tolerance(config.rate_tolerance);
+        response->set_position_tolerance(config.mount_config.position_tolerance);
+        response->set_rate_tolerance(config.mount_config.rate_tolerance);
         
         // Equatorial tracking mode (position vs velocity)
-        response->set_equatorial_tracking_velocity_mode(config.equatorial_tracking_velocity_mode);
+        response->set_equatorial_tracking_velocity_mode(config.mount_config.equatorial_tracking_velocity_mode);
 
         // Per-axis rotation direction inversion
-        response->set_invert_axis1(config.invert_axis1);
-        response->set_invert_axis2(config.invert_axis2);
+        response->set_invert_axis1(config.mount_config.invert_axis1);
+        response->set_invert_axis2(config.mount_config.invert_axis2);
         
         // Meridian flip configuration
-        response->set_meridian_flip_enabled(config.meridian_flip_enabled);
-        response->set_meridian_flip_delay_minutes(config.meridian_flip_delay_minutes);
-        response->set_meridian_flip_hysteresis_degrees(config.meridian_flip_hysteresis_degrees);
-        response->set_meridian_flip_timeout_seconds(config.meridian_flip_timeout_seconds);
+        response->set_meridian_flip_enabled(config.safety_config.meridian_flip_enabled);
+        response->set_meridian_flip_delay_minutes(config.safety_config.meridian_flip_delay_minutes);
+        response->set_meridian_flip_hysteresis_degrees(config.safety_config.meridian_flip_hysteresis_degrees);
+        response->set_meridian_flip_timeout_seconds(config.safety_config.meridian_flip_timeout_seconds);
         
         // Soft limits configuration
-        response->set_soft_limits_enabled(config.soft_limits_enabled);
-        response->set_soft_limit_axis1_min(config.soft_limit_axis1_min);
-        response->set_soft_limit_axis1_max(config.soft_limit_axis1_max);
-        response->set_soft_limit_axis2_min(config.soft_limit_axis2_min);
-        response->set_soft_limit_axis2_max(config.soft_limit_axis2_max);
-        response->set_soft_limit_warning_degrees(config.soft_limit_warning_degrees);
-        response->set_soft_limit_deceleration_degrees(config.soft_limit_deceleration_degrees);
-        response->set_soft_limit_tracking_rate_factor(config.soft_limit_tracking_rate_factor);
+        response->set_soft_limits_enabled(config.safety_config.soft_limits_enabled);
+        response->set_soft_limit_axis1_min(config.safety_config.soft_limit_axis1_min);
+        response->set_soft_limit_axis1_max(config.safety_config.soft_limit_axis1_max);
+        response->set_soft_limit_axis2_min(config.safety_config.soft_limit_axis2_min);
+        response->set_soft_limit_axis2_max(config.safety_config.soft_limit_axis2_max);
+        response->set_soft_limit_warning_degrees(config.safety_config.soft_limit_warning_degrees);
+        response->set_soft_limit_deceleration_degrees(config.safety_config.soft_limit_deceleration_degrees);
+        response->set_soft_limit_tracking_rate_factor(config.safety_config.soft_limit_tracking_rate_factor);
         
         // HA axis physical parameters
         auto* ha_params = response->mutable_ha_axis_params();
-        ha_params->set_position_counts_per_degree(config.ha_axis_params.position_counts_per_degree);
-        ha_params->set_velocity_counts_per_deg_s(config.ha_axis_params.velocity_counts_per_deg_s);
-        ha_params->set_encoder_resolution(config.ha_axis_params.encoder_resolution);
-        ha_params->set_encoder_counts_per_arcsec(config.ha_axis_params.encoder_counts_per_arcsec);
-        ha_params->set_encoder_quantization_error(config.ha_axis_params.encoder_quantization_error);
-        ha_params->set_gear_ratio(config.ha_axis_params.gear_ratio);
-        ha_params->set_worm_ratio(config.ha_axis_params.worm_ratio);
-        ha_params->set_worm_teeth(config.ha_axis_params.worm_teeth);
-        ha_params->set_worm_wheel_teeth(config.ha_axis_params.worm_wheel_teeth);
-        ha_params->set_cyclic_error_amplitude(config.ha_axis_params.cyclic_error_amplitude);
-        ha_params->set_cyclic_error_period(config.ha_axis_params.cyclic_error_period);
+        ha_params->set_position_counts_per_degree(config.mount_config.ha_axis_params.position_counts_per_degree);
+        ha_params->set_velocity_counts_per_deg_s(config.mount_config.ha_axis_params.velocity_counts_per_deg_s);
+        ha_params->set_encoder_resolution(config.mount_config.ha_axis_params.encoder_resolution);
+        ha_params->set_encoder_counts_per_arcsec(config.mount_config.ha_axis_params.encoder_counts_per_arcsec);
+        ha_params->set_encoder_quantization_error(config.mount_config.ha_axis_params.encoder_quantization_error);
+        ha_params->set_gear_ratio(config.mount_config.ha_axis_params.gear_ratio);
+        ha_params->set_worm_ratio(config.mount_config.ha_axis_params.worm_ratio);
+        ha_params->set_worm_teeth(config.mount_config.ha_axis_params.worm_teeth);
+        ha_params->set_worm_wheel_teeth(config.mount_config.ha_axis_params.worm_wheel_teeth);
+        ha_params->set_cyclic_error_amplitude(config.mount_config.ha_axis_params.cyclic_error_amplitude);
+        ha_params->set_cyclic_error_period(config.mount_config.ha_axis_params.cyclic_error_period);
         
         // Copy cyclic harmonics
-        for (const auto& harmonic : config.ha_axis_params.cyclic_harmonics) {
+        for (const auto& harmonic : config.mount_config.ha_axis_params.cyclic_harmonics) {
             ha_params->add_cyclic_harmonics(harmonic);
         }
         
-        ha_params->set_backlash(config.ha_axis_params.backlash);
-        ha_params->set_backlash_temp_coeff(config.ha_axis_params.backlash_temp_coeff);
-        ha_params->set_axis_stiffness(config.ha_axis_params.axis_stiffness);
-        ha_params->set_torsional_compliance(config.ha_axis_params.torsional_compliance);
-        ha_params->set_expansion_coeff(config.ha_axis_params.expansion_coeff);
-        ha_params->set_temp_gear_error_coeff(config.ha_axis_params.temp_gear_error_coeff);
-        ha_params->set_calibration_temp(config.ha_axis_params.calibration_temp);
+        ha_params->set_backlash(config.mount_config.ha_axis_params.backlash);
+        ha_params->set_backlash_temp_coeff(config.mount_config.ha_axis_params.backlash_temp_coeff);
+        ha_params->set_axis_stiffness(config.mount_config.ha_axis_params.axis_stiffness);
+        ha_params->set_torsional_compliance(config.mount_config.ha_axis_params.torsional_compliance);
+        ha_params->set_expansion_coeff(config.mount_config.ha_axis_params.expansion_coeff);
+        ha_params->set_temp_gear_error_coeff(config.mount_config.ha_axis_params.temp_gear_error_coeff);
+        ha_params->set_calibration_temp(config.mount_config.ha_axis_params.calibration_temp);
         
         // Copy calibration table
-        for (const auto& value : config.ha_axis_params.calibration_table) {
+        for (const auto& value : config.mount_config.ha_axis_params.calibration_table) {
             ha_params->add_calibration_table(value);
         }
         
         // Dec axis physical parameters
         auto* dec_params = response->mutable_dec_axis_params();
-        dec_params->set_position_counts_per_degree(config.dec_axis_params.position_counts_per_degree);
-        dec_params->set_velocity_counts_per_deg_s(config.dec_axis_params.velocity_counts_per_deg_s);
-        dec_params->set_encoder_resolution(config.dec_axis_params.encoder_resolution);
-        dec_params->set_encoder_counts_per_arcsec(config.dec_axis_params.encoder_counts_per_arcsec);
-        dec_params->set_encoder_quantization_error(config.dec_axis_params.encoder_quantization_error);
-        dec_params->set_gear_ratio(config.dec_axis_params.gear_ratio);
-        dec_params->set_worm_ratio(config.dec_axis_params.worm_ratio);
-        dec_params->set_worm_teeth(config.dec_axis_params.worm_teeth);
-        dec_params->set_worm_wheel_teeth(config.dec_axis_params.worm_wheel_teeth);
-        dec_params->set_cyclic_error_amplitude(config.dec_axis_params.cyclic_error_amplitude);
-        dec_params->set_cyclic_error_period(config.dec_axis_params.cyclic_error_period);
+        dec_params->set_position_counts_per_degree(config.mount_config.dec_axis_params.position_counts_per_degree);
+        dec_params->set_velocity_counts_per_deg_s(config.mount_config.dec_axis_params.velocity_counts_per_deg_s);
+        dec_params->set_encoder_resolution(config.mount_config.dec_axis_params.encoder_resolution);
+        dec_params->set_encoder_counts_per_arcsec(config.mount_config.dec_axis_params.encoder_counts_per_arcsec);
+        dec_params->set_encoder_quantization_error(config.mount_config.dec_axis_params.encoder_quantization_error);
+        dec_params->set_gear_ratio(config.mount_config.dec_axis_params.gear_ratio);
+        dec_params->set_worm_ratio(config.mount_config.dec_axis_params.worm_ratio);
+        dec_params->set_worm_teeth(config.mount_config.dec_axis_params.worm_teeth);
+        dec_params->set_worm_wheel_teeth(config.mount_config.dec_axis_params.worm_wheel_teeth);
+        dec_params->set_cyclic_error_amplitude(config.mount_config.dec_axis_params.cyclic_error_amplitude);
+        dec_params->set_cyclic_error_period(config.mount_config.dec_axis_params.cyclic_error_period);
         
         // Copy cyclic harmonics for dec axis
-        for (const auto& harmonic : config.dec_axis_params.cyclic_harmonics) {
+        for (const auto& harmonic : config.mount_config.dec_axis_params.cyclic_harmonics) {
             dec_params->add_cyclic_harmonics(harmonic);
         }
         
-        dec_params->set_backlash(config.dec_axis_params.backlash);
-        dec_params->set_backlash_temp_coeff(config.dec_axis_params.backlash_temp_coeff);
-        dec_params->set_axis_stiffness(config.dec_axis_params.axis_stiffness);
-        dec_params->set_torsional_compliance(config.dec_axis_params.torsional_compliance);
-        dec_params->set_expansion_coeff(config.dec_axis_params.expansion_coeff);
-        dec_params->set_temp_gear_error_coeff(config.dec_axis_params.temp_gear_error_coeff);
-        dec_params->set_calibration_temp(config.dec_axis_params.calibration_temp);
+        dec_params->set_backlash(config.mount_config.dec_axis_params.backlash);
+        dec_params->set_backlash_temp_coeff(config.mount_config.dec_axis_params.backlash_temp_coeff);
+        dec_params->set_axis_stiffness(config.mount_config.dec_axis_params.axis_stiffness);
+        dec_params->set_torsional_compliance(config.mount_config.dec_axis_params.torsional_compliance);
+        dec_params->set_expansion_coeff(config.mount_config.dec_axis_params.expansion_coeff);
+        dec_params->set_temp_gear_error_coeff(config.mount_config.dec_axis_params.temp_gear_error_coeff);
+        dec_params->set_calibration_temp(config.mount_config.dec_axis_params.calibration_temp);
         
         // Copy calibration table for dec axis
-        for (const auto& value : config.dec_axis_params.calibration_table) {
+        for (const auto& value : config.mount_config.dec_axis_params.calibration_table) {
             dec_params->add_calibration_table(value);
         }
         
@@ -1040,23 +893,14 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     // ── Basic configuration ──────────────────────────────────────
     // Only override if the request provides a non-default value.
     // Proto3 defaults: double→0.0, int32→0, string→"", bool→false.
-    if (request->latitude() != 0.0) config.latitude = request->latitude();
-    if (request->longitude() != 0.0) config.longitude = request->longitude();
-    if (request->altitude() != 0.0) config.altitude = request->altitude();
-    if (request->default_temperature() != 0.0) config.default_temperature = request->default_temperature();
-    if (request->default_pressure() != 0.0) config.default_pressure = request->default_pressure();
-    if (request->default_humidity() != 0.0) config.default_humidity = request->default_humidity();
-    if (request->process_noise() != 0.0) config.process_noise = request->process_noise();
-    if (request->measurement_noise() != 0.0) config.measurement_noise = request->measurement_noise();
-    if (!request->canopen_interface().empty()) config.canopen_interface = request->canopen_interface();
-    if (request->canopen_node_id() != 0) config.canopen_node_id = request->canopen_node_id();
-    if (request->canopen_baud_rate() != 0) config.canopen_bitrate = request->canopen_baud_rate();
-    if (request->has_canopen_enable_sync()) config.canopen_use_sync = request->canopen_enable_sync();
-    if (request->canopen_sync_interval_ms() != 0) config.canopen_sync_period_ms = request->canopen_sync_interval_ms();
-    if (!request->canopen_accel_mode().empty()) config.canopen_accel_mode = request->canopen_accel_mode();
-    if (request->has_canopen_position_rewind_enabled()) config.canopen_position_rewind_enabled = request->canopen_position_rewind_enabled();
-    if (request->canopen_position_rewind_interval_seconds() != 0.0) config.canopen_position_rewind_interval_seconds = request->canopen_position_rewind_interval_seconds();
-    if (request->canopen_position_rewind_threshold_percent() != 0.0) config.canopen_position_rewind_threshold_percent = request->canopen_position_rewind_threshold_percent();
+    if (request->latitude() != 0.0) config.mount_config.latitude = request->latitude();
+    if (request->longitude() != 0.0) config.mount_config.longitude = request->longitude();
+    if (request->altitude() != 0.0) config.mount_config.altitude = request->altitude();
+    if (request->default_temperature() != 0.0) config.mount_config.default_temperature = request->default_temperature();
+    if (request->default_pressure() != 0.0) config.mount_config.default_pressure = request->default_pressure();
+    if (request->default_humidity() != 0.0) config.mount_config.default_humidity = request->default_humidity();
+    if (request->process_noise() != 0.0) config.mount_config.process_noise = request->process_noise();
+    if (request->measurement_noise() != 0.0) config.mount_config.measurement_noise = request->measurement_noise();
     if (!request->grpc_address().empty()) config.grpc_address = request->grpc_address();
     if (request->grpc_port() != 0) config.grpc_port = request->grpc_port();
     if (request->network_max_connections() != 0) config.network_max_connections = request->network_max_connections();
@@ -1069,123 +913,85 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
         config.log_level = request->log_level();
     }
     if (!request->log_directory().empty()) config.log_directory = request->log_directory();
-    if (request->log_rotation_days() != 0) config.log_rotation_days = request->log_rotation_days();
-    if (request->log_max_file_size_mb() != 0) config.log_max_file_size_mb = request->log_max_file_size_mb();
     if (request->has_log_console_output()) config.log_console_output = request->log_console_output();
     if (request->focal_length() != 0.0) config.focal_length = request->focal_length();
     if (request->aperture() != 0.0) config.aperture = request->aperture();
     
     // ── Mount control parameters ─────────────────────────────────
-    if (request->max_slew_rate() != 0.0) config.max_slew_rate = request->max_slew_rate();
-    if (request->max_tracking_rate() != 0.0) config.max_tracking_rate = request->max_tracking_rate();
-    if (request->slew_acceleration() != 0.0) config.slew_acceleration = request->slew_acceleration();
-    if (request->tracking_acceleration() != 0.0) config.tracking_acceleration = request->tracking_acceleration();
+    if (request->max_slew_rate() != 0.0) config.mount_config.max_slew_rate = request->max_slew_rate();
+    if (request->max_tracking_rate() != 0.0) config.mount_config.max_tracking_rate = request->max_tracking_rate();
+    if (request->slew_acceleration() != 0.0) config.mount_config.slew_acceleration = request->slew_acceleration();
+    if (request->tracking_acceleration() != 0.0) config.mount_config.tracking_acceleration = request->tracking_acceleration();
     
     // Park position — 0.0 is a legitimate value, always apply if present in non-empty request.
     // Heuristic: if any position-related field is non-zero, assume park position was intended.
     if (request->park_position_axis1() != 0.0 || request->park_position_axis2() != 0.0) {
-        config.park_position_axis1 = request->park_position_axis1();
-        config.park_position_axis2 = request->park_position_axis2();
+        config.safety_config.park_position_axis1 = request->park_position_axis1();
+        config.safety_config.park_position_axis2 = request->park_position_axis2();
     }
     
     // Position/rate tolerances
-    if (request->position_tolerance() != 0.0) config.position_tolerance = request->position_tolerance();
-    if (request->rate_tolerance() != 0.0) config.rate_tolerance = request->rate_tolerance();
+    if (request->position_tolerance() != 0.0) config.mount_config.position_tolerance = request->position_tolerance();
+    if (request->rate_tolerance() != 0.0) config.mount_config.rate_tolerance = request->rate_tolerance();
     
     // ── Encoder configuration ────────────────────────────────────
-    if (request->has_use_encoders()) config.use_encoders = request->use_encoders();
-    if (request->has_encoders_absolute()) config.encoders_absolute = request->encoders_absolute();
-    if (request->encoder_resolution_config() != 0.0) config.encoder_resolution = request->encoder_resolution_config();
+    if (request->has_use_encoders()) config.mount_config.use_encoders = request->use_encoders();
+    if (request->has_encoders_absolute()) config.mount_config.encoders_absolute = request->encoders_absolute();
+    if (request->encoder_resolution_config() != 0.0) config.mount_config.encoder_resolution = request->encoder_resolution_config();
     
     // ── TPOINT configuration ─────────────────────────────────────
-    if (request->tpoint_enabled_terms() != 0) config.tpoint_enabled_terms = request->tpoint_enabled_terms();
+    if (request->tpoint_enabled_terms() != 0) config.calibration_config.tpoint_enabled_terms = request->tpoint_enabled_terms();
     
     // ── Guider configuration ─────────────────────────────────────
-    if (request->has_enable_guider()) config.enable_guider = request->enable_guider();
-    if (request->guider_max_correction() != 0.0) config.guider_max_correction = request->guider_max_correction();
-    if (request->guider_aggression() != 0.0) config.guider_aggression = request->guider_aggression();
+    if (request->has_enable_guider()) config.tracking_config.enable_guider = request->enable_guider();
+    if (request->guider_max_correction() != 0.0) config.tracking_config.guider_max_correction = request->guider_max_correction();
+    if (request->guider_aggression() != 0.0) config.tracking_config.guider_aggression = request->guider_aggression();
     
     // ── Atmospheric refraction correction ────────────────────────
-    if (request->has_enable_refraction_correction()) config.enable_refraction_correction = request->enable_refraction_correction();
+    if (request->has_enable_refraction_correction()) config.safety_config.enable_refraction_correction = request->enable_refraction_correction();
     
     // ── Mount type ───────────────────────────────────────────────
     // Always apply — unlike numeric proto3 fields, enum defaults (EQUATORIAL=0)
     // are legitimate user choices and cannot be distinguished from "not sent".
-    config.mount_type = static_cast<controllers::MountController::MountType>(
+    config.mount_config.mount_type = static_cast<config::MountType>(
         request->mount_type());
     
     // ── Mount orientation quaternion (for CASUAL mount type) ─────
     if (request->has_mount_orientation()) {
-        config.mount_orientation.quaternion[0] = request->mount_orientation().qx();
-        config.mount_orientation.quaternion[1] = request->mount_orientation().qy();
-        config.mount_orientation.quaternion[2] = request->mount_orientation().qz();
-        config.mount_orientation.quaternion[3] = request->mount_orientation().qw();
+        config.mount_config.mount_orientation.quaternion[0] = request->mount_orientation().qx();
+        config.mount_config.mount_orientation.quaternion[1] = request->mount_orientation().qy();
+        config.mount_config.mount_orientation.quaternion[2] = request->mount_orientation().qz();
+        config.mount_config.mount_orientation.quaternion[3] = request->mount_orientation().qw();
     }
-    
-    // ── Servo initialization configuration ────────────────────────
-    if (request->has_servo_init_enabled()) config.servo_init_enabled = request->servo_init_enabled();
-    if (!request->servo_init_sequence().empty()) {
-        try {
-            json seq = json::parse(request->servo_init_sequence());
-            config.servo_init_sequence.clear();
-            for (const auto& entry : seq) {
-                if (!entry.is_object()) continue;
-                controllers::ICanOpenInterface::ServoInitEntry e;
-                e.axis = entry.value("axis", 0);
-                std::string idx_str = entry.value("index", "0x0000");
-                e.index = static_cast<uint16_t>(std::stoul(idx_str, nullptr, 0));
-                e.subindex = static_cast<uint8_t>(entry.value("subindex", 0));
-                e.value = entry.value("value", 0);
-                e.description = entry.value("description", "");
-                e.data_size = static_cast<uint8_t>(entry.value("data_size", 4));
-                config.servo_init_sequence.push_back(e);
-            }
-        } catch (const std::exception& ex) {
-            // Ignore invalid JSON in update request
-        }
-    }
-    
-    // ── CANopen PDO config ────────────────────────────────────────
-    if (request->has_canopen_pdo_config_enabled()) config.canopen_pdo_config_enabled = request->canopen_pdo_config_enabled();
     
     // ── Loop timing ───────────────────────────────────────────────
-    if (request->controller_poll_ms() != 0) config.controller_poll_ms = request->controller_poll_ms();
-    if (request->tracking_update_ms() != 0) config.tracking_update_ms = request->tracking_update_ms();
-    
-    // ── Field rotation parameters ─────────────────────────────────
-    if (request->has_field_rotation_enabled()) config.field_rotation_enabled = request->field_rotation_enabled();
-    if (request->field_rotation_latitude() != 0.0) config.field_rotation_latitude = request->field_rotation_latitude();
-    if (request->field_rotation_altitude() != 0.0) config.field_rotation_altitude = request->field_rotation_altitude();
-    if (request->field_rotation_azimuth() != 0.0) config.field_rotation_azimuth = request->field_rotation_azimuth();
-    if (request->field_rotation_computed_rate() != 0.0) config.field_rotation_computed_rate = request->field_rotation_computed_rate();
-    if (request->field_rotation_applied_correction() != 0.0) config.field_rotation_applied_correction = request->field_rotation_applied_correction();
-    if (request->field_rotation_temperature() != 0.0) config.field_rotation_temperature = request->field_rotation_temperature();
-    if (request->field_rotation_flexure_correction() != 0.0) config.field_rotation_flexure_correction = request->field_rotation_flexure_correction();
+    if (request->controller_poll_ms() != 0) config.tracking_config.controller_poll_ms = request->controller_poll_ms();
+    if (request->tracking_update_ms() != 0) config.tracking_config.tracking_update_ms = request->tracking_update_ms();
     
     // ── Equatorial tracking mode ─────────────────────────────────
-    if (request->has_equatorial_tracking_velocity_mode()) config.equatorial_tracking_velocity_mode = request->equatorial_tracking_velocity_mode();
+    if (request->has_equatorial_tracking_velocity_mode()) config.mount_config.equatorial_tracking_velocity_mode = request->equatorial_tracking_velocity_mode();
 
     // ── Per-axis rotation direction inversion ────────────────────
-    if (request->has_invert_axis1()) config.invert_axis1 = request->invert_axis1();
-    if (request->has_invert_axis2()) config.invert_axis2 = request->invert_axis2();
+    if (request->has_invert_axis1()) config.mount_config.invert_axis1 = request->invert_axis1();
+    if (request->has_invert_axis2()) config.mount_config.invert_axis2 = request->invert_axis2();
     
     // ── Meridian flip configuration ──────────────────────────────
-    if (request->has_meridian_flip_enabled()) config.meridian_flip_enabled = request->meridian_flip_enabled();
-    if (request->meridian_flip_delay_minutes() != 0.0) config.meridian_flip_delay_minutes = request->meridian_flip_delay_minutes();
-    if (request->meridian_flip_hysteresis_degrees() != 0.0) config.meridian_flip_hysteresis_degrees = request->meridian_flip_hysteresis_degrees();
-    if (request->meridian_flip_timeout_seconds() != 0.0) config.meridian_flip_timeout_seconds = request->meridian_flip_timeout_seconds();
+    if (request->has_meridian_flip_enabled()) config.safety_config.meridian_flip_enabled = request->meridian_flip_enabled();
+    if (request->meridian_flip_delay_minutes() != 0.0) config.safety_config.meridian_flip_delay_minutes = request->meridian_flip_delay_minutes();
+    if (request->meridian_flip_hysteresis_degrees() != 0.0) config.safety_config.meridian_flip_hysteresis_degrees = request->meridian_flip_hysteresis_degrees();
+    if (request->meridian_flip_timeout_seconds() != 0.0) config.safety_config.meridian_flip_timeout_seconds = request->meridian_flip_timeout_seconds();
     
     // ── Soft limits configuration ────────────────────────────────
-    if (request->has_soft_limits_enabled()) config.soft_limits_enabled = request->soft_limits_enabled();
+    if (request->has_soft_limits_enabled()) config.safety_config.soft_limits_enabled = request->soft_limits_enabled();
     // Always apply soft limit axis values if any of them is non-zero
     // (proto3 defaults to 0.0, so non-zero means intentionally set)
-    if (request->soft_limit_axis1_min() != 0.0) config.soft_limit_axis1_min = request->soft_limit_axis1_min();
-    if (request->soft_limit_axis1_max() != 0.0) config.soft_limit_axis1_max = request->soft_limit_axis1_max();
-    if (request->soft_limit_axis2_min() != 0.0) config.soft_limit_axis2_min = request->soft_limit_axis2_min();
-    if (request->soft_limit_axis2_max() != 0.0) config.soft_limit_axis2_max = request->soft_limit_axis2_max();
-    if (request->soft_limit_warning_degrees() != 0.0) config.soft_limit_warning_degrees = request->soft_limit_warning_degrees();
-    if (request->soft_limit_deceleration_degrees() != 0.0) config.soft_limit_deceleration_degrees = request->soft_limit_deceleration_degrees();
-    if (request->soft_limit_tracking_rate_factor() != 0.0) config.soft_limit_tracking_rate_factor = request->soft_limit_tracking_rate_factor();
+    if (request->soft_limit_axis1_min() != 0.0) config.safety_config.soft_limit_axis1_min = request->soft_limit_axis1_min();
+    if (request->soft_limit_axis1_max() != 0.0) config.safety_config.soft_limit_axis1_max = request->soft_limit_axis1_max();
+    if (request->soft_limit_axis2_min() != 0.0) config.safety_config.soft_limit_axis2_min = request->soft_limit_axis2_min();
+    if (request->soft_limit_axis2_max() != 0.0) config.safety_config.soft_limit_axis2_max = request->soft_limit_axis2_max();
+    if (request->soft_limit_warning_degrees() != 0.0) config.safety_config.soft_limit_warning_degrees = request->soft_limit_warning_degrees();
+    if (request->soft_limit_deceleration_degrees() != 0.0) config.safety_config.soft_limit_deceleration_degrees = request->soft_limit_deceleration_degrees();
+    if (request->soft_limit_tracking_rate_factor() != 0.0) config.safety_config.soft_limit_tracking_rate_factor = request->soft_limit_tracking_rate_factor();
     
     // ── HA axis physical parameters ──────────────────────────────
     // Only override if the sub-message is present (has_ha_axis_params).
@@ -1193,38 +999,38 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     // overwriting existing calibration data with proto3 defaults.
     if (request->has_ha_axis_params()) {
         const auto& ha_params = request->ha_axis_params();
-        if (ha_params.position_counts_per_degree() != 0.0) config.ha_axis_params.position_counts_per_degree = ha_params.position_counts_per_degree();
-        if (ha_params.velocity_counts_per_deg_s() != 0.0) config.ha_axis_params.velocity_counts_per_deg_s = ha_params.velocity_counts_per_deg_s();
-        if (ha_params.encoder_resolution() != 0.0) config.ha_axis_params.encoder_resolution = ha_params.encoder_resolution();
-        if (ha_params.encoder_counts_per_arcsec() != 0.0) config.ha_axis_params.encoder_counts_per_arcsec = ha_params.encoder_counts_per_arcsec();
-        if (ha_params.encoder_quantization_error() != 0.0) config.ha_axis_params.encoder_quantization_error = ha_params.encoder_quantization_error();
-        if (ha_params.gear_ratio() != 0.0) config.ha_axis_params.gear_ratio = ha_params.gear_ratio();
-        if (ha_params.worm_ratio() != 0.0) config.ha_axis_params.worm_ratio = ha_params.worm_ratio();
-        if (ha_params.worm_teeth() != 0) config.ha_axis_params.worm_teeth = ha_params.worm_teeth();
-        if (ha_params.worm_wheel_teeth() != 0) config.ha_axis_params.worm_wheel_teeth = ha_params.worm_wheel_teeth();
-        if (ha_params.cyclic_error_amplitude() != 0.0) config.ha_axis_params.cyclic_error_amplitude = ha_params.cyclic_error_amplitude();
-        if (ha_params.cyclic_error_period() != 0.0) config.ha_axis_params.cyclic_error_period = ha_params.cyclic_error_period();
+        if (ha_params.position_counts_per_degree() != 0.0) config.mount_config.ha_axis_params.position_counts_per_degree = ha_params.position_counts_per_degree();
+        if (ha_params.velocity_counts_per_deg_s() != 0.0) config.mount_config.ha_axis_params.velocity_counts_per_deg_s = ha_params.velocity_counts_per_deg_s();
+        if (ha_params.encoder_resolution() != 0.0) config.mount_config.ha_axis_params.encoder_resolution = ha_params.encoder_resolution();
+        if (ha_params.encoder_counts_per_arcsec() != 0.0) config.mount_config.ha_axis_params.encoder_counts_per_arcsec = ha_params.encoder_counts_per_arcsec();
+        if (ha_params.encoder_quantization_error() != 0.0) config.mount_config.ha_axis_params.encoder_quantization_error = ha_params.encoder_quantization_error();
+        if (ha_params.gear_ratio() != 0.0) config.mount_config.ha_axis_params.gear_ratio = ha_params.gear_ratio();
+        if (ha_params.worm_ratio() != 0.0) config.mount_config.ha_axis_params.worm_ratio = ha_params.worm_ratio();
+        if (ha_params.worm_teeth() != 0) config.mount_config.ha_axis_params.worm_teeth = ha_params.worm_teeth();
+        if (ha_params.worm_wheel_teeth() != 0) config.mount_config.ha_axis_params.worm_wheel_teeth = ha_params.worm_wheel_teeth();
+        if (ha_params.cyclic_error_amplitude() != 0.0) config.mount_config.ha_axis_params.cyclic_error_amplitude = ha_params.cyclic_error_amplitude();
+        if (ha_params.cyclic_error_period() != 0.0) config.mount_config.ha_axis_params.cyclic_error_period = ha_params.cyclic_error_period();
         
         // Copy cyclic harmonics (only if non-empty)
         if (ha_params.cyclic_harmonics_size() > 0) {
             for (int i = 0; i < ha_params.cyclic_harmonics_size() && i < 8; ++i) {
-                config.ha_axis_params.cyclic_harmonics[i] = ha_params.cyclic_harmonics(i);
+                config.mount_config.ha_axis_params.cyclic_harmonics[i] = ha_params.cyclic_harmonics(i);
             }
         }
         
-        if (ha_params.backlash() != 0.0) config.ha_axis_params.backlash = ha_params.backlash();
-        if (ha_params.backlash_temp_coeff() != 0.0) config.ha_axis_params.backlash_temp_coeff = ha_params.backlash_temp_coeff();
-        if (ha_params.axis_stiffness() != 0.0) config.ha_axis_params.axis_stiffness = ha_params.axis_stiffness();
-        if (ha_params.torsional_compliance() != 0.0) config.ha_axis_params.torsional_compliance = ha_params.torsional_compliance();
-        if (ha_params.expansion_coeff() != 0.0) config.ha_axis_params.expansion_coeff = ha_params.expansion_coeff();
-        if (ha_params.temp_gear_error_coeff() != 0.0) config.ha_axis_params.temp_gear_error_coeff = ha_params.temp_gear_error_coeff();
-        if (ha_params.calibration_temp() != 0.0) config.ha_axis_params.calibration_temp = ha_params.calibration_temp();
+        if (ha_params.backlash() != 0.0) config.mount_config.ha_axis_params.backlash = ha_params.backlash();
+        if (ha_params.backlash_temp_coeff() != 0.0) config.mount_config.ha_axis_params.backlash_temp_coeff = ha_params.backlash_temp_coeff();
+        if (ha_params.axis_stiffness() != 0.0) config.mount_config.ha_axis_params.axis_stiffness = ha_params.axis_stiffness();
+        if (ha_params.torsional_compliance() != 0.0) config.mount_config.ha_axis_params.torsional_compliance = ha_params.torsional_compliance();
+        if (ha_params.expansion_coeff() != 0.0) config.mount_config.ha_axis_params.expansion_coeff = ha_params.expansion_coeff();
+        if (ha_params.temp_gear_error_coeff() != 0.0) config.mount_config.ha_axis_params.temp_gear_error_coeff = ha_params.temp_gear_error_coeff();
+        if (ha_params.calibration_temp() != 0.0) config.mount_config.ha_axis_params.calibration_temp = ha_params.calibration_temp();
         
         // Copy calibration table (only if non-empty)
         if (ha_params.calibration_table_size() > 0) {
-            config.ha_axis_params.calibration_table.clear();
+            config.mount_config.ha_axis_params.calibration_table.clear();
             for (int i = 0; i < ha_params.calibration_table_size(); ++i) {
-                config.ha_axis_params.calibration_table.push_back(ha_params.calibration_table(i));
+                config.mount_config.ha_axis_params.calibration_table.push_back(ha_params.calibration_table(i));
             }
         }
     }
@@ -1232,38 +1038,38 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     // ── Dec axis physical parameters ─────────────────────────────
     if (request->has_dec_axis_params()) {
         const auto& dec_params = request->dec_axis_params();
-        if (dec_params.position_counts_per_degree() != 0.0) config.dec_axis_params.position_counts_per_degree = dec_params.position_counts_per_degree();
-        if (dec_params.velocity_counts_per_deg_s() != 0.0) config.dec_axis_params.velocity_counts_per_deg_s = dec_params.velocity_counts_per_deg_s();
-        if (dec_params.encoder_resolution() != 0.0) config.dec_axis_params.encoder_resolution = dec_params.encoder_resolution();
-        if (dec_params.encoder_counts_per_arcsec() != 0.0) config.dec_axis_params.encoder_counts_per_arcsec = dec_params.encoder_counts_per_arcsec();
-        if (dec_params.encoder_quantization_error() != 0.0) config.dec_axis_params.encoder_quantization_error = dec_params.encoder_quantization_error();
-        if (dec_params.gear_ratio() != 0.0) config.dec_axis_params.gear_ratio = dec_params.gear_ratio();
-        if (dec_params.worm_ratio() != 0.0) config.dec_axis_params.worm_ratio = dec_params.worm_ratio();
-        if (dec_params.worm_teeth() != 0) config.dec_axis_params.worm_teeth = dec_params.worm_teeth();
-        if (dec_params.worm_wheel_teeth() != 0) config.dec_axis_params.worm_wheel_teeth = dec_params.worm_wheel_teeth();
-        if (dec_params.cyclic_error_amplitude() != 0.0) config.dec_axis_params.cyclic_error_amplitude = dec_params.cyclic_error_amplitude();
-        if (dec_params.cyclic_error_period() != 0.0) config.dec_axis_params.cyclic_error_period = dec_params.cyclic_error_period();
+        if (dec_params.position_counts_per_degree() != 0.0) config.mount_config.dec_axis_params.position_counts_per_degree = dec_params.position_counts_per_degree();
+        if (dec_params.velocity_counts_per_deg_s() != 0.0) config.mount_config.dec_axis_params.velocity_counts_per_deg_s = dec_params.velocity_counts_per_deg_s();
+        if (dec_params.encoder_resolution() != 0.0) config.mount_config.dec_axis_params.encoder_resolution = dec_params.encoder_resolution();
+        if (dec_params.encoder_counts_per_arcsec() != 0.0) config.mount_config.dec_axis_params.encoder_counts_per_arcsec = dec_params.encoder_counts_per_arcsec();
+        if (dec_params.encoder_quantization_error() != 0.0) config.mount_config.dec_axis_params.encoder_quantization_error = dec_params.encoder_quantization_error();
+        if (dec_params.gear_ratio() != 0.0) config.mount_config.dec_axis_params.gear_ratio = dec_params.gear_ratio();
+        if (dec_params.worm_ratio() != 0.0) config.mount_config.dec_axis_params.worm_ratio = dec_params.worm_ratio();
+        if (dec_params.worm_teeth() != 0) config.mount_config.dec_axis_params.worm_teeth = dec_params.worm_teeth();
+        if (dec_params.worm_wheel_teeth() != 0) config.mount_config.dec_axis_params.worm_wheel_teeth = dec_params.worm_wheel_teeth();
+        if (dec_params.cyclic_error_amplitude() != 0.0) config.mount_config.dec_axis_params.cyclic_error_amplitude = dec_params.cyclic_error_amplitude();
+        if (dec_params.cyclic_error_period() != 0.0) config.mount_config.dec_axis_params.cyclic_error_period = dec_params.cyclic_error_period();
         
         // Copy cyclic harmonics (only if non-empty)
         if (dec_params.cyclic_harmonics_size() > 0) {
             for (int i = 0; i < dec_params.cyclic_harmonics_size() && i < 8; ++i) {
-                config.dec_axis_params.cyclic_harmonics[i] = dec_params.cyclic_harmonics(i);
+                config.mount_config.dec_axis_params.cyclic_harmonics[i] = dec_params.cyclic_harmonics(i);
             }
         }
         
-        if (dec_params.backlash() != 0.0) config.dec_axis_params.backlash = dec_params.backlash();
-        if (dec_params.backlash_temp_coeff() != 0.0) config.dec_axis_params.backlash_temp_coeff = dec_params.backlash_temp_coeff();
-        if (dec_params.axis_stiffness() != 0.0) config.dec_axis_params.axis_stiffness = dec_params.axis_stiffness();
-        if (dec_params.torsional_compliance() != 0.0) config.dec_axis_params.torsional_compliance = dec_params.torsional_compliance();
-        if (dec_params.expansion_coeff() != 0.0) config.dec_axis_params.expansion_coeff = dec_params.expansion_coeff();
-        if (dec_params.temp_gear_error_coeff() != 0.0) config.dec_axis_params.temp_gear_error_coeff = dec_params.temp_gear_error_coeff();
-        if (dec_params.calibration_temp() != 0.0) config.dec_axis_params.calibration_temp = dec_params.calibration_temp();
+        if (dec_params.backlash() != 0.0) config.mount_config.dec_axis_params.backlash = dec_params.backlash();
+        if (dec_params.backlash_temp_coeff() != 0.0) config.mount_config.dec_axis_params.backlash_temp_coeff = dec_params.backlash_temp_coeff();
+        if (dec_params.axis_stiffness() != 0.0) config.mount_config.dec_axis_params.axis_stiffness = dec_params.axis_stiffness();
+        if (dec_params.torsional_compliance() != 0.0) config.mount_config.dec_axis_params.torsional_compliance = dec_params.torsional_compliance();
+        if (dec_params.expansion_coeff() != 0.0) config.mount_config.dec_axis_params.expansion_coeff = dec_params.expansion_coeff();
+        if (dec_params.temp_gear_error_coeff() != 0.0) config.mount_config.dec_axis_params.temp_gear_error_coeff = dec_params.temp_gear_error_coeff();
+        if (dec_params.calibration_temp() != 0.0) config.mount_config.dec_axis_params.calibration_temp = dec_params.calibration_temp();
         
         // Copy calibration table (only if non-empty)
         if (dec_params.calibration_table_size() > 0) {
-            config.dec_axis_params.calibration_table.clear();
+            config.mount_config.dec_axis_params.calibration_table.clear();
             for (int i = 0; i < dec_params.calibration_table_size(); ++i) {
-                config.dec_axis_params.calibration_table.push_back(dec_params.calibration_table(i));
+                config.mount_config.dec_axis_params.calibration_table.push_back(dec_params.calibration_table(i));
             }
         }
     }
@@ -1316,106 +1122,6 @@ astro_mount::ControllerState::MountStatus MountControllerServiceImpl::convertSta
             return astro_mount::ControllerState::ERROR;
         default:
             return astro_mount::ControllerState::UNKNOWN;
-    }
-}
-
-// Trajectory generation and execution
-grpc::Status MountControllerServiceImpl::GenerateTrajectory(grpc::ServerContext* context,
-                                                          const astro_mount::TrajectoryParams* request,
-                                                          astro_mount::Trajectory* response) {
-    try {
-        // Convert proto params to ICanOpenInterface params
-        controllers::ICanOpenInterface::TrajectoryParams params;
-        
-        // Map trajectory type
-        switch (request->type()) {
-            case astro_mount::TrajectoryType::TRAPEZOIDAL:
-                params.type = controllers::ICanOpenInterface::TRAPEZOIDAL;
-                break;
-            case astro_mount::TrajectoryType::S_SHAPE:
-                params.type = controllers::ICanOpenInterface::S_SHAPE;
-                break;
-            case astro_mount::TrajectoryType::SINE:
-                params.type = controllers::ICanOpenInterface::SINE;
-                break;
-            case astro_mount::TrajectoryType::POLYNOMIAL:
-                params.type = controllers::ICanOpenInterface::POLYNOMIAL;
-                break;
-            default:
-                params.type = controllers::ICanOpenInterface::S_SHAPE;
-        }
-        
-        params.max_velocity = request->max_velocity();
-        params.max_acceleration = request->max_acceleration();
-        params.max_jerk = request->max_jerk();
-        params.start_position = request->start_position();
-        params.target_position = request->target_position();
-        params.update_rate = request->update_rate();
-        
-        // Generate trajectory using CanOpenInterface
-        auto trajectory_points = controller_.getCanOpenInterface()->generateTrajectory(params);
-        
-        // Fill response
-        *response->mutable_params() = *request;
-        *response->mutable_generated_at() = TimeUtil::GetCurrentTime();
-        
-        for (const auto& point : trajectory_points) {
-            auto* proto_point = response->add_points();
-            proto_point->set_position(point.position);
-            proto_point->set_velocity(point.velocity);
-            proto_point->set_acceleration(point.acceleration);
-            proto_point->set_jerk(point.jerk);
-            proto_point->set_time(point.time);
-        }
-        
-        return grpc::Status::OK;
-    } catch (const std::exception& e) {
-        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
-    }
-}
-
-grpc::Status MountControllerServiceImpl::ExecuteTrajectory(grpc::ServerContext* context,
-                                                         const astro_mount::Trajectory* request,
-                                                         google::protobuf::Empty* response) {
-    try {
-        // Convert proto trajectory to ICanOpenInterface trajectory
-        std::vector<controllers::ICanOpenInterface::TrajectoryPoint> trajectory;
-        
-        for (const auto& proto_point : request->points()) {
-            controllers::ICanOpenInterface::TrajectoryPoint point;
-            point.position = proto_point.position();
-            point.velocity = proto_point.velocity();
-            point.acceleration = proto_point.acceleration();
-            point.jerk = proto_point.jerk();
-            point.time = proto_point.time();
-            trajectory.push_back(point);
-        }
-        
-        // Execute trajectory on axis 0 (RA/Azimuth) - in real implementation, 
-        // we would determine which axis based on trajectory parameters
-        bool success = controller_.getCanOpenInterface()->executeTrajectory(0, trajectory);
-        
-        if (!success) {
-            return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to execute trajectory");
-        }
-        
-        return grpc::Status::OK;
-    } catch (const std::exception& e) {
-        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
-    }
-}
-
-grpc::Status MountControllerServiceImpl::StopTrajectory(grpc::ServerContext* context,
-                                                       const google::protobuf::Empty* request,
-                                                       google::protobuf::Empty* response) {
-    try {
-        // Stop trajectory execution on all axes
-        controller_.getCanOpenInterface()->stopAxis(0); // RA/Azimuth
-        controller_.getCanOpenInterface()->stopAxis(1); // Dec/Altitude
-        
-        return grpc::Status::OK;
-    } catch (const std::exception& e) {
-        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
     }
 }
 
@@ -1615,8 +1321,8 @@ astro_mount::KalmanFilterMetrics MountControllerServiceImpl::collectKalmanMetric
     
     // Use configured noise values and derive innovation from tracking error
     auto config = controller_.getConfiguration();
-    metrics.set_process_noise(config.process_noise);
-    metrics.set_measurement_noise(config.measurement_noise);
+    metrics.set_process_noise(config.mount_config.process_noise);
+    metrics.set_measurement_noise(config.mount_config.measurement_noise);
     
     // Innovation norm = Euclidean norm of tracking error vector (arcseconds)
     auto status = controller_.getStatus();
@@ -2067,9 +1773,6 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
                      request->target_position(),
                      (int)request->relative());
         
-        // Get CANopen interface
-        auto canopen = controller_.getCanOpenInterface();
-        
         // Validate axis ID
         int axis_id = request->axis_id();
         if (axis_id < 0 || axis_id > 1) {
@@ -2079,39 +1782,35 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
         
         // Get configuration for default values
         auto config = controller_.getConfiguration();
-        double default_velocity = config.max_slew_rate;
-        double slew_accel = config.slew_acceleration;
-        double track_accel = config.tracking_acceleration;
+        double default_velocity = config.mount_config.max_slew_rate;
+        double slew_accel = config.mount_config.slew_acceleration;
+        double track_accel = config.mount_config.tracking_acceleration;
+        
+        int mode = 1;  // VELOCITY_CONTROL
+        double target_position = 0.0;
+        double target_velocity = 0.0;
+        double acceleration = track_accel;
+        bool relative = request->relative();
         
         if (request->mode() == astro_mount::AxisControlMode::POSITION_CONTROL) {
             // Position control mode – uses slew acceleration
-            double target_position = request->target_position();
+            mode = 0;  // POSITION_CONTROL
+            target_position = request->target_position();
             double max_velocity = request->max_velocity() > 0 ? request->max_velocity() : default_velocity;
-            double acceleration = request->acceleration() > 0 ? request->acceleration() : slew_accel;
-            
-            // If relative mode, get current position and add offset.
-            // The REST proxy always sets relative=true explicitly for relative moves;
-            // proto3 binary serialization preserves this correctly.
-            double final_position = target_position;
-            bool use_relative = request->relative();
-            if (use_relative) {
-                auto current_pos = canopen->getPositionData(axis_id);
-                final_position = current_pos.actual_position + target_position;
-                API_LOG_INFO("Relative mode: current={:.4f}° + offset={:.4f}° = target={:.4f}°",
-                            current_pos.actual_position, target_position, final_position);
-            }
+            acceleration = request->acceleration() > 0 ? request->acceleration() : slew_accel;
             
             API_LOG_INFO("Setting position target: axis={}, position={}°, velocity={}°/s, acceleration={}°/s²",
-                        axis_id, final_position, max_velocity, acceleration);
+                        axis_id, target_position, max_velocity, acceleration);
             
-            if (!canopen->setPositionTarget(axis_id, final_position, max_velocity, acceleration)) {
+            if (!controller_.controlAxis(axis_id, mode, target_position, max_velocity,
+                                         acceleration, relative)) {
                 return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to set position target");
             }
-            
         } else if (request->mode() == astro_mount::AxisControlMode::VELOCITY_CONTROL) {
             // Velocity control mode – uses tracking acceleration
-            double target_velocity = request->target_velocity();
-            double acceleration = request->acceleration() > 0 ? request->acceleration() : track_accel;
+            mode = 1;  // VELOCITY_CONTROL
+            target_velocity = request->target_velocity();
+            acceleration = request->acceleration() > 0 ? request->acceleration() : track_accel;
             
             // Clamp velocity to configured maximum
             if (std::abs(target_velocity) > default_velocity) {
@@ -2120,17 +1819,11 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
                 target_velocity = std::copysign(default_velocity, target_velocity);
             }
             
-            // If relative mode, get current velocity and add offset
-            double final_velocity = target_velocity;
-            if (request->relative()) {
-                auto current_pos = canopen->getPositionData(axis_id);
-                final_velocity = current_pos.actual_velocity + target_velocity;
-            }
-            
             API_LOG_INFO("Setting velocity target: axis={}, velocity={}°/s, acceleration={}°/s²",
-                        axis_id, final_velocity, acceleration);
+                        axis_id, target_velocity, acceleration);
             
-            if (!canopen->setVelocityTarget(axis_id, final_velocity, acceleration)) {
+            if (!controller_.controlAxis(axis_id, mode, target_position, target_velocity,
+                                         acceleration, relative)) {
                 return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to set velocity target");
             }
         }
@@ -2139,7 +1832,7 @@ grpc::Status MountControllerServiceImpl::ControlAxis(
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("ControlAxis failed: {}", e.what());
-        return grpc::Status(grpc::StatusCode::INTERNAL, 
+        return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }
 }
@@ -2153,9 +1846,6 @@ grpc::Status MountControllerServiceImpl::StopAxis(
         API_LOG_INFO("StopAxis called: axis_id={}, decelerate={}", 
                      request->axis_id(), request->decelerate());
         
-        // Get CANopen interface
-        auto canopen = controller_.getCanOpenInterface();
-        
         // Validate axis ID
         int axis_id = request->axis_id();
         if (axis_id < 0 || axis_id > 1) {
@@ -2163,36 +1853,16 @@ grpc::Status MountControllerServiceImpl::StopAxis(
                               "Invalid axis_id. Must be 0 (HA/RA/Azimuth) or 1 (Dec/Altitude)");
         }
         
-        if (request->decelerate()) {
-            // Smooth stop with deceleration
-            double deceleration = request->deceleration() > 0 ? request->deceleration() : 2.0; // default 2°/s²
-            
-            // Get current velocity
-            auto current_pos = canopen->getPositionData(axis_id);
-            double current_velocity = current_pos.actual_velocity;
-            
-            if (std::abs(current_velocity) > 0.001) {
-                // Set velocity to 0 with deceleration
-                if (!canopen->setVelocityTarget(axis_id, 0.0, deceleration)) {
-                    return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to decelerate axis");
-                }
-                API_LOG_INFO("Axis {} decelerating from {}°/s with {}°/s²", 
-                            axis_id, current_velocity, deceleration);
-            } else {
-                // Already stopped, just call stop
-                canopen->stopAxis(axis_id);
-            }
-        } else {
-            // Immediate stop
-            canopen->stopAxis(axis_id);
-            API_LOG_INFO("Axis {} stopped immediately", axis_id);
+        if (!controller_.stopAxis(axis_id, request->decelerate(), request->deceleration())) {
+            return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to stop axis");
         }
         
+        API_LOG_INFO("Axis {} stopped (decelerate={})", axis_id, request->decelerate());
         return grpc::Status::OK;
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("StopAxis failed: {}", e.what());
-        return grpc::Status(grpc::StatusCode::INTERNAL, 
+        return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }
 }
@@ -2206,9 +1876,6 @@ grpc::Status MountControllerServiceImpl::EmergencyStop(
         API_LOG_INFO("EmergencyStop called: axis_id={}, reset_after={}", 
                      request->axis_id(), request->reset_after());
         
-        // Get CANopen interface
-        auto canopen = controller_.getCanOpenInterface();
-        
         // Validate axis ID
         int axis_id = request->axis_id();
         if (axis_id < -1 || axis_id > 1) {
@@ -2216,35 +1883,21 @@ grpc::Status MountControllerServiceImpl::EmergencyStop(
                               "Invalid axis_id. Must be -1 (all axes), 0 (HA/RA/Azimuth), or 1 (Dec/Altitude)");
         }
         
-        if (axis_id == -1) {
-            // Emergency stop all axes
-            canopen->emergencyStop(0);
-            canopen->emergencyStop(1);
-            API_LOG_WARN("Emergency stop on all axes");
-        } else {
-            // Emergency stop specific axis
-            canopen->emergencyStop(axis_id);
-            API_LOG_WARN("Emergency stop on axis {}", axis_id);
+        if (!controller_.emergencyStop(axis_id, request->reset_after())) {
+            return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to execute emergency stop");
         }
         
-        // Reset controller after emergency stop if requested
-        if (request->reset_after()) {
-            // Re-enable drives after emergency stop
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            if (axis_id == -1) {
-                canopen->clearErrors(0);
-                canopen->clearErrors(1);
-            } else {
-                canopen->clearErrors(axis_id);
-            }
-            API_LOG_INFO("Controller reset after emergency stop");
+        if (axis_id == -1) {
+            API_LOG_WARN("Emergency stop on all axes");
+        } else {
+            API_LOG_WARN("Emergency stop on axis {}", axis_id);
         }
         
         return grpc::Status::OK;
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("EmergencyStop failed: {}", e.what());
-        return grpc::Status(grpc::StatusCode::INTERNAL, 
+        return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }
 }
@@ -2257,38 +1910,15 @@ grpc::Status MountControllerServiceImpl::GetAxisStatus(
     try {
         API_LOG_INFO("GetAxisStatus called");
         
-        // Get CANopen interface
-        auto canopen = controller_.getCanOpenInterface();
-        
-        // The AxisStatus proto is a single-axis message (no repeated field), so we
-        // return axis 0 (HA/RA) status. For axis 1 (Dec) status, the proto could
-        // be extended with an axis_id request field in the future.
-        const int axis_id = 0;
-        auto pos_data = canopen->getPositionData(axis_id);
-        auto drive_status = canopen->getDriveStatus(axis_id);
-        
-        response->set_axis_id(axis_id);
-        response->set_current_position(pos_data.actual_position);
-        response->set_current_velocity(pos_data.actual_velocity);
-        response->set_target_position(pos_data.target_position);
-        response->set_target_velocity(0.0); // Not available in current API
-        response->set_moving(drive_status.moving);
-        response->set_target_reached(drive_status.target_reached);
-        response->set_error(drive_status.error);
-        response->set_error_message(drive_status.error_code > 0 ?
-                                  std::to_string(drive_status.error_code) : "");
-        
-        // Set timestamp
-        auto timestamp = google::protobuf::util::TimeUtil::MillisecondsToTimestamp(
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                pos_data.timestamp.time_since_epoch()).count());
-        response->mutable_timestamp()->CopyFrom(timestamp);
+        if (!controller_.getAxisStatus(*response)) {
+            return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to retrieve axis status");
+        }
         
         return grpc::Status::OK;
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("GetAxisStatus failed: {}", e.what());
-        return grpc::Status(grpc::StatusCode::INTERNAL, 
+        return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }
 }
@@ -2311,26 +1941,6 @@ grpc::Status MountControllerServiceImpl::Home(
         
     } catch (const std::exception& e) {
         API_LOG_ERROR("Home failed: {}", e.what());
-        return grpc::Status(grpc::StatusCode::INTERNAL,
-                           std::string("Error: ") + e.what());
-    }
-}
-
-grpc::Status MountControllerServiceImpl::GetFieldRotationParams(
-    grpc::ServerContext* context,
-    const google::protobuf::Empty* request,
-    astro_mount::FieldRotationParams* response) {
-    
-    try {
-        API_LOG_INFO("GetFieldRotationParams called");
-        
-        auto params = controller_.getFieldRotationParams();
-        response->CopyFrom(params);
-        
-        return grpc::Status::OK;
-        
-    } catch (const std::exception& e) {
-        API_LOG_ERROR("GetFieldRotationParams failed: {}", e.what());
         return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
     }
@@ -2522,7 +2132,7 @@ grpc::Status MountControllerServiceImpl::SetMountOrientation(
     const astro_mount::MountOrientation* request,
     google::protobuf::Empty* response) {
     try {
-        controllers::MountController::MountOrientation orientation;
+        config::MountOrientation orientation;
         orientation.quaternion[0] = request->qx();
         orientation.quaternion[1] = request->qy();
         orientation.quaternion[2] = request->qz();

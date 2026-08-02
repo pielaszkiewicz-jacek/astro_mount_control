@@ -80,17 +80,29 @@ bool Logger::initProgrammatic(const std::string& log_dir, size_t max_size_mb,
         syslog_enabled_ = syslog_enabled;
         level_ = level;
         
-        // Create log directory if it doesn't exist
-        std::filesystem::create_directories(log_dir_);
-        
         std::vector<spdlog::sink_ptr> sinks;
         
-        // File sink (simple append; rotation handled externally by logrotate)
-        std::string log_file = log_dir_ + "/astro-mount.log";
-        file_sink_ = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
-            log_file, false);
-        file_sink_->set_level(toSpdlogLevel(level_));
-        sinks.push_back(file_sink_);
+        // Try to create log directory. If it fails (e.g. permission denied
+        // when running as non-root), fall back to console-only logging
+        // instead of failing entirely.
+        bool have_file_sink = false;
+        try {
+            std::filesystem::create_directories(log_dir_);
+            
+            // File sink (simple append; rotation handled externally by logrotate)
+            std::string log_file = log_dir_ + "/astro-mount.log";
+            file_sink_ = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+                log_file, false);
+            file_sink_->set_level(toSpdlogLevel(level_));
+            sinks.push_back(file_sink_);
+            have_file_sink = true;
+        } catch (const std::exception& e) {
+            std::cerr << "Warning: cannot create log directory '" << log_dir_
+                      << "': " << e.what() << ". Falling back to console-only logging."
+                      << std::endl;
+            // Clear log_dir_ so createDefaultLoggers skips file-sink setup
+            log_dir_.clear();
+        }
         
         // Console sink
         if (console_enabled_) {
@@ -121,8 +133,9 @@ bool Logger::initProgrammatic(const std::string& log_dir, size_t max_size_mb,
         initialized_ = true;
         
         // Log initialization
-        get("logger")->info("Logging system initialized. Directory: {}, Level: {}", 
-                           log_dir_, static_cast<int>(level_));
+        get("logger")->info("Logging system initialized. Directory: {}, Level: {}",
+                           have_file_sink ? log_dir_ : "(console only)",
+                           static_cast<int>(level_));
         
         return true;
         

@@ -34,7 +34,8 @@ public:
         int retry_count{3};
     };
 
-    explicit WebhookChannel(Config config = {});
+    explicit WebhookChannel(Config config);
+    WebhookChannel();
     ~WebhookChannel() override;
 
     std::string name() const override { return "webhook"; }

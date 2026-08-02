@@ -61,7 +61,108 @@ const App = (() => {
     DebugTestComponent.init();
     console.log('[App] DebugTestComponent.init() done');
     SettingsComponent.initAddressForm();
+    applyExternalServicesVisibility();
+    mountExtendedComponents();
+    initTabScroll();
     startPolling();
+  }
+
+  /**
+   * Initialize tab scroll buttons — show/hide based on scroll position
+   * and scroll the tab bar left/right on click.
+   */
+  function initTabScroll() {
+    const nav = document.getElementById('tab-nav');
+    const scrollLeft = document.getElementById('tab-scroll-left');
+    const scrollRight = document.getElementById('tab-scroll-right');
+    if (!nav || !scrollLeft || !scrollRight) return;
+
+    function updateScrollButtons() {
+      const atStart = nav.scrollLeft <= 4;
+      const atEnd = nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - 4;
+      scrollLeft.classList.toggle('hidden', atStart);
+      scrollRight.classList.toggle('hidden', atEnd);
+    }
+
+    const scrollAmount = () => Math.max(200, nav.clientWidth * 0.6);
+
+    scrollLeft.addEventListener('click', () => {
+      nav.scrollBy({ left: -scrollAmount(), behavior: 'smooth' });
+    });
+
+    scrollRight.addEventListener('click', () => {
+      nav.scrollBy({ left: scrollAmount(), behavior: 'smooth' });
+    });
+
+    nav.addEventListener('scroll', updateScrollButtons);
+    window.addEventListener('resize', updateScrollButtons);
+
+    // Initial check after layout settles
+    setTimeout(updateScrollButtons, 100);
+    setTimeout(updateScrollButtons, 500);
+  }
+
+  /**
+   * External service tab → panel/button ID mapping.
+   * Used to show/hide UI elements based on which services are enabled.
+   */
+  const EXT_SERVICE_TABS = {
+    power:     { tab: 'tab-power',     panel: 'panel-power',     btn: '.tab-btn[data-tab="power"]' },
+    sequencer: { tab: 'tab-sequencer', panel: 'panel-sequencer', btn: '.tab-btn[data-tab="sequencer"]' },
+    weather:   { tab: 'tab-weather',   panel: 'panel-weather',   btn: '.tab-btn[data-tab="weather"]' },
+    dome:      { tab: 'tab-dome',      panel: 'panel-dome',      btn: '.tab-btn[data-tab="dome"]' },
+    derotator: { tab: 'tab-derotator', panel: 'panel-derotator', btn: '.tab-btn[data-tab="derotator"]' },
+    focuser:   { tab: 'tab-focuser',   panel: 'panel-focuser',   btn: '.tab-btn[data-tab="focuser"]' },
+  };
+
+  /**
+   * Fetch external services config and hide tabs for disabled services.
+   */
+  async function applyExternalServicesVisibility() {
+    try {
+      const resp = await fetch('/api/config/external-services');
+      const config = await resp.json();
+      Object.keys(EXT_SERVICE_TABS).forEach(key => {
+        const ids = EXT_SERVICE_TABS[key];
+        const enabled = config[key] === true;
+        // Hide/show the tab button
+        const btn = document.querySelector(ids.btn);
+        if (btn) btn.style.display = enabled ? '' : 'none';
+        // Hide/show the panel
+        const panel = document.getElementById(ids.panel);
+        if (panel) panel.style.display = enabled ? '' : 'none';
+        console.log('[App] external service', key, enabled ? 'enabled' : 'disabled');
+      });
+    } catch (err) {
+      console.warn('[App] Failed to load external services config:', err.message);
+    }
+  }
+
+  /**
+   * Mount extended service components into their respective panel containers.
+   * Each component exposes a render() method that returns HTML to be injected.
+   */
+  function mountExtendedComponents() {
+    const mounts = [
+      { id: 'pec-component-mount',      render: PECComponent.render },
+      { id: 'power-component-mount',    render: PowerComponent.render },
+      { id: 'guider-component-mount',   render: GuiderComponent.render },
+      { id: 'derotator-component-mount', render: DerotatorComponent.render },
+      { id: 'sequencer-component-mount', render: SequencerComponent.render },
+      { id: 'camera-component-mount',   render: CameraComponent.render },
+      { id: 'focuser-component-mount',  render: FocuserComponent.render },
+      { id: 'dome-component-mount',     render: DomeComponent.render },
+      { id: 'weather-component-mount',  render: WeatherComponent.render },
+      { id: 'pulley-component-mount',   render: PulleyComponent.render },
+    ];
+
+    mounts.forEach(m => {
+      const el = document.getElementById(m.id);
+      if (el) {
+        el.innerHTML = m.render();
+        console.log('[App] mounted component:', m.id);
+      }
+    });
   }
 
   // ─── Tab System ───────────────────────────────────────────────────────
@@ -92,6 +193,27 @@ const App = (() => {
         tab.classList.add('active');
         tab.setAttribute('aria-selected', 'true');
 
+        // Scroll active tab into view within the scrollable nav
+        const tabNav = document.getElementById('tab-nav');
+        if (tabNav) {
+          const tabRect = tab.getBoundingClientRect();
+          const navRect = tabNav.getBoundingClientRect();
+          if (tabRect.left < navRect.left || tabRect.right > navRect.right) {
+            tab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+          }
+          // Update scroll buttons after a brief delay
+          setTimeout(() => {
+            const sl = document.getElementById('tab-scroll-left');
+            const sr = document.getElementById('tab-scroll-right');
+            if (sl && sr) {
+              const atStart = tabNav.scrollLeft <= 4;
+              const atEnd = tabNav.scrollLeft + tabNav.clientWidth >= tabNav.scrollWidth - 4;
+              sl.classList.toggle('hidden', atStart);
+              sr.classList.toggle('hidden', atEnd);
+            }
+          }, 350);
+        }
+
         const panel = $(`#panel-${tabName}`);
         if (panel) {
           console.log('[App] activating panel:', '#panel-' + tabName);
@@ -110,6 +232,7 @@ const App = (() => {
         // Lazy-load database data when tab is first shown
         if (tabName === 'database') {
           DatabaseComponent.loadStats();
+          DatabaseComponent.loadObjects();
         }
 
         // Redraw velocity chart when Status tab becomes visible.
@@ -142,6 +265,38 @@ const App = (() => {
           LoggingComponent.renderBrowserLogs();
         } else {
           LoggingComponent.stopStreaming();
+        }
+
+        // ── Extended service tab lazy-loading ──
+        if (tabName === 'power') {
+          PowerComponent.refresh();
+        }
+        if (tabName === 'guider') {
+          GuiderComponent.refreshStatus();
+        }
+        if (tabName === 'derotator') {
+          DerotatorComponent.refreshStatus();
+        }
+        if (tabName === 'sequencer') {
+          SequencerComponent.refreshStatus();
+        }
+        if (tabName === 'camera') {
+          CameraComponent.refreshInfo();
+        }
+        if (tabName === 'focuser') {
+          FocuserComponent.refreshStatus();
+        }
+        if (tabName === 'pec') {
+          PECComponent.refreshStatus();
+        }
+        if (tabName === 'dome') {
+          DomeComponent.refreshStatus();
+        }
+        if (tabName === 'weather') {
+          WeatherComponent.refresh();
+        }
+        if (tabName === 'pulley') {
+          PulleyComponent.refreshStatus();
         }
 
       });
@@ -300,7 +455,7 @@ const App = (() => {
   /**
    * Infer mount type from the controller configuration.
    * Fetches the config on first call and caches the result.
-   * @param {object} state - Controller state from API (unused, kept for API compat)
+   * @param {object} state - Controller state from API
    * @returns {'equatorial'|'alt_az'|'casual'|'unknown'}
    */
   async function getMountType(state) {

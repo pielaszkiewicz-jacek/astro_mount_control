@@ -9,6 +9,7 @@
 #include <iomanip>
 #include <cmath>
 #include <algorithm>
+#include <optional>
 #include <stdexcept>
 #include <random>
 

@@ -1,5 +1,6 @@
 #include "models/exposure_planner.h"
 #include <cmath>
+#include <algorithm>
 #include <sstream>
 
 namespace astro_mount {

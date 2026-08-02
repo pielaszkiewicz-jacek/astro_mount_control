@@ -1,6 +1,4 @@
 #include "controllers/mount_controller.h"
-#include "controllers/icanopen_interface.h"
-#include "controllers/canopen_factory.h"
 #include "core/astronomical_calculations.h"
 #include "hal/hal_interface.h"
 #include "hal/hal_config.h"
@@ -159,10 +157,14 @@ struct PositionKalmanFilter {
 };
 
 // ============================================================
-// MountOrientation member function implementations
+// config::MountOrientation member function implementations
 // ============================================================
 
-bool MountController::MountOrientation::isValid() const {
+} // namespace controllers
+
+namespace config {
+
+bool config::MountOrientation::isValid() const {
     double sum_sq = quaternion[0] * quaternion[0] +
                     quaternion[1] * quaternion[1] +
                     quaternion[2] * quaternion[2] +
@@ -170,7 +172,7 @@ bool MountController::MountOrientation::isValid() const {
     return std::abs(sum_sq - 1.0) < 1e-6;
 }
 
-void MountController::MountOrientation::setFromAxisAngles(double axis1_altitude, double axis1_azimuth) {
+void config::MountOrientation::setFromAxisAngles(double axis1_altitude, double axis1_azimuth) {
     // Build orientation quaternion Q such that Q rotates from ENU {north, east, up}
     // to mount frame. Axis1 (altitude-like) points at (altitude, azimuth) in ENU.
     // Q * ENU_axis1 * Q_conj = (0, 0, 1) (mount zenith)
@@ -207,7 +209,7 @@ void MountController::MountOrientation::setFromAxisAngles(double axis1_altitude,
     }
 }
 
-std::array<double, 9> MountController::MountOrientation::toRotationMatrix() const {
+std::array<double, 9> config::MountOrientation::toRotationMatrix() const {
     // Convert unit quaternion [qx, qy, qz, qw] to 3×3 rotation matrix (row-major)
     double qx = quaternion[0];
     double qy = quaternion[1];
@@ -224,6 +226,9 @@ std::array<double, 9> MountController::MountOrientation::toRotationMatrix() cons
         2.0 * (qx*qz - qy*qw),    2.0 * (qy*qz + qx*qw),  1.0 - 2.0 * (qx2 + qy2)
     }};
 }
+
+} // namespace config
+namespace controllers {
 
 class MountController::Impl {
 public:
@@ -242,10 +247,10 @@ public:
              tracking_error_dec_(0.0),
              state_mutex_(new std::shared_mutex()),
              rate_mutex_(new std::shared_mutex()),
-             env_mutex_(new std::mutex()),
-             thread_mutex_(new std::mutex()),
+             env_mutex_(new std::shared_mutex()),
+             thread_mutex_(new std::shared_mutex()),
              encoder_absolute_(false),
-             bootstrap_mode_{BootstrapMode::BOOTSTRAP_MANUAL},
+             bootstrap_mode_{config::BootstrapMode::BOOTSTRAP_MANUAL},
              env_temperature_(15.0),
              env_pressure_(1013.25),
              env_humidity_(0.5),
@@ -273,9 +278,8 @@ public:
 
         // --- Encoder type logic (plan §8.1) ---
         // For absolute encoders, read the actual physical position at startup.
-        // For incremental encoders, start from (0,0) — the CANopen servo
-        // also initialises to zero on power-up.
-        if (config_.encoders_absolute) {
+        // For incremental encoders, start from (0,0).
+        if (config_.mount_config.encoders_absolute) {
             if (hal_axis1_encoder_ && hal_axis2_encoder_) {
                 auto enc1 = hal_axis1_encoder_->read();
                 auto enc2 = hal_axis2_encoder_->read();
@@ -300,10 +304,10 @@ public:
             // rotation offset between the mount frame and the true horizontal frame,
             // which implicitly absorbs the unknown encoder zero offset.
             MOUNT_LOG_INFO("Incremental encoders: starting from park position ({:.4f}°, {:.4f}°)",
-                          config_.park_position_axis1, config_.park_position_axis2);
+                          config_.safety_config.park_position_axis1, config_.safety_config.park_position_axis2);
             // Park positions are in telescope degrees; convert to servo degrees.
-            axis1_position_ = config_.park_position_axis1 * config_.ha_axis_params.gear_ratio;
-            axis2_position_ = config_.park_position_axis2 * config_.dec_axis_params.gear_ratio;
+            axis1_position_ = config_.safety_config.park_position_axis1 * config_.mount_config.ha_axis_params.gear_ratio;
+            axis2_position_ = config_.safety_config.park_position_axis2 * config_.mount_config.dec_axis_params.gear_ratio;
         }
 
         // Initialize position Kalman filter with config noise parameters.
@@ -311,19 +315,14 @@ public:
         // kinematic prediction (pos += rate * dt) with measured position updates.
         position_kf_ = std::make_unique<PositionKalmanFilter>();
         position_kf_->init(axis1_position_, axis2_position_,
-                           config_.process_noise, config_.measurement_noise);
+                           config_.mount_config.process_noise, config_.mount_config.measurement_noise);
         
         // Initialize HAL interface if available
         if (hal_interface_) {
-            // HALType enum describes the hardware interface (CANopen, Serial, etc.),
-            // not the mount geometry (equatorial vs alt-az). Both mount types
-            // can use CANopen hardware, so both map to CANOPEN here.
-            // IMPORTANT: Do NOT overwrite hal_config_ — it was loaded from
-            // config.hal_config at line 271 and contains all fields from the
-            // JSON config file (canopen.library, canopen.bitrate, canopen.pdo_config_enabled, etc.).
-            // Creating a new HALConfig and assigning would lose all those values.
-            hal_config_.type = astro_mount::hal::HALType::CANOPEN;
+            // hal_config_ was loaded from config.hal_config and keeps its type
+            // (SIMULATED, SERIAL, ETHERNET or GAMEPAD — the supported HAL types).
             hal_config_.name = "MountController_HAL";
+            
             if (!hal_interface_->initialize(hal_config_)) {
                 MOUNT_LOG_ERROR("Failed to initialize HAL interface");
                 return false;
@@ -343,102 +342,47 @@ public:
             
             MOUNT_LOG_DEBUG("HAL components created for axes 0 and 1");
             
-            // HAL motors do NOT need explicit enable() here — the CANopen
-            // interface's enableDrive() (called below) handles the full
-            // CiA 402 enable sequence including cancellation of stale
-            // motion profiles.  Enabling HAL motors separately would
-            // trigger a duplicate state-machine transition that may
-            // restart a stored motion profile.
+            // HAL motors are enabled below (after HAL component creation)
+            // so the full CiA 402 enable sequence runs exactly once through
+            // the HAL abstraction.
         }
         
-        // Initialize CANopen interface using factory
-        ICanOpenInterface::Config canopen_config;
-        if (!config_.canopen_interface.empty()) {
-            // Create real CANopen interface
-#ifdef HAVE_CANOPEN
-            canopen_config.library = "canopensocket";
-#else
-            canopen_config.library = "mock";
-#endif
-            canopen_config.interface_name = config_.canopen_interface; // "can0" from config
-            canopen_config.bitrate = config_.canopen_bitrate;
-            canopen_config.node_id = config_.canopen_node_id;
-            canopen_config.use_sync = config_.canopen_use_sync;
-            canopen_config.sync_period_ms = config_.canopen_sync_period_ms;
-            canopen_config.sdo_timeout_ms = config_.canopen_sdo_timeout_ms;
-            canopen_config.axis_position_counts_per_degree[0] = config_.ha_axis_params.position_counts_per_degree;
-            canopen_config.axis_position_counts_per_degree[1] = config_.dec_axis_params.position_counts_per_degree;
-            canopen_config.axis_velocity_counts_per_deg_s[0] = config_.ha_axis_params.velocity_counts_per_deg_s;
-            canopen_config.axis_velocity_counts_per_deg_s[1] = config_.dec_axis_params.velocity_counts_per_deg_s;
-            canopen_config.accel_mode = config_.canopen_accel_mode;
-            canopen_config.pdo_config_enabled = config_.canopen_pdo_config_enabled;
+        // Enable HAL motors and sync positions.  All drive control is routed
+        // through the HAL abstractions (MotorControl/EncoderReader/SafetyMonitor).
+        if (hal_axis1_motor_ && hal_axis2_motor_) {
             
-            // Propagate servo initialization sequence from ControllerConfig
-            canopen_config.servo_init_enabled = config_.servo_init_enabled;
-            canopen_config.servo_init_sequence = config_.servo_init_sequence;
-            
-            canopen_interface_ = CanOpenFactory::create(canopen_config);
-            if (!canopen_interface_) {
-                // Fall back to mock if creation fails
-                canopen_config.library = "mock";
-                canopen_interface_ = CanOpenFactory::create(canopen_config);
-            }
-        } else {
-            // Use mock interface by default
-            canopen_config.library = "mock";
-            canopen_interface_ = CanOpenFactory::create(canopen_config);
-        }
-        
-        // Initialize the CANopen interface if created (use the actual config, not empty)
-        if (canopen_interface_) {
-            if (!canopen_interface_->initialize(canopen_config)) {
-                MOUNT_LOG_ERROR("CANopen interface initialization failed — "
-                               "interface={}, node_id={}. Check that the CAN "
-                               "interface exists and is up.",
-                               canopen_config.interface_name,
-                               canopen_config.node_id);
-                // Continue with mock fallback — the system can still serve
-                // gRPC requests and report status, just without drive control.
-            }
-            
-            // Enable drives for axes 0 (HA/RA) and 1 (Dec).
-            // In real CANopen hardware, drives are enabled during power-up sequence;
-            // for mock interface, this ensures setPositionTarget calls succeed.
-            // Each enableDrive() performs multiple SDO operations that time out
-            // (~1 s each) when no drive is on the bus. Log progress so the
+            // Enable motors for axes 0 (HA/RA) and 1 (Dec).
+            // In real hardware, motors are enabled during power-up; for the
+            // simulated HAL this is a no-op success.  Log progress so the
             // operator knows the controller is not hung, just waiting for drives.
-            MOUNT_LOG_INFO("Enabling CANopen axis 0 (node {})...",
-                          canopen_config.node_id);
-            if (!canopen_interface_->enableDrive(0)) {
-                MOUNT_LOG_WARN("Failed to enable axis 0 — no drive responding on CAN bus?");
+            MOUNT_LOG_INFO("Enabling HAL axis 0...");
+            if (!hal_axis1_motor_->enable()) {
+                MOUNT_LOG_WARN("Failed to enable axis 0 motor");
             }
             
-            MOUNT_LOG_INFO("Enabling CANopen axis 1 (node {})...",
-                          canopen_config.node_id + 1);
-            if (!canopen_interface_->enableDrive(1)) {
-                MOUNT_LOG_WARN("Failed to enable axis 1 — no drive responding on CAN bus?");
+            MOUNT_LOG_INFO("Enabling HAL axis 1...");
+            if (!hal_axis2_motor_->enable()) {
+                MOUNT_LOG_WARN("Failed to enable axis 1 motor");
             }
 
             // ── Sync internal state with actual drive positions ──────
-            // After enabling the drives, read their actual positions BEFORE
+            // After enabling the motors, read their actual positions BEFORE
             // sending any position targets.  This prevents uncontrolled
             // rotations at max_slew_rate when the drive remembers its
             // position from before a restart (e.g. after config change).
             //
             // For incremental encoders the park position is used as a
-            // fallback when the drive does not respond to position queries
-            // (e.g. mock interface, or drive not on the bus).
+            // fallback when the drive does not respond to position queries.
             bool drive_positions_read = false;
-            if (canopen_interface_->isConnected()) {
+            if (hal_axis1_motor_ && hal_axis2_motor_) {
                 try {
-                    auto pos0 = canopen_interface_->getPositionData(0);
-                    auto pos1 = canopen_interface_->getPositionData(1);
-                    if (std::isfinite(pos0.actual_position) &&
-                        std::isfinite(pos1.actual_position)) {
-                        axis1_position_ = pos0.actual_position;
-                        axis2_position_ = pos1.actual_position;
-                        raw_servo_axis1_position_ = pos0.actual_position;
-                        raw_servo_axis2_position_ = pos1.actual_position;
+                    double pos0 = hal_axis1_motor_->getActualPosition();
+                    double pos1 = hal_axis2_motor_->getActualPosition();
+                    if (std::isfinite(pos0) && std::isfinite(pos1)) {
+                        axis1_position_ = pos0;
+                        axis2_position_ = pos1;
+                        raw_servo_axis1_position_ = pos0;
+                        raw_servo_axis2_position_ = pos1;
                         drive_positions_read = true;
                         MOUNT_LOG_INFO("Synced internal state to drive positions: "
                                       "axis1={:.4f}°, axis2={:.4f}°",
@@ -452,13 +396,13 @@ public:
             // Now set position targets to the current position (no-op motion)
             // using a moderate velocity to prevent sudden moves if the positions
             // didn't match (shouldn't happen since we just synced).
-            canopen_interface_->setPositionTarget(0, axis1_position_,
-                                                  config_.max_slew_rate,
-                                                  config_.slew_acceleration);
-            canopen_interface_->setPositionTarget(1, axis2_position_,
-                                                  config_.max_slew_rate,
-                                                  config_.slew_acceleration);
-            MOUNT_LOG_DEBUG("CANopen position targets set to ({:.4f}°, {:.4f}°) "
+            hal_axis1_motor_->setPosition(axis1_position_,
+                                          config_.mount_config.max_slew_rate,
+                                          config_.mount_config.slew_acceleration);
+            hal_axis2_motor_->setPosition(axis2_position_,
+                                          config_.mount_config.max_slew_rate,
+                                          config_.mount_config.slew_acceleration);
+            MOUNT_LOG_DEBUG("Position targets set to ({:.4f}°, {:.4f}°) "
                            "(drive_positions_read={})",
                            axis1_position_, axis2_position_, drive_positions_read);
         }
@@ -477,7 +421,7 @@ public:
         // Respects user's explicit term selection; falls back to DEFAULT_TERMS
         // if the config value is 0 (uninitialized).
         {
-            uint32_t enabled_terms = config.tpoint_enabled_terms;
+            uint32_t enabled_terms = config.calibration_config.tpoint_enabled_terms;
             if (enabled_terms == 0) {
                 enabled_terms = models::TPointTerms::DEFAULT_TERMS;
             }
@@ -490,7 +434,7 @@ public:
         // conversions (equatorialToHorizontal, horizontalToEquatorial) and
         // refraction calculations use the configured latitude/longitude.
         if (astro_calc_) {
-            astro_calc_->setObserverLocation(config_.latitude, config_.longitude, config_.altitude);
+            astro_calc_->setObserverLocation(config_.mount_config.latitude, config_.mount_config.longitude, config_.mount_config.altitude);
         }
         
         // Open the gamepad device for live state reporting (UI) only.
@@ -549,7 +493,7 @@ public:
         // to prevent data races on work_thread_ from concurrent calls.
         // The work thread never touches thread_mutex_, so no deadlock risk.
         {
-            std::lock_guard<std::mutex> tlock(*thread_mutex_);
+            std::lock_guard<std::shared_mutex> tlock(*thread_mutex_);
             
             // Signal any running work thread (e.g. tracking loop) to stop before joining.
             // If a tracking loop is running (tracking_active_ = true), joinWorkThreadLocked()
@@ -573,9 +517,9 @@ public:
                 // Convert RA/Dec to mount coordinates
                 // For equatorial mounts, axis1 tracks Hour Angle (HA = LST - RA)
                 // For CASUAL mounts, RA/Dec is converted to mount-frame alt/az via orientation quaternion
-                if (config_.mount_type == MountType::EQUATORIAL) {
+                if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-                    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
                     double ha_hours = lst - ra;
                     // Normalize HA to [-12, 12] hours
                     // Note: finite inputs guarantee finite ha_hours, so no inf-loop risk
@@ -587,8 +531,8 @@ public:
                     // servo degrees (not telescope degrees), so the celestial target
                     // must be scaled up by the gear reduction ratio.
                     // With gear_ratio=360, 1° telescope = 360° servo.
-                    const double ha_gear = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear = config_.dec_axis_params.gear_ratio;
+                    const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
+                    const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
                     
                     // Use TPOINT model to correct the mount position for systematic errors
                     // predictMountPosition() inverts the fitted model via Newton-Raphson
@@ -601,14 +545,14 @@ public:
                         axis1_target_ = ha_hours * 15.0 * ha_gear;  // Convert hours→degrees→servo degrees
                         axis2_target_ = dec * dec_gear;
                     }
-                } else if (config_.mount_type == MountType::CASUAL) {
+                } else if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                     // Convert RA/Dec to mount-frame alt/az using the orientation quaternion.
                     // Multiply by gear_ratio to convert telescope degrees → servo degrees.
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                     auto [mount_alt, mount_az] = astro_calc_->equatorialToMountOrientation(
                         ra, dec, jd, mount_orientation_.quaternion);
-                    const double ha_gear_se = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_se = config_.dec_axis_params.gear_ratio;
+                    const double ha_gear_se = config_.mount_config.ha_axis_params.gear_ratio;
+                    const double dec_gear_se = config_.mount_config.dec_axis_params.gear_ratio;
                     axis1_target_ = mount_alt * ha_gear_se;   // Altitude in mount frame → servo (no wrapping)
                     
                     // Azimuth-like axis (axis2 for CASUAL): find target nearest to current
@@ -625,8 +569,8 @@ public:
                     // axis1 = azimuth, axis2 = altitude in telescope degrees.
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                     auto [true_alt, true_az] = astro_calc_->equatorialToHorizontal(ra, dec, jd, false);
-                    const double ha_gear_az = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_az = config_.dec_axis_params.gear_ratio;
+                    const double ha_gear_az = config_.mount_config.ha_axis_params.gear_ratio;
+                    const double dec_gear_az = config_.mount_config.dec_axis_params.gear_ratio;
                     
                     // Azimuth axis (axis1 for ALT_AZ): find target nearest to current position
                     // to avoid the drive unwinding many revolutions after long tracking.
@@ -646,28 +590,28 @@ public:
                 // For CASUAL mounts, axis2 is azimuth-like [0, 360) — wrapping means the
                 // configured axis2 limits don't apply.
                 // Convert servo-degree targets to telescope degrees for limit comparison.
-                if (config_.soft_limits_enabled) {
-                    const double ha_gear_lim = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                    const double dec_gear_lim = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                if (config_.safety_config.soft_limits_enabled) {
+                    const double ha_gear_lim = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                    const double dec_gear_lim = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                     double telescope_axis1 = axis1_target_ / ha_gear_lim;
                     double telescope_axis2 = axis2_target_ / dec_gear_lim;
                     bool limit_violation = false;
-                    if (config_.mount_type != MountType::ALT_AZ &&
-                        config_.mount_type != MountType::CASUAL) {
-                        limit_violation = (telescope_axis1 < config_.soft_limit_axis1_min ||
-                                           telescope_axis1 > config_.soft_limit_axis1_max);
+                    if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
+                        config_.mount_config.mount_type != config::MountType::CASUAL) {
+                        limit_violation = (telescope_axis1 < config_.safety_config.soft_limit_axis1_min ||
+                                           telescope_axis1 > config_.safety_config.soft_limit_axis1_max);
                     }
-                    if (config_.mount_type != MountType::CASUAL) {
+                    if (config_.mount_config.mount_type != config::MountType::CASUAL) {
                         limit_violation = limit_violation ||
-                            (telescope_axis2 < config_.soft_limit_axis2_min ||
-                             telescope_axis2 > config_.soft_limit_axis2_max);
+                            (telescope_axis2 < config_.safety_config.soft_limit_axis2_min ||
+                             telescope_axis2 > config_.safety_config.soft_limit_axis2_max);
                     }
                     if (limit_violation) {
                         MOUNT_LOG_WARN("SlewToEquatorial target exceeds soft limits: "
                                  "telescope axis1={:.1f}°, axis2={:.1f}° | limits=({:.1f},{:.1f})/({:.1f},{:.1f})",
                                  telescope_axis1, telescope_axis2,
-                                 config_.soft_limit_axis1_min, config_.soft_limit_axis1_max,
-                                 config_.soft_limit_axis2_min, config_.soft_limit_axis2_max);
+                                 config_.safety_config.soft_limit_axis1_min, config_.safety_config.soft_limit_axis1_max,
+                                 config_.safety_config.soft_limit_axis2_min, config_.safety_config.soft_limit_axis2_max);
                         state_ = MountStatus::State::IDLE;
                         return false;  // callback skipped: no state change from caller's perspective
                     }
@@ -675,8 +619,8 @@ public:
 
                 // Apply per-axis rotation direction inversion after soft limit check
                 // (soft limits operate in telescope degrees, inversion is applied in servo degrees)
-                if (config_.invert_axis1) axis1_target_ = -axis1_target_;
-                if (config_.invert_axis2) axis2_target_ = -axis2_target_;
+                if (config_.mount_config.invert_axis1) axis1_target_ = -axis1_target_;
+                if (config_.mount_config.invert_axis2) axis2_target_ = -axis2_target_;
                 
                 state_ = MountStatus::State::SLEWING;
                 slew_count_++;
@@ -688,8 +632,8 @@ public:
             // Use HAL motor control or CANopen interface if available
             // (outside state_mutex_, but inside thread_mutex_)
             bool motion_start_failure = false;
-            const double SLEW_VELOCITY = config_.max_slew_rate;
-            const double SLEW_ACCELERATION = config_.slew_acceleration;
+            const double SLEW_VELOCITY = config_.mount_config.max_slew_rate;
+            const double SLEW_ACCELERATION = config_.mount_config.slew_acceleration;
             
             if (hal_axis1_motor_ && hal_axis2_motor_) {
                 // HAL path: use MotorControl::setPosition() for position mode slewing
@@ -705,33 +649,36 @@ public:
                     // SLEWING → IDLE due to HAL motor failure, notify outside lock
                     notifyStatusChanged();
                 }
-            } else if (canopen_interface_) {
-                // Fallback to direct CANopen control
-                bool axis1_ok = canopen_interface_->setPositionTarget(
-                    0, axis1_target_, SLEW_VELOCITY, SLEW_ACCELERATION);
-                bool axis2_ok = canopen_interface_->setPositionTarget(
-                    1, axis2_target_, SLEW_VELOCITY, SLEW_ACCELERATION);
-                
-                if (!axis1_ok || !axis2_ok) {
-                    motion_start_failure = true;
-                    {
-                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                        state_ = MountStatus::State::IDLE;
-                    }
-                    // SLEWING → IDLE due to CANopen failure, notify outside lock
-                    notifyStatusChanged();
-                }
             }
             
             if (motion_start_failure) {
                 return false;
             }
             
-            // Background monitoring thread – waits for axes to reach target
-            work_thread_ = std::thread([this]() {
+            // Background monitoring thread – waits for axes to reach target.
+            // Compute a slew watchdog timeout from the distance to be travelled and
+            // the configured slew velocity, with a generous safety margin and a
+            // minimum floor.  Real-hardware slews (HAL/CANopen) previously polled
+            // forever if the mount never reached the target (mechanical stall,
+            // drive fault, lost comms) — hanging the monitoring thread and blocking
+            // subsequent operations.  The simulated path keeps its own fixed timeout.
+            double slew_timeout_s = 120.0;
+            if (SLEW_VELOCITY > 0.0) {
+                double dist1 = std::abs(axis1_target_ - axis1_position_);
+                double dist2 = std::abs(axis2_target_ - axis2_position_);
+                double max_dist = std::max(dist1, dist2);
+                double est_s = max_dist / SLEW_VELOCITY;
+                slew_timeout_s = std::max(60.0, est_s * 3.0 + 60.0);
+            }
+            
+            work_thread_ = std::thread([this, slew_timeout_s]() {
             // Poll CANopen axes until both reach target (or slewing is cancelled)
-            const int POLL_MS = config_.controller_poll_ms;
-            const double POSITION_TOLERANCE_DEG = config_.position_tolerance;
+            const int POLL_MS = config_.tracking_config.controller_poll_ms;
+            const double POSITION_TOLERANCE_DEG = config_.mount_config.position_tolerance;
+            
+            // Slew watchdog state (captured once at thread start).
+            const auto slew_start = std::chrono::steady_clock::now();
+            const bool has_hardware = (hal_axis1_motor_ && hal_axis2_motor_);
             
             // Simulated timeout tracking - declared OUTSIDE the while loop
             // to persist across iterations (Fix 3: timeout was broken by re-initializing each loop)
@@ -755,17 +702,6 @@ public:
                         MOUNT_LOG_WARN("HAL motor error during slew: {}", e.what());
                         reached = false;
                     }
-                } else if (canopen_interface_) {
-                    try {
-                        auto status0 = canopen_interface_->getDriveStatus(0);
-                        auto status1 = canopen_interface_->getDriveStatus(1);
-                        
-                        if (!status0.target_reached) reached = false;
-                        if (!status1.target_reached) reached = false;
-                    } catch (const std::exception& e) {
-                        MOUNT_LOG_WARN("CANopen communication error during slew: {}", e.what());
-                        reached = false;
-                    }
                 } else {
                     // Simulated: update positions gradually with timeout
                     sim_elapsed_ms += POLL_MS;
@@ -778,10 +714,10 @@ public:
                     // Check for hard limit violation during slew
                     // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — it wraps rather
                     // than hitting a hard stop, so only axis1 is checked against limits.
-                    if (config_.soft_limits_enabled) {
+                    if (config_.safety_config.soft_limits_enabled) {
                         bool limit_violation = (soft_limit_distance_axis1_ < 0.0);
-                        if (config_.mount_type != MountType::ALT_AZ &&
-                            config_.mount_type != MountType::CASUAL) {
+                        if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
+                            config_.mount_config.mount_type != config::MountType::CASUAL) {
                             limit_violation = limit_violation || (soft_limit_distance_axis2_ < 0.0);
                         }
                         if (limit_violation) {
@@ -794,7 +730,7 @@ public:
                     }
                     
                     // Log warning when in deceleration zone during slew
-                    if (config_.soft_limits_enabled && soft_limit_deceleration_active_) {
+                    if (config_.safety_config.soft_limits_enabled && soft_limit_deceleration_active_) {
                         MOUNT_LOG_WARN("Slew deceleration active: {}", soft_limit_warning_message_);
                     }
                     
@@ -841,12 +777,50 @@ public:
                         axis2_position_ = axis2_target_;
                         reached = true;
                     }
+                    
+                    // Keep raw_servo positions in sync so getStatus() reports
+                    // correct telescope positions (raw_servo / gear_ratio).
+                    raw_servo_axis1_position_ = axis1_position_;
+                    raw_servo_axis2_position_ = axis2_position_;
+                }
+                
+                // Slew watchdog — prevents infinite polling on real hardware if the
+                // mount never reaches the target.  Transitions to ERROR so the
+                // monitoring thread terminates and subsequent operations can proceed.
+                if (!reached && has_hardware && slew_timeout_s > 0.0) {
+                    double elapsed_s = std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - slew_start).count();
+                    if (elapsed_s > slew_timeout_s) {
+                        double t1 = 0.0, t2 = 0.0, p1 = 0.0, p2 = 0.0;
+                        {
+                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                            t1 = axis1_target_; t2 = axis2_target_;
+                            p1 = axis1_position_; p2 = axis2_position_;
+                            state_ = MountStatus::State::ERROR;
+                            error_message_ = "Slew timed out after " +
+                                             std::to_string(static_cast<int>(elapsed_s)) + "s";
+                        }
+                        MOUNT_LOG_ERROR("Slew timeout after {:.1f}s: axis1 target {:.2f}° pos {:.2f}°, "
+                                        "axis2 target {:.2f}° pos {:.2f}°",
+                                        elapsed_s, t1, p1, t2, p2);
+                        // Halt the drives — in position mode the mount would otherwise
+                        // keep moving toward the unreachable target after the timeout.
+                        if (hal_axis1_motor_ && hal_axis2_motor_) {
+                            try {
+                                hal_axis1_motor_->stop();
+                                hal_axis2_motor_->stop();
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("HAL motor stop failed after slew timeout: {}", e.what());
+                            }
+                        }
+                        break;
+                    }
                 }
                 
                 if (reached) {
                     std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     if (state_ == MountStatus::State::SLEWING) {
-                        // Update actual positions from HAL encoder or CANopen feedback
+                        // Update actual positions from HAL encoder feedback
                         if (hal_axis1_encoder_ && hal_axis2_encoder_) {
                             try {
                                 auto enc1 = hal_axis1_encoder_->read();
@@ -858,13 +832,6 @@ public:
                             } catch (const std::exception& e) {
                                 MOUNT_LOG_WARN("HAL encoder read error during slew: {}", e.what());
                             }
-                        } else if (canopen_interface_) {
-                            auto pos0 = canopen_interface_->getPositionData(0);
-                            auto pos1 = canopen_interface_->getPositionData(1);
-                            axis1_position_ = pos0.actual_position;
-                            axis2_position_ = pos1.actual_position;
-                            raw_servo_axis1_position_ = pos0.actual_position;
-                            raw_servo_axis2_position_ = pos1.actual_position;
                         }
                         axis1_rate_ = 0.0;
                         axis2_rate_ = 0.0;
@@ -904,7 +871,7 @@ public:
         
         // Lock thread_mutex_ across join + state-check + create to prevent data race
         {
-            std::lock_guard<std::mutex> tlock(*thread_mutex_);
+            std::lock_guard<std::shared_mutex> tlock(*thread_mutex_);
             
             // Signal any running work thread (e.g. tracking loop) to stop before joining.
             // If a tracking loop is running (tracking_active_ = true), joinWorkThreadLocked()
@@ -921,7 +888,7 @@ public:
                 if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) return false;
                 if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::TRACKING) return false;
                 
-                if (config_.mount_type == MountType::CASUAL) {
+                if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                     // CASUAL mount: transform true horizontal (alt/az) to mount-frame coordinates
                     // using the mount orientation quaternion Q (ENU → mount frame rotation).
                     //
@@ -982,8 +949,8 @@ public:
                     // This matches the ALT_AZ convention: axis1=azimuth, axis2=altitude.
                     // For identity quaternion, CASUAL behaves identically to ALT_AZ.
                     // Convert mount-frame telescope degrees → servo degrees
-                    const double ha_gear_sh = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_sh = config_.dec_axis_params.gear_ratio;
+                    const double ha_gear_sh = config_.mount_config.ha_axis_params.gear_ratio;
+                    const double dec_gear_sh = config_.mount_config.dec_axis_params.gear_ratio;
                     // Azimuth-like axis: find target nearest to current position to avoid
                     // the drive unwinding many revolutions after long tracking sessions.
                     // The target is chosen as the value closest to the current absolute
@@ -1001,8 +968,8 @@ public:
                     // Convert telescope/mount degrees to servo degrees.
                     // ALT_AZ mounts: axis1=azimuth, axis2=altitude in telescope frame.
                     // The CANopen drive expects servo degrees, so multiply by gear_ratio.
-                    const double ha_gear_h = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_h = config_.dec_axis_params.gear_ratio;
+                    const double ha_gear_h = config_.mount_config.ha_axis_params.gear_ratio;
+                    const double dec_gear_h = config_.mount_config.dec_axis_params.gear_ratio;
                     // Azimuth axis: find target nearest to current position to avoid
                     // the drive unwinding many revolutions after long tracking sessions.
                     // The target is chosen as the value closest to the current absolute
@@ -1021,34 +988,34 @@ public:
                 // For CASUAL and ALT_AZ mounts, axis1 is azimuth-like [0, 360) — wrapping means the
                 // configured axis1 limits don't apply. Only axis2 is checked against soft limits.
                 // Convert servo-degree targets to telescope degrees for limit comparison.
-                if (config_.soft_limits_enabled) {
-                    const double ha_gear_lim2 = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                    const double dec_gear_lim2 = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                if (config_.safety_config.soft_limits_enabled) {
+                    const double ha_gear_lim2 = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                    const double dec_gear_lim2 = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                     double telescope_axis1 = axis1_target_ / ha_gear_lim2;
                     double telescope_axis2 = axis2_target_ / dec_gear_lim2;
                     bool limit_violation = false;
-                    if (config_.mount_type != MountType::ALT_AZ &&
-                        config_.mount_type != MountType::CASUAL) {
-                        limit_violation = (telescope_axis1 < config_.soft_limit_axis1_min ||
-                                           telescope_axis1 > config_.soft_limit_axis1_max);
+                    if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
+                        config_.mount_config.mount_type != config::MountType::CASUAL) {
+                        limit_violation = (telescope_axis1 < config_.safety_config.soft_limit_axis1_min ||
+                                           telescope_axis1 > config_.safety_config.soft_limit_axis1_max);
                     }
                     limit_violation = limit_violation ||
-                        (telescope_axis2 < config_.soft_limit_axis2_min ||
-                         telescope_axis2 > config_.soft_limit_axis2_max);
+                        (telescope_axis2 < config_.safety_config.soft_limit_axis2_min ||
+                         telescope_axis2 > config_.safety_config.soft_limit_axis2_max);
                     if (limit_violation) {
                         MOUNT_LOG_WARN("SlewToHorizontal target exceeds soft limits: "
                                  "telescope axis1={:.1f}°, axis2={:.1f}° | limits=({:.1f},{:.1f})/({:.1f},{:.1f})",
                                  telescope_axis1, telescope_axis2,
-                                 config_.soft_limit_axis1_min, config_.soft_limit_axis1_max,
-                                 config_.soft_limit_axis2_min, config_.soft_limit_axis2_max);
+                                 config_.safety_config.soft_limit_axis1_min, config_.safety_config.soft_limit_axis1_max,
+                                 config_.safety_config.soft_limit_axis2_min, config_.safety_config.soft_limit_axis2_max);
                         state_ = MountStatus::State::IDLE;
                         return false;  // callback skipped: no state change from caller's perspective
                     }
                 }
 
                 // Apply per-axis rotation direction inversion after soft limit check
-                if (config_.invert_axis1) axis1_target_ = -axis1_target_;
-                if (config_.invert_axis2) axis2_target_ = -axis2_target_;
+                if (config_.mount_config.invert_axis1) axis1_target_ = -axis1_target_;
+                if (config_.mount_config.invert_axis2) axis2_target_ = -axis2_target_;
                 
                 state_ = MountStatus::State::SLEWING;
             }  // state_mutex_ released
@@ -1057,8 +1024,8 @@ public:
             notifyStatusChanged();  // IDLE → SLEWING
             
             bool motion_start_failure = false;
-            const double SLEW_VELOCITY = config_.max_slew_rate;
-            const double SLEW_ACCELERATION = config_.slew_acceleration;
+            const double SLEW_VELOCITY = config_.mount_config.max_slew_rate;
+            const double SLEW_ACCELERATION = config_.mount_config.slew_acceleration;
             
             if (hal_axis1_motor_ && hal_axis2_motor_) {
                 // HAL path: use MotorControl::setPosition() for position mode slewing
@@ -1074,31 +1041,31 @@ public:
                     // SLEWING → IDLE due to HAL motor failure, notify outside lock
                     notifyStatusChanged();
                 }
-            } else if (canopen_interface_) {
-                // Fallback to direct CANopen control
-                bool axis1_ok = canopen_interface_->setPositionTarget(
-                    0, axis1_target_, SLEW_VELOCITY, SLEW_ACCELERATION);
-                bool axis2_ok = canopen_interface_->setPositionTarget(
-                    1, axis2_target_, SLEW_VELOCITY, SLEW_ACCELERATION);
-                
-                if (!axis1_ok || !axis2_ok) {
-                    motion_start_failure = true;
-                    {
-                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                        state_ = MountStatus::State::IDLE;
-                    }
-                    // SLEWING → IDLE due to CANopen failure, notify outside lock
-                    notifyStatusChanged();
-                }
             }
             
             if (motion_start_failure) {
                 return false;
             }
             
-            work_thread_ = std::thread([this]() {
-            const int POLL_MS = config_.controller_poll_ms;
-            const double POSITION_TOLERANCE_DEG = config_.position_tolerance;
+            // Compute a slew watchdog timeout for the real-hardware paths below.
+            // See slewToEquatorial() for the rationale (prevents monitoring-thread hang
+            // if the mount never reaches the target).
+            double slew_timeout_s = 120.0;
+            if (SLEW_VELOCITY > 0.0) {
+                double dist1 = std::abs(axis1_target_ - axis1_position_);
+                double dist2 = std::abs(axis2_target_ - axis2_position_);
+                double max_dist = std::max(dist1, dist2);
+                double est_s = max_dist / SLEW_VELOCITY;
+                slew_timeout_s = std::max(60.0, est_s * 3.0 + 60.0);
+            }
+            
+            work_thread_ = std::thread([this, slew_timeout_s]() {
+            const int POLL_MS = config_.tracking_config.controller_poll_ms;
+            const double POSITION_TOLERANCE_DEG = config_.mount_config.position_tolerance;
+            
+            // Slew watchdog state (captured once at thread start).
+            const auto slew_start = std::chrono::steady_clock::now();
+            const bool has_hardware = (hal_axis1_motor_ && hal_axis2_motor_);
             
             // Simulated timeout tracking - declared outside the while loop
             // to persist across iterations
@@ -1120,16 +1087,6 @@ public:
                         MOUNT_LOG_WARN("HAL motor error during slew: {}", e.what());
                         reached = false;
                     }
-                } else if (canopen_interface_) {
-                    try {
-                        auto status0 = canopen_interface_->getDriveStatus(0);
-                        auto status1 = canopen_interface_->getDriveStatus(1);
-                        if (!status0.target_reached) reached = false;
-                        if (!status1.target_reached) reached = false;
-                    } catch (const std::exception& e) {
-                        MOUNT_LOG_WARN("CANopen communication error during slew: {}", e.what());
-                        reached = false;
-                    }
                 } else {
                     // Simulated: update positions gradually with timeout
                     const int SIM_TIMEOUT_MS = 60000;
@@ -1143,10 +1100,10 @@ public:
                     // Check for hard limit violation during slew
                     // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — it wraps rather
                     // than hitting a hard stop, so only axis1 is checked against limits.
-                    if (config_.soft_limits_enabled) {
+                    if (config_.safety_config.soft_limits_enabled) {
                         bool limit_violation = (soft_limit_distance_axis1_ < 0.0);
-                        if (config_.mount_type != MountType::ALT_AZ &&
-                            config_.mount_type != MountType::CASUAL) {
+                        if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
+                            config_.mount_config.mount_type != config::MountType::CASUAL) {
                             limit_violation = limit_violation || (soft_limit_distance_axis2_ < 0.0);
                         }
                         if (limit_violation) {
@@ -1159,7 +1116,7 @@ public:
                     }
                     
                     // Log warning when in deceleration zone during slew
-                    if (config_.soft_limits_enabled && soft_limit_deceleration_active_) {
+                    if (config_.safety_config.soft_limits_enabled && soft_limit_deceleration_active_) {
                         MOUNT_LOG_WARN("Slew deceleration active: {}", soft_limit_warning_message_);
                     }
                     
@@ -1206,12 +1163,50 @@ public:
                         axis2_position_ = axis2_target_;
                         reached = true;
                     }
+                    
+                    // Keep raw_servo positions in sync so getStatus() reports
+                    // correct telescope positions (raw_servo / gear_ratio).
+                    raw_servo_axis1_position_ = axis1_position_;
+                    raw_servo_axis2_position_ = axis2_position_;
+                }
+                
+                // Slew watchdog — prevents infinite polling on real hardware if the
+                // mount never reaches the target.  Transitions to ERROR so the
+                // monitoring thread terminates and subsequent operations can proceed.
+                if (!reached && has_hardware && slew_timeout_s > 0.0) {
+                    double elapsed_s = std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - slew_start).count();
+                    if (elapsed_s > slew_timeout_s) {
+                        double t1 = 0.0, t2 = 0.0, p1 = 0.0, p2 = 0.0;
+                        {
+                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                            t1 = axis1_target_; t2 = axis2_target_;
+                            p1 = axis1_position_; p2 = axis2_position_;
+                            state_ = MountStatus::State::ERROR;
+                            error_message_ = "Slew timed out after " +
+                                             std::to_string(static_cast<int>(elapsed_s)) + "s";
+                        }
+                        MOUNT_LOG_ERROR("Slew timeout after {:.1f}s: axis1 target {:.2f}° pos {:.2f}°, "
+                                        "axis2 target {:.2f}° pos {:.2f}°",
+                                        elapsed_s, t1, p1, t2, p2);
+                        // Halt the drives — in position mode the mount would otherwise
+                        // keep moving toward the unreachable target after the timeout.
+                        if (hal_axis1_motor_ && hal_axis2_motor_) {
+                            try {
+                                hal_axis1_motor_->stop();
+                                hal_axis2_motor_->stop();
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("HAL motor stop failed after slew timeout: {}", e.what());
+                            }
+                        }
+                        break;
+                    }
                 }
                 
                 if (reached) {
                     std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                     if (state_ == MountStatus::State::SLEWING) {
-                        // Update actual positions from HAL encoder or CANopen feedback
+                        // Update actual positions from HAL encoder feedback
                         if (hal_axis1_encoder_ && hal_axis2_encoder_) {
                             try {
                                 auto enc1 = hal_axis1_encoder_->read();
@@ -1223,13 +1218,6 @@ public:
                             } catch (const std::exception& e) {
                                 MOUNT_LOG_WARN("HAL encoder read error during slew: {}", e.what());
                             }
-                        } else if (canopen_interface_) {
-                            auto pos0 = canopen_interface_->getPositionData(0);
-                            auto pos1 = canopen_interface_->getPositionData(1);
-                            axis1_position_ = pos0.actual_position;
-                            axis2_position_ = pos1.actual_position;
-                            raw_servo_axis1_position_ = pos0.actual_position;
-                            raw_servo_axis2_position_ = pos1.actual_position;
                         }
                         axis1_rate_ = 0.0;
                         axis2_rate_ = 0.0;
@@ -1261,7 +1249,7 @@ public:
         return true;
     }
     
-    bool startTracking(double ra, double dec, TrackingMode mode) {
+    bool startTracking(double ra, double dec, config::TrackingMode mode) {
         // Reject non-finite coordinates to prevent infinite loops in HA normalization
         if (!std::isfinite(ra) || !std::isfinite(dec)) {
             return false;
@@ -1305,9 +1293,9 @@ public:
             // For CASUAL mounts, RA/Dec is converted to mount-frame alt/az via orientation quaternion.
             // For Alt-Az mounts, axis1 = altitude, axis2 = azimuth (caller passes
             // altitude as 'ra' and azimuth as 'dec').
-            if (config_.mount_type == MountType::EQUATORIAL) {
+            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                 double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-                double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
                 double ha_hours = lst - ra;
                 // Normalize HA to [-12, 12] hours
                 // Note: finite inputs guarantee finite ha_hours, so no inf-loop risk
@@ -1318,8 +1306,8 @@ public:
                 // by gear_ratio. The CANopen drive expects position targets in
                 // servo degrees (not telescope degrees), so the celestial target
                 // must be scaled up by the gear reduction ratio.
-                const double ha_gear = config_.ha_axis_params.gear_ratio;
-                const double dec_gear = config_.dec_axis_params.gear_ratio;
+                const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
+                const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
 
                 // Use TPOINT model to correct the mount position for systematic errors
                 // predictMountPosition() inverts the fitted model via Newton-Raphson
@@ -1339,15 +1327,15 @@ public:
                     tracking_target_ra_hours_ = ra;
                     tracking_target_dec_deg_ = dec;
                 }
-            } else if (config_.mount_type == MountType::CASUAL) {
+            } else if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                 // Convert RA/Dec to mount-frame alt/az using the orientation quaternion.
                 // equatorialToMountOrientation returns telescope/mount-frame degrees;
                 // multiply by gear_ratio to convert to servo degrees for CANopen.
                 double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                 auto [mount_alt, mount_az] = astro_calc_->equatorialToMountOrientation(
                     ra, dec, jd, mount_orientation_.quaternion);
-                const double ha_gear_cas = config_.ha_axis_params.gear_ratio;
-                const double dec_gear_cas = config_.dec_axis_params.gear_ratio;
+                const double ha_gear_cas = config_.mount_config.ha_axis_params.gear_ratio;
+                const double dec_gear_cas = config_.mount_config.dec_axis_params.gear_ratio;
                 axis1_target_ = mount_alt * ha_gear_cas;   // Altitude in mount frame → servo (no wrapping)
                 
                 // Azimuth-like axis (axis2 for CASUAL): find target nearest to current
@@ -1360,8 +1348,8 @@ public:
                 axis2_target_ = axis2_position_ + diff_cas;  // shortest path to azimuth target
             } else {  // ALT_AZ
                 // axis1 = altitude, axis2 = azimuth — convert telescope degrees → servo degrees
-                const double ha_gear_az = config_.ha_axis_params.gear_ratio;
-                const double dec_gear_az = config_.dec_axis_params.gear_ratio;
+                const double ha_gear_az = config_.mount_config.ha_axis_params.gear_ratio;
+                const double dec_gear_az = config_.mount_config.dec_axis_params.gear_ratio;
                 axis1_target_ = ra * ha_gear_az;  // altitude → axis1 servo (no wrapping)
                 
                 // Azimuth axis (axis2 for ALT_AZ): find target nearest to current position
@@ -1377,25 +1365,25 @@ public:
             // For Alt-Az and CASUAL mounts, axis2 is azimuth-like [0, 360) — wrapping means the
             // configured axis2 limits don't apply. Only axis1 is checked against soft limits.
             // Convert servo-degree targets to telescope degrees for limit comparison.
-            if (config_.soft_limits_enabled) {
-                const double ha_gear_lim3 = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                const double dec_gear_lim3 = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+            if (config_.safety_config.soft_limits_enabled) {
+                const double ha_gear_lim3 = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                const double dec_gear_lim3 = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                 double telescope_axis1 = axis1_target_ / ha_gear_lim3;
                 double telescope_axis2 = axis2_target_ / dec_gear_lim3;
-                bool limit_violation = (telescope_axis1 < config_.soft_limit_axis1_min ||
-                                        telescope_axis1 > config_.soft_limit_axis1_max);
-                if (config_.mount_type != MountType::ALT_AZ &&
-                    config_.mount_type != MountType::CASUAL) {
+                bool limit_violation = (telescope_axis1 < config_.safety_config.soft_limit_axis1_min ||
+                                        telescope_axis1 > config_.safety_config.soft_limit_axis1_max);
+                if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
+                    config_.mount_config.mount_type != config::MountType::CASUAL) {
                     limit_violation = limit_violation ||
-                        (telescope_axis2 < config_.soft_limit_axis2_min ||
-                         telescope_axis2 > config_.soft_limit_axis2_max);
+                        (telescope_axis2 < config_.safety_config.soft_limit_axis2_min ||
+                         telescope_axis2 > config_.safety_config.soft_limit_axis2_max);
                 }
                 if (limit_violation) {
                     MOUNT_LOG_WARN("StartTracking target exceeds soft limits: "
                              "telescope axis1={:.1f}°, axis2={:.1f}° | limits=({:.1f},{:.1f})/({:.1f},{:.1f})",
                              telescope_axis1, telescope_axis2,
-                             config_.soft_limit_axis1_min, config_.soft_limit_axis1_max,
-                             config_.soft_limit_axis2_min, config_.soft_limit_axis2_max);
+                             config_.safety_config.soft_limit_axis1_min, config_.safety_config.soft_limit_axis1_max,
+                             config_.safety_config.soft_limit_axis2_min, config_.safety_config.soft_limit_axis2_max);
                     return false;
                 }
             }
@@ -1412,29 +1400,29 @@ public:
             //   Lunar:    ~14.685 "/s        = 0.004079 °/s (telescope)
             //
             // With gear_ratio G, the servo must move G× faster.
-            const double ha_gear = config_.ha_axis_params.gear_ratio;
-            const double dec_gear = config_.dec_axis_params.gear_ratio;
+            const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
+            const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
 
-            if (config_.mount_type == MountType::EQUATORIAL) {
+            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                 switch (mode) {
-                    case TrackingMode::SIDEREAL:
+                    case config::TrackingMode::SIDEREAL:
                         axis1_tracking_rate = 0.004178 * ha_gear;
                         axis2_tracking_rate = 0.0;
                         break;
-                    case TrackingMode::SOLAR:
+                    case config::TrackingMode::SOLAR:
                         axis1_tracking_rate = 0.004167 * ha_gear;
                         axis2_tracking_rate = 0.0;
                         break;
-                    case TrackingMode::LUNAR:
+                    case config::TrackingMode::LUNAR:
                         axis1_tracking_rate = 0.004079 * ha_gear;
                         axis2_tracking_rate = 0.0;
                         break;
-                    case TrackingMode::CUSTOM:
+                    case config::TrackingMode::CUSTOM:
                         // max_tracking_rate is now in servo °/s (unified)
-                        axis1_tracking_rate = config_.max_tracking_rate;
+                        axis1_tracking_rate = config_.mount_config.max_tracking_rate;
                         axis2_tracking_rate = 0.0;
                         break;
-                    case TrackingMode::OFF:
+                    case config::TrackingMode::OFF:
                         axis1_tracking_rate = 0.0;
                         axis2_tracking_rate = 0.0;
                         break;
@@ -1457,7 +1445,7 @@ public:
             // Set time_to_meridian_ to a large positive value before the tracking
             // thread starts, so getTimeToMeridian() never returns 0 (default) for
             // ALT_AZ or CASUAL mounts where meridian flips are not applicable.
-            if (config_.mount_type != MountType::EQUATORIAL) {
+            if (config_.mount_config.mount_type != config::MountType::EQUATORIAL) {
                 time_to_meridian_ = 24.0;
                 pier_side_ = 1;
             }
@@ -1469,19 +1457,19 @@ public:
             // 1.5 °/s).  Position mode is universally supported and more
             // robust — we update the target position periodically in the
             // tracking loop via setPositionTarget().
-            if (config_.mount_type == MountType::EQUATORIAL) {
+            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                 // Set an initial position target at the current celestial
                 // position.  The tracking loop will advance it periodically.
                 const double TRACK_POS_VEL = std::max(axis1_tracking_rate * 2.0, 2.0);  // °/s servo
                 bool pos_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                    bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, TRACK_POS_VEL, config_.slew_acceleration);
-                    bool ok2 = hal_axis2_motor_->setPosition(axis2_target_, TRACK_POS_VEL, config_.slew_acceleration);
+                    bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
+                    bool ok2 = hal_axis2_motor_->setPosition(axis2_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
                     pos_ok = ok1 && ok2;
-                } else if (canopen_interface_) {
-                    bool ok1 = canopen_interface_->setPositionTarget(0, axis1_target_, TRACK_POS_VEL, config_.slew_acceleration);
-                    bool ok2 = canopen_interface_->setPositionTarget(1, axis2_target_, TRACK_POS_VEL, config_.slew_acceleration);
-                    pos_ok = ok1 && ok2;
+                } else {
+                    // No HAL motors — simulated tracking.  Position targets are
+                    // accepted and the tracking loop advances positions internally.
+                    pos_ok = true;
                 }
                 if (!pos_ok) {
                     MOUNT_LOG_ERROR("startTracking: failed to set position targets — aborting");
@@ -1495,13 +1483,13 @@ public:
                 // ALT_AZ / CASUAL: use velocity mode (unchanged).
                 bool velocity_set_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                    bool ok1 = hal_axis1_motor_->setVelocity(axis1_tracking_rate, config_.tracking_acceleration);
-                    bool ok2 = hal_axis2_motor_->setVelocity(axis2_tracking_rate, config_.tracking_acceleration);
+                    bool ok1 = hal_axis1_motor_->setVelocity(axis1_tracking_rate, config_.mount_config.tracking_acceleration);
+                    bool ok2 = hal_axis2_motor_->setVelocity(axis2_tracking_rate, config_.mount_config.tracking_acceleration);
                     velocity_set_ok = ok1 && ok2;
-                } else if (canopen_interface_) {
-                    bool ok1 = canopen_interface_->setVelocityTarget(0, axis1_tracking_rate, config_.tracking_acceleration);
-                    bool ok2 = canopen_interface_->setVelocityTarget(1, axis2_tracking_rate, config_.tracking_acceleration);
-                    velocity_set_ok = ok1 && ok2;
+                } else {
+                    // No HAL motors — simulated tracking.  Velocity targets are
+                    // accepted and the tracking loop advances positions internally.
+                    velocity_set_ok = true;
                 }
                 if (!velocity_set_ok) {
                     MOUNT_LOG_ERROR("startTracking: failed to set velocity targets — aborting");
@@ -1526,14 +1514,14 @@ public:
         
         // Lock thread_mutex_ only for the work_thread_ assignment (not held during join above)
         {
-            std::lock_guard<std::mutex> tlock(*thread_mutex_);
+            std::lock_guard<std::shared_mutex> tlock(*thread_mutex_);
             work_thread_ = std::thread([this, axis1_tracking_rate, axis2_tracking_rate, mode]() {
             // Track actual elapsed time between iterations, not hardcoded 0.1s.
             // When the scheduler delays wake-up (e.g. sleep_for(100ms) takes 200ms+),
             // using a hardcoded dt causes position under/over-correction.
             auto last_iteration = std::chrono::steady_clock::now();
             while (tracking_active_) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(config_.tracking_update_ms));
+                std::this_thread::sleep_for(std::chrono::milliseconds(config_.tracking_config.tracking_update_ms));
                 
                 // Measure actual elapsed time since last iteration
                 auto now = std::chrono::steady_clock::now();
@@ -1584,7 +1572,7 @@ public:
                     try {
                         auto readings = hal_sensor_interface_->readAll();
                         {
-                            std::lock_guard<std::mutex> env_lock(*env_mutex_);
+                            std::lock_guard<std::shared_mutex> env_lock(*env_mutex_);
                             for (const auto& reading : readings) {
                                 if (reading.valid) {
                                     switch (reading.type) {
@@ -1758,133 +1746,13 @@ public:
                     }
                 }
                 
-                // ── CANopen position rewind ─────────────────────────────────
-                // Periodically reset the CANopen drive's absolute position counter
-                // to prevent overflow beyond the drive's target position limit
-                // (typically ±1,000,000 encoder counts). The drive position is
-                // read, set as the new reference via setActualPosition(), and the
-                // position_offset_ is updated — no physical movement occurs.
-                //
-                // Two triggers:
-                //   1. Time-based: after canopen_position_rewind_interval_seconds
-                //   2. Threshold-based: when drive position reaches X% of 1,000,000
-                //      counts (immediate, does not wait for the time interval).
-                //
-                // setActualPosition() is an SDO configuration write — it resets
-                // the drive's internal position counter without any physical motion.
-                // The motors do NOT need to be paused; the drive's PID loop continues
-                // undisturbed because the logical target position (adjusted by the
-                // new offset) remains continuous.
-                if (canopen_interface_ && config_.canopen_position_rewind_enabled && !meridian_flip_in_progress_) {
-                    bool do_rewind = false;
-                    std::string rewind_reason;
-                    
-                    // Check time-based trigger
-                    if (config_.canopen_position_rewind_interval_seconds > 0.0) {
-                        auto now = std::chrono::steady_clock::now();
-                        double elapsed = std::chrono::duration<double>(now - last_position_rewind_time_).count();
-                        if (elapsed >= config_.canopen_position_rewind_interval_seconds) {
-                            do_rewind = true;
-                            rewind_reason = fmt::format("time interval ({:.0f}s elapsed >= {:.0f}s)",
-                                                        elapsed, config_.canopen_position_rewind_interval_seconds);
-                        }
-                    }
-                    
-                    // Check threshold-based trigger: compute distance traveled since
-                    // the last rewind in encoder counts, and compare against the
-                    // 1,000,000 count limit.  Using the delta (rather than
-                    // fmod(position, turn)) ensures the threshold resets to zero
-                    // after each successful rewind and only fires again when the
-                    // axis has accumulated enough motion to approach the drive's
-                    // absolute-position limit.
-                    if (!do_rewind && config_.canopen_position_rewind_threshold_percent > 0.0) {
-                        const double CANOPEN_TARGET_LIMIT_COUNTS = 1000000.0;
-                        double threshold = config_.canopen_position_rewind_threshold_percent / 100.0;
-                        double limit_counts = CANOPEN_TARGET_LIMIT_COUNTS * threshold;
-                        
-                        double cpd0 = config_.ha_axis_params.position_counts_per_degree;
-                        double cpd1 = config_.dec_axis_params.position_counts_per_degree;
-                        
-                        // Distance traveled since last rewind, in encoder counts
-                        double delta0 = axis1_position_ - last_rewind_axis1_position_;
-                        double delta1 = axis2_position_ - last_rewind_axis2_position_;
-                        double drive_counts0 = std::abs(delta0) * cpd0;
-                        double drive_counts1 = std::abs(delta1) * cpd1;
-                        
-                        if (drive_counts0 > limit_counts || drive_counts1 > limit_counts) {
-                            do_rewind = true;
-                            rewind_reason = fmt::format("threshold {:.0f}% (axis0={:.0f}, axis1={:.0f} counts >= {:.0f})",
-                                                        config_.canopen_position_rewind_threshold_percent,
-                                                        drive_counts0, drive_counts1, limit_counts);
-                        }
-                    }
-                    
-                    if (do_rewind) {
-                        MOUNT_LOG_INFO("CANopen position rewind triggered: {}", rewind_reason);
-                        
-                        double pos1_before = axis1_position_;
-                        double pos2_before = axis2_position_;
-                        
-                        // Use raw_servo (always synced from CANopen hardware) rather
-                        // than axis1_position_ (which diverges during tracking because
-                        // refreshPositionsFromCANopen no longer overwrites it).
-                        // If we used the diverged axis1_position_, setActualPosition
-                        // would compute a huge position_offset_ (~18330°), shifting
-                        // all subsequent setPositionTarget calls by that offset and
-                        // making the drive target unreachable positions.
-                        const double full_turn1 = 360.0 * config_.ha_axis_params.gear_ratio;
-                        double rewind_pos1 = std::fmod(raw_servo_axis1_position_, full_turn1);
-                        if (rewind_pos1 < 0.0) rewind_pos1 += full_turn1;
-                        if (canopen_interface_->setActualPosition(0, rewind_pos1)) {
-                            MOUNT_LOG_DEBUG("CANopen rewind: axis 0 position {:.2f}° → {:.2f}° "
-                                     "(raw_servo={:.2f}°)",
-                                     pos1_before, rewind_pos1, raw_servo_axis1_position_);
-                            // Synchronize internal position with the rewound CANopen drive position.
-                            // Without this, the tracking loop continues to accumulate offsets
-                            // from the old (huge) axis1_position_ value, immediately triggering
-                            // soft-limit violations on the next iteration.
-                            axis1_position_ = rewind_pos1;
-                        } else {
-                            MOUNT_LOG_WARN("CANopen rewind: axis 0 setActualPosition failed");
-                        }
-                        
-                        const double full_turn2 = 360.0 * config_.dec_axis_params.gear_ratio;
-                        double rewind_pos2 = std::fmod(raw_servo_axis2_position_, full_turn2);
-                        if (rewind_pos2 < 0.0) rewind_pos2 += full_turn2;
-                        if (canopen_interface_->setActualPosition(1, rewind_pos2)) {
-                            MOUNT_LOG_DEBUG("CANopen rewind: axis 1 position {:.2f}° → {:.2f}° "
-                                     "(raw_servo={:.2f}°)",
-                                     pos2_before, rewind_pos2, raw_servo_axis2_position_);
-                            axis2_position_ = rewind_pos2;
-                        } else {
-                            MOUNT_LOG_WARN("CANopen rewind: axis 1 setActualPosition failed");
-                        }
-                        
-                        last_position_rewind_time_ = std::chrono::steady_clock::now();
-                        // Record the reference positions so the threshold check on the
-                        // next iteration measures delta from this rewind point.
-                        last_rewind_axis1_position_ = axis1_position_;
-                        last_rewind_axis2_position_ = axis2_position_;
-                        MOUNT_LOG_INFO("CANopen position rewind complete");
-                        
-                        // Re-evaluate soft limits after rewind changed axis positions.
-                        // evaluateSoftLimits() was called at the top of the iteration
-                        // (line 1720) with the old pre-rewind position values. After
-                        // the rewind resets axis1_position_/axis2_position_ to a much
-                        // smaller value, the stale soft_limit_distance_ values from
-                        // the old (huge) position would incorrectly trigger the limit
-                        // violation check below.
-                        evaluateSoftLimits(axis1_position_, axis2_position_);
-                    }
-                }
-                
                 // For Alt-Az and CASUAL mounts, normalize to valid angular ranges.
                 // axis1_position_ is in servo degrees; convert to telescope degrees
                 // for clamping, then convert back.
-                if (config_.mount_type == MountType::ALT_AZ ||
-                    config_.mount_type == MountType::CASUAL) {
-                    const double alt_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                    const double az_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                if (config_.mount_config.mount_type == config::MountType::ALT_AZ ||
+                    config_.mount_config.mount_type == config::MountType::CASUAL) {
+                    const double alt_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                    const double az_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                     
                     // Convert servo degrees → telescope degrees for clamping
                     double telescope_alt = axis1_position_ / alt_gear;
@@ -1910,10 +1778,10 @@ public:
                 // targets were already validated before the flip started,
                 // and positions can temporarily appear out of bounds as
                 // the drive slews between pier sides.
-                if (config_.soft_limits_enabled && !meridian_flip_in_progress_ && flip_soft_limit_cooldown_ <= 0) {
+                if (config_.safety_config.soft_limits_enabled && !meridian_flip_in_progress_ && flip_soft_limit_cooldown_ <= 0) {
                     bool limit_violation = (soft_limit_distance_axis1_ < 0.0);
-                    if (config_.mount_type != MountType::ALT_AZ &&
-                        config_.mount_type != MountType::CASUAL) {
+                    if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
+                        config_.mount_config.mount_type != config::MountType::CASUAL) {
                         limit_violation = limit_violation || (soft_limit_distance_axis2_ < 0.0);
                     }
                     if (limit_violation) {
@@ -1928,9 +1796,9 @@ public:
                 // Skip soft limit deceleration/warning logs during meridian flip.
                 // The evaluateSoftLimits() call above may produce false positives as
                 // the telescope position briefly appears out of bounds during the flip slew.
-                if (config_.soft_limits_enabled && soft_limit_deceleration_active_ && !meridian_flip_in_progress_) {
+                if (config_.safety_config.soft_limits_enabled && soft_limit_deceleration_active_ && !meridian_flip_in_progress_) {
                     MOUNT_LOG_WARN("Soft limit deceleration active: {}", soft_limit_warning_message_);
-                } else if (config_.soft_limits_enabled && soft_limit_warning_active_) {
+                } else if (config_.safety_config.soft_limits_enabled && soft_limit_warning_active_) {
                     MOUNT_LOG_DEBUG("Soft limit warning: {}", soft_limit_warning_message_);
                 }
                 
@@ -1938,13 +1806,13 @@ public:
                 // Nutation changes the apparent position of the target by up to ~17"
                 // For CASUAL and ALT_AZ mounts, position corrections use a different
                 // approach (rate-based, see below), so skip EQUATORIAL-specific corrections.
-                if (config_.mount_type == MountType::EQUATORIAL) {
+                if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-                    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
                     
                     // Current HA in telescope hours. axis1_position_ is in servo degrees;
                     // divide by gear_ratio to get telescope degrees, then by 15 to get hours.
-                    const double ha_gear_eq = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                    const double ha_gear_eq = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                     double ha_hours = axis1_position_ / 15.0 / ha_gear_eq;
                     
                     // Guard against non-finite HA (NaN/Inf) before the normalisation
@@ -1974,7 +1842,7 @@ public:
                     // axis2_position_ is in servo degrees; convert to telescope
                     // degrees for the nutation calculation (SOFA expects degrees on sky,
                     // not raw servo-position units).
-                    const double dec_gear_eq_nut = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                    const double dec_gear_eq_nut = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                     double dec_for_nutation = axis2_position_ / dec_gear_eq_nut;
                     if (dec_for_nutation > 90.0) {
                         dec_for_nutation = 180.0 - dec_for_nutation;
@@ -2031,8 +1899,8 @@ public:
                         // Convert servo degrees to telescope units for TPoint model.
                         // applyCorrections() expects mount_ha in telescope hours and
                         // mount_dec in telescope degrees.
-                        const double ha_gear_tp = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                        const double dec_gear_tp = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        const double ha_gear_tp = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear_tp = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                         double ha_for_tp = axis1_position_ / 15.0 / ha_gear_tp;  // servo deg → telescope hours
                         double dec_for_tp = axis2_position_ / dec_gear_tp;        // servo deg → telescope deg
                         // Pass snapshotted temperature for thermal compensation in
@@ -2079,11 +1947,11 @@ public:
                     // varies — causing apparent RA/Dec drift that must be compensated.
                     // This converts the true position → apparent position and applies the
                     // difference as a mount position correction.
-                    if (config_.enable_refraction_correction) {
+                    if (config_.safety_config.enable_refraction_correction) {
                         double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-                        double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                        double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
                         // axis1_position_ is in servo degrees; convert to telescope HA hours
-                        const double ha_gear_ref = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                        const double ha_gear_ref = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                         double ha_hours = axis1_position_ / 15.0 / ha_gear_ref;
                         double current_ra = lst - ha_hours;
                         current_ra = std::fmod(current_ra, 24.0);
@@ -2092,7 +1960,7 @@ public:
                         // Get true horizontal coordinates (without refraction).
                         // axis2_position_ is in servo degrees; convert to telescope Dec
                         // using the Dec gear ratio (not HA gear ratio).
-                        const double dec_gear_ref = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        const double dec_gear_ref = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                         auto [alt_true, az] = astro_calc_->equatorialToHorizontal(
                             current_ra, axis2_position_ / dec_gear_ref, jd, false);
                         
@@ -2158,21 +2026,21 @@ public:
                 //   convert back to alt/az with refraction, apply position offset.
                 // For CASUAL mounts: same approach via mountOrientationToEquatorial
                 //   and equatorialToMountOrientation (quaternion transformations).
-                else if (config_.mount_type == MountType::ALT_AZ ||
-                         config_.mount_type == MountType::CASUAL) {
+                else if (config_.mount_config.mount_type == config::MountType::ALT_AZ ||
+                         config_.mount_config.mount_type == config::MountType::CASUAL) {
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-                    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
                     
                     // Convert current mount position to equatorial (mean RA/Dec)
                     double current_ra = 0.0, current_dec = 0.0;
                     bool convert_ok = false;
                     
-                    if (config_.mount_type == MountType::ALT_AZ) {
+                    if (config_.mount_config.mount_type == config::MountType::ALT_AZ) {
                         // ALT-AZ: axis1 = altitude, axis2 = azimuth
                         // Convert servo degrees → telescope degrees before calling
                         // horizontalToEquatorial (expects telescope alt/az).
-                        const double ha_gear_corr = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                        const double dec_gear_corr = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        const double ha_gear_corr = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear_corr = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                         double alt_telescope = axis1_position_ / ha_gear_corr;
                         double az_telescope  = axis2_position_ / dec_gear_corr;
                         auto eq = astro_calc_->horizontalToEquatorial(
@@ -2184,8 +2052,8 @@ public:
                         // CASUAL: axis1 = altitude-like, axis2 = azimuth-like in mount frame
                         // Convert servo degrees → telescope degrees before calling
                         // mountOrientationToEquatorial (expects telescope mount-frame angles).
-                        const double ha_gear_cas_corr = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                        const double dec_gear_cas_corr = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        const double ha_gear_cas_corr = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear_cas_corr = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                         double mount_alt_tel = axis1_position_ / ha_gear_cas_corr;
                         double mount_az_tel  = axis2_position_ / dec_gear_cas_corr;
                         auto eq = astro_calc_->mountOrientationToEquatorial(
@@ -2238,12 +2106,12 @@ public:
                             double new_alt = 0.0, new_az = 0.0;
                             bool convert_back_ok = false;
                             
-                            if (config_.mount_type == MountType::ALT_AZ) {
+                            if (config_.mount_config.mount_type == config::MountType::ALT_AZ) {
                                 // Convert corrected equatorial back to alt/az
                                 // with refraction if enabled
                                 auto ha = astro_calc_->equatorialToHorizontal(
                                     current_ra, current_dec, jd,
-                                    config_.enable_refraction_correction);
+                                    config_.safety_config.enable_refraction_correction);
                                 new_alt = ha.first;
                                 new_az = ha.second;
                                 convert_back_ok = std::isfinite(new_alt) && std::isfinite(new_az);
@@ -2262,7 +2130,7 @@ public:
                                 // calls equatorialToHorizontal with apply_refraction=true.
                                 // To give the caller full control, we re-do the conversion without
                                 // refraction in equatorialToMountOrientation and add it manually.
-                                if (convert_back_ok && config_.enable_refraction_correction) {
+                                if (convert_back_ok && config_.safety_config.enable_refraction_correction) {
                                     // equatorialToMountOrientation always applies refraction internally.
                                     // If refraction is disabled, we need to reverse it.
                                     // Since the current implementation always applies refraction,
@@ -2276,8 +2144,8 @@ public:
                                 // Apply as position offsets with clamping to prevent wild jumps.
                                 // new_alt/new_az are in telescope degrees; axis positions are in
                                 // servo degrees. Convert to a common unit (telescope) for comparison.
-                                const double ha_gear_off = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                                const double dec_gear_off = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                                const double ha_gear_off = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                                const double dec_gear_off = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                                 double current_alt_telescope = axis1_position_ / ha_gear_off;
                                 double current_az_telescope  = axis2_position_ / dec_gear_off;
                                 double alt_offset_telescope = new_alt - current_alt_telescope;
@@ -2312,7 +2180,7 @@ public:
                                 if (!std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
                                     MOUNT_LOG_ERROR("{} astronomical corrections produced non-finite position: "
                                              "axis1={}, axis2={}",
-                                             (config_.mount_type == MountType::ALT_AZ ? "ALT-AZ" : "CASUAL"),
+                                             (config_.mount_config.mount_type == config::MountType::ALT_AZ ? "ALT-AZ" : "CASUAL"),
                                              axis1_position_, axis2_position_);
                                     state_ = MountStatus::State::ERROR;
                                     error_message_ = "Numerical error: NaN/Inf after non-equatorial astronomical corrections";
@@ -2330,17 +2198,17 @@ public:
                 // For CASUAL mounts, the ALT-AZ rates in true horizontal frame are transformed
                 // through the orientation quaternion to obtain mount-frame tracking rates.
                 // where ω = Earth rotation rate (7.2921150e-5 rad/s) scaled by tracking mode.
-                if (config_.mount_type == MountType::ALT_AZ) {
+                if (config_.mount_config.mount_type == config::MountType::ALT_AZ) {
                     // Convert servo positions to telescope degrees, then to radians.
                     // axis1_position_/axis2_position_ are in servo degrees (motor shaft);
                     // trig functions require telescope-axis angles, so divide by gear ratio.
-                    const double ha_gear_local = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_local = config_.dec_axis_params.gear_ratio;
+                    const double ha_gear_local = config_.mount_config.ha_axis_params.gear_ratio;
+                    const double dec_gear_local = config_.mount_config.dec_axis_params.gear_ratio;
                     double alt_telescope = axis1_position_ / ha_gear_local;
                     double az_telescope  = axis2_position_ / dec_gear_local;
                     double alt_rad = alt_telescope * M_PI / 180.0;
                     double az_rad  = az_telescope * M_PI / 180.0;
-                    double lat_rad = config_.latitude * M_PI / 180.0;
+                    double lat_rad = config_.mount_config.latitude * M_PI / 180.0;
                     
                     // Compute cos(lat) with polar singularity guard.
                     // At latitude = ±90°, cos(lat) = 0, causing the ALT-AZ rate equations
@@ -2365,11 +2233,11 @@ public:
                     double omega = 7.2921150e-5;
                     double mode_factor = 1.0;
                     switch (mode) {
-                        case TrackingMode::SIDEREAL: mode_factor = 1.0;      break;
-                        case TrackingMode::SOLAR:    mode_factor = 0.9972;   break;
-                        case TrackingMode::LUNAR:    mode_factor = 0.9760;   break;
-                        case TrackingMode::CUSTOM:   mode_factor = 1.0;      break;
-                        case TrackingMode::OFF:      mode_factor = 0.0;      break;
+                        case config::TrackingMode::SIDEREAL: mode_factor = 1.0;      break;
+                        case config::TrackingMode::SOLAR:    mode_factor = 0.9972;   break;
+                        case config::TrackingMode::LUNAR:    mode_factor = 0.9760;   break;
+                        case config::TrackingMode::CUSTOM:   mode_factor = 1.0;      break;
+                        case config::TrackingMode::OFF:      mode_factor = 0.0;      break;
                     }
                     omega *= mode_factor;
                     
@@ -2409,7 +2277,7 @@ public:
                         MOUNT_LOG_ERROR("Non-finite ALT_AZ tracking state: alt_rate={}, az_rate={}, "
                                  "alt={}°, az={}°, lat={}°",
                                  current_rate_1, current_rate_2,
-                                 axis1_position_, axis2_position_, config_.latitude);
+                                 axis1_position_, axis2_position_, config_.mount_config.latitude);
                         state_ = MountStatus::State::ERROR;
                         error_message_ = "Numerical error: NaN/Inf in Alt-Az tracking state";
                         break;
@@ -2420,7 +2288,7 @@ public:
                 // For CASUAL mounts, compute ALT_AZ rates in the true horizontal frame and
                 // transform them through the orientation quaternion to mount-frame rates.
                 // This is mathematically equivalent to rotating the ALT_AZ rate vector.
-                else if (config_.mount_type == MountType::CASUAL) {
+                else if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                     
                     // Get current mount position in true horizontal frame.
@@ -2429,8 +2297,8 @@ public:
                     // mountOrientationToHorizontal() returns (alt, az) —
                     // mountOrientationToEquatorial() would return (RA, Dec) which is
                     // incorrect for the rate formulas below.
-                    const double ha_gear_cas = config_.ha_axis_params.gear_ratio;
-                    const double dec_gear_cas = config_.dec_axis_params.gear_ratio;
+                    const double ha_gear_cas = config_.mount_config.ha_axis_params.gear_ratio;
+                    const double dec_gear_cas = config_.mount_config.dec_axis_params.gear_ratio;
                     double mount_alt_telescope = axis1_position_ / ha_gear_cas;
                     double mount_az_telescope = axis2_position_ / dec_gear_cas;
                     auto [true_alt, true_az] = astro_calc_->mountOrientationToHorizontal(
@@ -2439,7 +2307,7 @@ public:
                     // Compute ALT_AZ rates at the current true horizontal position
                     double alt_rad = true_alt * M_PI / 180.0;
                     double az_rad  = true_az * M_PI / 180.0;
-                    double lat_rad = config_.latitude * M_PI / 180.0;
+                    double lat_rad = config_.mount_config.latitude * M_PI / 180.0;
                     
                     // Compute cos(lat) with polar singularity guard
                     double cos_lat = std::cos(lat_rad);
@@ -2459,11 +2327,11 @@ public:
                     double omega = 7.2921150e-5;
                     double mode_factor = 1.0;
                     switch (mode) {
-                        case TrackingMode::SIDEREAL: mode_factor = 1.0;      break;
-                        case TrackingMode::SOLAR:    mode_factor = 0.9972;   break;
-                        case TrackingMode::LUNAR:    mode_factor = 0.9760;   break;
-                        case TrackingMode::CUSTOM:   mode_factor = 1.0;      break;
-                        case TrackingMode::OFF:      mode_factor = 0.0;      break;
+                        case config::TrackingMode::SIDEREAL: mode_factor = 1.0;      break;
+                        case config::TrackingMode::SOLAR:    mode_factor = 0.9972;   break;
+                        case config::TrackingMode::LUNAR:    mode_factor = 0.9760;   break;
+                        case config::TrackingMode::CUSTOM:   mode_factor = 1.0;      break;
+                        case config::TrackingMode::OFF:      mode_factor = 0.0;      break;
                     }
                     omega *= mode_factor;
                     
@@ -2557,13 +2425,13 @@ public:
                 }
                 
                 // Meridian flip detection and execution (equatorial mounts only)
-                if (config_.mount_type != MountType::EQUATORIAL) {
+                if (config_.mount_config.mount_type != config::MountType::EQUATORIAL) {
                     // Non-equatorial mounts (ALT_AZ, CASUAL): meridian flip not applicable.
                     time_to_meridian_ = 24.0;
                     pier_side_ = 1;
-                } else if (config_.meridian_flip_enabled) {
+                } else if (config_.safety_config.meridian_flip_enabled) {
                     // axis1_position_ is in servo degrees; convert to telescope HA degrees
-                    const double ha_gear_mf = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+                    const double ha_gear_mf = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                     double ha = axis1_position_ / ha_gear_mf; // Telescope HA in degrees
                     
                     // Calculate time to meridian (positive = before, negative = past)
@@ -2573,11 +2441,11 @@ public:
                     // East pier (1): HA < 0 (east of meridian, normal tracking)
                     // West pier (-1): HA > 0 (west of meridian, after flip)
                     // In the small hysteresis zone around meridian, keep the current side
-                    if (ha < -config_.meridian_flip_hysteresis_degrees && !meridian_flipped_) {
+                    if (ha < -config_.safety_config.meridian_flip_hysteresis_degrees && !meridian_flipped_) {
                         pier_side_ = 1;
                         // Mount has returned to the east side naturally; allow future flips
                         meridian_flipped_ = false;
-                    } else if (ha > config_.meridian_flip_hysteresis_degrees && !meridian_flip_in_progress_) {
+                    } else if (ha > config_.safety_config.meridian_flip_hysteresis_degrees && !meridian_flip_in_progress_) {
                         pier_side_ = -1;
                     }
                     
@@ -2586,12 +2454,12 @@ public:
                         // Detect meridian crossing: HA crossed from east (negative) to west (positive)
                         // beyond the hysteresis threshold
                         if (!meridian_flip_pending_ && !meridian_flipped_ &&
-                            ha > config_.meridian_flip_hysteresis_degrees) {
+                            ha > config_.safety_config.meridian_flip_hysteresis_degrees) {
                             // HA has crossed the meridian past the hysteresis zone
                             meridian_flip_pending_ = true;
                             meridian_flip_pending_time_ = std::chrono::steady_clock::now();
                             MOUNT_LOG_INFO("Meridian flip pending: HA={:.2f}°, delay={:.1f}min",
-                                     ha, config_.meridian_flip_delay_minutes);
+                                     ha, config_.safety_config.meridian_flip_delay_minutes);
                         }
                         
                         // Execute pending flip after delay has elapsed
@@ -2599,7 +2467,7 @@ public:
                             auto now = std::chrono::steady_clock::now();
                             auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
                                 now - meridian_flip_pending_time_).count();
-                            double delay_seconds = config_.meridian_flip_delay_minutes * 60.0;
+                            double delay_seconds = config_.safety_config.meridian_flip_delay_minutes * 60.0;
                             
                             if (elapsed >= delay_seconds) {
                                 // Initiate the flip: transition to MERIDIAN_FLIP state
@@ -2611,7 +2479,7 @@ public:
                                 
                                 // Compute flip targets: add 180° telescope to HA (scaled by gear_ratio), complement Dec.
                                 // axis1_target_ is in servo degrees, so add 180° * gear_ratio for the flip.
-                                const double ha_gear = config_.ha_axis_params.gear_ratio;
+                                const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
                                 double new_ha = axis1_target_ + 180.0 * ha_gear;
                                 // Normalize HA to [-180*gear, 180*gear] servo degrees
                                 const double half_range = 180.0 * ha_gear;
@@ -2620,12 +2488,12 @@ public:
                                 
                                 flip_ha_target_ = new_ha;
                                 // Dec complement: 180° telescope minus current Dec target (both in servo degrees)
-                                flip_dec_target_ = 180.0 * config_.dec_axis_params.gear_ratio - axis2_target_;
+                                flip_dec_target_ = 180.0 * config_.mount_config.dec_axis_params.gear_ratio - axis2_target_;
                                 
                                 // Save original tracking RA/Dec for resume after flip.
                                 // axis1_position_ is in servo degrees; divide by gear_ratio for telescope HA.
                                 double jd_flip = core::AstronomicalCalculations::getCurrentJulianDate();
-                                double lst_flip = core::AstronomicalCalculations::calculateLST(jd_flip, config_.longitude);
+                                double lst_flip = core::AstronomicalCalculations::calculateLST(jd_flip, config_.mount_config.longitude);
                                 double ha_hours_flip = axis1_position_ / 15.0 / ha_gear;
                                 flip_original_ra_ = lst_flip - ha_hours_flip;
                                 while (flip_original_ra_ < 0.0) flip_original_ra_ += 24.0;
@@ -2647,7 +2515,7 @@ public:
                     // This prevents the mount from being stuck in MERIDIAN_FLIP forever due to
                     // hardware stall, limit obstruction, or numerical convergence failure.
                     auto flip_elapsed = std::chrono::steady_clock::now() - flip_start_time_;
-                    double timeout_s = config_.meridian_flip_timeout_seconds;
+                    double timeout_s = config_.safety_config.meridian_flip_timeout_seconds;
                     if (flip_elapsed > std::chrono::duration<double>(timeout_s)) {
                         MOUNT_LOG_ERROR("Meridian flip timed out after {:.1f}s (timeout={:.0f}s) — "
                                  "axis1: {:.2f}°→{:.2f}°, axis2: {:.2f}°→{:.2f}°",
@@ -2667,17 +2535,49 @@ public:
                     // iteration restarts the profile ramp, preventing the drive
                     // from ever reaching full speed.
                     if (!flip_targets_sent_) {
-                        if (canopen_interface_) {
+                        if (hal_axis1_motor_ && hal_axis2_motor_) {
+                            // HAL path — set position targets on HAL motors
                             try {
-                                canopen_interface_->setPositionTarget(0, flip_ha_target_, config_.max_slew_rate, config_.slew_acceleration);
-                                canopen_interface_->setPositionTarget(1, flip_dec_target_, config_.max_slew_rate, config_.slew_acceleration);
-                                MOUNT_LOG_INFO("Flip targets sent: axis1={:.2f}°, axis2={:.2f}°",
+                                hal_axis1_motor_->setPosition(flip_ha_target_, config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
+                                hal_axis2_motor_->setPosition(flip_dec_target_, config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
+                                MOUNT_LOG_INFO("Flip targets sent to HAL: axis1={:.2f}°, axis2={:.2f}°",
                                          flip_ha_target_, flip_dec_target_);
                             } catch (const std::exception& e) {
-                                MOUNT_LOG_WARN("CANopen communication error during meridian flip: {}", e.what());
+                                MOUNT_LOG_WARN("HAL motor error during meridian flip: {}", e.what());
                             }
+                        } else {
+                            // No hardware — simulation only. Immediately set positions
+                            // to flip targets so the flip completes in one iteration.
+                            // NOTE: state_mutex_ is already held by the tracking loop
+                            // at this point (the enclosing MERIDIAN_FLIP block runs
+                            // inside the tracking loop's lock scope). Do NOT acquire
+                            // it again — that would deadlock on a non-recursive mutex.
+                            axis1_position_ = flip_ha_target_;
+                            axis2_position_ = flip_dec_target_;
+                            raw_servo_axis1_position_ = flip_ha_target_;
+                            raw_servo_axis2_position_ = flip_dec_target_;
                         }
                         flip_targets_sent_ = true;
+                    }
+
+                    // If HAL is driving, check if the motors report
+                    // target_reached and update internal positions accordingly.
+                    // For simulated interfaces that report target_reached
+                    // immediately, this allows the flip to complete even though
+                    // axis1_position_ hasn't physically changed.
+                    if (hal_axis1_motor_ && hal_axis2_motor_) {
+                        try {
+                            bool reached1 = hal_axis1_motor_->targetReached();
+                            bool reached2 = hal_axis2_motor_->targetReached();
+                            if (reached1 && reached2) {
+                                axis1_position_ = flip_ha_target_;
+                                axis2_position_ = flip_dec_target_;
+                                raw_servo_axis1_position_ = flip_ha_target_;
+                                raw_servo_axis2_position_ = flip_dec_target_;
+                            }
+                        } catch (const std::exception&) {
+                            // Ignore
+                        }
                     }
 
                     // Compute distance to flip targets (servo degrees) from encoder feedback.
@@ -2685,8 +2585,8 @@ public:
                     double d2 = flip_dec_target_ - axis2_position_;
 
                     // Normalize d1 to shortest path in servo degrees
-                    double ha_gear_flip = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                    double dec_gear_flip = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                    double ha_gear_flip = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                    double dec_gear_flip = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                     double full_turn_ha = 360.0 * ha_gear_flip;
                     double full_turn_dec = 360.0 * dec_gear_flip;
                     while (d1 > full_turn_ha / 2.0) d1 -= full_turn_ha;
@@ -2695,7 +2595,7 @@ public:
                     while (d2 < -full_turn_dec / 2.0) d2 += full_turn_dec;
 
                     // Position tolerance in servo degrees
-                    double tol_servo = config_.position_tolerance * ha_gear_flip;
+                    double tol_servo = config_.mount_config.position_tolerance * ha_gear_flip;
                     bool reached = (std::abs(d1) <= tol_servo && std::abs(d2) <= tol_servo);
 
                     // Log progress every ~1s (every 50 iterations at 20ms)
@@ -2725,7 +2625,7 @@ public:
                         // quickly converge to the new tracking regime.
                         if (position_kf_) {
                             position_kf_->init(axis1_position_, axis2_position_,
-                                               config_.process_noise, config_.measurement_noise);
+                                               config_.mount_config.process_noise, config_.mount_config.measurement_noise);
                         }
                         
                         MOUNT_LOG_INFO("Meridian flip complete: HA={:.2f}°, Dec={:.2f}°, pier_side={}",
@@ -2739,8 +2639,15 @@ public:
                 // Snapshot values needed for I/O operations after lock release.
                 snap_rate_1 = current_rate_1;
                 snap_rate_2 = current_rate_2;
-                snap_tracking_accel = config_.tracking_acceleration;
-                snap_temperature = env_temperature_;
+                snap_tracking_accel = config_.mount_config.tracking_acceleration;
+                {
+                    // env_mutex_ is level 1 in the lock hierarchy (below state_mutex_),
+                    // and setEnvironmentalParams() never acquires state_mutex_, so this
+                    // nested shared_lock cannot create a lock cycle.  Guards against a
+                    // data race with setEnvironmentalParams() (called from the gRPC thread).
+                    std::shared_lock<std::shared_mutex> env_lock(*env_mutex_);
+                    snap_temperature = env_temperature_;
+                }
                 is_tracking = (state_ == MountStatus::State::TRACKING);
                 
                 // For EQUATORIAL position-mode tracking, capture the celestial
@@ -2756,7 +2663,7 @@ public:
                 // target.  This produces uncontrolled max-speed slewing.
                 snap_target_ra = 0.0;
                 snap_target_dec = 0.0;
-                if (config_.mount_type == MountType::EQUATORIAL) {
+                if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                     // Use the celestial target coordinates stored by startTracking().
                     // These are fixed RA/Dec of the object being tracked; the
                     // position-update block below computes HA = LST - RA at the
@@ -2771,8 +2678,8 @@ public:
                     snap_target_ra = tracking_target_ra_hours_;
                     snap_target_dec = tracking_target_dec_deg_;
                     
-                    const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                    const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                    const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                    const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                     // Store current axis targets for the I/O block below
                     snap_pos_target_axis1_ = axis1_target_;
                     snap_pos_target_axis2_ = axis2_target_;
@@ -2793,8 +2700,8 @@ public:
                 
                 // ---- I/O Block 3: Motor control updates (outside state_mutex_) ----
                 if (is_tracking) {
-                    if (config_.mount_type == MountType::EQUATORIAL &&
-                        !config_.equatorial_tracking_velocity_mode) {
+                    if (config_.mount_config.mount_type == config::MountType::EQUATORIAL &&
+                        !config_.mount_config.equatorial_tracking_velocity_mode) {
                         // ── EQUATORIAL position-mode tracking (default) ────
                         static bool pos_mode_logged = false;
                         if (!pos_mode_logged) {
@@ -2813,27 +2720,27 @@ public:
                             // actual position.  Without the lead the drive reaches the target
                             // before the next update arrives, producing stop-start oscillation.
                             double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-                            double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+                            double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
                             constexpr double SIDEREAL_HOURS_PER_SEC = 24.0 / 86164.0905;
                             // Adaptive lead: must be > profile_velocity_ratio × update_interval
                             // to prevent the drive from catching up before the next update.
                             // profile_velocity_ratio = pos_vel / sidereal_rate = 1.5.
                             // With update interval ~1.0s, lead must be > 1.5s.
                             // 1.5 × 1.0 + 0.5 margin = 2.0s ensures the drive never stops.
-                            const double update_interval_s = POS_UPDATE_INTERVAL * config_.tracking_update_ms / 1000.0;
+                            const double update_interval_s = POS_UPDATE_INTERVAL * config_.tracking_config.tracking_update_ms / 1000.0;
                             const double POS_LEAD_SECONDS = 1.5 * update_interval_s + 0.5;
                             double ha_hours = lst - snap_target_ra + POS_LEAD_SECONDS * SIDEREAL_HOURS_PER_SEC;
                             while (ha_hours > 12.0) ha_hours -= 24.0;
                             while (ha_hours < -12.0) ha_hours += 24.0;
                             
-                            const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                            const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                            const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                            const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                             double new_axis1_target = ha_hours * 15.0 * ha_gear;
                             double new_axis2_target = snap_target_dec * dec_gear;
 
                             // Apply per-axis rotation direction inversion
-                            if (config_.invert_axis1) new_axis1_target = -new_axis1_target;
-                            if (config_.invert_axis2) new_axis2_target = -new_axis2_target;
+                            if (config_.mount_config.invert_axis1) new_axis1_target = -new_axis1_target;
+                            if (config_.mount_config.invert_axis2) new_axis2_target = -new_axis2_target;
                             
                             // Use profile velocity 1.5× the sidereal servo rate so the
                             // drive smoothly catches up to the lead target without
@@ -2850,34 +2757,34 @@ public:
                             try {
                                 bool pos_ok = false;
                                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel, config_.slew_acceleration);
-                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel, config_.slew_acceleration);
+                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel, config_.mount_config.slew_acceleration);
+                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel, config_.mount_config.slew_acceleration);
                                     pos_ok = ok1 && ok2;
-                                } else if (canopen_interface_) {
-                                    bool ok1 = canopen_interface_->setPositionTarget(0, new_axis1_target, pos_vel, config_.slew_acceleration);
-                                    bool ok2 = canopen_interface_->setPositionTarget(1, new_axis2_target, pos_vel, config_.slew_acceleration);
-                                    pos_ok = ok1 && ok2;
+                                } else {
+                                    // Simulated tracking — position targets are
+                                    // accepted and the loop advances positions
+                                    // via the Kalman filter.
+                                    pos_ok = true;
                                 }
 
                                 if (diag_log) {
                                     double drv1 = raw_servo_axis1_position_;
                                     double drv2 = raw_servo_axis2_position_;
-                                    // Read drive status to detect Quick Stop / fault
-                                    auto st0 = canopen_interface_->getDriveStatus(0);
-                                    auto st1 = canopen_interface_->getDriveStatus(1);
+                                    // Read motor status to detect faults
+                                    bool en0 = hal_axis1_motor_ ? hal_axis1_motor_->isEnabled() : false;
+                                    bool en1 = hal_axis2_motor_ ? hal_axis2_motor_->isEnabled() : false;
+                                    bool err0 = hal_axis1_motor_ ? hal_axis1_motor_->inErrorState() : false;
+                                    bool err1 = hal_axis2_motor_ ? hal_axis2_motor_->inErrorState() : false;
                                     MOUNT_LOG_INFO("Tracking target: axis1={:.2f}° axis2={:.2f}° "
                                                    "| Drive pos: axis1={:.2f}° axis2={:.2f}° "
                                                    "| Delta: axis1={:.2f}° axis2={:.2f}° "
                                                    "| HA lead={:.1f}s pos_vel={:.4f}°/s OK={} "
-                                                   "| Drive: en={}/{} qstop={}/{} fault={}/{} sw=0x{:04X}/0x{:04X}",
+                                                   "| Drive: en={}/{} fault={}/{}",
                                                    new_axis1_target, new_axis2_target,
                                                    drv1, drv2,
                                                    new_axis1_target - drv1, new_axis2_target - drv2,
                                                    POS_LEAD_SECONDS, pos_vel, pos_ok,
-                                                   st0.enabled, st1.enabled,
-                                                   st0.quick_stop, st1.quick_stop,
-                                                   st0.error, st1.error,
-                                                   st0.status_word, st1.status_word);
+                                                   en0, en1, err0, err1);
                                 } else if (!pos_ok) {
                                     MOUNT_LOG_WARN("Tracking position target FAILED: "
                                                    "axis1={:.2f}° axis2={:.2f}°",
@@ -2887,8 +2794,8 @@ public:
                                 MOUNT_LOG_WARN("Position update error during tracking: {}", e.what());
                             }
                         }
-                    } else if (config_.mount_type == MountType::EQUATORIAL &&
-                               config_.equatorial_tracking_velocity_mode) {
+                    } else if (config_.mount_config.mount_type == config::MountType::EQUATORIAL &&
+                               config_.mount_config.equatorial_tracking_velocity_mode) {
                         // ── EQUATORIAL velocity-mode tracking (experimental) ─
                         static bool vel_mode_logged = false;
                         if (!vel_mode_logged) {
@@ -2902,26 +2809,23 @@ public:
                         // Rate is constant for sidereal tracking, so send once
                         // and then only on significant changes or periodically.
                         constexpr double EQUAT_VEL_THRESHOLD = 1e-6;
-                        const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                        const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+                        const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                        const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                         const double sidereal_servo_rate = 0.004178074 * ha_gear;
                         double eq_vel_rate_1 = sidereal_servo_rate;   // sidereal HA rate
                         double eq_vel_rate_2 = 0.0;                    // Dec rate = 0
 
                         // Apply per-axis rotation direction inversion
-                        if (config_.invert_axis1) eq_vel_rate_1 = -eq_vel_rate_1;
-                        if (config_.invert_axis2) eq_vel_rate_2 = -eq_vel_rate_2;
+                        if (config_.mount_config.invert_axis1) eq_vel_rate_1 = -eq_vel_rate_1;
+                        if (config_.mount_config.invert_axis2) eq_vel_rate_2 = -eq_vel_rate_2;
                         
                         bool rate_changed = (std::abs(eq_vel_rate_1 - last_sent_rate_1_) > EQUAT_VEL_THRESHOLD) ||
                                            (std::abs(eq_vel_rate_2 - last_sent_rate_2_) > EQUAT_VEL_THRESHOLD);
                         if (rate_changed) {
                             try {
                                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                    hal_axis1_motor_->setVelocity(eq_vel_rate_1, config_.tracking_acceleration);
-                                    hal_axis2_motor_->setVelocity(eq_vel_rate_2, config_.tracking_acceleration);
-                                } else if (canopen_interface_) {
-                                    canopen_interface_->setVelocityTarget(0, eq_vel_rate_1, config_.tracking_acceleration);
-                                    canopen_interface_->setVelocityTarget(1, eq_vel_rate_2, config_.tracking_acceleration);
+                                    hal_axis1_motor_->setVelocity(eq_vel_rate_1, config_.mount_config.tracking_acceleration);
+                                    hal_axis2_motor_->setVelocity(eq_vel_rate_2, config_.mount_config.tracking_acceleration);
                                 }
                                 last_sent_rate_1_ = eq_vel_rate_1;
                                 last_sent_rate_2_ = eq_vel_rate_2;
@@ -2959,19 +2863,6 @@ public:
                                     MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
                                 }
                             }
-                        } else if (canopen_interface_) {
-                            rate_changed = (std::abs(smoothed_rate_1 - last_sent_rate_1_) > RATE_CHANGE_THRESHOLD) ||
-                                           (std::abs(smoothed_rate_2 - last_sent_rate_2_) > RATE_CHANGE_THRESHOLD);
-                            if (rate_changed) {
-                                try {
-                                    canopen_interface_->setVelocityTarget(0, smoothed_rate_1, snap_tracking_accel);
-                                    canopen_interface_->setVelocityTarget(1, smoothed_rate_2, snap_tracking_accel);
-                                    last_sent_rate_1_ = smoothed_rate_1;
-                                    last_sent_rate_2_ = smoothed_rate_2;
-                                } catch (const std::exception& e) {
-                                    MOUNT_LOG_WARN("CANopen communication error during tracking: {}", e.what());
-                                }
-                            }
                         }
                     }
                 }
@@ -3001,10 +2892,6 @@ public:
                 // indefinitely, causing uncontrolled mount rotation.
                 if (hal_axis1_motor_) hal_axis1_motor_->stop();
                 if (hal_axis2_motor_) hal_axis2_motor_->stop();
-                if (!hal_axis1_motor_ && canopen_interface_) {
-                    canopen_interface_->stopAxis(0);
-                    canopen_interface_->stopAxis(1);
-                }
                 notifyError(exit_error);
                 notifyStatusChanged();
             } else if (exit_state == MountStatus::State::MERIDIAN_FLIP) {
@@ -3038,13 +2925,9 @@ public:
                 axis2_rate_ = 0.0;
             }
             
-            // Stop HAL motors or CANopen axes immediately
+            // Stop HAL motors immediately
             if (hal_axis1_motor_) hal_axis1_motor_->stop();
             if (hal_axis2_motor_) hal_axis2_motor_->stop();
-            if (!hal_axis1_motor_ && canopen_interface_) {
-                canopen_interface_->stopAxis(0);
-                canopen_interface_->stopAxis(1);
-            }
             
             // Stop HAL interface — halts periodic hardware I/O after active motion ends.
             if (hal_interface_) {
@@ -3068,7 +2951,7 @@ public:
         // joinWorkThread() is called WITHOUT holding state_mutex_ to avoid deadlock
         // with a running work thread that may hold state_mutex_.
         {
-            std::lock_guard<std::mutex> tlock(*thread_mutex_);
+            std::lock_guard<std::shared_mutex> tlock(*thread_mutex_);
             
             // Signal any running work thread (e.g. tracking loop) to stop before joining.
             // See slewToEquatorial() for detailed explanation.
@@ -3087,28 +2970,21 @@ public:
                 if (hal_safety_monitor_) {
                     hal_safety_monitor_->clearErrors(0);
                     hal_safety_monitor_->clearErrors(1);
-                } else if (canopen_interface_) {
-                    canopen_interface_->clearErrors(0);
-                    canopen_interface_->clearErrors(1);
                 }
                 
                 state_ = MountStatus::State::PARKING;
                 
-                // Stop any active motion via HAL or CANopen first
+                // Stop any active motion via HAL first
                 if (hal_axis1_motor_) hal_axis1_motor_->stop();
                 if (hal_axis2_motor_) hal_axis2_motor_->stop();
-                if (!hal_axis1_motor_ && canopen_interface_) {
-                    canopen_interface_->stopAxis(0);
-                    canopen_interface_->stopAxis(1);
-                }
                 
                 // Park targets – move to configurable park position.
                 // Park positions are configured in telescope/mount degrees;
                 // convert to servo degrees by multiplying by gear_ratio.
-                const double ha_gear = config_.ha_axis_params.gear_ratio;
-                const double dec_gear = config_.dec_axis_params.gear_ratio;
-                axis1_target_ = config_.park_position_axis1 * ha_gear;
-                axis2_target_ = config_.park_position_axis2 * dec_gear;
+                const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
+                const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
+                axis1_target_ = config_.safety_config.park_position_axis1 * ha_gear;
+                axis2_target_ = config_.safety_config.park_position_axis2 * dec_gear;
                 tracking_active_ = false;
             }
             
@@ -3128,18 +3004,8 @@ public:
                 hal_axis1_motor_->enable();
                 hal_axis2_motor_->enable();
                 
-                motion_started = hal_axis1_motor_->setPosition(config_.park_position_axis1, PARK_VELOCITY, PARK_ACCELERATION);
-                motion_started = hal_axis2_motor_->setPosition(config_.park_position_axis2, PARK_VELOCITY, PARK_ACCELERATION) && motion_started;
-            } else if (canopen_interface_) {
-                // Re-enable drives after stop, then set position targets
-                canopen_interface_->enableDrive(0);
-                canopen_interface_->enableDrive(1);
-                
-                // Park positions are in telescope degrees; convert to servo degrees.
-                const double ha_gear_p = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-                const double dec_gear_p = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
-                motion_started = canopen_interface_->setPositionTarget(0, config_.park_position_axis1 * ha_gear_p, PARK_VELOCITY, PARK_ACCELERATION);
-                motion_started = canopen_interface_->setPositionTarget(1, config_.park_position_axis2 * dec_gear_p, PARK_VELOCITY, PARK_ACCELERATION) && motion_started;
+                motion_started = hal_axis1_motor_->setPosition(config_.safety_config.park_position_axis1, PARK_VELOCITY, PARK_ACCELERATION);
+                motion_started = hal_axis2_motor_->setPosition(config_.safety_config.park_position_axis2, PARK_VELOCITY, PARK_ACCELERATION) && motion_started;
             } else {
                 motion_started = true;
             }
@@ -3182,58 +3048,35 @@ public:
                         MOUNT_LOG_WARN("HAL motor error during park: {}", e.what());
                         reached = false;
                     }
-                } else if (canopen_interface_) {
-                    try {
-                        auto status0 = canopen_interface_->getDriveStatus(0);
-                        auto status1 = canopen_interface_->getDriveStatus(1);
-                        
-                        // Check for CANopen errors during park
-                        if (status0.error || status1.error) {
-                            MOUNT_LOG_ERROR("CANopen error during park: axis0 error={}, axis1 error={}",
-                                      status0.error, status1.error);
-                            // Try to clear errors and continue
-                            canopen_interface_->clearErrors(0);
-                            canopen_interface_->clearErrors(1);
-                            std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
-                            elapsed_ms += POLL_MS;
-                            continue;
-                        }
-                        
-                        if (!status0.target_reached) reached = false;
-                        if (!status1.target_reached) reached = false;
-                        
-                        // Update internal positions from actual CANopen feedback for accuracy
-                        if (reached) {
-                            auto pos0 = canopen_interface_->getPositionData(0);
-                            auto pos1 = canopen_interface_->getPositionData(1);
-                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                            axis1_position_ = pos0.actual_position;
-                            axis2_position_ = pos1.actual_position;
-                        }
-                    } catch (const std::exception& e) {
-                        MOUNT_LOG_WARN("CANopen communication error during park: {}", e.what());
-                        reached = false;
-                    }
                 } else {
-                    // Simulation path: gradually move axes towards park position
+                    // Simulation path: gradually move axes towards park position.
+                    // Note: axis positions here are in telescope degrees (no hardware),
+                    // and raw_servo positions track the same value for getStatus().
                     std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                    double d1 = config_.park_position_axis1 - axis1_position_;
-                    double d2 = config_.park_position_axis2 - axis2_position_;
+                    double d1 = config_.safety_config.park_position_axis1 - axis1_position_;
+                    double d2 = config_.safety_config.park_position_axis2 - axis2_position_;
                     double step = 2.0;
                     
                     if (std::abs(d1) > POSITION_TOLERANCE_DEG) {
                         axis1_position_ += std::copysign(std::min(step, std::abs(d1)), d1);
                         reached = false;
                     } else {
-                        axis1_position_ = config_.park_position_axis1;
+                        axis1_position_ = config_.safety_config.park_position_axis1;
                     }
                     
                     if (std::abs(d2) > POSITION_TOLERANCE_DEG) {
                         axis2_position_ += std::copysign(std::min(step, std::abs(d2)), d2);
                         reached = false;
                     } else {
-                        axis2_position_ = config_.park_position_axis2;
+                        axis2_position_ = config_.safety_config.park_position_axis2;
                     }
+                    
+                    // Keep raw_servo positions in sync so getStatus() reports
+                    // correct telescope positions (raw_servo / gear_ratio).
+                    // Without this, telescope_axis1/2_position stays at 0.0
+                    // after parking completes in simulation mode.
+                    raw_servo_axis1_position_ = axis1_position_;
+                    raw_servo_axis2_position_ = axis2_position_;
                 }
                 
                 if (reached) {
@@ -3242,15 +3085,11 @@ public:
                     axis2_rate_ = 0.0;
                     state_ = MountStatus::State::PARKED;
                     
-                    // Disable drives for power saving and safety when parked
+                    // Disable motors for power saving and safety when parked
                     if (hal_axis1_motor_) hal_axis1_motor_->disable();
                     if (hal_axis2_motor_) hal_axis2_motor_->disable();
-                    if (!hal_axis1_motor_ && canopen_interface_) {
-                        canopen_interface_->disableDrive(0);
-                        canopen_interface_->disableDrive(1);
-                    }
                     
-                    MOUNT_LOG_INFO("Mount parked successfully at ({}, {})", config_.park_position_axis1, config_.park_position_axis2);
+                    MOUNT_LOG_INFO("Mount parked successfully at ({}, {})", config_.safety_config.park_position_axis1, config_.safety_config.park_position_axis2);
                     break;
                 }
                 
@@ -3295,10 +3134,10 @@ public:
         // Join any background thread first — it may be in an ERROR loop
         joinWorkThread();
         
-        // ── Reset CANopen/HAL errors on both axes ALWAYS ─────────────
+        // ── Reset HAL errors on both axes ALWAYS ─────────────────────
         // Drive-level faults (CiA 402 fault state) can occur even when
         // the controller state_ is not ERROR (e.g. IDLE after a quick
-        // stop).  The CANopen fault reset and drive re-enable must run
+        // stop).  The fault reset and motor re-enable must run
         // unconditionally so the user can recover from hardware faults
         // regardless of the logical controller state.
         
@@ -3310,18 +3149,23 @@ public:
                 MOUNT_LOG_WARN("HAL clearErrors exception: {}", e.what());
             }
         }
-        if (canopen_interface_) {
+        if (hal_axis1_motor_) {
             try {
-                canopen_interface_->clearErrors(0);
-                canopen_interface_->clearErrors(1);
-                // Re-enable drives that may have been disabled by failed
-                // SDO operations (e.g. setVelocityTarget fast-fail path).
-                // Without this, the drives stay permanently disabled after
-                // a single SDO timeout and the mount cannot move.
-                canopen_interface_->enableDrive(0);
-                canopen_interface_->enableDrive(1);
+                hal_axis1_motor_->clearErrors();
+                // Re-enable the motor that may have been disabled by a failed
+                // command.  Without this, the motor stays permanently disabled
+                // after a single SDO timeout and the mount cannot move.
+                hal_axis1_motor_->enable();
             } catch (const std::exception& e) {
-                MOUNT_LOG_WARN("CANopen clearErrors exception: {}", e.what());
+                MOUNT_LOG_WARN("HAL axis 0 clearErrors exception: {}", e.what());
+            }
+        }
+        if (hal_axis2_motor_) {
+            try {
+                hal_axis2_motor_->clearErrors();
+                hal_axis2_motor_->enable();
+            } catch (const std::exception& e) {
+                MOUNT_LOG_WARN("HAL axis 1 clearErrors exception: {}", e.what());
             }
         }
         
@@ -3344,7 +3188,7 @@ public:
                 
                 MOUNT_LOG_INFO("Mount error state cleared, returned to IDLE");
             } else {
-                MOUNT_LOG_INFO("CANopen/HAL errors cleared (controller was not in ERROR state)");
+                MOUNT_LOG_INFO("HAL errors cleared (controller was not in ERROR state)");
             }
         }
         
@@ -3364,15 +3208,15 @@ public:
         status.axis2_position = axis2_position_;
         // Telescope position: servo degrees divided by gear ratio gives
         // the actual telescope axis position on the sky.
-        // Uses raw_servo_axis1_position_ (updated by refreshPositionsFromCANopen
+        // Uses raw_servo_axis1_position_ (updated by refreshPositionsFromHAL
         // from the physical drive) as the ground-truth position.  During
         // tracking, axis1_position_ is managed exclusively by the tracking
         // loop and may diverge from the drive if the drive lags; the raw
         // servo position always reflects what the hardware reports.
         // Guard against zero or near-zero gear_ratio (e.g. from corrupted config)
         // that would produce inf/nan in the status display and logs.
-        double ha_gear = config_.ha_axis_params.gear_ratio;
-        double dec_gear = config_.dec_axis_params.gear_ratio;
+        double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
+        double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
         if (ha_gear < 1.0) ha_gear = 360.0;
         if (dec_gear < 1.0) dec_gear = 360.0;
 
@@ -3382,7 +3226,7 @@ public:
 
         // Normalize telescope positions to [0°, 360°) for consistent display.
         // -50° → 310°, 400° → 40°, etc.
-        if (config_.mount_type == MountType::EQUATORIAL) {
+        if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
             // HA in [0°, 360°)
             raw_tel_axis1 = std::fmod(raw_tel_axis1, 360.0);
             if (raw_tel_axis1 < 0.0) raw_tel_axis1 += 360.0;
@@ -3392,7 +3236,7 @@ public:
             // Normalize Dec to [0°, 360°) as well
             raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
             if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
-        } else if (config_.mount_type == MountType::ALT_AZ) {
+        } else if (config_.mount_config.mount_type == config::MountType::ALT_AZ) {
             // Altitude in [0°, 90°], Azimuth in [0°, 360°)
             if (raw_tel_axis1 > 90.0) raw_tel_axis1 = 90.0;
             if (raw_tel_axis1 < 0.0) raw_tel_axis1 = 0.0;
@@ -3446,7 +3290,7 @@ public:
         status.soft_limit_warning_message = soft_limit_warning_message_;
 
         // Bootstrap / encoder status fields (plan §8.4)
-        status.encoders_absolute = config_.encoders_absolute;
+        status.encoders_absolute = config_.mount_config.encoders_absolute;
         status.bootstrap_mode = static_cast<int>(bootstrap_mode_);
         status.bootstrap_calibrated = bootstrap_calibrated_;
         status.bootstrap_measurement_count = static_cast<int>(bootstrap_measurements_.size());
@@ -3464,53 +3308,50 @@ public:
      *
      * Angles are normalized to [0°, 360°) for consistent reporting.
      */
-    void refreshPositionsFromCANopen() {
-        if (!canopen_interface_) return;
+    void refreshPositionsFromHAL() {
+        if (!hal_axis1_motor_ || !hal_axis2_motor_) return;
 
-        // Skip SDO reads if drives are not enabled or not connected.
-        // Each SDO read would time out (~1 s per axis) and block the main
-        // loop, making the controller unresponsive and causing instability
-        // when gRPC handlers compete for the CANopen mutex.
-        if (!canopen_interface_->isConnected()) return;
-        if (!canopen_interface_->isDriveEnabled(0) &&
-            !canopen_interface_->isDriveEnabled(1))
+        // Skip position reads if the motors are not enabled.  Each read may
+        // time out and block the main loop, making the controller unresponsive
+        // and causing instability when gRPC handlers compete for the bus.
+        if (!hal_axis1_motor_->isEnabled() && !hal_axis2_motor_->isEnabled())
             return;
 
-        // ── Read positions OUTSIDE state_mutex_ to prevent SDO timeouts ──
-        // SDO reads can block for up to ~1 s per axis when a drive is
-        // unresponsive. Holding state_mutex_ during SDO reads would make
+        // ── Read positions OUTSIDE state_mutex_ to prevent timeouts ──
+        // Reads can block for up to ~1 s per axis when a motor is
+        // unresponsive. Holding state_mutex_ during such reads would make
         // the controller unresponsive to all gRPC calls (getStatus, stop,
-        // etc.), causing the observed "controller stops responding" bug.
-        // Instead, read into local variables first, then take the lock
+        // etc.). Instead, read into local variables first, then take the lock
         // briefly to update the cached state.
-        ICanOpenInterface::PositionData pos0, pos1;
+        double pos0 = 0.0, pos1 = 0.0, vel0 = 0.0, vel1 = 0.0;
         try {
-            pos0 = canopen_interface_->getPositionData(0);
-            pos1 = canopen_interface_->getPositionData(1);
+            pos0 = hal_axis1_motor_->getActualPosition();
+            pos1 = hal_axis2_motor_->getActualPosition();
+            vel0 = hal_axis1_motor_->getActualVelocity();
+            vel1 = hal_axis2_motor_->getActualVelocity();
         } catch (const std::exception& e) {
-            MOUNT_LOG_DEBUG("refreshPositionsFromCANopen: {}", e.what());
+            MOUNT_LOG_DEBUG("refreshPositionsFromHAL: {}", e.what());
             return;
         }
 
-        // Only update if the SDO reads returned plausible data.
-        // getPositionData() returns cached zeros when SDO fails.
-        if (!std::isfinite(pos0.actual_position) || !std::isfinite(pos1.actual_position)) {
+        // Only update if the reads returned plausible data.
+        if (!std::isfinite(pos0) || !std::isfinite(pos1)) {
             return;
         }
 
         {
             std::lock_guard<std::shared_mutex> lock(*state_mutex_);
 
-            // Store raw (absolute) servo motor position from CANopen hardware.
+            // Store raw (absolute) servo motor position from the HAL hardware.
             // This is the ground-truth position; getStatus() reports the
             // telescope position derived from these values regardless of
             // whether tracking is active.
-            raw_servo_axis1_position_ = pos0.actual_position;
-            raw_servo_axis2_position_ = pos1.actual_position;
+            raw_servo_axis1_position_ = pos0;
+            raw_servo_axis2_position_ = pos1;
 
             // During active tracking, the tracking loop OWNS axis1_position_ /
-            // axis2_position_.  Overwriting them here with the CANopen drive
-            // position creates a destructive oscillation: the tracking loop
+            // axis2_position_.  Overwriting them here with the motor position
+            // creates a destructive oscillation: the tracking loop
             // accumulates rate×dt at sidereal rate, then refreshPositions
             // resets the position back to the (lagging) drive value.  In the
             // logs this appears as a repetitive ~20° sawtooth pattern.
@@ -3519,15 +3360,15 @@ public:
             // update axis1_position_/axis2_position_ so getStatus() returns
             // the correct drive position for UI display and status queries.
             if (!tracking_active_) {
-                axis1_position_ = pos0.actual_position;
-                axis2_position_ = pos1.actual_position;
+                axis1_position_ = pos0;
+                axis2_position_ = pos1;
             }
-            // Store actual CANopen velocities in dedicated fields.
+            // Store actual motor velocities in dedicated fields.
             // Do NOT overwrite axis1_rate_/axis2_rate_ which hold the
             // commanded tracking rates set by startTracking() — the UI
             // needs both values (commanded vs actual).
-            actual_axis1_rate_ = pos0.actual_velocity;
-            actual_axis2_rate_ = pos1.actual_velocity;
+            actual_axis1_rate_ = vel0;
+            actual_axis2_rate_ = vel1;
 
             // Throttled log: servo → telescope position + velocity.
             // Logs every ~50 calls (~5 s at 100 ms main loop) to help
@@ -3535,20 +3376,19 @@ public:
             static int refresh_log_counter = 0;
             refresh_log_counter++;
             if (refresh_log_counter % 50 == 0) {
-                double ha_gear_r = config_.ha_axis_params.gear_ratio;
-                double dec_gear_r = config_.dec_axis_params.gear_ratio;
+                double ha_gear_r = config_.mount_config.ha_axis_params.gear_ratio;
+                double dec_gear_r = config_.mount_config.dec_axis_params.gear_ratio;
                 if (ha_gear_r < 1.0) ha_gear_r = 360.0;
                 if (dec_gear_r < 1.0) dec_gear_r = 360.0;
-                double telescope_axis1 = pos0.actual_position / ha_gear_r;
-                double telescope_axis2 = pos1.actual_position / dec_gear_r;
-                MOUNT_LOG_INFO("CANopen pos → Telescope: axis1={:.4f}° axis2={:.4f}° "
+                double telescope_axis1 = pos0 / ha_gear_r;
+                double telescope_axis2 = pos1 / dec_gear_r;
+                MOUNT_LOG_INFO("HAL pos → Telescope: axis1={:.4f}° axis2={:.4f}° "
                                "| Servo: axis1={:.4f}° axis2={:.4f}° "
                                "| Vel: axis1={:.4f}°/s axis2={:.4f}°/s "
                                "| Gear HA={:.1f}:1 Dec={:.1f}:1",
                                telescope_axis1, telescope_axis2,
-                               pos0.actual_position, pos1.actual_position,
-                               pos0.actual_velocity, pos1.actual_velocity,
-                               config_.ha_axis_params.gear_ratio, config_.dec_axis_params.gear_ratio);
+                               pos0, pos1, vel0, vel1,
+                               config_.mount_config.ha_axis_params.gear_ratio, config_.mount_config.dec_axis_params.gear_ratio);
             }
         }
     }
@@ -3737,7 +3577,7 @@ public:
             }
             
             // Step 6: Store as estimated orientation
-            MountOrientation estimated_q;
+            config::MountOrientation estimated_q;
             estimated_q.quaternion = {{qx, qy, qz, qw}};
             bootstrap_estimated_orientation_ = estimated_q;
             
@@ -3761,10 +3601,6 @@ public:
             double rms_error_deg = std::sqrt(residual_sum_sq / bootstrap_measurements_.size());
             bootstrap_estimated_quaternion_error_arcsec_ = rms_error_deg * 3600.0;
             
-            // Store RMS in the shared bootstrap fields for API compatibility
-            bootstrap_rms_ra_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
-            bootstrap_rms_dec_arcsec_ = bootstrap_estimated_quaternion_error_arcsec_;
-            
             // Apply estimated orientation to the mount
             mount_orientation_ = estimated_q;
             
@@ -3777,7 +3613,7 @@ public:
             //   - Offset < 5°   → post-calibration pointing error < 0.1°
             //   - Offset 5-10°  → pointing error 0.1-1.0°
             //   - Offset > 10°  → pointing error > 1.0° — consider TPOINT after bootstrap
-            if (config_.mount_type == MountType::ALT_AZ) {
+            if (config_.mount_config.mount_type == config::MountType::ALT_AZ) {
                 MOUNT_LOG_INFO("ALT_AZ bootstrap: encoder altitude offset is a translation on the "
                          "sphere, not a pure 3D rotation. Wahba/SVD finds the best rotation "
                          "approximation. RMS error={:.2f}\". For offsets >10\u00b0 re-pointing "
@@ -3786,10 +3622,10 @@ public:
             }
             
             std::string mount_type_str;
-            switch (config_.mount_type) {
-                case MountType::CASUAL:    mount_type_str = "CASUAL"; break;
-                case MountType::EQUATORIAL: mount_type_str = "EQUATORIAL"; break;
-                case MountType::ALT_AZ:    mount_type_str = "ALT_AZ"; break;
+            switch (config_.mount_config.mount_type) {
+                case config::MountType::CASUAL:    mount_type_str = "CASUAL"; break;
+                case config::MountType::EQUATORIAL: mount_type_str = "EQUATORIAL"; break;
+                case config::MountType::ALT_AZ:    mount_type_str = "ALT_AZ"; break;
                 default:                   mount_type_str = "UNKNOWN"; break;
             }
             MOUNT_LOG_INFO("{} bootstrap calibration: Q=[{:.4f}, {:.4f}, {:.4f}, {:.4f}], "
@@ -3815,14 +3651,14 @@ public:
         return bootstrap_calibrated_;
     }
 
-    bool setBootstrapMode(BootstrapMode mode) {
+    bool setBootstrapMode(config::BootstrapMode mode) {
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         bootstrap_mode_ = mode;
         MOUNT_LOG_INFO("Bootstrap mode set to {}", static_cast<int>(mode));
         return true;
     }
 
-    BootstrapMode getBootstrapMode() const {
+    config::BootstrapMode getBootstrapMode() const {
         std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         return bootstrap_mode_;
     }
@@ -3831,11 +3667,9 @@ public:
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         bootstrap_measurements_.clear();
         bootstrap_calibrated_ = false;
-        bootstrap_rms_ra_arcsec_ = 0.0;
-        bootstrap_rms_dec_arcsec_ = 0.0;
         bootstrap_ra_correction_arcsec_ = 0.0;
         bootstrap_dec_correction_arcsec_ = 0.0;
-        bootstrap_estimated_orientation_ = MountOrientation{};
+        bootstrap_estimated_orientation_ = config::MountOrientation{};
         bootstrap_estimated_quaternion_error_arcsec_ = 0.0;
     }
     
@@ -3844,12 +3678,8 @@ public:
         return bootstrap_measurements_.size();
     }
     
-    double getBootstrapRmsRaArcsec() const {
-        return bootstrap_rms_ra_arcsec_;
-    }
-    
-    double getBootstrapRmsDecArcsec() const {
-        return bootstrap_rms_dec_arcsec_;
+    double getBootstrapQuaternionErrorArcsec() const {
+        return bootstrap_estimated_quaternion_error_arcsec_;
     }
     
     double getBootstrapRaCorrectionArcsec() const {
@@ -3918,42 +3748,11 @@ public:
         return true;
     }
     
-    bool addTPointMeasurement(double observed_ra, double observed_dec,
-                              double expected_ra, double expected_dec,
-                              double temperature, double pressure,
-                              double humidity) {
-        // Simplified version - use current mount position
-        double mount_ha = 0.0;  // Would be from encoders in real implementation
-        double mount_dec = expected_dec;  // Approximation
-        
-        return addTPointMeasurement(observed_ra, observed_dec,
-                                   expected_ra, expected_dec,
-                                   mount_ha, mount_dec,
-                                   temperature, pressure, humidity,
-                                   0.0, 0.0, 0.0, 2000.0);
-    }
-    
     void clearTPointMeasurements() {
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         tpoint_measurements_.clear();
         tpoint_model_->clearMeasurements();
         tpoint_calibrated_ = false;
-    }
-    
-    // Backward compatibility - keep old method
-    bool addCalibrationMeasurement(double observed_ra, double observed_dec,
-                                   double expected_ra, double expected_dec,
-                                   double mount_ha, double mount_dec,
-                                   double temperature, double pressure,
-                                   double humidity,
-                                   double proper_motion_ra, double proper_motion_dec,
-                                   double parallax, double epoch) {
-        return addTPointMeasurement(observed_ra, observed_dec,
-                                   expected_ra, expected_dec,
-                                   mount_ha, mount_dec,
-                                   temperature, pressure, humidity,
-                                   proper_motion_ra, proper_motion_dec,
-                                   parallax, epoch);
     }
     
     bool runTPointCalibration() {
@@ -4341,7 +4140,7 @@ public:
         // For alt-az and casual mounts, field rotation = -ω * cos(φ) / sin(alt)
         // where ω is sidereal rate, φ is latitude, alt is mount-frame altitude-like axis
         
-        if (config_.mount_type == MountType::EQUATORIAL) {
+        if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
             // Equatorial mount: minimal field rotation (only atmospheric effects)
             // Return identity quaternion
             return {1.0, 0.0, 0.0, 0.0};
@@ -4358,7 +4157,7 @@ public:
             // For ALT_AZ: axis2 = altitude, axis1 = azimuth
             // For CASUAL: axis1 = altitude-like, axis2 = azimuth-like in mount frame
             double alt;
-            if (config_.mount_type == MountType::CASUAL) {
+            if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                 alt = axis1_position_;  // altitude-like axis in mount frame
             } else {
                 alt = axis2_position_;  // altitude in degrees (ALT_AZ convention)
@@ -4373,8 +4172,8 @@ public:
             
             // Guard against extreme cos(lat) product causing overflow
             // even when lat is finite (e.g., config corruption)
-            double lat_rad = config_.latitude * M_PI / 180.0;
-            if (!std::isfinite(config_.latitude)) {
+            double lat_rad = config_.mount_config.latitude * M_PI / 180.0;
+            if (!std::isfinite(config_.mount_config.latitude)) {
                 lat_rad = 52.0 * M_PI / 180.0;  // default mid-latitude
             }
             
@@ -4443,8 +4242,8 @@ public:
         // Clamp in arcseconds (same units as input, consistent with config).
         // RA and Dec corrections both arrive in arcseconds — no unit conversion needed
         // for clamping.
-        double max_correction_arcsec = config_.guider_max_correction;
-        double aggression = config_.guider_aggression;
+        double max_correction_arcsec = config_.tracking_config.guider_max_correction;
+        double aggression = config_.tracking_config.guider_aggression;
         
         ra_correction = std::clamp(ra_correction * aggression,
                                    -max_correction_arcsec,
@@ -4473,8 +4272,8 @@ public:
         // Convert telescope-degree corrections to servo degrees by multiplying
         // by gear_ratio. The tracking loop adds guider_delta directly to
         // axis1_position_ which is in servo degrees.
-        const double ha_gear_g = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-        const double dec_gear_g = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+        const double ha_gear_g = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+        const double dec_gear_g = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
         guider_delta_axis1_ += ra_correction * 15.0 / 3600.0 / cos_dec * ha_gear_g;  // arcsec → servo degrees HA
         guider_delta_axis2_ += dec_correction / 3600.0 * dec_gear_g;                   // arcsec → servo degrees Dec
     }
@@ -4494,7 +4293,7 @@ public:
             //     -> corrected_lat = configured_lat - me_arcsec / 3600.0
             //   polar_az_error: the mount's polar axis is offset in azimuth
             //     -> projected onto longitude as: ma_arcsec / (3600.0 * cos(lat))
-            double lat_rad = config_.latitude * M_PI / 180.0;
+            double lat_rad = config_.mount_config.latitude * M_PI / 180.0;
             double cos_lat = std::cos(lat_rad);
             
             // Guard against polar singularity: cos(lat) → 0 when lat → ±90°,
@@ -4506,12 +4305,12 @@ public:
             if (std::abs(cos_lat) < MIN_COS_LAT) {
                 MOUNT_LOG_WARN("TPoint polar singularity guard: cos(lat)={:.6f} for lat={:.2f}° — "
                                "clamping to {:.6f} for longitude projection",
-                               cos_lat, config_.latitude, std::copysign(MIN_COS_LAT, cos_lat));
+                               cos_lat, config_.mount_config.latitude, std::copysign(MIN_COS_LAT, cos_lat));
                 cos_lat = std::copysign(MIN_COS_LAT, cos_lat);
             }
             
-            double corrected_lat  = config_.latitude  - polar_alt_err_arcsec / 3600.0;
-            double corrected_lon  = config_.longitude - polar_az_err_arcsec / (3600.0 * cos_lat);
+            double corrected_lat  = config_.mount_config.latitude  - polar_alt_err_arcsec / 3600.0;
+            double corrected_lon  = config_.mount_config.longitude - polar_az_err_arcsec / (3600.0 * cos_lat);
             
             // Estimate accuracy from TPoint quality metrics or covariance
             double accuracy_arcsec = 30.0; // fallback default
@@ -4555,7 +4354,7 @@ public:
         
         // Compute current Local Sidereal Time for star selection
         double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-        double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+        double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
         while (lst < 0.0) lst += 24.0;
         while (lst >= 24.0) lst -= 24.0;
         
@@ -4583,7 +4382,7 @@ public:
         
         if (!slewToEquatorial(star1_ra, star1_dec)) {
             MOUNT_LOG_ERROR("Drift alignment FAILED: cannot slew to meridian star");
-            return {config_.latitude, config_.longitude, 600.0};
+            return {config_.mount_config.latitude, config_.mount_config.longitude, 600.0};
         }
         
         // Wait for slew to complete (poll state_ in short intervals)
@@ -4609,9 +4408,9 @@ public:
         MOUNT_LOG_INFO("Drift alignment: tracking star 1 for {:.1f} ms to measure Dec drift",
                        wait_per_star_ms);
         
-        if (!startTracking(star1_ra, star1_dec, TrackingMode::SIDEREAL)) {
+        if (!startTracking(star1_ra, star1_dec, config::TrackingMode::SIDEREAL)) {
             MOUNT_LOG_ERROR("Drift alignment FAILED: cannot start tracking at star 1");
-            return {config_.latitude, config_.longitude, 600.0};
+            return {config_.mount_config.latitude, config_.mount_config.longitude, 600.0};
         }
         
         // Let the tracking loop run for the measurement period.
@@ -4649,11 +4448,11 @@ public:
         if (!slewToEquatorial(star2_ra, star2_dec)) {
             MOUNT_LOG_WARN("Drift alignment: cannot slew to horizon star — "
                            "returning altitude-only correction");
-            double lat_rad = config_.latitude * M_PI / 180.0;
+            double lat_rad = config_.mount_config.latitude * M_PI / 180.0;
             double cos_lat = std::cos(lat_rad);
-            double corrected_lat = config_.latitude - polar_alt_err_asec_h / 3600.0;
+            double corrected_lat = config_.mount_config.latitude - polar_alt_err_asec_h / 3600.0;
             double accuracy = std::max(std::abs(polar_alt_err_asec_h) + 30.0, 60.0);
-            return {corrected_lat, config_.longitude, accuracy};
+            return {corrected_lat, config_.mount_config.longitude, accuracy};
         }
         
         // Wait for second slew to complete
@@ -4678,13 +4477,13 @@ public:
         MOUNT_LOG_INFO("Drift alignment: tracking star 2 for {:.1f} ms to measure Dec drift",
                        wait_per_star_ms);
         
-        if (!startTracking(star2_ra, star2_dec, TrackingMode::SIDEREAL)) {
+        if (!startTracking(star2_ra, star2_dec, config::TrackingMode::SIDEREAL)) {
             MOUNT_LOG_WARN("Drift alignment: cannot track star 2 — "
                            "returning altitude-only correction");
-            double lat_rad = config_.latitude * M_PI / 180.0;
+            double lat_rad = config_.mount_config.latitude * M_PI / 180.0;
             double cos_lat = std::cos(lat_rad);
-            double corrected_lat = config_.latitude - polar_alt_err_asec_h / 3600.0;
-            return {corrected_lat, config_.longitude, 60.0};
+            double corrected_lat = config_.mount_config.latitude - polar_alt_err_asec_h / 3600.0;
+            return {corrected_lat, config_.mount_config.longitude, 60.0};
         }
         
         std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(wait_per_star_ms)));
@@ -4708,7 +4507,7 @@ public:
         // ===================================================================
         // Compute corrected pole position
         // ===================================================================
-        double lat_rad    = config_.latitude * M_PI / 180.0;
+        double lat_rad    = config_.mount_config.latitude * M_PI / 180.0;
         double cos_lat    = std::cos(lat_rad);
         
         // Guard against polar singularity: cos(lat) → 0 when lat → ±90°,
@@ -4720,12 +4519,12 @@ public:
         if (std::abs(cos_lat) < MIN_COS_LAT) {
             MOUNT_LOG_WARN("Polar singularity guard: cos(lat)={:.6f} for lat={:.2f}° — "
                            "clamping to {:.6f} for longitude projection",
-                           cos_lat, config_.latitude, std::copysign(MIN_COS_LAT, cos_lat));
+                           cos_lat, config_.mount_config.latitude, std::copysign(MIN_COS_LAT, cos_lat));
             cos_lat = std::copysign(MIN_COS_LAT, cos_lat);
         }
         
-        double corrected_lat  = config_.latitude  - polar_alt_err_asec_h / 3600.0;
-        double corrected_lon  = config_.longitude - polar_az_err_asec_h / (3600.0 * cos_lat);
+        double corrected_lat  = config_.mount_config.latitude  - polar_alt_err_asec_h / 3600.0;
+        double corrected_lon  = config_.mount_config.longitude - polar_az_err_asec_h / (3600.0 * cos_lat);
         
         // Accuracy estimate: bounded by measurement noise and drift consistency.
         // Longer duration_hours improves the effective signal-to-noise ratio.
@@ -4759,7 +4558,7 @@ public:
         // Read env params under env_mutex_ — setEnvironmentalParams() writes
         // them under this lock and forwards them to astro_calc_ concurrently.
         {
-            std::lock_guard<std::mutex> env_lock(*env_mutex_);
+            std::shared_lock<std::shared_mutex> env_lock(*env_mutex_);
             state["env_temperature"] = env_temperature_;
             state["env_pressure"] = env_pressure_;
             state["env_humidity"] = env_humidity_;
@@ -4836,7 +4635,7 @@ public:
                 // Write env params under env_mutex_ and forward to astro_calc_
                 // so refraction calculations use the restored values.
                 {
-                    std::lock_guard<std::mutex> env_lock(*env_mutex_);
+                    std::lock_guard<std::shared_mutex> env_lock(*env_mutex_);
                     env_temperature_ = state.value("env_temperature", 15.0);
                     env_pressure_ = state.value("env_pressure", 1013.25);
                     env_humidity_ = state.value("env_humidity", 0.5);
@@ -4895,7 +4694,7 @@ public:
         // contention on state_mutex_ and ensure synchronization with
         // any code reading these values (e.g., saveState / loadState).
         {
-            std::lock_guard<std::mutex> lock(*env_mutex_);
+            std::lock_guard<std::shared_mutex> lock(*env_mutex_);
             env_temperature_ = temperature;
             env_pressure_ = pressure;
             env_humidity_ = humidity;
@@ -4912,7 +4711,102 @@ public:
         return config_;
     }
     
-    bool setMountOrientation(const MountOrientation& orientation) {
+    // ============================================
+    // Low-level axis control (HAL-based manual axis control)
+    // ============================================
+    
+    bool controlAxis(int axis_id, int mode, double target_position,
+                     double target_velocity, double acceleration, bool relative) {
+        if (axis_id < 0 || axis_id > 1) return false;
+        try {
+            if (hal_axis1_motor_ && hal_axis2_motor_) {
+                auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+                if (mode == 0) {  // POSITION_CONTROL
+                    double final_position = target_position;
+                    if (relative) {
+                        final_position = motor->getActualPosition() + target_position;
+                    }
+                    return motor->setPosition(final_position, target_velocity, acceleration);
+                } else {  // VELOCITY_CONTROL
+                    double final_velocity = target_velocity;
+                    if (relative) {
+                        final_velocity = motor->getActualVelocity() + target_velocity;
+                    }
+                    return motor->setVelocity(final_velocity, acceleration);
+                }
+            }
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("controlAxis failed: {}", e.what());
+        }
+        return false;
+    }
+    
+    bool stopAxis(int axis_id, bool decelerate, double deceleration) {
+        if (axis_id < 0 || axis_id > 1) return false;
+        try {
+            if (hal_axis1_motor_ && hal_axis2_motor_) {
+                auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+                if (decelerate && std::abs(motor->getActualVelocity()) > 0.001) {
+                    return motor->setVelocity(0.0, deceleration > 0 ? deceleration : 2.0);
+                }
+                motor->stop();
+                return true;
+            }
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("stopAxis failed: {}", e.what());
+        }
+        return false;
+    }
+    
+    bool emergencyStop(int axis_id, bool reset_after) {
+        if (axis_id < -1 || axis_id > 1) return false;
+        try {
+            if (hal_axis1_motor_ && hal_axis2_motor_) {
+                if (axis_id == -1) {
+                    hal_axis1_motor_->emergencyStop();
+                    hal_axis2_motor_->emergencyStop();
+                    if (reset_after) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        hal_axis1_motor_->clearErrors();
+                        hal_axis2_motor_->clearErrors();
+                    }
+                } else {
+                    (axis_id == 0 ? hal_axis1_motor_ : hal_axis2_motor_)->emergencyStop();
+                    if (reset_after) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                        (axis_id == 0 ? hal_axis1_motor_ : hal_axis2_motor_)->clearErrors();
+                    }
+                }
+                return true;
+            }
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("emergencyStop failed: {}", e.what());
+        }
+        return false;
+    }
+    
+    bool getAxisStatus(::astro_mount::AxisStatus& status) const {
+        try {
+            if (hal_axis1_motor_) {
+                const int axis_id = 0;
+                auto motor = hal_axis1_motor_.get();
+                status.set_axis_id(axis_id);
+                status.set_current_position(motor->getActualPosition());
+                status.set_current_velocity(motor->getActualVelocity());
+                status.set_target_position(status.current_position());
+                status.set_moving(motor->isMoving());
+                status.set_target_reached(motor->targetReached());
+                status.set_error(motor->inErrorState());
+                status.set_error_message(motor->getErrorString());
+                return true;
+            }
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("getAxisStatus failed: {}", e.what());
+        }
+        return false;
+    }
+    
+    bool setMountOrientation(const config::MountOrientation& orientation) {
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         if (!orientation.isValid()) {
             return false;
@@ -4921,7 +4815,7 @@ public:
         return true;
     }
     
-    MountOrientation getMountOrientation() const {
+    config::MountOrientation getMountOrientation() const {
         std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         return mount_orientation_;
     }
@@ -4929,13 +4823,6 @@ public:
     bool updateConfiguration(const ControllerConfig& config) {
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         config_ = config;
-
-        // Sync CANopen pdo_config_enabled into hal_config_ so that
-        // saveConfigToFile→hal_config_.toJson() preserves it.
-        hal_config_.canopen.pdo_config_enabled = config_.canopen_pdo_config_enabled;
-        hal_config_.canopen.position_rewind_enabled = config_.canopen_position_rewind_enabled;
-        hal_config_.canopen.position_rewind_interval_seconds = config_.canopen_position_rewind_interval_seconds;
-        hal_config_.canopen.position_rewind_threshold_percent = config_.canopen_position_rewind_threshold_percent;
 
         // Persist to disk if a config file path has been set
         if (!config_file_path_.empty()) {
@@ -5030,8 +4917,6 @@ public:
             // ── logging ──────────────────────────────────────────────
             setIfStr("logging", "level", config_.log_level);
             setIfStr("logging", "directory", config_.log_directory);
-            setIfInt("logging", "rotation_days", config_.log_rotation_days);
-            setIfInt("logging", "max_file_size_mb", config_.log_max_file_size_mb);
             setAlways("logging", "console_output", config_.log_console_output);
 
             // ── network ──────────────────────────────────────────────
@@ -5042,96 +4927,78 @@ public:
             setIfStr("network", "ssl_cert_path", config_.network_ssl_cert_path);
             setIfStr("network", "ssl_key_path", config_.network_ssl_key_path);
 
-            // ── canopen (hal.canopen – single source of truth) ───────
-            ensureSection("hal");
-            if (!j["hal"].contains("canopen")) j["hal"]["canopen"] = json::object();
-            auto& hc = j["hal"]["canopen"];
-            setIfStr("canopen", "interface_name", config_.canopen_interface);  // legacy compat
-            hc["interface_name"] = config_.canopen_interface;
-            setIfInt("canopen", "node_id", config_.canopen_node_id);           // legacy compat
-            hc["node_id"] = config_.canopen_node_id;
-            hc["bitrate"] = config_.canopen_bitrate;
-            hc["use_sync"] = config_.canopen_use_sync;
-            hc["sync_period_ms"] = config_.canopen_sync_period_ms;
-            setIfStr("canopen", "accel_mode", config_.canopen_accel_mode);     // legacy compat
-            hc["accel_mode"] = config_.canopen_accel_mode;
-            hc["pdo_config_enabled"] = config_.canopen_pdo_config_enabled;
-            hc["position_rewind_enabled"] = config_.canopen_position_rewind_enabled;
-            hc["position_rewind_interval_seconds"] = config_.canopen_position_rewind_interval_seconds;
-            hc["position_rewind_threshold_percent"] = config_.canopen_position_rewind_threshold_percent;
-
             // ── mount ────────────────────────────────────────────────
             ensureSection("mount");
             auto& m = j["mount"];
 
             // Mount type — only write if not default (EQUATORIAL)
-            if (config_.mount_type != MountType::EQUATORIAL || !m.contains("type")) {
-                switch (config_.mount_type) {
-                    case MountType::EQUATORIAL:  m["type"] = "equatorial"; break;
-                    case MountType::ALT_AZ:      m["type"] = "alt_az";     break;
-                    case MountType::CASUAL:      m["type"] = "casual";     break;
+            if (config_.mount_config.mount_type != config::MountType::EQUATORIAL || !m.contains("type")) {
+                switch (config_.mount_config.mount_type) {
+                    case config::MountType::EQUATORIAL:  m["type"] = "equatorial"; break;
+                    case config::MountType::ALT_AZ:      m["type"] = "alt_az";     break;
+                    case config::MountType::CASUAL:      m["type"] = "casual";     break;
                     default:                     m["type"] = "equatorial"; break;
                 }
             }
 
             // Location — always update (0.0 is a valid coordinate)
-            if (config_.latitude != 0.0 || !m.contains("latitude"))
-                m["latitude"] = config_.latitude;
-            if (config_.longitude != 0.0 || !m.contains("longitude"))
-                m["longitude"] = config_.longitude;
-            if (config_.altitude != 0.0 || !m.contains("altitude"))
-                m["altitude"] = config_.altitude;
+            if (config_.mount_config.latitude != 0.0 || !m.contains("latitude"))
+                m["latitude"] = config_.mount_config.latitude;
+            if (config_.mount_config.longitude != 0.0 || !m.contains("longitude"))
+                m["longitude"] = config_.mount_config.longitude;
+            if (config_.mount_config.altitude != 0.0 || !m.contains("altitude"))
+                m["altitude"] = config_.mount_config.altitude;
 
             // Physical / rate params — only update if non-zero
             // FIXME: mount_height/pier_west/pier_east not yet in ControllerConfig
             // if (config_.mount_height != 0.0) m["mount_height"] = config_.mount_height;
             // if (config_.pier_west != 0.0) m["pier_west"] = config_.pier_west;
             // if (config_.pier_east != 0.0) m["pier_east"] = config_.pier_east;
-            if (config_.default_temperature != 0.0) m["default_temperature"] = config_.default_temperature;
-            if (config_.default_pressure != 0.0) m["default_pressure"] = config_.default_pressure;
-            if (config_.default_humidity != 0.0) m["default_humidity"] = config_.default_humidity;
+            if (config_.mount_config.default_temperature != 0.0) m["default_temperature"] = config_.mount_config.default_temperature;
+            if (config_.mount_config.default_pressure != 0.0) m["default_pressure"] = config_.mount_config.default_pressure;
+            if (config_.mount_config.default_humidity != 0.0) m["default_humidity"] = config_.mount_config.default_humidity;
 
             // Encoder booleans — always update
-            m["use_encoders"] = config_.use_encoders;
-            m["encoders_absolute"] = config_.encoders_absolute;
-            if (config_.encoder_resolution != 0.0) m["encoder_resolution"] = config_.encoder_resolution;
+            m["use_encoders"] = config_.mount_config.use_encoders;
+            m["encoders_absolute"] = config_.mount_config.encoders_absolute;
+            if (config_.mount_config.encoder_resolution != 0.0) m["encoder_resolution"] = config_.mount_config.encoder_resolution;
 
-            if (config_.max_slew_rate != 0.0) m["max_slew_rate"] = config_.max_slew_rate;
-            if (config_.max_tracking_rate != 0.0) m["max_tracking_rate"] = config_.max_tracking_rate;
-            if (config_.slew_acceleration != 0.0) m["slew_acceleration"] = config_.slew_acceleration;
-            if (config_.tracking_acceleration != 0.0) m["tracking_acceleration"] = config_.tracking_acceleration;
+            if (config_.mount_config.max_slew_rate != 0.0) m["max_slew_rate"] = config_.mount_config.max_slew_rate;
+            if (config_.mount_config.max_tracking_rate != 0.0) m["max_tracking_rate"] = config_.mount_config.max_tracking_rate;
+            if (config_.mount_config.slew_acceleration != 0.0) m["slew_acceleration"] = config_.mount_config.slew_acceleration;
+            if (config_.mount_config.tracking_acceleration != 0.0) m["tracking_acceleration"] = config_.mount_config.tracking_acceleration;
 
-            if (config_.position_tolerance != 0.0) m["position_tolerance"] = config_.position_tolerance;
-            if (config_.rate_tolerance != 0.0) m["rate_tolerance"] = config_.rate_tolerance;
+            if (config_.mount_config.position_tolerance != 0.0) m["position_tolerance"] = config_.mount_config.position_tolerance;
+            if (config_.mount_config.rate_tolerance != 0.0) m["rate_tolerance"] = config_.mount_config.rate_tolerance;
 
             // Meridian / limits booleans — always update
-            m["meridian_flip_enabled"] = config_.meridian_flip_enabled;
-            if (config_.meridian_flip_delay_minutes != 0.0) m["meridian_flip_delay_minutes"] = config_.meridian_flip_delay_minutes;
-            if (config_.meridian_flip_hysteresis_degrees != 0.0) m["meridian_flip_hysteresis_degrees"] = config_.meridian_flip_hysteresis_degrees;
-            if (config_.meridian_flip_timeout_seconds != 0.0) m["meridian_flip_timeout_seconds"] = config_.meridian_flip_timeout_seconds;
+            m["meridian_flip_enabled"] = config_.safety_config.meridian_flip_enabled;
+            if (config_.safety_config.meridian_flip_delay_minutes != 0.0) m["meridian_flip_delay_minutes"] = config_.safety_config.meridian_flip_delay_minutes;
+            if (config_.safety_config.meridian_flip_hysteresis_degrees != 0.0) m["meridian_flip_hysteresis_degrees"] = config_.safety_config.meridian_flip_hysteresis_degrees;
+            if (config_.safety_config.meridian_flip_timeout_seconds != 0.0) m["meridian_flip_timeout_seconds"] = config_.safety_config.meridian_flip_timeout_seconds;
 
-            m["soft_limits_enabled"] = config_.soft_limits_enabled;
-            m["soft_limit_axis1_min"] = config_.soft_limit_axis1_min;
-            m["soft_limit_axis1_max"] = config_.soft_limit_axis1_max;
-            m["soft_limit_axis2_min"] = config_.soft_limit_axis2_min;
-            m["soft_limit_axis2_max"] = config_.soft_limit_axis2_max;
-            if (config_.soft_limit_warning_degrees != 0.0) m["soft_limit_warning_degrees"] = config_.soft_limit_warning_degrees;
-            if (config_.soft_limit_deceleration_degrees != 0.0) m["soft_limit_deceleration_degrees"] = config_.soft_limit_deceleration_degrees;
-            if (config_.soft_limit_tracking_rate_factor != 0.0) m["soft_limit_tracking_rate_factor"] = config_.soft_limit_tracking_rate_factor;
+            m["soft_limits_enabled"] = config_.safety_config.soft_limits_enabled;
+            m["soft_limit_axis1_min"] = config_.safety_config.soft_limit_axis1_min;
+            m["soft_limit_axis1_max"] = config_.safety_config.soft_limit_axis1_max;
+            m["soft_limit_axis2_min"] = config_.safety_config.soft_limit_axis2_min;
+            m["soft_limit_axis2_max"] = config_.safety_config.soft_limit_axis2_max;
+            if (config_.safety_config.soft_limit_warning_degrees != 0.0) m["soft_limit_warning_degrees"] = config_.safety_config.soft_limit_warning_degrees;
+            if (config_.safety_config.soft_limit_deceleration_degrees != 0.0) m["soft_limit_deceleration_degrees"] = config_.safety_config.soft_limit_deceleration_degrees;
+            if (config_.safety_config.soft_limit_tracking_rate_factor != 0.0) m["soft_limit_tracking_rate_factor"] = config_.safety_config.soft_limit_tracking_rate_factor;
 
-            m["park_position_axis1"] = config_.park_position_axis1;
-            m["park_position_axis2"] = config_.park_position_axis2;
-            m["enable_refraction_correction"] = config_.enable_refraction_correction;
-            m["equatorial_tracking_velocity_mode"] = config_.equatorial_tracking_velocity_mode;
-            m["invert_axis1"] = config_.invert_axis1;
-            m["invert_axis2"] = config_.invert_axis2;
+            m["park_position_axis1"] = config_.safety_config.park_position_axis1;
+            m["park_position_axis2"] = config_.safety_config.park_position_axis2;
+            m["enable_refraction_correction"] = config_.safety_config.enable_refraction_correction;
+            m["equatorial_tracking_velocity_mode"] = config_.mount_config.equatorial_tracking_velocity_mode;
+            m["invert_axis1"] = config_.mount_config.invert_axis1;
+            m["invert_axis2"] = config_.mount_config.invert_axis2;
 
             // Orientation quaternion — always update
             m["orientation_quaternion"] = {
-                config_.mount_orientation.quaternion[0],
-                config_.mount_orientation.quaternion[1],
-                config_.mount_orientation.quaternion[2],
-                config_.mount_orientation.quaternion[3]
+                config_.mount_config.mount_orientation.quaternion[0],
+                config_.mount_config.mount_orientation.quaternion[1],
+                config_.mount_config.mount_orientation.quaternion[2],
+                config_.mount_config.mount_orientation.quaternion[3]
             };
 
             // ── axis_physical_parameters ─────────────────────────────
@@ -5142,54 +5009,54 @@ public:
             // Ha_axis — only update fields with explicit (non-zero) values
             if (!app.contains("ha_axis")) app["ha_axis"] = json::object();
             auto& ha = app["ha_axis"];
-            if (config_.ha_axis_params.position_counts_per_degree != 0.0) ha["position_counts_per_degree"] = config_.ha_axis_params.position_counts_per_degree;
-            if (config_.ha_axis_params.velocity_counts_per_deg_s != 0.0) ha["velocity_counts_per_deg_s"] = config_.ha_axis_params.velocity_counts_per_deg_s;
-            if (config_.ha_axis_params.encoder_resolution != 0.0) ha["encoder_resolution"] = config_.ha_axis_params.encoder_resolution;
-            if (config_.ha_axis_params.encoder_counts_per_arcsec != 0.0) ha["encoder_counts_per_arcsec"] = config_.ha_axis_params.encoder_counts_per_arcsec;
-            if (config_.ha_axis_params.encoder_quantization_error != 0.0) ha["encoder_quantization_error"] = config_.ha_axis_params.encoder_quantization_error;
-            if (config_.ha_axis_params.gear_ratio != 0.0) ha["gear_ratio"] = config_.ha_axis_params.gear_ratio;
-            if (config_.ha_axis_params.worm_ratio != 0.0) ha["worm_ratio"] = config_.ha_axis_params.worm_ratio;
-            if (config_.ha_axis_params.worm_teeth != 0) ha["worm_teeth"] = config_.ha_axis_params.worm_teeth;
-            if (config_.ha_axis_params.worm_wheel_teeth != 0) ha["worm_wheel_teeth"] = config_.ha_axis_params.worm_wheel_teeth;
-            if (config_.ha_axis_params.cyclic_error_amplitude != 0.0) ha["cyclic_error_amplitude"] = config_.ha_axis_params.cyclic_error_amplitude;
-            if (config_.ha_axis_params.cyclic_error_period != 0.0) ha["cyclic_error_period"] = config_.ha_axis_params.cyclic_error_period;
-            if (config_.ha_axis_params.cyclic_error_amplitude != 0.0)
-                ha["cyclic_harmonics"] = config_.ha_axis_params.cyclic_harmonics;
-            if (config_.ha_axis_params.backlash != 0.0) ha["backlash"] = config_.ha_axis_params.backlash;
-            if (config_.ha_axis_params.backlash_temp_coeff != 0.0) ha["backlash_temp_coeff"] = config_.ha_axis_params.backlash_temp_coeff;
-            if (config_.ha_axis_params.axis_stiffness != 0.0) ha["axis_stiffness"] = config_.ha_axis_params.axis_stiffness;
-            if (config_.ha_axis_params.torsional_compliance != 0.0) ha["torsional_compliance"] = config_.ha_axis_params.torsional_compliance;
-            if (config_.ha_axis_params.expansion_coeff != 0.0) ha["expansion_coeff"] = config_.ha_axis_params.expansion_coeff;
-            if (config_.ha_axis_params.temp_gear_error_coeff != 0.0) ha["temp_gear_error_coeff"] = config_.ha_axis_params.temp_gear_error_coeff;
-            if (config_.ha_axis_params.calibration_temp != 0.0) ha["calibration_temp"] = config_.ha_axis_params.calibration_temp;
-            if (!config_.ha_axis_params.calibration_table.empty())
-                ha["calibration_table"] = config_.ha_axis_params.calibration_table;
+            if (config_.mount_config.ha_axis_params.position_counts_per_degree != 0.0) ha["position_counts_per_degree"] = config_.mount_config.ha_axis_params.position_counts_per_degree;
+            if (config_.mount_config.ha_axis_params.velocity_counts_per_deg_s != 0.0) ha["velocity_counts_per_deg_s"] = config_.mount_config.ha_axis_params.velocity_counts_per_deg_s;
+            if (config_.mount_config.ha_axis_params.encoder_resolution != 0.0) ha["encoder_resolution"] = config_.mount_config.ha_axis_params.encoder_resolution;
+            if (config_.mount_config.ha_axis_params.encoder_counts_per_arcsec != 0.0) ha["encoder_counts_per_arcsec"] = config_.mount_config.ha_axis_params.encoder_counts_per_arcsec;
+            if (config_.mount_config.ha_axis_params.encoder_quantization_error != 0.0) ha["encoder_quantization_error"] = config_.mount_config.ha_axis_params.encoder_quantization_error;
+            if (config_.mount_config.ha_axis_params.gear_ratio != 0.0) ha["gear_ratio"] = config_.mount_config.ha_axis_params.gear_ratio;
+            if (config_.mount_config.ha_axis_params.worm_ratio != 0.0) ha["worm_ratio"] = config_.mount_config.ha_axis_params.worm_ratio;
+            if (config_.mount_config.ha_axis_params.worm_teeth != 0) ha["worm_teeth"] = config_.mount_config.ha_axis_params.worm_teeth;
+            if (config_.mount_config.ha_axis_params.worm_wheel_teeth != 0) ha["worm_wheel_teeth"] = config_.mount_config.ha_axis_params.worm_wheel_teeth;
+            if (config_.mount_config.ha_axis_params.cyclic_error_amplitude != 0.0) ha["cyclic_error_amplitude"] = config_.mount_config.ha_axis_params.cyclic_error_amplitude;
+            if (config_.mount_config.ha_axis_params.cyclic_error_period != 0.0) ha["cyclic_error_period"] = config_.mount_config.ha_axis_params.cyclic_error_period;
+            if (config_.mount_config.ha_axis_params.cyclic_error_amplitude != 0.0)
+                ha["cyclic_harmonics"] = config_.mount_config.ha_axis_params.cyclic_harmonics;
+            if (config_.mount_config.ha_axis_params.backlash != 0.0) ha["backlash"] = config_.mount_config.ha_axis_params.backlash;
+            if (config_.mount_config.ha_axis_params.backlash_temp_coeff != 0.0) ha["backlash_temp_coeff"] = config_.mount_config.ha_axis_params.backlash_temp_coeff;
+            if (config_.mount_config.ha_axis_params.axis_stiffness != 0.0) ha["axis_stiffness"] = config_.mount_config.ha_axis_params.axis_stiffness;
+            if (config_.mount_config.ha_axis_params.torsional_compliance != 0.0) ha["torsional_compliance"] = config_.mount_config.ha_axis_params.torsional_compliance;
+            if (config_.mount_config.ha_axis_params.expansion_coeff != 0.0) ha["expansion_coeff"] = config_.mount_config.ha_axis_params.expansion_coeff;
+            if (config_.mount_config.ha_axis_params.temp_gear_error_coeff != 0.0) ha["temp_gear_error_coeff"] = config_.mount_config.ha_axis_params.temp_gear_error_coeff;
+            if (config_.mount_config.ha_axis_params.calibration_temp != 0.0) ha["calibration_temp"] = config_.mount_config.ha_axis_params.calibration_temp;
+            if (!config_.mount_config.ha_axis_params.calibration_table.empty())
+                ha["calibration_table"] = config_.mount_config.ha_axis_params.calibration_table;
 
             // dec_axis
             if (!app.contains("dec_axis")) app["dec_axis"] = json::object();
             auto& dec = app["dec_axis"];
-            if (config_.dec_axis_params.position_counts_per_degree != 0.0) dec["position_counts_per_degree"] = config_.dec_axis_params.position_counts_per_degree;
-            if (config_.dec_axis_params.velocity_counts_per_deg_s != 0.0) dec["velocity_counts_per_deg_s"] = config_.dec_axis_params.velocity_counts_per_deg_s;
-            if (config_.dec_axis_params.encoder_resolution != 0.0) dec["encoder_resolution"] = config_.dec_axis_params.encoder_resolution;
-            if (config_.dec_axis_params.encoder_counts_per_arcsec != 0.0) dec["encoder_counts_per_arcsec"] = config_.dec_axis_params.encoder_counts_per_arcsec;
-            if (config_.dec_axis_params.encoder_quantization_error != 0.0) dec["encoder_quantization_error"] = config_.dec_axis_params.encoder_quantization_error;
-            if (config_.dec_axis_params.gear_ratio != 0.0) dec["gear_ratio"] = config_.dec_axis_params.gear_ratio;
-            if (config_.dec_axis_params.worm_ratio != 0.0) dec["worm_ratio"] = config_.dec_axis_params.worm_ratio;
-            if (config_.dec_axis_params.worm_teeth != 0) dec["worm_teeth"] = config_.dec_axis_params.worm_teeth;
-            if (config_.dec_axis_params.worm_wheel_teeth != 0) dec["worm_wheel_teeth"] = config_.dec_axis_params.worm_wheel_teeth;
-            if (config_.dec_axis_params.cyclic_error_amplitude != 0.0) dec["cyclic_error_amplitude"] = config_.dec_axis_params.cyclic_error_amplitude;
-            if (config_.dec_axis_params.cyclic_error_period != 0.0) dec["cyclic_error_period"] = config_.dec_axis_params.cyclic_error_period;
-            if (config_.dec_axis_params.cyclic_error_amplitude != 0.0)
-                dec["cyclic_harmonics"] = config_.dec_axis_params.cyclic_harmonics;
-            if (config_.dec_axis_params.backlash != 0.0) dec["backlash"] = config_.dec_axis_params.backlash;
-            if (config_.dec_axis_params.backlash_temp_coeff != 0.0) dec["backlash_temp_coeff"] = config_.dec_axis_params.backlash_temp_coeff;
-            if (config_.dec_axis_params.axis_stiffness != 0.0) dec["axis_stiffness"] = config_.dec_axis_params.axis_stiffness;
-            if (config_.dec_axis_params.torsional_compliance != 0.0) dec["torsional_compliance"] = config_.dec_axis_params.torsional_compliance;
-            if (config_.dec_axis_params.expansion_coeff != 0.0) dec["expansion_coeff"] = config_.dec_axis_params.expansion_coeff;
-            if (config_.dec_axis_params.temp_gear_error_coeff != 0.0) dec["temp_gear_error_coeff"] = config_.dec_axis_params.temp_gear_error_coeff;
-            if (config_.dec_axis_params.calibration_temp != 0.0) dec["calibration_temp"] = config_.dec_axis_params.calibration_temp;
-            if (!config_.dec_axis_params.calibration_table.empty())
-                dec["calibration_table"] = config_.dec_axis_params.calibration_table;
+            if (config_.mount_config.dec_axis_params.position_counts_per_degree != 0.0) dec["position_counts_per_degree"] = config_.mount_config.dec_axis_params.position_counts_per_degree;
+            if (config_.mount_config.dec_axis_params.velocity_counts_per_deg_s != 0.0) dec["velocity_counts_per_deg_s"] = config_.mount_config.dec_axis_params.velocity_counts_per_deg_s;
+            if (config_.mount_config.dec_axis_params.encoder_resolution != 0.0) dec["encoder_resolution"] = config_.mount_config.dec_axis_params.encoder_resolution;
+            if (config_.mount_config.dec_axis_params.encoder_counts_per_arcsec != 0.0) dec["encoder_counts_per_arcsec"] = config_.mount_config.dec_axis_params.encoder_counts_per_arcsec;
+            if (config_.mount_config.dec_axis_params.encoder_quantization_error != 0.0) dec["encoder_quantization_error"] = config_.mount_config.dec_axis_params.encoder_quantization_error;
+            if (config_.mount_config.dec_axis_params.gear_ratio != 0.0) dec["gear_ratio"] = config_.mount_config.dec_axis_params.gear_ratio;
+            if (config_.mount_config.dec_axis_params.worm_ratio != 0.0) dec["worm_ratio"] = config_.mount_config.dec_axis_params.worm_ratio;
+            if (config_.mount_config.dec_axis_params.worm_teeth != 0) dec["worm_teeth"] = config_.mount_config.dec_axis_params.worm_teeth;
+            if (config_.mount_config.dec_axis_params.worm_wheel_teeth != 0) dec["worm_wheel_teeth"] = config_.mount_config.dec_axis_params.worm_wheel_teeth;
+            if (config_.mount_config.dec_axis_params.cyclic_error_amplitude != 0.0) dec["cyclic_error_amplitude"] = config_.mount_config.dec_axis_params.cyclic_error_amplitude;
+            if (config_.mount_config.dec_axis_params.cyclic_error_period != 0.0) dec["cyclic_error_period"] = config_.mount_config.dec_axis_params.cyclic_error_period;
+            if (config_.mount_config.dec_axis_params.cyclic_error_amplitude != 0.0)
+                dec["cyclic_harmonics"] = config_.mount_config.dec_axis_params.cyclic_harmonics;
+            if (config_.mount_config.dec_axis_params.backlash != 0.0) dec["backlash"] = config_.mount_config.dec_axis_params.backlash;
+            if (config_.mount_config.dec_axis_params.backlash_temp_coeff != 0.0) dec["backlash_temp_coeff"] = config_.mount_config.dec_axis_params.backlash_temp_coeff;
+            if (config_.mount_config.dec_axis_params.axis_stiffness != 0.0) dec["axis_stiffness"] = config_.mount_config.dec_axis_params.axis_stiffness;
+            if (config_.mount_config.dec_axis_params.torsional_compliance != 0.0) dec["torsional_compliance"] = config_.mount_config.dec_axis_params.torsional_compliance;
+            if (config_.mount_config.dec_axis_params.expansion_coeff != 0.0) dec["expansion_coeff"] = config_.mount_config.dec_axis_params.expansion_coeff;
+            if (config_.mount_config.dec_axis_params.temp_gear_error_coeff != 0.0) dec["temp_gear_error_coeff"] = config_.mount_config.dec_axis_params.temp_gear_error_coeff;
+            if (config_.mount_config.dec_axis_params.calibration_temp != 0.0) dec["calibration_temp"] = config_.mount_config.dec_axis_params.calibration_temp;
+            if (!config_.mount_config.dec_axis_params.calibration_table.empty())
+                dec["calibration_table"] = config_.mount_config.dec_axis_params.calibration_table;
 
             // ── telescope ────────────────────────────────────────────
             if (config_.focal_length != 0.0) {
@@ -5203,31 +5070,31 @@ public:
 
             // ── guider ───────────────────────────────────────────────
             ensureSection("guider");
-            j["guider"]["enabled"] = config_.enable_guider;
-            if (config_.guider_max_correction != 0.0)
-                j["guider"]["max_correction"] = config_.guider_max_correction;
-            if (config_.guider_aggression != 0.0)
-                j["guider"]["aggression"] = config_.guider_aggression;
+            j["guider"]["enabled"] = config_.tracking_config.enable_guider;
+            if (config_.tracking_config.guider_max_correction != 0.0)
+                j["guider"]["max_correction"] = config_.tracking_config.guider_max_correction;
+            if (config_.tracking_config.guider_aggression != 0.0)
+                j["guider"]["aggression"] = config_.tracking_config.guider_aggression;
 
             // ── kalman ───────────────────────────────────────────────
-            if (config_.process_noise != 0.0) {
+            if (config_.mount_config.process_noise != 0.0) {
                 ensureSection("kalman");
-                j["kalman"]["process_noise"] = config_.process_noise;
+                j["kalman"]["process_noise"] = config_.mount_config.process_noise;
             }
-            if (config_.measurement_noise != 0.0) {
+            if (config_.mount_config.measurement_noise != 0.0) {
                 ensureSection("kalman");
-                j["kalman"]["measurement_noise"] = config_.measurement_noise;
+                j["kalman"]["measurement_noise"] = config_.mount_config.measurement_noise;
             }
 
-            // ── hal (gamepad, PID, safety, canopen) ─────────────────
+            // ── hal (gamepad, PID, safety) ─────────────────────────
             // Serialize the HAL config (which includes gamepad, PID, safety)
             // using its built-in JSON serializer.
             j["hal"] = hal_config_.toJson();
 
             // ── tpoint ───────────────────────────────────────────────
-            if (config_.tpoint_enabled_terms != 0) {
+            if (config_.calibration_config.tpoint_enabled_terms != 0) {
                 ensureSection("tpoint");
-                j["tpoint"]["enabled_terms"] = config_.tpoint_enabled_terms;
+                j["tpoint"]["enabled_terms"] = config_.calibration_config.tpoint_enabled_terms;
             }
 
             // ── Backup existing file before overwriting ────────────
@@ -5295,7 +5162,7 @@ public:
         
         if (!ephemeris_manager_) {
             ephemeris_manager_ = std::make_unique<models::EphemerisTrackerManager>();
-            ephemeris_manager_->setObserverLocation(config_.latitude, config_.longitude, config_.altitude);
+            ephemeris_manager_->setObserverLocation(config_.mount_config.latitude, config_.mount_config.longitude, config_.mount_config.altitude);
         }
         
         return ephemeris_manager_->uploadEphemeris(ephemeris_data);
@@ -5424,10 +5291,10 @@ public:
         meridian_flip_in_progress_ = false;
         
         // Convert telescope degrees → servo degrees
-        const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0
-            ? config_.ha_axis_params.gear_ratio : 360.0;
-        const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0
-            ? config_.dec_axis_params.gear_ratio : 360.0;
+        const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0
+            ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+        const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0
+            ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
         
         double new_axis1 = request.axis1() * ha_gear;
         double new_axis2 = request.axis2() * dec_gear;
@@ -5462,7 +5329,7 @@ public:
         // Re-initialize Kalman filter with new reference position
         if (position_kf_) {
             position_kf_->init(axis1_position_, axis2_position_,
-                               config_.process_noise, config_.measurement_noise);
+                               config_.mount_config.process_noise, config_.mount_config.measurement_noise);
         }
         
         // Reset meridian flip tracking
@@ -5475,32 +5342,7 @@ public:
                  request.axis1(), request.axis2(),
                  axis1_position_, axis2_position_);
         
-        // Synchronise the CANopen drives with the new reference position.
-        // This tells each drive "you are now at this absolute position"
-        // (CiA 402 Object 0x6064), eliminating the software offset between
-        // the controller's logical frame and the physical encoder.
-        if (canopen_interface_ && canopen_interface_->isConnected()) {
-            bool synced0 = canopen_interface_->setActualPosition(0, axis1_position_);
-            bool synced1 = canopen_interface_->setActualPosition(1, axis2_position_);
-            if (synced0 && synced1) {
-                MOUNT_LOG_INFO("Home: CANopen drives synchronised to new reference position");
-            } else {
-                MOUNT_LOG_WARN("Home: CANopen setActualPosition failed on one or both axes");
-            }
-        }
-        
         return true;
-    }
-    
-    ICanOpenInterface* getCanOpenInterfacePtr() {
-        return canopen_interface_.get();
-    }
-    
-    std::shared_ptr<ICanOpenInterface> getCanOpenInterfaceShared() {
-        if (!canopen_interface_) {
-            throw std::runtime_error("CANopen interface not initialized");
-        }
-        return canopen_interface_;
     }
     
     // ============================================
@@ -5515,9 +5357,6 @@ public:
         switch (hal_config_.type) {
             case hal::HALType::SIMULATED:
                 config.set_type(::astro_mount::HAL_SIMULATED);
-                break;
-            case hal::HALType::CANOPEN:
-                config.set_type(::astro_mount::HAL_CANOPEN);
                 break;
             case hal::HALType::SERIAL:
                 config.set_type(::astro_mount::HAL_SERIAL);
@@ -5539,17 +5378,6 @@ public:
         sim->set_velocity_noise_stddev(hal_config_.simulated.velocity_noise_stddev);
         sim->set_simulate_errors(hal_config_.simulated.simulate_errors);
         sim->set_error_probability(hal_config_.simulated.error_probability);
-        
-        // CANopen config
-        auto* can = config.mutable_canopen();
-        can->set_library(hal_config_.canopen.library);
-        can->set_interface_name(hal_config_.canopen.interface_name);
-        can->set_bitrate(hal_config_.canopen.bitrate);
-        can->set_node_id(hal_config_.canopen.node_id);
-        can->set_use_sync(hal_config_.canopen.use_sync);
-        can->set_sync_period_ms(hal_config_.canopen.sync_period_ms);
-        can->set_sdo_timeout_ms(hal_config_.canopen.sdo_timeout_ms);
-        can->set_pdo_update_rate(hal_config_.canopen.pdo_update_rate);
         
         // Serial config
         auto* ser = config.mutable_serial();
@@ -5674,10 +5502,9 @@ public:
         }
         
         const auto& req_config = request.config();
-        MOUNT_LOG_INFO("setHALConfig: has_gamepad={} has_simulated={} has_canopen={} has_safety={} has_pid={}",
+        MOUNT_LOG_INFO("setHALConfig: has_gamepad={} has_simulated={} has_safety={} has_pid={}",
                        req_config.has_gamepad(), req_config.has_simulated(),
-                       req_config.has_canopen(), req_config.has_safety(),
-                       req_config.has_pid_params());
+                       req_config.has_safety(), req_config.has_pid_params());
         
         // Start from the CURRENT config so that partial updates don't
         // overwrite untouched fields with defaults
@@ -5688,9 +5515,6 @@ public:
             switch (req_config.type()) {
                 case ::astro_mount::HAL_SIMULATED:
                     new_config.type = hal::HALType::SIMULATED;
-                    break;
-                case ::astro_mount::HAL_CANOPEN:
-                    new_config.type = hal::HALType::CANOPEN;
                     break;
                 case ::astro_mount::HAL_SERIAL:
                     new_config.type = hal::HALType::SERIAL;
@@ -5717,18 +5541,6 @@ public:
             new_config.simulated.velocity_noise_stddev = req_config.simulated().velocity_noise_stddev();
             new_config.simulated.simulate_errors = req_config.simulated().simulate_errors();
             new_config.simulated.error_probability = req_config.simulated().error_probability();
-        }
-        
-        // CANopen config
-        if (req_config.has_canopen()) {
-            new_config.canopen.library = req_config.canopen().library();
-            new_config.canopen.interface_name = req_config.canopen().interface_name();
-            new_config.canopen.bitrate = req_config.canopen().bitrate();
-            new_config.canopen.node_id = req_config.canopen().node_id();
-            new_config.canopen.use_sync = req_config.canopen().use_sync();
-            new_config.canopen.sync_period_ms = req_config.canopen().sync_period_ms();
-            new_config.canopen.sdo_timeout_ms = req_config.canopen().sdo_timeout_ms();
-            new_config.canopen.pdo_update_rate = req_config.canopen().pdo_update_rate();
         }
         
         // Serial config
@@ -5797,10 +5609,7 @@ public:
         
         // Check if the config actually changed before doing a full reinit
         // For gamepad-only changes, we can just update the config in place
-        bool needs_reinit = (new_config.type != hal_config_.type ||
-                            new_config.canopen.library != hal_config_.canopen.library ||
-                            new_config.canopen.interface_name != hal_config_.canopen.interface_name ||
-                            new_config.canopen.bitrate != hal_config_.canopen.bitrate);
+        bool needs_reinit = (new_config.type != hal_config_.type);
         
         if (!needs_reinit) {
             // Just update config in memory — no HAL restart needed
@@ -5886,6 +5695,13 @@ public:
                 gs->set_button_speed_down(state.button_speed_down);
                 gs->set_button_manual_toggle(state.button_manual_toggle);
                 gs->set_button_home(state.button_home);
+                // NEW: extended button states
+                gs->set_button_bootstrap_calibrate(state.button_bootstrap_calibrate);
+                gs->set_button_tpoint_calibrate(state.button_tpoint_calibrate);
+                gs->set_button_meridian_flip(state.button_meridian_flip);
+                gs->set_button_mode_cycle(state.button_mode_cycle);
+                gs->set_button_clear_errors(state.button_clear_errors);
+                gs->set_button_unpark(state.button_unpark);
                 gs->set_axis_count(gamepad_input_->getAxisCount());
                 gs->set_button_count(gamepad_input_->getButtonCount());
                 gs->set_gamepad_mode(static_cast<::astro_mount::GamepadMode>(gamepad_mode_));
@@ -5906,7 +5722,7 @@ public:
         if (!hal_interface_) {
             status.set_initialized(false);
             status.set_running(false);
-            status.set_type(::astro_mount::HAL_CANOPEN);
+            status.set_type(::astro_mount::HAL_SIMULATED);
             status.set_platform_name("HAL not active");
             status.set_hardware_version("N/A");
             status.set_status_message("No HAL interface loaded");
@@ -5923,9 +5739,6 @@ public:
         switch (hal_config_.type) {
             case hal::HALType::SIMULATED:
                 status.set_type(::astro_mount::HAL_SIMULATED);
-                break;
-            case hal::HALType::CANOPEN:
-                status.set_type(::astro_mount::HAL_CANOPEN);
                 break;
             case hal::HALType::SERIAL:
                 status.set_type(::astro_mount::HAL_SERIAL);
@@ -5974,8 +5787,8 @@ public:
                 case hal::HALFeature::REAL_TIME_CONTROL:
                     status.add_supported_features("REAL_TIME_CONTROL");
                     break;
-                case hal::HALFeature::DEROTATOR_SUPPORT:
-                    status.add_supported_features("DEROTATOR_SUPPORT");
+                case hal::HALFeature::MANUAL_CONTROL:
+                    status.add_supported_features("MANUAL_CONTROL");
                     break;
             }
         }
@@ -6064,6 +5877,63 @@ public:
         return initialize(config_);
     }
     
+    /**
+     * @brief Get field rotation parameters (computed rates)
+     * @return Field rotation parameters
+     */
+    ::astro_mount::FieldRotationParams getFieldRotationParams() const {
+        ::astro_mount::FieldRotationParams params;
+        
+        // Compute field rotation rate using the standard formula:
+        // rotation_rate = -sidereal_rate * cos(latitude) / sin(altitude)
+        double latitude_rad = config_.mount_config.latitude * M_PI / 180.0;
+        double altitude_rad = 45.0 * M_PI / 180.0; // default
+        double azimuth_rad = 0.0;
+        
+        // Estimate altitude/azimuth from current tracking state if available
+        if (state_ == MountStatus::State::TRACKING || state_ == MountStatus::State::SLEWING) {
+            try {
+                if (astro_calc_) {
+                    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                    auto alt_az = astro_calc_->equatorialToHorizontal(
+                        tracking_target_ra_hours_, tracking_target_dec_deg_, jd);
+                    altitude_rad = std::get<0>(alt_az) * M_PI / 180.0;
+                    azimuth_rad = std::get<1>(alt_az) * M_PI / 180.0;
+                }
+            } catch (...) {
+                altitude_rad = 45.0 * M_PI / 180.0;
+            }
+        }
+        
+        // Sidereal rate: Earth rotates 360° in 86164 seconds (sidereal day)
+        // = 360.0 / 86164.0 degrees/s ≈ 0.004178 deg/s
+        const double sidereal_rate_deg_s = 360.0 / 86164.0;
+        const double sidereal_rate_rad = sidereal_rate_deg_s * M_PI / 180.0;
+        
+        // Avoid division by zero at zenith
+        double sin_alt = std::sin(altitude_rad);
+        if (std::abs(sin_alt) < 0.01) {
+            sin_alt = (sin_alt >= 0) ? 0.01 : -0.01;
+        }
+        
+        double rotation_rate_rad = -sidereal_rate_rad * std::cos(latitude_rad) / sin_alt;
+        double rotation_rate_deg_s = rotation_rate_rad * 180.0 / M_PI;
+        
+        params.computed_rate_deg_s = rotation_rate_deg_s;
+        params.latitude_deg = config_.mount_config.latitude;
+        params.altitude_deg = altitude_rad * 180.0 / M_PI;
+        params.azimuth_deg = azimuth_rad * 180.0 / M_PI;
+        {
+            // Guard against a data race with setEnvironmentalParams() (gRPC thread).
+            std::shared_lock<std::shared_mutex> env_lock(*env_mutex_);
+            params.temperature_c = env_temperature_;
+        }
+        params.flexure_correction_deg = 0.0;
+        params.applied_correction_deg = 0.0;
+        
+        return params;
+    }
+
     // Publicly accessible callback storage
     std::function<void(const MountStatus&)> status_callback_;
     std::function<void(const std::string&)> error_callback_;
@@ -6121,8 +5991,8 @@ public:
             // the same telescope positions as gRPC polling clients.
             // Uses raw_servo_axis1_position_ (CANopen ground-truth) for
             // consistency with getStatus().
-            double ha_gear = config_.ha_axis_params.gear_ratio;
-            double dec_gear = config_.dec_axis_params.gear_ratio;
+            double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
+            double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
             if (ha_gear < 1.0) ha_gear = 360.0;
             if (dec_gear < 1.0) dec_gear = 360.0;
             
@@ -6130,14 +6000,14 @@ public:
             double raw_tel_axis2 = raw_servo_axis2_position_ / dec_gear;
             
             // Normalize telescope positions to [0°, 360°) for consistent display.
-            if (config_.mount_type == MountType::EQUATORIAL) {
+            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                 raw_tel_axis1 = std::fmod(raw_tel_axis1, 360.0);
                 if (raw_tel_axis1 < 0.0) raw_tel_axis1 += 360.0;
                 if (raw_tel_axis2 > 90.0) raw_tel_axis2 = 180.0 - raw_tel_axis2;
                 if (raw_tel_axis2 < -90.0) raw_tel_axis2 = -180.0 - raw_tel_axis2;
                 raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
                 if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
-            } else if (config_.mount_type == MountType::ALT_AZ) {
+            } else if (config_.mount_config.mount_type == config::MountType::ALT_AZ) {
                 if (raw_tel_axis1 > 90.0) raw_tel_axis1 = 90.0;
                 if (raw_tel_axis1 < 0.0) raw_tel_axis1 = 0.0;
                 raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
@@ -6153,7 +6023,7 @@ public:
             status.telescope_axis2_position = raw_tel_axis2;
             
             // Bootstrap / encoder status fields (mirrors getStatus())
-            status.encoders_absolute = config_.encoders_absolute;
+            status.encoders_absolute = config_.mount_config.encoders_absolute;
             status.bootstrap_mode = static_cast<int>(bootstrap_mode_);
             status.bootstrap_calibrated = bootstrap_calibrated_;
             status.bootstrap_measurement_count = static_cast<int>(bootstrap_measurements_.size());
@@ -6204,11 +6074,11 @@ public:
                 MOUNT_LOG_WARN("executeMeridianFlip rejected: state is not TRACKING");
                 return false;
             }
-            if (!config_.meridian_flip_enabled) {
+            if (!config_.safety_config.meridian_flip_enabled) {
                 MOUNT_LOG_WARN("executeMeridianFlip rejected: meridian flip is disabled");
                 return false;
             }
-            if (config_.mount_type != MountType::EQUATORIAL) {
+            if (config_.mount_config.mount_type != config::MountType::EQUATORIAL) {
                 MOUNT_LOG_WARN("executeMeridianFlip rejected: mount type is not EQUATORIAL"
                               " (CASUAL and ALT_AZ mounts do not support meridian flips)");
                 return false;
@@ -6225,8 +6095,8 @@ public:
             
             // Compute flip targets (in servo degrees).
             // 180° telescope = 180° * gear_ratio servo degrees.
-            const double ha_gear_flip = config_.ha_axis_params.gear_ratio;
-            const double dec_gear_flip = config_.dec_axis_params.gear_ratio;
+            const double ha_gear_flip = config_.mount_config.ha_axis_params.gear_ratio;
+            const double dec_gear_flip = config_.mount_config.dec_axis_params.gear_ratio;
             double new_ha = axis1_target_ + 180.0 * ha_gear_flip;
             const double half_range = 180.0 * ha_gear_flip;
             while (new_ha > half_range) new_ha -= 360.0 * ha_gear_flip;
@@ -6236,8 +6106,8 @@ public:
             flip_dec_target_ = 180.0 * dec_gear_flip - axis2_target_;
             
             double jd_flip = core::AstronomicalCalculations::getCurrentJulianDate();
-            double lst_flip = core::AstronomicalCalculations::calculateLST(jd_flip, config_.longitude);
-            const double ha_gear_emf = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
+            double lst_flip = core::AstronomicalCalculations::calculateLST(jd_flip, config_.mount_config.longitude);
+            const double ha_gear_emf = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
             double ha_hours_flip = axis1_position_ / 15.0 / ha_gear_emf;
             flip_original_ra_ = lst_flip - ha_hours_flip;
             while (flip_original_ra_ < 0.0) flip_original_ra_ += 24.0;
@@ -6301,7 +6171,7 @@ public:
             return 1.0;
         }
         
-        if (!config_.soft_limits_enabled) {
+        if (!config_.safety_config.soft_limits_enabled) {
             soft_limit_warning_active_ = false;
             soft_limit_deceleration_active_ = false;
             soft_limit_distance_axis1_ = 0.0;
@@ -6314,8 +6184,8 @@ public:
         // Soft limits are configured in telescope degrees (e.g., HA: ±270° telescope,
         // Dec: -5° to 185° telescope). The axis positions are in servo degrees,
         // so we must divide by gear_ratio before comparing.
-        const double ha_gear = config_.ha_axis_params.gear_ratio > 0.0 ? config_.ha_axis_params.gear_ratio : 360.0;
-        const double dec_gear = config_.dec_axis_params.gear_ratio > 0.0 ? config_.dec_axis_params.gear_ratio : 360.0;
+        const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+        const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
         double telescope_axis1 = axis1_pos / ha_gear;
         double telescope_axis2 = axis2_pos / dec_gear;
         
@@ -6324,7 +6194,7 @@ public:
         // which is equivalent to [-90°, 0°) but exceeds soft_limit_axis1_max=270°.
         // Normalize to [-180°, 180°] for the soft limit check so wrap-around
         // positions are evaluated correctly.
-        if (config_.mount_type == MountType::EQUATORIAL) {
+        if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
             // Normalize telescope HA to [-180°, 180°] using a while loop.
             // An if/else only handles ±540°; after hours of tracking at
             // 1.5 °/s servo (≡ 5400 °/h servo), axis1_pos can exceed
@@ -6351,13 +6221,13 @@ public:
             }
         }
         
-        const double min1 = config_.soft_limit_axis1_min;
-        const double max1 = config_.soft_limit_axis1_max;
-        const double min2 = config_.soft_limit_axis2_min;
-        const double max2 = config_.soft_limit_axis2_max;
-        const double warning = config_.soft_limit_warning_degrees;
-        const double decel = config_.soft_limit_deceleration_degrees;
-        const double min_rate = config_.soft_limit_tracking_rate_factor;
+        const double min1 = config_.safety_config.soft_limit_axis1_min;
+        const double max1 = config_.safety_config.soft_limit_axis1_max;
+        const double min2 = config_.safety_config.soft_limit_axis2_min;
+        const double max2 = config_.safety_config.soft_limit_axis2_max;
+        const double warning = config_.safety_config.soft_limit_warning_degrees;
+        const double decel = config_.safety_config.soft_limit_deceleration_degrees;
+        const double min_rate = config_.safety_config.soft_limit_tracking_rate_factor;
         
         // Distance to nearest limit on each axis (positive = inside range)
         double d1_min = telescope_axis1 - min1;
@@ -6447,7 +6317,7 @@ private:
     bool guider_active_;
     bool tpoint_calibrated_;
     bool bootstrap_calibrated_;
-    BootstrapMode bootstrap_mode_{BootstrapMode::BOOTSTRAP_MANUAL};
+    config::BootstrapMode bootstrap_mode_{config::BootstrapMode::BOOTSTRAP_MANUAL};
 
     // Guider delta corrections — stored as POSITION OFFSETS in degrees.
     // Written by applyGuiderCorrection() under rate_mutex_ as arcsec→deg
@@ -6495,13 +6365,11 @@ private:
     double tracking_target_dec_deg_{0.0};
     
     // Bootstrap calibration computed results
-    double bootstrap_rms_ra_arcsec_{0.0};
-    double bootstrap_rms_dec_arcsec_{0.0};
     double bootstrap_ra_correction_arcsec_{0.0};
     double bootstrap_dec_correction_arcsec_{0.0};
     
     // CASUAL bootstrap: estimated orientation quaternion
-    MountOrientation bootstrap_estimated_orientation_;
+    config::MountOrientation bootstrap_estimated_orientation_;
     double bootstrap_estimated_quaternion_error_arcsec_{0.0};
     
     // TPOINT calibration computed results
@@ -6543,14 +6411,14 @@ private:
     
     std::unique_ptr<std::shared_mutex> state_mutex_;
     std::unique_ptr<std::shared_mutex> rate_mutex_;
-    std::unique_ptr<std::mutex> env_mutex_;
+    std::unique_ptr<std::shared_mutex> env_mutex_;
     
     // Background thread handle for async operations (slew, track, park)
     // Joined on shutdown/destroy to prevent use-after-free
     std::thread work_thread_;
     
     // Protects work_thread_ from concurrent join + assign (data race fix)
-    std::unique_ptr<std::mutex> thread_mutex_;
+    std::unique_ptr<std::shared_mutex> thread_mutex_;
     
     // ── Gamepad integration ─────────────────────────────────────────
     std::unique_ptr<hal::EvdevGamepadInput> gamepad_input_;
@@ -6660,10 +6528,8 @@ private:
                     MOUNT_LOG_WARN("Gamepad: EMERGENCY STOP");
                     last_emergency_stop = now_es;
                 }
-                if (canopen_interface_) {
-                    canopen_interface_->emergencyStop(0);
-                    canopen_interface_->emergencyStop(1);
-                }
+                if (hal_axis1_motor_) hal_axis1_motor_->emergencyStop();
+                if (hal_axis2_motor_) hal_axis2_motor_->emergencyStop();
                 state_ = MountStatus::State::ERROR;
                 error_message_ = "Gamepad emergency stop";
                 // Do NOT break — the loop continues running so that
@@ -6673,10 +6539,8 @@ private:
                 continue;
             }
             if (state.button_stop) {
-                if (canopen_interface_) {
-                    canopen_interface_->stopAxis(0);
-                    canopen_interface_->stopAxis(1);
-                }
+                if (hal_axis1_motor_) hal_axis1_motor_->stop();
+                if (hal_axis2_motor_) hal_axis2_motor_->stop();
                 MOUNT_LOG_INFO("Gamepad: STOP");
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 continue;
@@ -6690,20 +6554,120 @@ private:
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
                 continue;
             }
+            if (state.button_unpark) {
+                MOUNT_LOG_INFO("Gamepad: UNPARK");
+                if (state_ == MountStatus::State::PARKED) {
+                    unpark();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
+            }
             if (state.button_home) {
                 MOUNT_LOG_INFO("Gamepad: HOME");
                 // Slew to park position as "home" (convert telescope degrees → servo degrees)
-                if (state_ == MountStatus::State::IDLE && canopen_interface_) {
-                    double ha_g = config_.ha_axis_params.gear_ratio;
-                    double dec_g = config_.dec_axis_params.gear_ratio;
-                    canopen_interface_->setPositionTarget(0,
-                        config_.park_position_axis1 * ha_g,
-                        gamepad_max_velocity_, config_.slew_acceleration);
-                    canopen_interface_->setPositionTarget(1,
-                        config_.park_position_axis2 * dec_g,
-                        gamepad_max_velocity_, config_.slew_acceleration);
+                if (state_ == MountStatus::State::IDLE && hal_axis1_motor_ && hal_axis2_motor_) {
+                    double ha_g = config_.mount_config.ha_axis_params.gear_ratio;
+                    double dec_g = config_.mount_config.dec_axis_params.gear_ratio;
+                    hal_axis1_motor_->setPosition(
+                        config_.safety_config.park_position_axis1 * ha_g,
+                        gamepad_max_velocity_, config_.mount_config.slew_acceleration);
+                    hal_axis2_motor_->setPosition(
+                        config_.safety_config.park_position_axis2 * dec_g,
+                        gamepad_max_velocity_, config_.mount_config.slew_acceleration);
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                continue;
+            }
+            if (state.button_bootstrap_calibrate) {
+                static auto last_bootstrap = std::chrono::steady_clock::now();
+                auto now_bs = std::chrono::steady_clock::now();
+                // Debounce: only trigger once per 5 seconds
+                if (std::chrono::duration_cast<std::chrono::seconds>(now_bs - last_bootstrap).count() >= 5) {
+                    MOUNT_LOG_INFO("Gamepad: BOOTSTRAP CALIBRATION");
+                    last_bootstrap = now_bs;
+                    // Run bootstrap calibration asynchronously (non-blocking)
+                    if (!bootstrap_calibrated_ && bootstrap_measurements_.size() >= 3) {
+                        runBootstrapCalibration();
+                        // Auto-save after calibration
+                        if (!config_file_path_.empty()) {
+                            saveState(config_file_path_);
+                        }
+                    } else if (bootstrap_measurements_.size() < 3) {
+                        MOUNT_LOG_WARN("Gamepad: bootstrap calibration requires at least 3 measurements (have {})",
+                                 bootstrap_measurements_.size());
+                    } else {
+                        MOUNT_LOG_WARN("Gamepad: bootstrap already calibrated — recalibrating");
+                        clearBootstrapMeasurements();
+                        runBootstrapCalibration();
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
+            }
+            if (state.button_tpoint_calibrate) {
+                static auto last_tpoint = std::chrono::steady_clock::now();
+                auto now_tp = std::chrono::steady_clock::now();
+                // Debounce: only trigger once per 5 seconds
+                if (std::chrono::duration_cast<std::chrono::seconds>(now_tp - last_tpoint).count() >= 5) {
+                    MOUNT_LOG_INFO("Gamepad: TPOINT CALIBRATION");
+                    last_tpoint = now_tp;
+                    if (!tpoint_calibrated_ && tpoint_measurements_.size() >= 3) {
+                        runTPointCalibration();
+                        if (!config_file_path_.empty()) {
+                            saveState(config_file_path_);
+                        }
+                    } else if (tpoint_measurements_.size() < 3) {
+                        MOUNT_LOG_WARN("Gamepad: TPOINT calibration requires at least 3 measurements (have {})",
+                                 tpoint_measurements_.size());
+                    } else {
+                        MOUNT_LOG_WARN("Gamepad: TPOINT already calibrated — recalibrating");
+                        clearTPointMeasurements();
+                        // Measurements need to be re-added before recalibration
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
+            }
+            if (state.button_meridian_flip) {
+                static auto last_flip = std::chrono::steady_clock::now();
+                auto now_mf = std::chrono::steady_clock::now();
+                // Debounce: only trigger once per 10 seconds
+                if (std::chrono::duration_cast<std::chrono::seconds>(now_mf - last_flip).count() >= 10) {
+                    MOUNT_LOG_INFO("Gamepad: MERIDIAN FLIP");
+                    last_flip = now_mf;
+                    if (state_ == MountStatus::State::TRACKING &&
+                        config_.safety_config.meridian_flip_enabled) {
+                        executeMeridianFlip();
+                    } else {
+                        MOUNT_LOG_WARN("Gamepad: meridian flip rejected — not TRACKING or flip disabled");
+                    }
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                continue;
+            }
+            if (state.button_mode_cycle) {
+                static auto last_mode_cycle = std::chrono::steady_clock::now();
+                auto now_mc = std::chrono::steady_clock::now();
+                // Debounce: 500ms between mode changes
+                if (std::chrono::duration_cast<std::chrono::milliseconds>(now_mc - last_mode_cycle).count() >= 500) {
+                    // Cycle: RAW(0) → CELESTIAL(1) → ALT_AZ(2) → PRECISION(3) → RAW(0)
+                    int new_mode = (gamepad_mode_ + 1) % 4;
+                    setGamepadMode(new_mode);
+                    last_mode_cycle = now_mc;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                continue;
+            }
+            if (state.button_clear_errors) {
+                static auto last_clear = std::chrono::steady_clock::now();
+                auto now_ce = std::chrono::steady_clock::now();
+                // Debounce: only trigger once per 2 seconds
+                if (std::chrono::duration_cast<std::chrono::seconds>(now_ce - last_clear).count() >= 2) {
+                    MOUNT_LOG_INFO("Gamepad: CLEAR ERRORS");
+                    last_clear = now_ce;
+                    clearErrors();
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 continue;
             }
             if (state.button_speed_up || state.button_speed_down) {
@@ -6737,7 +6701,7 @@ private:
             // deflected. When the stick returns to centre we issue a
             // single zero-velocity stop and then go silent so that
             // position-mode slewing / tracking is not disrupted.
-            if (canopen_interface_ && canopen_interface_->isConnected()) {
+            if (hal_axis1_motor_ && hal_axis2_motor_) {
                 double dead = gamepad_deadzone_;
                 
                 auto applyAxis = [&](double raw, double& out) {
@@ -6761,19 +6725,19 @@ private:
                     vel1 *= gamepad_max_velocity_;
 
                     // Apply per-axis rotation direction inversion
-                    if (config_.invert_axis1) vel0 = -vel0;
-                    if (config_.invert_axis2) vel1 = -vel1;
+                    if (config_.mount_config.invert_axis1) vel0 = -vel0;
+                    if (config_.mount_config.invert_axis2) vel1 = -vel1;
                     
-                    if (canopen_interface_->isDriveEnabled(0)) {
+                    if (hal_axis1_motor_->isEnabled()) {
                         if (axis0_deflected || gamepad_axis0_active_) {
-                            canopen_interface_->setVelocityTarget(0, vel0, config_.slew_acceleration);
+                            hal_axis1_motor_->setVelocity(vel0, config_.mount_config.slew_acceleration);
                         }
                     }
                     gamepad_axis0_active_ = axis0_deflected;
                     
-                    if (canopen_interface_->isDriveEnabled(1)) {
+                    if (hal_axis2_motor_->isEnabled()) {
                         if (axis1_deflected || gamepad_axis1_active_) {
-                            canopen_interface_->setVelocityTarget(1, vel1, config_.slew_acceleration);
+                            hal_axis2_motor_->setVelocity(vel1, config_.mount_config.slew_acceleration);
                         }
                     }
                     gamepad_axis1_active_ = axis1_deflected;
@@ -6828,25 +6792,25 @@ private:
                     mount_vel0 = std::clamp(mount_vel0, -max_vel, max_vel);
                     mount_vel1 = std::clamp(mount_vel1, -max_vel, max_vel);
                     
-                    if (canopen_interface_->isDriveEnabled(0)) {
-                        canopen_interface_->setVelocityTarget(0, mount_vel0, config_.slew_acceleration);
+                    if (hal_axis1_motor_->isEnabled()) {
+                        hal_axis1_motor_->setVelocity(mount_vel0, config_.mount_config.slew_acceleration);
                     }
-                    if (canopen_interface_->isDriveEnabled(1)) {
-                        canopen_interface_->setVelocityTarget(1, mount_vel1, config_.slew_acceleration);
+                    if (hal_axis2_motor_->isEnabled()) {
+                        hal_axis2_motor_->setVelocity(mount_vel1, config_.mount_config.slew_acceleration);
                     }
                     gamepad_axis0_active_ = true;
                     gamepad_axis1_active_ = true;
                 } else {
                     // Stick released – stop coordinate-based motion
                     if (gamepad_axis0_active_) {
-                        if (canopen_interface_->isDriveEnabled(0)) {
-                            canopen_interface_->setVelocityTarget(0, 0.0, config_.slew_acceleration);
+                        if (hal_axis1_motor_->isEnabled()) {
+                            hal_axis1_motor_->setVelocity(0.0, config_.mount_config.slew_acceleration);
                         }
                         gamepad_axis0_active_ = false;
                     }
                     if (gamepad_axis1_active_) {
-                        if (canopen_interface_->isDriveEnabled(1)) {
-                            canopen_interface_->setVelocityTarget(1, 0.0, config_.slew_acceleration);
+                        if (hal_axis2_motor_->isEnabled()) {
+                            hal_axis2_motor_->setVelocity(0.0, config_.mount_config.slew_acceleration);
                         }
                         gamepad_axis1_active_ = false;
                     }
@@ -6856,10 +6820,8 @@ private:
             std::this_thread::sleep_for(std::chrono::milliseconds(20)); // ~50 Hz
         }
         // Stop all motion on exit
-        if (canopen_interface_) {
-            canopen_interface_->stopAxis(0);
-            canopen_interface_->stopAxis(1);
-        }
+        if (hal_axis1_motor_) hal_axis1_motor_->stop();
+        if (hal_axis2_motor_) hal_axis2_motor_->stop();
         MOUNT_LOG_INFO("Gamepad: polling stopped");
     }
     
@@ -6872,18 +6834,17 @@ private:
     
     // Public version: acquires thread_mutex_ internally
     void joinWorkThread() {
-        std::lock_guard<std::mutex> lock(*thread_mutex_);
+        std::lock_guard<std::shared_mutex> lock(*thread_mutex_);
         joinWorkThreadLocked();
     }
     
     ControllerConfig config_;
-    MountOrientation mount_orientation_;
+    config::MountOrientation mount_orientation_;
     std::vector<Measurement> bootstrap_measurements_;
     std::vector<Measurement> tpoint_measurements_;
     std::unique_ptr<models::TPointModel> tpoint_model_;
     std::unique_ptr<core::AstronomicalCalculations> astro_calc_;
     std::unique_ptr<models::EphemerisTrackerManager> ephemeris_manager_;
-    std::shared_ptr<ICanOpenInterface> canopen_interface_;
     std::unique_ptr<hal::HALInterface> hal_interface_;
     hal::HALConfig hal_config_;
     std::unique_ptr<PositionKalmanFilter> position_kf_;
@@ -6909,18 +6870,6 @@ private:
     
     // Field rotation time tracking (non-static, per-instance)
     mutable double last_field_rotation_time_;
-    
-    // CANopen position rewind: periodically reset the drive's absolute position
-    // counter to prevent overflow beyond the drive's ±1,000,000 count limit.
-    std::chrono::steady_clock::time_point last_position_rewind_time_{std::chrono::steady_clock::now()};
-
-    // Axis positions at the time of the last successful CANopen position rewind.
-    // The rewind threshold check uses the delta since these reference positions
-    // (rather than fmod(position, turn)), so the threshold resets to zero after
-    // each rewind and only fires again when the axis has accumulated enough
-    // motion to approach the CANopen drive's ±1,000,000 count limit.
-    double last_rewind_axis1_position_{0.0};
-    double last_rewind_axis2_position_{0.0};
     
     // Meridian flip tracking
     bool meridian_flip_pending_{false};
@@ -6954,9 +6903,9 @@ MountController::MountController(std::unique_ptr<hal::HALInterface> hal_interfac
 
 MountController::~MountController() {
     // Ensure the background work thread is joined before destroying Impl members.
-    // Without this, the compiler-generated ~Impl() would destroy canopen_interface_
-    // and hal_interface before work_thread_, potentially leaving the work thread
-    // accessing already-freed memory (segfault) or calling std::terminate() on a
+    // Without this, the compiler-generated ~Impl() would destroy hal_interface_
+    // before work_thread_, potentially leaving the work thread accessing
+    // already-freed memory (segfault) or calling std::terminate() on a
     // joinable std::thread.
     if (pimpl) {
         pimpl->shutdown();
@@ -6979,7 +6928,7 @@ bool MountController::slewToHorizontal(double altitude, double azimuth) {
     return pimpl->slewToHorizontal(altitude, azimuth);
 }
 
-bool MountController::startTracking(double ra, double dec, TrackingMode mode) {
+bool MountController::startTracking(double ra, double dec, config::TrackingMode mode) {
     return pimpl->startTracking(ra, dec, mode);
 }
 
@@ -7004,23 +6953,9 @@ MountController::MountStatus MountController::getStatus() const {
 }
 
 void MountController::refreshPositions() {
-    pimpl->refreshPositionsFromCANopen();
+    pimpl->refreshPositionsFromHAL();
 }
 
-bool MountController::addCalibrationMeasurement(double observed_ra, double observed_dec,
-                                                double expected_ra, double expected_dec,
-                                                double mount_ha, double mount_dec,
-                                                double temperature, double pressure,
-                                                double humidity,
-                                                double proper_motion_ra, double proper_motion_dec,
-                                                double parallax, double epoch) {
-    return pimpl->addCalibrationMeasurement(observed_ra, observed_dec,
-                                           expected_ra, expected_dec,
-                                           mount_ha, mount_dec,
-                                           temperature, pressure, humidity,
-                                           proper_motion_ra, proper_motion_dec,
-                                           parallax, epoch);
-}
 
 // Bootstrap calibration methods
 bool MountController::addBootstrapMeasurement(double observed_ra, double observed_dec,
@@ -7047,12 +6982,8 @@ size_t MountController::getBootstrapMeasurementCount() const {
     return pimpl->getBootstrapMeasurementCount();
 }
 
-double MountController::getBootstrapRmsRaArcsec() const {
-    return pimpl->getBootstrapRmsRaArcsec();
-}
-
-double MountController::getBootstrapRmsDecArcsec() const {
-    return pimpl->getBootstrapRmsDecArcsec();
+double MountController::getBootstrapQuaternionErrorArcsec() const {
+    return pimpl->getBootstrapQuaternionErrorArcsec();
 }
 
 double MountController::getBootstrapRaCorrectionArcsec() const {
@@ -7063,11 +6994,11 @@ double MountController::getBootstrapDecCorrectionArcsec() const {
     return pimpl->getBootstrapDecCorrectionArcsec();
 }
 
-bool MountController::setBootstrapMode(BootstrapMode mode) {
+bool MountController::setBootstrapMode(config::BootstrapMode mode) {
     return pimpl->setBootstrapMode(mode);
 }
 
-MountController::BootstrapMode MountController::getBootstrapMode() const {
+auto MountController::getBootstrapMode() const -> config::BootstrapMode {
     return pimpl->getBootstrapMode();
 }
 
@@ -7123,15 +7054,6 @@ bool MountController::addTPointMeasurement(double observed_ra, double observed_d
                                       temperature, pressure, humidity,
                                       proper_motion_ra, proper_motion_dec,
                                       parallax, epoch);
-}
-
-bool MountController::addTPointMeasurement(double observed_ra, double observed_dec,
-                                           double expected_ra, double expected_dec,
-                                           double temperature, double pressure,
-                                           double humidity) {
-    return pimpl->addTPointMeasurement(observed_ra, observed_dec,
-                                      expected_ra, expected_dec,
-                                      temperature, pressure, humidity);
 }
 
 void MountController::clearTPointMeasurements() {
@@ -7200,6 +7122,24 @@ MountController::ControllerConfig MountController::getConfiguration() const {
     return pimpl->getConfiguration();
 }
 
+bool MountController::controlAxis(int axis_id, int mode, double target_position,
+                                  double target_velocity, double acceleration, bool relative) {
+    return pimpl->controlAxis(axis_id, mode, target_position,
+                              target_velocity, acceleration, relative);
+}
+
+bool MountController::stopAxis(int axis_id, bool decelerate, double deceleration) {
+    return pimpl->stopAxis(axis_id, decelerate, deceleration);
+}
+
+bool MountController::emergencyStop(int axis_id, bool reset_after) {
+    return pimpl->emergencyStop(axis_id, reset_after);
+}
+
+bool MountController::getAxisStatus(::astro_mount::AxisStatus& status) const {
+    return pimpl->getAxisStatus(status);
+}
+
 bool MountController::updateConfiguration(const ControllerConfig& config) {
     return pimpl->updateConfiguration(config);
 }
@@ -7208,11 +7148,11 @@ void MountController::setConfigFilePath(const std::string& path) {
     pimpl->config_file_path_ = path;
 }
 
-bool MountController::setMountOrientation(const MountOrientation& orientation) {
+bool MountController::setMountOrientation(const config::MountOrientation& orientation) {
     return pimpl->setMountOrientation(orientation);
 }
 
-MountController::MountOrientation MountController::getMountOrientation() const {
+auto MountController::getMountOrientation() const -> config::MountOrientation {
     return pimpl->getMountOrientation();
 }
 
@@ -7343,6 +7283,10 @@ bool MountController::restart() {
 
 bool MountController::hardRestart() {
     return pimpl->hardRestart();
+}
+
+::astro_mount::FieldRotationParams MountController::getFieldRotationParams() const {
+    return pimpl->getFieldRotationParams();
 }
 
 } // namespace controllers

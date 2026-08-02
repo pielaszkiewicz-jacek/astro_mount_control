@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package astro_dome;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// Messages
+// ============================================
+
+// Dome type enumeration
+// NOTE: enum values use C++ scoping rules — they are siblings of their type,
+// not children of it.  Use distinct DT_ / DS_ prefixes to avoid collisions.
+enum DomeType {
+    DT_UNKNOWN = 0;
+    DT_ROTATING = 1;
+    DT_ROLLOFF = 2;
+}
+
+// Dome state enumeration
+enum DomeState {
+    DS_CLOSED = 0;
+    DS_OPENING = 1;
+    DS_OPEN = 2;
+    DS_CLOSING = 3;
+    DS_ROTATING = 4;
+    DS_PARKED = 5;
+    DS_ERROR = 6;
+}
+
+// Full dome status
+message DomeStatus {
+    DomeType dome_type = 1;
+    DomeState state = 2;
+    double azimuth_deg = 3;
+    double target_azimuth_deg = 4;
+    bool can_rotate = 5;
+    bool can_open = 6;
+    bool shutter_open = 7;
+    double aperture_deg = 8;
+    bool parked = 9;
+    bool sync_enabled = 10;
+    double sync_offset_deg = 11;
+    string error_message = 12;
+    double home_azimuth_deg = 13;
+    double park_azimuth_deg = 14;
+    bool connected = 15;
+    bool moving = 16;
+    google.protobuf.Timestamp timestamp = 17;
+}
+
+// Rotate request
+message RotateRequest {
+    double azimuth_deg = 1;
+    bool wait_for_completion = 2;
+}
+
+// Auto-sync configuration
+message AutoSyncConfig {
+    bool enabled = 1;
+    double sync_offset_deg = 2;
+    double sync_threshold_deg = 3;
+    int32 sync_interval_sec = 4;
+}
+
+// Mount azimuth callback value (for auto-sync)
+message MountAzimuth {
+    double azimuth_deg = 1;
+    google.protobuf.Timestamp timestamp = 2;
+}
+
+// ============================================
+// Service definition
+// ============================================
+
+service DomeService {
+    // Basic dome operations
+    rpc OpenShutter(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc CloseShutter(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc RotateTo(RotateRequest) returns (google.protobuf.Empty);
+    rpc Halt(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc Park(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc Unpark(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc GoHome(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    // Status and configuration
+    rpc GetStatus(google.protobuf.Empty) returns (DomeStatus);
+    rpc WatchStatus(google.protobuf.Empty) returns (stream DomeStatus);
+
+    // Auto-sync with mount
+    rpc SetAutoSync(AutoSyncConfig) returns (google.protobuf.Empty);
+    rpc GetAutoSync(google.protobuf.Empty) returns (AutoSyncConfig);
+
+    // Mount azimuth feed (for auto-sync)
+    rpc UpdateMountAzimuth(MountAzimuth) returns (google.protobuf.Empty);
+
+    // Health check
+    rpc CheckHealth(google.protobuf.Empty) returns (google.protobuf.Empty);
+}

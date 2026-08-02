@@ -1,39 +1,71 @@
 /**
  * Observation Sequencer Panel Component
+ *
+ * Unified card-based style matching the existing UI.
  */
 const SequencerComponent = (() => {
   'use strict';
 
   function render() {
     return `
-      <div id="sequencer-panel" class="panel">
-        <h2>📋 Sequencer</h2>
-        <div class="sequencer-controls">
-          <button onclick="SequencerComponent.start()">▶ Start</button>
-          <button onclick="SequencerComponent.stop()">⏹ Stop</button>
-          <button onclick="SequencerComponent.pause()">⏸ Pause</button>
-          <button onclick="SequencerComponent.resume()">▶ Resume</button>
-        </div>
-        <div class="sequencer-status">
-          <p>State: <span id="seq-state">IDLE</span></p>
-          <p>Target: <span id="seq-target">--</span> / <span id="seq-targets">--</span></p>
-          <p>Exposure: <span id="seq-exposure">--</span> / <span id="seq-exposures">--</span></p>
-          <div class="progress-bar"><div id="seq-progress" style="width:0%"></div></div>
-        </div>
-        <div class="sequencer-targets">
-          <h3>Target List</h3>
-          <div id="seq-target-list" class="target-list"></div>
-          <div class="add-target">
-            <label>Name: <input type="text" id="seq-new-name"></label>
-            <label>RA: <input type="number" id="seq-new-ra" step="0.001"></label>
-            <label>Dec: <input type="number" id="seq-new-dec" step="0.001"></label>
-            <button onclick="SequencerComponent.addTarget()">Add Target</button>
+      <div class="sequencer-dashboard">
+        <div class="sensor-grid">
+          <div class="sensor-card">
+            <span class="sensor-label">State</span>
+            <span class="sensor-value" id="seq-state">IDLE</span>
           </div>
-          <button onclick="SequencerComponent.loadPlan()">Load Plan</button>
+          <div class="sensor-card">
+            <span class="sensor-label">Target</span>
+            <span class="sensor-value"><span id="seq-target">--</span> / <span id="seq-targets">--</span></span>
+          </div>
+          <div class="sensor-card">
+            <span class="sensor-label">Exposure</span>
+            <span class="sensor-value"><span id="seq-exposure">--</span> / <span id="seq-exposures">--</span></span>
+          </div>
+          <div class="sensor-card">
+            <span class="sensor-label">Progress</span>
+            <span class="sensor-value" id="seq-progress-pct">0%</span>
+          </div>
         </div>
-        <div class="sequencer-log">
-          <h3>Session Log</h3>
-          <div id="seq-log" class="log-list"></div>
+
+        <div class="progress-bar" style="margin:8px 0;">
+          <div id="seq-progress" style="width:0%; height:100%; background:var(--color-primary); border-radius:4px; transition:width 0.3s ease;"></div>
+        </div>
+
+        <div class="action-grid">
+          <button class="btn btn-primary" onclick="SequencerComponent.start()">▶ Start</button>
+          <button class="btn btn-danger" onclick="SequencerComponent.stop()">⏹ Stop</button>
+          <button class="btn btn-warning" onclick="SequencerComponent.pause()">⏸ Pause</button>
+          <button class="btn btn-secondary" onclick="SequencerComponent.resume()">▶ Resume</button>
+        </div>
+
+        <h3 style="margin:16px 0 8px; font-size:0.9rem; color:var(--color-text-secondary);">Target List</h3>
+        <div id="seq-target-list" class="control-form" style="max-height:200px; overflow-y:auto;"></div>
+
+        <div class="control-form" style="margin-top:12px;">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="seq-new-name" class="form-label">Name</label>
+              <input type="text" id="seq-new-name" class="form-input" placeholder="Target name">
+            </div>
+            <div class="form-group">
+              <label for="seq-new-ra" class="form-label">RA (hours)</label>
+              <input type="number" id="seq-new-ra" class="form-input" step="0.001" placeholder="0.0">
+            </div>
+            <div class="form-group">
+              <label for="seq-new-dec" class="form-label">Dec (°)</label>
+              <input type="number" id="seq-new-dec" class="form-input" step="0.001" placeholder="0.0">
+            </div>
+            <div class="form-group" style="align-self:flex-end;">
+              <button class="btn btn-secondary" onclick="SequencerComponent.addTarget()">+ Add</button>
+            </div>
+          </div>
+          <button class="btn btn-secondary" onclick="SequencerComponent.loadPlan()">📂 Load Observation Plan</button>
+        </div>
+
+        <h3 style="margin:16px 0 8px; font-size:0.9rem; color:var(--color-text-secondary);">Session Log</h3>
+        <div id="seq-log" class="control-form" style="max-height:150px; overflow-y:auto; font-size:0.82rem; color:var(--color-text-secondary);">
+          <em>No log entries yet.</em>
         </div>
       </div>`;
   }
@@ -49,7 +81,14 @@ const SequencerComponent = (() => {
     const dec = parseFloat(document.getElementById('seq-new-dec').value);
     if (name && !isNaN(ra) && !isNaN(dec)) {
       const list = document.getElementById('seq-target-list');
-      list.innerHTML += `<div class="target-entry">${name} (RA=${ra}, Dec=${dec})</div>`;
+      const entry = document.createElement('div');
+      entry.className = 'form-row';
+      entry.style.cssText = 'padding:4px 0; border-bottom:1px solid var(--color-border); font-size:0.85rem;';
+      entry.innerHTML = `<span style="font-weight:600;">${name}</span> <span style="color:var(--color-text-secondary);">RA=${ra.toFixed(3)}h Dec=${dec.toFixed(3)}°</span>`;
+      list.appendChild(entry);
+      document.getElementById('seq-new-name').value = '';
+      document.getElementById('seq-new-ra').value = '';
+      document.getElementById('seq-new-dec').value = '';
     }
   }
 
@@ -59,5 +98,19 @@ const SequencerComponent = (() => {
     });
   }
 
-  return { render, start, stop, pause, resume, addTarget, loadPlan };
+  function refreshStatus() {
+    Api.get('/api/sequencer/status').then(data => {
+      document.getElementById('seq-state').textContent = data.state || 'IDLE';
+      document.getElementById('seq-target').textContent = data.current_target || '--';
+      document.getElementById('seq-targets').textContent = data.total_targets || '--';
+      document.getElementById('seq-exposure').textContent = data.current_exposure || '--';
+      document.getElementById('seq-exposures').textContent = data.total_exposures || '--';
+      const pct = data.progress_percent || 0;
+      document.getElementById('seq-progress-pct').textContent = pct.toFixed(1) + '%';
+      const bar = document.getElementById('seq-progress');
+      if (bar) bar.style.width = pct + '%';
+    }).catch(() => {});
+  }
+
+  return { render, start, stop, pause, resume, addTarget, loadPlan, refreshStatus };
 })();

@@ -2485,7 +2485,7 @@ if (hal->initialize(config)) {
 **Migration plan**:
 1. Replace `ICanOpenInterface` with `HALInterface` in `MountController`
 2. Update `initialize()`, `slewToEquatorial()`, etc.
-3. Maintain backward compatibility through adapter
+3. Migrate through an adapter
 
 ### 17.6 Benefits of Implemented HAL
 1. **Full hardware abstraction** — logic independent of hardware

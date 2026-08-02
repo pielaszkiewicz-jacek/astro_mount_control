@@ -3,6 +3,11 @@
 
 #include <string>
 #include <memory>
+#include <vector>
+
+namespace grpc {
+class Service;
+} // namespace grpc
 
 namespace astro_mount {
 namespace controllers {
@@ -13,9 +18,14 @@ namespace api {
 
 /**
  * @brief gRPC server for mount controller
- * 
+ *
  * Manages the gRPC server lifecycle and provides remote access
  * to the mount controller functionality.
+ *
+ * Since the dome, derotator and focuser subsystems are hosted
+ * in-process within the mount controller, the same gRPC server can
+ * register their services as well. Use registerService() before
+ * calling start().
  */
 class GrpcServer {
 public:
@@ -58,7 +68,18 @@ public:
      * @return True if server is running
      */
     bool isRunning() const;
-    
+
+    /**
+     * @brief Register an additional gRPC service to serve in-process.
+     *
+     * The service is registered on every listening address of this
+     * server. Must be called before start().
+     *
+     * @param service Pointer to a grpc::Service implementation whose
+     *                lifetime must outlive this server.
+     */
+    void registerService(grpc::Service* service);
+
     // Non-copyable
     GrpcServer(const GrpcServer&) = delete;
     GrpcServer& operator=(const GrpcServer&) = delete;

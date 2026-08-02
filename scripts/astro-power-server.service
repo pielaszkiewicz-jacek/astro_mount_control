@@ -1,0 +1,22 @@
+[Unit]
+Description=Astro Mount Power Management Server
+Documentation=https://github.com/astro-mount/power
+After=network.target
+
+[Service]
+Type=simple
+User=astro
+ExecStart=/usr/local/bin/astro_power_server \
+    --address 0.0.0.0:50056 \
+    --config /etc/astro-mount/power_config.json
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

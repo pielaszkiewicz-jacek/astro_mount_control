@@ -1,0 +1,12 @@
+{
+    "_comment": "Derotator control configuration",
+    "type": "SIMULATED",
+    "enabled": false,
+    "gear_ratio": 10.0,
+    "max_speed": 5.0,
+    "max_acceleration": 2.0,
+    "backlash": 0.0,
+    "absolute_encoder": true,
+    "encoder_resolution": 16384,
+    "homing_offset": 0.0
+}

@@ -29,39 +29,37 @@ protected:
         logging::Logger::init("");
 
         // Default controller config matching test_mount_controller.cpp
-        config_.mount_type = controllers::MountController::MountType::EQUATORIAL;
-        config_.latitude = 52.0;
-        config_.longitude = 21.0;
-        config_.altitude = 100.0;
-        config_.max_slew_rate = 5.0;
-        config_.max_tracking_rate = 0.004178;
-        config_.slew_acceleration = 1.0;
-        config_.tracking_acceleration = 0.001;
-        config_.position_tolerance = 0.5;
-        config_.rate_tolerance = 0.001;
-        config_.canopen_interface = "";   // mock (no real hardware)
-        config_.canopen_node_id = 1;
-        config_.use_encoders = false;
-        config_.encoders_absolute = false;
-        config_.encoder_resolution = 360000;
-        config_.default_temperature = 15.0;
-        config_.default_pressure = 1013.25;
-        config_.default_humidity = 0.5;
+        config_.mount_config.mount_type = config::MountType::EQUATORIAL;
+        config_.mount_config.latitude = 52.0;
+        config_.mount_config.longitude = 21.0;
+        config_.mount_config.altitude = 100.0;
+        config_.mount_config.max_slew_rate = 5.0;
+        config_.mount_config.max_tracking_rate = 0.004178;
+        config_.mount_config.slew_acceleration = 1.0;
+        config_.mount_config.tracking_acceleration = 0.001;
+        config_.mount_config.position_tolerance = 0.5;
+        config_.mount_config.rate_tolerance = 0.001;
+        config_.mount_config.use_encoders = false;
+        config_.mount_config.encoders_absolute = false;
+        config_.mount_config.encoder_resolution = 360000;
+        config_.mount_config.default_temperature = 15.0;
+        config_.mount_config.default_pressure = 1013.25;
+        config_.mount_config.default_humidity = 0.5;
         config_.focal_length = 2000.0;
         config_.aperture = 250.0;
-        config_.enable_guider = false;
-        config_.guider_max_correction = 100.0;
-        config_.guider_aggression = 0.5;
+        config_.tracking_config.enable_guider = false;
+        config_.tracking_config.guider_max_correction = 100.0;
+        config_.tracking_config.guider_aggression = 0.5;
         // Use gear_ratio=1.0 in tests so servo degrees == telescope degrees
-        config_.ha_axis_params.gear_ratio = 1.0;
-        config_.dec_axis_params.gear_ratio = 1.0;
+        config_.mount_config.ha_axis_params.gear_ratio = 1.0;
+        config_.mount_config.dec_axis_params.gear_ratio = 1.0;
         // Park at Dec=0° (celestial equator) instead of Dec=90° (NCP) to avoid
         // coordinate singularities in RA/Dec transforms during tests.
-        config_.park_position_axis2 = 0.0;
-        config_.ha_axis_params.backlash = 0.0;
-        config_.dec_axis_params.backlash = 0.0;
-        config_.ha_axis_params.encoder_resolution = 360000.0;
-        config_.dec_axis_params.encoder_resolution = 360000.0;
+        config_.safety_config.park_position_axis2 = 0.0;
+        config_.mount_config.ha_axis_params.backlash = 0.0;
+        config_.mount_config.dec_axis_params.backlash = 0.0;
+        config_.mount_config.ha_axis_params.encoder_resolution = 360000.0;
+        config_.mount_config.dec_axis_params.encoder_resolution = 360000.0;
 
         // Build default HAL config for SimulatedHAL
         hal_config_ = HALFactory::getDefaultConfig(HALType::SIMULATED);
@@ -221,9 +219,12 @@ TEST_F(HALIntegrationTest, SimulatedHALSupportsFeatures) {
     hal_ = HALFactory::create(HALType::SIMULATED);
     ASSERT_NE(hal_, nullptr);
 
-    EXPECT_TRUE(hal_->supportsFeature(HALFeature::DEROTATOR_SUPPORT));
-    // SIMULATION is not in the enum, but MOTOR_CONTROL, ENCODER_READING are
-    // actual features
+    // SimulatedHAL supports PID_CONTROL, ENCODER_FEEDBACK, REAL_TIME_CONTROL
+    EXPECT_TRUE(hal_->supportsFeature(HALFeature::PID_CONTROL));
+    EXPECT_TRUE(hal_->supportsFeature(HALFeature::ENCODER_FEEDBACK));
+    EXPECT_TRUE(hal_->supportsFeature(HALFeature::REAL_TIME_CONTROL));
+    // SimulatedHAL does not provide serial, ethernet, or field bus support
+    EXPECT_FALSE(hal_->supportsFeature(HALFeature::SERIAL_SUPPORT));
 }
 
 TEST_F(HALIntegrationTest, SimulatedHALCreateComponents) {
@@ -246,25 +247,6 @@ TEST_F(HALIntegrationTest, SimulatedHALCreateComponents) {
 
     auto sensor = hal_->createSensorInterface();
     (void)sensor;
-}
-
-TEST_F(HALIntegrationTest, SimulatedHALDerotatorSupport) {
-    hal_ = HALFactory::create(HALType::SIMULATED);
-    ASSERT_NE(hal_, nullptr);
-    ASSERT_TRUE(hal_->initialize(hal_config_));
-
-    // Derotator config and components
-    DerotatorConfig derotator_cfg;
-    derotator_cfg.enabled = true;
-    derotator_cfg.type = DerotatorType::STEPPER;
-    EXPECT_TRUE(hal_->configureDerotator(derotator_cfg));
-
-    auto derotator_motor = hal_->createDerotatorMotor();
-    // May be null — just verify no crash
-    (void)derotator_motor;
-
-    auto derotator_encoder = hal_->createDerotatorEncoder();
-    (void)derotator_encoder;
 }
 
 TEST_F(HALIntegrationTest, SimulatedHALStatusAndErrors) {
@@ -363,7 +345,7 @@ TEST_F(HALIntegrationTest, MountControllerWithHALStartTracking) {
 
     // Start tracking
     EXPECT_TRUE(controller_->startTracking(12.0, 45.0,
-        controllers::MountController::TrackingMode::SIDEREAL));
+        config::TrackingMode::SIDEREAL));
 
     auto status = controller_->getStatus();
     EXPECT_EQ(status.state, controllers::MountController::MountStatus::State::TRACKING);

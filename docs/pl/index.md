@@ -7,16 +7,17 @@
 3. [Modele matematyczne](#modele-matematyczne)
 4. [API gRPC](#api-grpc)
 5. [Konfiguracja](#konfiguracja)
-6. [Interfejs Web (Serwer Proxy)](#6-web-proxy-httpjson--grpc)
-7. [Interfejs Web (SPA w przeglądarce)](#7-web-interface-browser-spa)
-8. [Baza obiektów astronomicznych](#8-object-database-service)
-9. [System konfiguracji](#9-configuration-system)
-10. [Przykłady użycia](#przykłady-użycia)
-11. [Instalacja i budowanie](#instalacja-i-budowanie)
-12. [Testowanie](#testowanie)
-13. [Parametry fizyczne osi](#parametry-fizyczne-osi)
-14. [Sterowniki ASCOM i INDI](#ascom-i-indi-drivers)
-15. [Interfejs Web](#interfejs-web)
+6. [Konfiguracja serwisów zewnętrznych](konfiguracja_serwisow_zewnetrznych.md)
+7. [Interfejs Web (Serwer Proxy)](#6-web-proxy-httpjson--grpc)
+8. [Interfejs Web (SPA w przeglądarce)](#7-web-interface-browser-spa)
+9. [Baza obiektów astronomicznych](#8-object-database-service)
+10. [System konfiguracji](#9-configuration-system)
+11. [Przykłady użycia](#przykłady-użycia)
+12. [Instalacja i budowanie](#instalacja-i-budowanie)
+13. [Testowanie](#testowanie)
+14. [Parametry fizyczne osi](#parametry-fizyczne-osi)
+15. [Sterowniki ASCOM i INDI](#ascom-i-indi-drivers)
+16. [Interfejs Web](#interfejs-web)
 
 ## Wprowadzenie
 
@@ -66,10 +67,12 @@ flowchart TB
     subgraph API["🌐 API gRPC"]
         GRPC["MountControllerServiceImpl<br/>proto/mount_controller.proto"]
         DB_GRPC["ObjectDatabaseServiceImpl<br/>proto/object_database.proto"]
+        INPROC["Usługi w procesie:<br/>DomeService · DerotatorService · FocuserService<br/>(wspólne API :50051)"]
     end
 
     subgraph CORE["⚙️ Rdzeń kontrolera"]
         MC["MountController<br/>src/controllers/mount_controller.cpp<br/>Maszyna stanów · Pętla śledzenia · Meridian flip"]
+        INPROCSVC["Podsystemy w procesie<br/>dome/ · derotator/ · focuser/"]
     end
 
     subgraph MODELS["🧮 Modele matematyczne"]
@@ -110,6 +113,8 @@ flowchart TB
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
+    MC --> INPROCSVC
+    INPROCSVC --> INPROC
     ASTRO --> KF
     TPOINT --> KF
     KF --> CAN
@@ -123,8 +128,8 @@ flowchart TB
 
     class SPA,PROXY client
     class PY,CPP client
-    class GRPC,DB_GRPC api
-    class MC core
+    class GRPC,DB_GRPC,INPROC api
+    class MC,INPROCSVC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
     class HW1,HW2,HW3 hw
@@ -132,91 +137,107 @@ flowchart TB
 
 ### Komponenty systemu
 
-#### 1. **MountController**
+#### 1. **MountController** ([`src/controllers/mount_controller.cpp`](src/controllers/mount_controller.cpp))
 Główny komponent integrujący wszystkie moduły:
-- Sterowanie śledzeniem i szybkim przesuwaniem
-- Zarządzanie stanem montażu
-- Integracja z enkoderami i guiderem
-- Kalibracja bootstrap (wstępne wyrównanie)
-- Kalibracja TPOINT (precyzyjny model wskazań)
+- Sterowanie śledzeniem i szybkim przesuwaniem (maszyna stanów z 9 stanami)
+- Zarządzanie stanem montażu, meridian flip, soft limity w 3 strefach
+- Integracja z enkoderami i guiderem, aplikacja PEC
+- Kalibracja bootstrap (wstępne wyrównanie) + kalibracja TPOINT (precyzyjny model wskazań)
 - Śledzenie efemeryd (obiekty ruchome: satelity, komety, asteroidy)
-#### 3. **AstronomicalCalculations**
-Obliczenia astronomiczne oparte na bibliotece SOFA:
-- Transformacje układów współrzędnych (równikowe ↔ horyzontalne)
-- Korekcja refrakcji atmosferycznej
-- Precesja, nutacja, aberracja
-- Czas gwiazdowy, efemerydy
+- 11 guardów propagacji NaN/Inf w pętli śledzenia
 
-#### 4. **TPointModel**
+#### 2. **AstronomicalCalculations** ([`src/core/astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp))
+Obliczenia astronomiczne oparte na bibliotece SOFA:
+- Transformacje układów współrzędnych (równikowe ↔ horyzontalne, kąt godzinny)
+- Korekcja refrakcji atmosferycznej
+- Precesja, nutacja, aberracja, czas świetlny, ugięcie grawitacyjne
+- Czas gwiazdowy, efemerydy, ruch własny
+
+#### 3. **TPointModel** ([`src/models/tpoint_model.cpp`](src/models/tpoint_model.cpp))
 Pełny model TPOINT do korekcji błędów geometrycznych:
 - 21 parametrów TPOINT (IA, IE, NPAE, AN, AW, itp.)
-- Dopasowanie metodą najmniejszych kwadratów
+- Dopasowanie metodą najmniejszych kwadratów z dekompozycją QR
 - Korekcja refrakcji atmosferycznej
 - Obsługa ruchu własnego gwiazd
 
-#### 5. **KalmanFilter**
+#### 4. **KalmanFilter** ([`src/models/kalman_filter.cpp`](src/models/kalman_filter.cpp))
 Rozszerzony filtr Kalmana do ciągłej kalibracji:
 - Estymacja orientacji montażu (kwaternion)
 - Aktualizacja parametrów TPOINT
 - Kompensacja dryfu termicznego
-- Fuzja danych z enkoderów i pomiarów optycznych
+- Fuzja danych z enkoderów i pomiarów optycznych (aktualizacja kowariancji w formie Joseph)
 
-#### 6. **CanOpenInterface**
-Implementacja protokołu CANopen (CiA 301, CiA 402):
-- Sterowanie napędami serwo
-- Odczyt enkoderów absolutnych
-- Generacja trajektorii ruchu
-- Monitorowanie statusu napędów
+#### 5. **EphemerisTracker** ([`src/models/ephemeris_tracker.cpp`](src/models/ephemeris_tracker.cpp))
+Śledzi obiekty ruchome (komety, asteroidy, satelity):
+- Interpolacja efemeryd (liniowa/kwadratowa/sześcienna)
+- Predykcja poza zakres efemeryd, korekcja rotacji Ziemi
 
-#### 7. **Web Proxy (HTTP/JSON → gRPC)**
+#### 6. **PECModel** ([`src/models/pec_model.cpp`](src/models/pec_model.cpp))
+Korekcja błędu okresowego:
+- Ekstrakcja harmonicznych przez FFT (domyślnie 8 harmonicznych)
+- Zsynchronizowana fazowo korekcja podczas śledzenia
+
+#### 7. **Warstwa abstrakcji sprzętu** ([`src/hal/`](src/hal/))
+Oddziela logikę biznesową od sprzętu przez [`HALInterface`](include/hal/hal_interface.h) i [`hal_factory`](include/hal/hal_factory.h):
+- **CANopen** (CiA 301/402) · **MF7025v2** (własny protokół CAN) · **Szeregowe** (Modbus RTU)
+- **Ethernet** (Modbus TCP) · **Gamepad** (evdev) · **Symulowane**
+- HAL-e urządzeń: kopuła, derotator (TMC5160), kamera (ZWO), focuser (ZWO/MoonLite/Pegasus), zasilanie (I²C), ST4
+
+#### 8. **Usługi podsystemów** (konfigurowalne, domyślnie wyłączone)
+Kopuła, derotator i focuser są **hostowane w procesie** wewnątrz `astro_mount_controller` (bez osobnego procesu); pogoda, zasilanie i sekwencer pozostają niezależnymi procesami gRPC linkowanymi z `astro_mount_core`:
+- **Kopuła** ([`dome/`](dome/)) :50051 (wspólny) — żaluzje, obrót, auto-sync z montażem (w procesie)
+- **Derotator** ([`derotator/`](derotator/)) :50051 (wspólny) — derotacja pola (w procesie)
+- **Focuser** ([`focuser/`](focuser/)) :50051 (wspólny) — sterowanie focuserem, autofokus (w procesie)
+- **Pogoda** ([`weather/`](weather/)) :50055 — monitorowanie, alerty, auto-park (samodzielna)
+- **Zasilanie** ([`power/`](power/)) :50056 — monitorowanie baterii, przełączanie wyjść (samodzielna)
+- **Sekwencer** ([`sequencer/`](sequencer/)) :50057 — plany obserwacji (samodzielna)
+
+#### 9. **Web Proxy (HTTP/JSON → gRPC)** ([`web/proxy/`](web/proxy/))
 Serwer proxy Node.js Express łączący przeglądarkę z backendami gRPC:
-- REST API HTTP/JSON (~40 endpointów) do sterowania montażem, kalibracji, śledzenia, konfiguracji, bazy danych
-- Serwowanie plików statycznych dla SPA
-- Wzbogacanie i filtrowanie danych przy imporcie katalogów
-- Przesyłanie i zarządzanie plikami stanu montażu
-- Obsługa CORS, SSL/TLS, konfigurowalne adresy gRPC
+- REST API HTTP/JSON do montażu, osi, kalibracji, śledzenia, konfiguracji, HAL, stanu, bazy danych, zdrowia, logów
+- Trasy rozszerzone (konfigurowalne): PEC, power, guider, derotator, sequencer, camera, focuser, dome, weather, pulley
+- Serwowanie plików statycznych dla SPA, obsługa CORS, SSL/TLS, konfigurowalne adresy gRPC
 
-#### 8. **Web Interface (SPA w przeglądarce)**
-Aplikacja jednostronicowa z 6 zakładkami:
+#### 10. **Web Interface (SPA w przeglądarce)** ([`web/public/`](web/public/))
+Aplikacja jednostronicowa (vanilla JS) z zakładkami:
 - **Status** — stan montażu w czasie rzeczywistym, pozycja, środowisko, śledzony obiekt
 - **Sterowanie** — slew do współrzędnych, panel osi (tryb prędkości/krokowy), zapis/odczyt stanu
-- **Ustawienia** — 18 grup konfiguracyjnych z przywracaniem domyślnych, eksport/import, konfiguracja adresów
+- **Ustawienia** — grupy konfiguracyjne z przywracaniem domyślnych, eksport/import, konfiguracja adresów
 - **Kalibracja** — Bootstrap (wstępne wyrównanie) + TPOINT (precyzyjny model wskazań)
 - **Baza danych** — CRUD obiektów, wyszukiwanie/filtrowanie, ulubione, import katalogów (presety/plik/URL)
-- **Śledzenie** — śledzenie efemeryd obiektów ruchomych (satelity, komety, asteroidy)
+- **Śledzenie** — śledzenie efemeryd obiektów ruchomych
+- Zakładki rozszerzone (gdy usługi włączone): kopuła, derotator, pogoda, zasilanie, sekwencer, focuser, kamera, PEC, guider, pulley
 
-#### 9. **Object Database Service**
+#### 11. **GUI Qt** ([`gui/`](gui/))
+Natywna aplikacja desktopowa Qt (`astro_mount_gui`) używająca gRPC:
+- Panele: montaż, status, kreator kalibracji, sekwencer, kopuła, focuser, kamera, pogoda, derotator, PEC, zasilanie, powiadomienia, ustawienia
+- Widżety: mapa nieba, wykres gwiazd, wykres ostrości, wykres pogody
+
+#### 12. **Object Database Service** ([`db/`](db/))
 Katalog obiektów astronomicznych oparty na SQLite:
 - Pełny CRUD z paginacją i wyszukiwaniem
 - Obsługa wielu katalogów (Messier, NGC, IC, Caldwell, HYG, SAO)
 - Ulubione obiekty, kategorie, import/eksport
 - API gRPC na porcie 50052
 
-#### 10. **System konfiguracji**
+#### 13. **System konfiguracji** ([`src/config/configuration.cpp`](src/config/configuration.cpp))
 System zarządzania konfiguracją:
-- Ładowanie/zapisywanie konfiguracji JSON
-- Walidacja parametrów
-- Domyślne wartości konfiguracyjne
+- Ładowanie/zapisywanie konfiguracji JSON z ponad 25 walidacjami
+- Monitor konfiguracji do przeładowania na gorąco
+- Sekcja integracji usług zewnętrznych (`external_services`)
 
-#### 11. **ASCOM Telescope Driver** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
-Sterownik teleskopu ASCOM zgodny z interfejsem `ITelescopeV3`:
-- Komunikacja przez Alpaca REST API (HTTP/JSON) → tłumaczenie na gRPC
-- Wspiera: `SlewToCoordinatesAsync`, `MoveAxis`, `PulseGuide`, `Park`, `SyncToCoordinates`
-- `MoveAxis()` → `ControlAxis()` z trybem `VELOCITY_CONTROL`
-- `Action()` — dyspozytor string dla komend niestandardowych (np. `ClearTPointMeasurements`)
-- `StateCache` — odświeżanie stanu co 2 sekundy
-- Obsługa `SideOfPier`, współrzędne `SiteLatitude`/`SiteLongitude`/`SiteElevation`
-- Klient gRPC ([`ascom/GrpcClient.cs`](ascom/GrpcClient.cs)) — uniwersalna klasa opakowująca
+#### 14. **Silnik powiadomień** ([`src/notifications/`](src/notifications/))
+Scentralizowane dostarczanie zdarzeń/alertów:
+- Kanały: Email (SMTP/TLS), Webhook, MQTT, Log
+- Kategorie zdarzeń: montaż, pogoda, sekwencer, zasilanie, sesja, system, guider, focuser, kamera, kopuła
 
-#### 12. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
-Sterownik teleskopu INDI (C++):
-- Komunikacja przez protokół INDI (XML/TCP) → tłumaczenie na gRPC
-- `MoveNS`/`MoveWE` z mapowaniem axis_id (0=RA/WE, 1=Dec/NS) i prędkością ±1.0 deg/s (`VELOCITY_CONTROL`)
-- `ReadScopeStatus()` — odpytywanie co 1 sekundę
-- `TPOINT_STATUS` — właściwość tekstowa do odczytu parametrów TPOINT
-- `EnvironmentNP` — właściwość numeryczna dla temperatury, ciśnienia, wilgotności
-- `SetCurrentPark()` — ustawienie pozycji parkowania z bieżącego stanu
-- Klient gRPC C++ ([`indi/MountGrpcClient.h`](indi/MountGrpcClient.h))
+#### 15. **Sterowniki ASCOM** (C#)
+- **Teleskop** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs)) — `ITelescopeV3`: SlewToCoordinates, PulseGuide, MoveAxis, Park/Unpark, status TPOINT, zapytania środowiskowe, cache stanu 2 s
+- **Rotator** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs)) — `IRotatorV3`: MoveAbsolute, Move(rate), Halt, Home
+
+#### 16. **Sterowniki INDI** (C++)
+- **Teleskop** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp)) — `INDI::Telescope` dla Ekos/KStars: MoveNS/MoveWE, `TPOINT_STATUS`, `EnvironmentNP`, park/sync/abort
+- **Rotator** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp)) — `INDI::Rotator`: MoveRotator, HomeRotator, AbortRotator
 
 ## Modele matematyczne
 

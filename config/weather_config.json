@@ -1,0 +1,46 @@
+{
+    "comment": "Weather monitoring service configuration. Disabled by default — enable via mount controller's ExternalIntegrationConfig::weather_enabled.",
+    "enabled": false,
+    "rules": {
+        "min_temperature_c": -20.0,
+        "max_temperature_c": 50.0,
+        "max_wind_speed_ms": 15.0,
+        "max_wind_gust_ms": 20.0,
+        "auto_park_on_rain": true,
+        "max_rain_rate_mmh": 5.0,
+        "max_cloud_cover_percent": 90.0,
+        "max_humidity_percent": 95.0,
+        "dew_point_tolerance_c": 3.0,
+        "auto_park_enabled": true,
+        "check_interval_seconds": 10,
+        "debounce_seconds": 30,
+        "notify_on_alert": true,
+        "close_dome_on_danger": false
+    },
+    "sensors": {
+        "rain": {
+            "enabled": false,
+            "gpio_pin": -1
+        },
+        "wind": {
+            "enabled": false,
+            "gpio_pin": -1,
+            "calibration_factor": 1.0
+        },
+        "cloud": {
+            "enabled": false,
+            "device": "/dev/i2c-1",
+            "address": 90
+        }
+    },
+    "gps": {
+        "enabled": false
+    },
+    "api_source": {
+        "provider": "",
+        "api_key": "",
+        "latitude": 0.0,
+        "longitude": 0.0,
+        "station_id": ""
+    }
+}

@@ -16,7 +16,6 @@ private:
     QCheckBox *ssl_;
     QLineEdit *ssl_cert_, *ssl_key_;
     QLineEdit *log_level_, *log_dir_;
-    QSpinBox *log_rotation_;
 };
 }
 #endif

@@ -11,8 +11,6 @@ namespace hal {
 
 enum class HALType {
     SIMULATED,   // Symulowany hardware
-    CANOPEN,     // CANopen/CiA 402
-    MF7025V2,    // LingKong MF7025v2 BLDC Servo (własny protokół CAN)
     SERIAL,      // Port szeregowy (RS-232/485)
     ETHERNET,    // Ethernet (EtherCAT, Modbus TCP)
     GAMEPAD,     // Ręczne sterowanie (gamepad/joystick)
@@ -20,62 +18,9 @@ enum class HALType {
 };
 // (Derotator types removed — derotator functionality eliminated from the project)
 
-/**
- * @brief CANopen-specific configuration subsection of HALConfig
- *
- * Extracted as a named type to allow referencing from other config classes,
- * eliminating the 4-way CANopen config duplication that existed before.
- */
-struct CanOpenConfig {
-    std::string library{"mock"};  // "mock", "canopensocket", "libedssharp", "canfestival"
-    std::string interface_name{"can0"};
-    uint32_t bitrate{125000};
-    uint8_t node_id{1};
-    bool use_sync{true};
-    uint32_t sync_period_ms{100};
-    uint32_t sdo_timeout_ms{1000};
-    uint32_t pdo_update_rate{100}; // Hz
-    std::string accel_mode{"time"}; // "time" or "rate" (CiA 402 acceleration interpretation)
-    bool pdo_config_enabled{false}; // Write PDO mappings to drive (may overwrite mfgr params)
-
-    // CANopen position rewind: periodically reset the drive's absolute position
-    // counter to prevent overflow beyond the drive's target position limit
-    // (typically ±1,000,000 encoder counts).
-    bool position_rewind_enabled{true};
-    double position_rewind_interval_seconds{3600.0};  // 0 = disabled
-    double position_rewind_threshold_percent{80.0};    // 0 = disabled
-    
-    // === Konfiguracja NMT (Network Management) ===
-    struct {
-        bool enable_nmt{true};                       // Włączenie monitorowania NMT
-        uint32_t heartbeat_period_ms{100};           // Oczekiwany okres heartbeat (100ms)
-        uint32_t heartbeat_timeout_ms{500};          // Timeout heartbeat (5x period)
-        uint32_t max_missed_heartbeats{3};           // Maksymalna liczba pominiętych heartbeat
-        bool enable_bootup_check{true};              // Sprawdzanie bootup po resecie
-        uint32_t bootup_timeout_ms{5000};            // Timeout na bootup (5s)
-        bool enable_auto_recovery{true};             // Automatyczne przywracanie węzłów
-        uint32_t recovery_interval_s{5};             // Min. odstęp między recovery (5s)
-        bool enable_node_guarding{false};            // Node Guarding (alternatywa dla heartbeat)
-        uint32_t node_guarding_period_ms{1000};      // Okres node guarding (1s)
-    } nmt;
-};
-
 struct HALConfig {
     HALType type{HALType::SIMULATED};
     std::string name{"Default_HAL"};
-    
-    // Konfiguracja CANopen (named type for external reference)
-    CanOpenConfig canopen;
-    
-    // Konfiguracja MF7025v2 (LingKong BLDC Servo)
-    struct {
-        std::string can_interface{"can0"};
-        uint32_t bitrate{1000000};
-        uint32_t sdo_timeout_ms{100};
-        double position_units_per_degree{100.0};   // 0.01°/LSB
-        double velocity_units_per_dps{100.0};       // 0.01dps/LSB
-    } mf7025v2;
-    
     
     // Konfiguracja Serial
     struct {
@@ -135,7 +80,7 @@ struct HALConfig {
     struct AxisConfig {
         int id{0};
         std::string name{"Axis_0"};
-        uint8_t can_node_id{0};  // CANopen node ID (0 = auto: axis_id + 1)
+        uint8_t can_node_id{1};  // CANopen node ID (1-127), must be set explicitly
         MotorConfig motor_config;
         EncoderConfig encoder_config;
         
@@ -197,35 +142,6 @@ struct HALConfig {
         config.simulated.simulate_errors = simulated.value("simulate_errors", false);
         config.simulated.error_probability = simulated.value("error_probability", 0.01);
         
-        // Parse CANopen configuration
-        auto canopen = json.value("canopen", nlohmann::json::object());
-        config.canopen.library = canopen.value("library", "mock");
-        config.canopen.interface_name = canopen.value("interface_name", "can0");
-        config.canopen.bitrate = canopen.value("bitrate", 125000);
-        config.canopen.node_id = canopen.value("node_id", 1);
-        config.canopen.use_sync = canopen.value("use_sync", true);
-        config.canopen.sync_period_ms = canopen.value("sync_period_ms", 100);
-        config.canopen.sdo_timeout_ms = canopen.value("sdo_timeout_ms", 1000);
-        config.canopen.pdo_update_rate = canopen.value("pdo_update_rate", 100);
-        config.canopen.accel_mode = canopen.value("accel_mode", "time");
-        config.canopen.pdo_config_enabled = canopen.value("pdo_config_enabled", false);
-        config.canopen.position_rewind_enabled = canopen.value("position_rewind_enabled", true);
-        config.canopen.position_rewind_interval_seconds = canopen.value("position_rewind_interval_seconds", 3600.0);
-        config.canopen.position_rewind_threshold_percent = canopen.value("position_rewind_threshold_percent", 80.0);
-        
-        // Parse NMT configuration
-        auto nmt_json = canopen.value("nmt", nlohmann::json::object());
-        config.canopen.nmt.enable_nmt = nmt_json.value("enable_nmt", true);
-        config.canopen.nmt.heartbeat_period_ms = nmt_json.value("heartbeat_period_ms", 100);
-        config.canopen.nmt.heartbeat_timeout_ms = nmt_json.value("heartbeat_timeout_ms", 500);
-        config.canopen.nmt.max_missed_heartbeats = nmt_json.value("max_missed_heartbeats", 3);
-        config.canopen.nmt.enable_bootup_check = nmt_json.value("enable_bootup_check", true);
-        config.canopen.nmt.bootup_timeout_ms = nmt_json.value("bootup_timeout_ms", 5000);
-        config.canopen.nmt.enable_auto_recovery = nmt_json.value("enable_auto_recovery", true);
-        config.canopen.nmt.recovery_interval_s = nmt_json.value("recovery_interval_s", 5);
-        config.canopen.nmt.enable_node_guarding = nmt_json.value("enable_node_guarding", false);
-        config.canopen.nmt.node_guarding_period_ms = nmt_json.value("node_guarding_period_ms", 1000);
-        
         // Parse serial configuration
         auto serial = json.value("serial", nlohmann::json::object());
         config.serial.port = serial.value("port", "/dev/ttyUSB0");
@@ -280,14 +196,6 @@ struct HALConfig {
             config.gamepad.axis_mapping[idx] = it->get<std::string>();
         }
         
-        // Parse MF7025v2 configuration
-        auto mf7025v2 = json.value("mf7025v2", nlohmann::json::object());
-        config.mf7025v2.can_interface = mf7025v2.value("can_interface", "can0");
-        config.mf7025v2.bitrate = mf7025v2.value("bitrate", 1000000);
-        config.mf7025v2.sdo_timeout_ms = mf7025v2.value("sdo_timeout_ms", 100);
-        config.mf7025v2.position_units_per_degree = mf7025v2.value("position_units_per_degree", 100.0);
-        config.mf7025v2.velocity_units_per_dps = mf7025v2.value("velocity_units_per_dps", 100.0);
-        
         // Parse axes configurations
         config.axes.clear();
         auto axes = json.value("axes", nlohmann::json::array());
@@ -295,7 +203,7 @@ struct HALConfig {
             AxisConfig axis;
             axis.id = axis_json.value("id", 0);
             axis.name = axis_json.value("name", "Axis_0");
-            axis.can_node_id = axis_json.value("can_node_id", 0);
+            axis.can_node_id = axis_json.value("can_node_id", 1);
             
             // Parse motor config
             auto motor_json = axis_json.value("motor_config", nlohmann::json::object());
@@ -304,7 +212,6 @@ struct HALConfig {
             else if (motor_type_str == "SERVO") axis.motor_config.type = MotorType::SERVO;
             else if (motor_type_str == "BRUSHED_DC") axis.motor_config.type = MotorType::BRUSHED_DC;
             else if (motor_type_str == "BRUSHLESS_DC") axis.motor_config.type = MotorType::BRUSHLESS_DC;
-            else if (motor_type_str == "CANOPEN_SERVO") axis.motor_config.type = MotorType::CANOPEN_SERVO;
             else axis.motor_config.type = MotorType::STEPPER;
             
             std::string control_mode_str = motor_json.value("default_mode", "POSITION");
@@ -338,7 +245,6 @@ struct HALConfig {
             else if (interface_str == "QUADRATURE") axis.encoder_config.interface = EncoderInterface::QUADRATURE;
             else if (interface_str == "BISS") axis.encoder_config.interface = EncoderInterface::BISS;
             else if (interface_str == "ENDAT") axis.encoder_config.interface = EncoderInterface::ENDAT;
-            else if (interface_str == "CANOPEN") axis.encoder_config.interface = EncoderInterface::CANOPEN;
             else axis.encoder_config.interface = EncoderInterface::SSI;
             
             axis.encoder_config.resolution = encoder_json.value("resolution", 16384);
@@ -394,23 +300,12 @@ struct HALConfig {
         std::string type_str;
         switch (type) {
             case HALType::SIMULATED: type_str = "simulated"; break;
-            case HALType::CANOPEN: type_str = "canopen"; break;
-            case HALType::MF7025V2: type_str = "mf7025v2"; break;
             case HALType::SERIAL: type_str = "serial"; break;
             case HALType::ETHERNET: type_str = "ethernet"; break;
             case HALType::GAMEPAD: type_str = "gamepad"; break;
             case HALType::CUSTOM: type_str = "custom"; break;
             default: type_str = "simulated";
         }
-        // Save MF7025v2 configuration
-        nlohmann::json mf7025v2_json;
-        mf7025v2_json["can_interface"] = mf7025v2.can_interface;
-        mf7025v2_json["bitrate"] = mf7025v2.bitrate;
-        mf7025v2_json["sdo_timeout_ms"] = mf7025v2.sdo_timeout_ms;
-        mf7025v2_json["position_units_per_degree"] = mf7025v2.position_units_per_degree;
-        mf7025v2_json["velocity_units_per_dps"] = mf7025v2.velocity_units_per_dps;
-        hal["mf7025v2"] = mf7025v2_json;
-
         hal["type"] = type_str;
         hal["name"] = name;
         
@@ -423,23 +318,6 @@ struct HALConfig {
         simulated_json["simulate_errors"] = simulated.simulate_errors;
         simulated_json["error_probability"] = simulated.error_probability;
         hal["simulated"] = simulated_json;
-        
-        // Save CANopen configuration
-        nlohmann::json canopen_json;
-        canopen_json["library"] = canopen.library;
-        canopen_json["interface_name"] = canopen.interface_name;
-        canopen_json["bitrate"] = canopen.bitrate;
-        canopen_json["node_id"] = canopen.node_id;
-        canopen_json["use_sync"] = canopen.use_sync;
-        canopen_json["sync_period_ms"] = canopen.sync_period_ms;
-        canopen_json["sdo_timeout_ms"] = canopen.sdo_timeout_ms;
-        canopen_json["pdo_update_rate"] = canopen.pdo_update_rate;
-        canopen_json["accel_mode"] = canopen.accel_mode;
-        canopen_json["pdo_config_enabled"] = canopen.pdo_config_enabled;
-        canopen_json["position_rewind_enabled"] = canopen.position_rewind_enabled;
-        canopen_json["position_rewind_interval_seconds"] = canopen.position_rewind_interval_seconds;
-        canopen_json["position_rewind_threshold_percent"] = canopen.position_rewind_threshold_percent;
-        hal["canopen"] = canopen_json;
         
         // Save serial configuration
         nlohmann::json serial_json;
@@ -510,7 +388,6 @@ struct HALConfig {
                 case MotorType::SERVO: motor_type_str = "SERVO"; break;
                 case MotorType::BRUSHED_DC: motor_type_str = "BRUSHED_DC"; break;
                 case MotorType::BRUSHLESS_DC: motor_type_str = "BRUSHLESS_DC"; break;
-                case MotorType::CANOPEN_SERVO: motor_type_str = "CANOPEN_SERVO"; break;
                 case MotorType::VIRTUAL: motor_type_str = "VIRTUAL"; break;
                 default: motor_type_str = "STEPPER";
             }
@@ -557,7 +434,6 @@ struct HALConfig {
                 case EncoderInterface::SSI: interface_str = "SSI"; break;
                 case EncoderInterface::BISS: interface_str = "BISS"; break;
                 case EncoderInterface::ENDAT: interface_str = "ENDAT"; break;
-                case EncoderInterface::CANOPEN: interface_str = "CANOPEN"; break;
                 case EncoderInterface::ANALOG: interface_str = "ANALOG"; break;
                 default: interface_str = "SSI";
             }
@@ -624,8 +500,6 @@ struct HALConfig {
     std::string getTypeString() const {
         switch (type) {
             case HALType::SIMULATED: return "simulated";
-            case HALType::CANOPEN: return "canopen";
-            case HALType::MF7025V2: return "mf7025v2";
             case HALType::SERIAL: return "serial";
             case HALType::ETHERNET: return "ethernet";
             case HALType::GAMEPAD: return "gamepad";
@@ -636,8 +510,6 @@ struct HALConfig {
     
     static HALType typeFromString(const std::string& type_str) {
         if (type_str == "simulated") return HALType::SIMULATED;
-        if (type_str == "canopen") return HALType::CANOPEN;
-        if (type_str == "mf7025v2") return HALType::MF7025V2;
         if (type_str == "serial") return HALType::SERIAL;
         if (type_str == "ethernet") return HALType::ETHERNET;
         if (type_str == "gamepad") return HALType::GAMEPAD;

@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package astro_derotator;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ============================================
+// Enums
+// ============================================
+
+enum DerotatorMode {
+    DM_DISABLED = 0;
+    DM_AUTO = 1;
+    DM_FIXED_ANGLE = 2;
+    DM_MANUAL_RATE = 3;
+}
+
+// ============================================
+// Messages
+// ============================================
+
+message DerotatorStatus {
+    DerotatorMode mode = 1;
+    bool homed = 2;
+    double current_position_deg = 3;
+    double target_position_deg = 4;
+    double current_rate_deg_s = 5;
+    bool moving = 6;
+    bool error = 7;
+    string error_message = 8;
+    bool connected = 9;
+    google.protobuf.Timestamp timestamp = 10;
+}
+
+message FieldRotationResult {
+    double current_angle_deg = 1;
+    double current_rate_arcsec_s = 2;
+    double predicted_angle_10min = 3;
+    string mount_type = 4;
+}
+
+message SetModeRequest {
+    DerotatorMode mode = 1;
+}
+
+message SetAngleRequest {
+    double angle_deg = 1;
+}
+
+message SetRateRequest {
+    double rate_deg_s = 1;
+}
+
+// Mount position update (for field rotation calculation)
+message MountPositionUpdate {
+    double axis1_deg = 1;
+    double axis2_deg = 2;
+    double mount_type = 3;  // 0=equatorial, 1=alt_az, 2=casual
+    double latitude_deg = 4;
+    double ha_hours = 5;
+    double dec_deg = 6;
+}
+
+// ============================================
+// Service definition
+// ============================================
+
+service DerotatorService {
+    // Control
+    rpc SetMode(SetModeRequest) returns (google.protobuf.Empty);
+    rpc SetAngle(SetAngleRequest) returns (google.protobuf.Empty);
+    rpc SetRate(SetRateRequest) returns (google.protobuf.Empty);
+    rpc Home(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    // Status
+    rpc GetStatus(google.protobuf.Empty) returns (DerotatorStatus);
+    rpc WatchStatus(google.protobuf.Empty) returns (stream DerotatorStatus);
+
+    // Field rotation
+    rpc GetFieldRotation(google.protobuf.Empty) returns (FieldRotationResult);
+
+    // Mount position feed (for field rotation calculation)
+    rpc UpdateMountPosition(MountPositionUpdate) returns (google.protobuf.Empty);
+
+    // Health
+    rpc CheckHealth(google.protobuf.Empty) returns (google.protobuf.Empty);
+}

@@ -59,6 +59,10 @@ const Api = (() => {
       if (err.name === 'AbortError') {
         throw new Error('Request aborted');
       }
+      // Provide a meaningful message for network-level failures
+      if (err.message === 'Failed to fetch' || err.message === 'NetworkError when attempting to fetch resource.') {
+        throw new Error('Cannot connect to proxy server - is it running?');
+      }
       throw err;
     }
   }

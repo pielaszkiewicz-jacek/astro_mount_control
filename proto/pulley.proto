@@ -1,0 +1,104 @@
+/**
+ * Pulley Controller Service Protobuf Definition
+ *
+ * Defines the gRPC API for controlling observatory pulley/linear actuator
+ * systems used for deploying flat-field panels, curtains, ventilation
+ * louvers, cable management, or other motorized linear mechanisms.
+ */
+syntax = "proto3";
+
+package astro_mount;
+
+import "google/protobuf/empty.proto";
+import "google/protobuf/timestamp.proto";
+
+// ─── Service Definition ──────────────────────────────────────────────────────
+
+service PulleyService {
+    /** Deploy (extend) the pulley to a target position */
+    rpc DeployPulley(PulleyMoveRequest) returns (google.protobuf.Empty);
+
+    /** Retract (rewind) the pulley fully */
+    rpc RetractPulley(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    /** Stop pulley motion immediately */
+    rpc StopPulley(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    /** Move pulley to a specific absolute position [0..100%] */
+    rpc SetPulleyPosition(PulleyPositionRequest) returns (google.protobuf.Empty);
+
+    /** Calibrate / home the pulley (find end stops) */
+    rpc HomePulley(google.protobuf.Empty) returns (stream PulleyHomeProgress);
+
+    /** Get current pulley status */
+    rpc GetPulleyStatus(google.protobuf.Empty) returns (PulleyStatus);
+
+    /** Set pulley speed limit */
+    rpc SetPulleySpeed(PulleySpeedRequest) returns (google.protobuf.Empty);
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+/** Pulley move request (deploy/retract) */
+message PulleyMoveRequest {
+    int32 position_percent = 1;    // Target position 0-100%
+    int32 speed_percent = 2;       // Speed 0-100% (default 50)
+    bool synchronous = 3;          // Wait for completion
+}
+
+/** Pulley position request */
+message PulleyPositionRequest {
+    int32 position_percent = 1;    // Absolute position 0-100%
+    int32 speed_percent = 2;       // Speed 0-100%
+}
+
+/** Pulley speed setting */
+message PulleySpeedRequest {
+    int32 speed_percent = 1;       // Speed 0-100%
+}
+
+/** Pulley home/calibration progress */
+message PulleyHomeProgress {
+    bool homing = 1;
+    string phase = 2;              // "retracting", "extending", "finding_endstop", "complete"
+    double progress_percent = 3;
+    bool complete = 4;
+    string error_message = 5;
+}
+
+/** Current pulley status */
+message PulleyStatus {
+    // Position
+    int32 position_percent = 1;     // Current position 0-100% (0=fully retracted)
+    int32 target_position_percent = 2;
+
+    // Motion
+    bool moving = 3;
+    bool deployed = 4;              // Position > threshold
+    bool homed = 5;                 // Calibration done
+    int32 speed_percent = 6;        // Current speed setting
+
+    // Limits
+    bool at_upper_limit = 7;
+    bool at_lower_limit = 8;
+    bool overload = 9;
+
+    // Hardware
+    bool connected = 10;
+    string model_name = 11;
+    double motor_current_a = 12;
+    double temperature_c = 13;
+
+    // Errors
+    bool error = 14;
+    string error_message = 15;
+    google.protobuf.Timestamp last_home_time = 16;
+
+    // Configuration
+    int32 max_position_steps = 17;  // Hardware max in steps
+    double travel_time_s = 18;      // Full travel time [s]
+    string deployment_type = 19;    // "flat_panel", "curtain", "ventilation", "cable", "generic"
+
+    // Timestamp
+    google.protobuf.Timestamp timestamp = 20;
+}

@@ -59,6 +59,8 @@ file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
 file(GLOB_RECURSE PROTO_FILES
     ${CMAKE_SOURCE_DIR}/proto/*.proto
     ${CMAKE_SOURCE_DIR}/db/proto/*.proto
+    ${CMAKE_SOURCE_DIR}/dome/proto/*.proto
+    ${CMAKE_SOURCE_DIR}/derotator/proto/*.proto
 )
 
 # Generate protobuf message sources (.pb.cc / .pb.h)
@@ -96,20 +98,6 @@ file(GLOB PROTO_HDRS
 add_custom_target(generate_proto DEPENDS ${PROTO_SRCS})
 
 # ============================================
-
-# CanOpen (CANopenNode + wrapper)
-# ------------------------------------
-# - make libcanopen  →  ExternalProject pobiera CANopenNode z GitHub (cmake/FetchLibCanopen.cmake)
-# - lib/canopen_wrapper/  →  lekka nakładka CANopen na SocketCAN (normalne .h/.cpp)
-if(EXISTS ${CMAKE_SOURCE_DIR}/cmake/FetchLibCanopen.cmake AND EXISTS ${CMAKE_SOURCE_DIR}/lib/canopen_wrapper/CMakeLists.txt)
-    include(cmake/FetchLibCanopen.cmake)
-    add_subdirectory(lib/canopen_wrapper)
-    set(HAVE_CANOPEN ON)
-    message(STATUS "CanOpen library: enabled (wrapper: lib/canopen_wrapper/)")
-else()
-    message(WARNING "cmake/FetchLibCanopen.cmake or lib/canopen_wrapper/ not found. CanOpen disabled.")
-    set(HAVE_CANOPEN OFF)
-endif()
 
 # Find JSON library (nlohmann/json)
 find_package(nlohmann_json REQUIRED)
@@ -169,23 +157,14 @@ if(NOT GTest_FOUND)
     message(WARNING "GTest not found. Tests will not be built.")
 endif()
 
-# Add definitions
-# HAVE_CANOPEN is ON/OFF — dodajemy -DHAVE_CANOPEN tylko gdy włączone,
-# inaczej #ifdef HAVE_CANOPEN byłoby prawdziwe nawet przy HAVE_CANOPEN=OFF
-if(HAVE_CANOPEN)
-    add_definitions(-DHAVE_CANOPEN)
-endif()
-
 # Source files
 set(CORE_SOURCES
     src/core/astronomical_calculations.cpp
     src/hal/hal_factory.cpp
     src/hal/simulated_hal/simulated_hal.cpp
-    src/hal/canopen_hal/canopen_hal.cpp
     src/hal/serial_hal/serial_hal.cpp
     src/hal/ethernet_hal/ethernet_hal.cpp
     src/hal/gamepad_hal/gamepad_hal.cpp
-    src/hal/mf7025v2_hal/mf7025v2_hal.cpp
     src/hal/gamepad_hal/gamepad_input_evdev.cpp
 )
 
@@ -256,16 +235,9 @@ set(ST4_SOURCES
     src/controllers/st4_calibration.cpp
 )
 
-set(LX200_SOURCES
-    src/controllers/lx200_protocol.cpp
-    src/controllers/lx200_interface.cpp
-)
-
 set(CONTROLLER_SOURCES
     src/controllers/mount_controller.cpp
-    src/controllers/canopen_interface.cpp
-    src/controllers/canopen_factory.cpp
-    src/controllers/mf7025v2_interface.cpp
+    src/controllers/weather_client.cpp
 )
 
 set(API_SOURCES
@@ -318,7 +290,6 @@ add_library(astro_mount_core STATIC
     ${DEROTATOR_SOURCES}
     ${DOME_SOURCES}
     ${FOCUSER_SOURCES}
-    ${LX200_SOURCES}
     ${PEC_SOURCES}
     ${POWER_SOURCES}
     ${ST4_SOURCES}
@@ -353,25 +324,27 @@ target_include_directories(astro_mount_core PUBLIC
     ${EIGEN3_INCLUDE_DIR}
 )
 
-if(HAVE_CANOPEN)
-    # Zależność: make libcanopen (ExternalProject → pobiera CANopenNode) musi
-    # wykonać się przed głównym buildem.
-    add_dependencies(astro_mount_core libcanopen)
+# In-process subsystem service sources (dome, derotator, focuser) that are
+# hosted inside the mount controller process instead of separate executables.
+set(MERGED_SERVICE_SOURCES
+    dome/src/dome_service_impl.cpp
+    dome/src/dome_factory.cpp
+    derotator/src/derotator_service_impl.cpp
+    derotator/src/derotator_factory.cpp
+    focuser/src/focuser_service_impl.cpp
+)
 
-    target_link_libraries(astro_mount_core canopen)
-
-    # RPATH: umożliwia znalezienie libcanopen.so w czasie uruchomienia
-    # bez konieczności instalacji systemowej
-    set_target_properties(astro_mount_core PROPERTIES
-        LINK_FLAGS "-Wl,-rpath,$<TARGET_FILE_DIR:canopen>"
-    )
-endif()
-
-# Create executable
+# Create executable — hosts the mount controller gRPC service plus the
+# dome, derotator and focuser services in-process.
 add_executable(astro_mount_controller
     ${MAIN_SOURCES}
     ${API_SOURCES}
+    ${MERGED_SERVICE_SOURCES}
     ${PROTO_SRCS}
+)
+
+target_include_directories(astro_mount_controller PRIVATE
+    ${CMAKE_SOURCE_DIR}
 )
 
 target_link_libraries(astro_mount_controller
@@ -380,11 +353,7 @@ target_link_libraries(astro_mount_controller
     protobuf::libprotobuf
 )
 
-if(HAVE_CANOPEN)
-    set_target_properties(astro_mount_controller PROPERTIES
-        LINK_FLAGS "-Wl,-rpath,$<TARGET_FILE_DIR:canopen>"
-    )
-endif()
+add_dependencies(astro_mount_controller generate_proto)
 
 # Create object database server executable
 add_executable(astro_object_database_server
@@ -397,6 +366,96 @@ target_link_libraries(astro_object_database_server
     gRPC::grpc++
     protobuf::libprotobuf
     ${UUID_LIB}
+)
+
+# ============================================
+# Weather server
+# ============================================
+set(WEATHER_SERVER_SOURCES
+    weather/src/main.cpp
+    weather/src/weather_server.cpp
+    weather/src/weather_service_impl.cpp
+    weather/src/weather_factory.cpp
+)
+
+add_executable(astro_weather_server
+    ${WEATHER_SERVER_SOURCES}
+    ${PROTO_SRCS}
+)
+
+target_include_directories(astro_weather_server PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(astro_weather_server
+    astro_mount_core
+    gRPC::grpc++
+    protobuf::libprotobuf
+)
+
+add_dependencies(astro_weather_server generate_proto)
+install(TARGETS astro_weather_server
+    RUNTIME DESTINATION bin
+)
+
+# ============================================
+# Power server
+# ============================================
+set(POWER_SERVER_SOURCES
+    power/src/main.cpp
+    power/src/power_server.cpp
+    power/src/power_service_impl.cpp
+    power/src/power_factory.cpp
+)
+
+add_executable(astro_power_server
+    ${POWER_SERVER_SOURCES}
+    ${PROTO_SRCS}
+)
+
+target_include_directories(astro_power_server PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(astro_power_server
+    astro_mount_core
+    gRPC::grpc++
+    protobuf::libprotobuf
+)
+
+add_dependencies(astro_power_server generate_proto)
+install(TARGETS astro_power_server
+    RUNTIME DESTINATION bin
+)
+
+# ============================================
+# Sequencer server
+# ============================================
+set(SEQUENCER_SERVER_SOURCES
+    sequencer/src/main.cpp
+    sequencer/src/sequencer_server.cpp
+    sequencer/src/sequencer_service_impl.cpp
+)
+
+add_executable(astro_sequencer_server
+    ${SEQUENCER_SERVER_SOURCES}
+    ${PROTO_SRCS}
+)
+
+target_include_directories(astro_sequencer_server PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(astro_sequencer_server
+    astro_mount_core
+    gRPC::grpc++
+    protobuf::libprotobuf
+)
+
+add_dependencies(astro_sequencer_server generate_proto)
+
+install(TARGETS astro_sequencer_server
+    RUNTIME DESTINATION bin
 )
 
 # Create tests
@@ -570,18 +629,6 @@ if(GTest_FOUND)
     add_test(NAME ConfigMonitorTest
         COMMAND test_config_monitor)
 
-    add_executable(test_canopen_factory
-        tests/test_canopen_factory.cpp
-    )
-
-    target_link_libraries(test_canopen_factory
-        astro_mount_core
-        GTest::gtest_main
-    )
-
-    add_test(NAME CanOpenFactoryTest
-        COMMAND test_canopen_factory)
-
     add_executable(test_serial_hal
         tests/test_serial_hal.cpp
     )
@@ -606,17 +653,6 @@ if(GTest_FOUND)
     add_test(NAME EthernetHALTest
         COMMAND test_ethernet_hal)
 
-    add_executable(test_canopen_hal
-        tests/test_canopen_hal.cpp
-    )
-
-    target_link_libraries(test_canopen_hal
-        astro_mount_core
-        GTest::gtest_main
-    )
-
-    add_test(NAME CanOpenHALTest
-        COMMAND test_canopen_hal)
 endif()
 
 # Install targets

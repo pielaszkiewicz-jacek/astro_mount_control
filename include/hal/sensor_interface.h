@@ -35,7 +35,6 @@ enum class SensorInterfaceType {
     DIGITAL,            // Sygnał cyfrowy (GPIO, TTL)
     I2C,                // Interfejs I2C
     SPI,                // Interfejs SPI
-    CANOPEN,            // Interfejs CANopen
     MODBUS,             // Interfejs Modbus
     ETHERNET,           // Interfejs Ethernet
     SERIAL              // Interfejs szeregowy
@@ -133,8 +132,6 @@ struct SensorConfig {
         uint32_t i2c_speed{400000};          // 400kHz
         std::string spi_bus{"/dev/spidev0.0"};
         uint32_t spi_speed{1000000};         // 1MHz
-        std::string canopen_interface{"can0"};
-        uint32_t canopen_bitrate{125000};
         std::string serial_port{"/dev/ttyUSB0"};
         uint32_t serial_baud{115200};
     } interface_config;

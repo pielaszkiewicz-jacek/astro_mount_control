@@ -1,0 +1,12 @@
+{
+    "comment": "Focuser service configuration. Disabled by default.",
+    "enabled": false,
+    "simulated": true,
+    "hal_type": "simulated",
+    "max_position": 100000,
+    "temp_compensation": {
+        "enabled": false,
+        "coefficient": 0.0,
+        "max_adjustment": 500
+    }
+}

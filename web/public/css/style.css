@@ -250,33 +250,74 @@ body {
 }
 
 /* ─── Tab Navigation ─────────────────────────────────────────────────────── */
-.tab-nav {
+
+.tab-nav-wrapper {
+  display: flex;
+  align-items: stretch;
   position: sticky;
   top: var(--header-height);
   z-index: 90;
-  display: flex;
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
+}
+
+.tab-nav {
+  flex: 1;
+  display: flex;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding: 0 8px;
+  scroll-behavior: smooth;
+  padding: 0 4px;
 }
 
 .tab-nav::-webkit-scrollbar {
   display: none;
 }
 
+/* Scroll buttons */
+.tab-scroll-btn {
+  flex: 0 0 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  padding: 0;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tab-scroll-btn:hover {
+  color: var(--color-primary);
+  background: var(--color-surface-2);
+}
+
+.tab-scroll-btn:active {
+  background: var(--color-border);
+}
+
+.tab-scroll-btn.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Tab buttons */
 .tab-btn {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 12px 16px;
+  gap: 5px;
+  padding: 10px 12px;
   border: none;
   background: transparent;
   color: var(--color-text-secondary);
-  font-size: 0.85rem;
+  font-size: 0.78rem;
   font-family: inherit;
   font-weight: 500;
   cursor: pointer;
@@ -312,6 +353,8 @@ body {
   display: block;
   flex-shrink: 0;
   color: currentColor;
+  width: 16px;
+  height: 16px;
 }
 
 /* ─── Flat Icon Styles ───────────────────────────────────────────────── */
@@ -1998,8 +2041,19 @@ body.mobile-mode .app-title {
 }
 
 body.mobile-mode .tab-btn {
-  padding: 10px 12px !important;
-  font-size: 0.8rem !important;
+  padding: 8px 10px !important;
+  font-size: 0.75rem !important;
+  gap: 4px !important;
+}
+
+body.mobile-mode .tab-icon-svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+body.mobile-mode .tab-scroll-btn {
+  flex: 0 0 24px !important;
+  font-size: 1rem !important;
 }
 
 body.mobile-mode .card-body {
@@ -2045,8 +2099,13 @@ body.mobile-mode .config-group-body {
   }
 
   .tab-btn {
-    padding: 12px 20px;
-    font-size: 0.9rem;
+    padding: 10px 14px;
+    font-size: 0.82rem;
+  }
+
+  .tab-icon-svg {
+    width: 16px;
+    height: 16px;
   }
 }
 
@@ -3074,4 +3133,102 @@ input[type="file"].form-input::file-selector-button:hover {
   border-radius: 50%;
   display: inline-block;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Unified Sensor Grid (used by PEC, Power, Guider, Derotator, Sequencer,
+   Camera, Focuser, Dome, Weather, Pulley)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.sensor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.sensor-card {
+  background: var(--color-surface-2, #16213e);
+  border: 1px solid var(--color-border, #2a2a4a);
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sensor-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-text-muted, #6c6c80);
+}
+
+.sensor-value {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text, #e0e0e0);
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+}
+
+/* Weather safety banner */
+.weather-safety {
+  margin-top: 12px;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Pulley Controller Styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.pulley-visualization {
+  display: flex;
+  justify-content: center;
+  margin: 16px 0;
+}
+
+.pulley-track {
+  position: relative;
+  width: 40px;
+  height: 200px;
+  background: linear-gradient(180deg, var(--color-surface-2, #16213e), var(--color-surface, #1a1a2e));
+  border: 2px solid var(--color-border, #2a2a4a);
+  border-radius: 20px;
+  overflow: hidden;
+}
+
+.pulley-carriage {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  height: 24px;
+  background: var(--color-primary, #4fc3f7);
+  border-radius: 12px;
+  transition: bottom 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pulley-load {
+  width: 12px;
+  height: 12px;
+  background: var(--color-surface, #1a1a2e);
+  border-radius: 50%;
+  opacity: 0.5;
+}
+
+.pulley-endstop {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 6px;
+  background: var(--color-danger, #f44336);
+  border-radius: 3px;
+  opacity: 0.6;
+}
+
+.pulley-endstop.top { top: 2px; }
+.pulley-endstop.bottom { bottom: 2px; }
 

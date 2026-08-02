@@ -23,20 +23,28 @@ class HALInterface;
 } // namespace astro_mount
 
 namespace astro_mount {
-namespace controllers {
 
-// Import domain config types into controllers namespace for backward compatibility
-using config::MountType;
-using config::MountOrientation;
-using config::TrackingMode;
-using config::BootstrapMode;
-using config::AxisPhysicalParameters;
+// Forward declaration of FieldRotationParams for the controller API.
+// Full definition is in models/field_rotation_model.h
+struct FieldRotationParams {
+    double computed_rate_deg_s{0.0};
+    double applied_correction_deg{0.0};
+    double latitude_deg{0.0};
+    double altitude_deg{0.0};
+    double azimuth_deg{0.0};
+    double temperature_c{15.0};
+    double flexure_correction_deg{0.0};
+};
+
+namespace controllers {
 
 /**
  * @brief Main mount controller class
- * 
+ *
  * Integrates all components: astronomical calculations, TPOINT model,
- * Kalman filter, encoders, and CanOpen interface.
+ * Kalman filter, encoders, and HAL (Hardware Abstraction Layer) interface.
+ * All hardware control is routed through the HAL abstractions
+ * (MotorControl / EncoderReader / SafetyMonitor).
  */
 class MountController {
 public:
@@ -51,29 +59,14 @@ public:
     };
 
     /**
-     * @brief Servo initialization SDO sequence entry
-     *
-     * Defines a single SDO write to be sent during servo drive initialization.
-     */
-    struct ServoInitEntry {
-        int axis = 0;
-        uint16_t index = 0;
-        uint8_t  subindex = 0;
-        int32_t  value = 0;
-        std::string description;
-        uint8_t data_size = 4;
-    };
-
-    /**
      * @brief Combined controller configuration using domain-specific sub-configs
      *
      * Replaces the monolithic ControllerConfig (~150 fields) with
-     * domain-specific configuration structs. CANopen parameters are
-     * now solely in hal::HALConfig::canopen (single source of truth).
+     * domain-specific configuration structs.
      *
-     * Fields kept at this level: network, logging, telescope, servo init,
-     * and HAL config — these are coordination-level settings that don't
-     * belong in any single domain config.
+     * Fields kept at this level: network, logging, telescope, and HAL
+     * config — these are coordination-level settings that don't belong
+     * in any single domain config.
      */
     struct ControllerConfig {
         // Domain-specific configurations (single source of truth)
@@ -82,7 +75,7 @@ public:
         config::SafetyConfig safety_config;         ///< Soft limits, meridian flip, park, refraction
         config::CalibrationConfig calibration_config; ///< TPOINT, bootstrap
         
-        // HAL configuration (from JSON "hal" section) — single source of truth for CANopen
+        // HAL configuration (from JSON "hal" section)
         hal::HALConfig hal_config;
         
         // Network configuration
@@ -96,17 +89,11 @@ public:
         // Logging configuration
         std::string log_level{"info"};
         std::string log_directory{"/var/log/astro-mount"};
-        int log_rotation_days{30};
-        int log_max_file_size_mb{100};
         bool log_console_output{true};
         
         // Telescope parameters
         double focal_length{1000.0};
         double aperture{100.0};
-        
-        // Servo initialization via custom SDO sequence
-        bool servo_init_enabled{false};
-        std::vector<ServoInitEntry> servo_init_sequence;
     };
 
     struct MountStatus {
@@ -129,8 +116,8 @@ public:
         double telescope_axis2_position; // Degrees (telescope axis, after gear ratio)
         double axis1_rate;          // Degrees/sec (commanded tracking/slewing rate)
         double axis2_rate;          // Degrees/sec (commanded tracking/slewing rate)
-        double actual_axis1_rate;   // Degrees/sec (actual CANopen motor velocity)
-        double actual_axis2_rate;   // Degrees/sec (actual CANopen motor velocity)
+        double actual_axis1_rate;   // Degrees/sec (actual HAL motor velocity)
+        double actual_axis2_rate;   // Degrees/sec (actual HAL motor velocity)
         double axis1_target;        // Degrees
         double axis2_target;        // Degrees
         
@@ -203,7 +190,7 @@ public:
      * @param mode Tracking mode
      * @return True if command accepted
      */
-    bool startTracking(double ra, double dec, TrackingMode mode = TrackingMode::SIDEREAL);
+    bool startTracking(double ra, double dec, config::TrackingMode mode = config::TrackingMode::SIDEREAL);
 
     /**
      * @brief Stop tracking/slewing
@@ -227,7 +214,7 @@ public:
     MountStatus getStatus() const;
 
     /**
-     * @brief Read live axis positions from CANopen drives and update cached state.
+     * @brief Read live axis positions from the HAL hardware and update cached state.
      *
      * Call periodically (e.g. from the main loop) to keep getStatus()
      * in sync with the physical hardware.  Without this, positions
@@ -329,13 +316,13 @@ public:
      * @param mode Bootstrap mode to set
      * @return True if mode accepted
      */
-    bool setBootstrapMode(BootstrapMode mode);
+    bool setBootstrapMode(config::BootstrapMode mode);
     
     /**
      * @brief Get current bootstrap calibration mode
      * @return Current BootstrapMode enum value
      */
-    BootstrapMode getBootstrapMode() const;
+    config::BootstrapMode getBootstrapMode() const;
     
     /**
      * @brief Get bootstrap calibration status
@@ -350,16 +337,10 @@ public:
     size_t getBootstrapMeasurementCount() const;
     
     /**
-     * @brief Get bootstrap calibration RMS residual in RA
-     * @return RMS residual in arcseconds, 0.0 if not calibrated
+     * @brief Get bootstrap calibration quaternion estimation error
+     * @return Quaternion estimation error in arcseconds, 0.0 if not calibrated
      */
-    double getBootstrapRmsRaArcsec() const;
-    
-    /**
-     * @brief Get bootstrap calibration RMS residual in Dec
-     * @return RMS residual in arcseconds, 0.0 if not calibrated
-     */
-    double getBootstrapRmsDecArcsec() const;
+    double getBootstrapQuaternionErrorArcsec() const;
     
     /**
      * @brief Get bootstrap calibration RA correction
@@ -476,28 +457,8 @@ public:
                               double parallax = 0.0, double epoch = 2000.0);
     
     /**
-     * @brief Add measurement for full TPOINT calibration (simplified version)
-     * 
-     * Version without mount position for backward compatibility.
-     * Uses current mount position from encoders.
-     * 
-     * @param observed_ra Observed RA in hours
-     * @param observed_dec Observed Dec in degrees
-     * @param expected_ra Expected RA in hours
-     * @param expected_dec Expected Dec in degrees
-     * @param temperature Temperature in Celsius
-     * @param pressure Pressure in hPa
-     * @param humidity Relative humidity 0-1
-     * @return True if measurement accepted
-     */
-    bool addTPointMeasurement(double observed_ra, double observed_dec,
-                              double expected_ra, double expected_dec,
-                              double temperature = 15.0, double pressure = 1013.25,
-                              double humidity = 0.5);
-    
-    /**
      * @brief Clear all TPOINT measurements
-     * 
+     *
      * Useful for starting a new TPOINT calibration session
      */
     void clearTPointMeasurements();
@@ -519,35 +480,6 @@ public:
      * @return Rotation quaternion as vector [q0, q1, q2, q3]
      */
     std::vector<double> getRotationMatrix() const;
-
-    /**
-     * @brief Add calibration measurement (legacy API for backward compatibility)
-     * 
-     * This method is kept for backward compatibility. Internally calls
-     * addTPointMeasurement with all parameters.
-     * 
-     * @param observed_ra Observed RA in hours
-     * @param observed_dec Observed Dec in degrees
-     * @param expected_ra Expected RA in hours (from catalog)
-     * @param expected_dec Expected Dec in degrees (from catalog)
-     * @param mount_ha Mount hour angle in hours (from encoders)
-     * @param mount_dec Mount declination in degrees (from encoders)
-     * @param temperature Temperature in Celsius
-     * @param pressure Pressure in hPa
-     * @param humidity Relative humidity 0-1
-     * @param proper_motion_ra Proper motion in RA (mas/yr)
-     * @param proper_motion_dec Proper motion in Dec (mas/yr)
-     * @param parallax Parallax in mas
-     * @param epoch Epoch of coordinates (e.g., 2000.0)
-     * @return True if measurement accepted
-     */
-    bool addCalibrationMeasurement(double observed_ra, double observed_dec,
-                                   double expected_ra, double expected_dec,
-                                   double mount_ha, double mount_dec,
-                                   double temperature, double pressure,
-                                   double humidity,
-                                   double proper_motion_ra, double proper_motion_dec,
-                                   double parallax, double epoch);
 
     /**
      * @brief Enable/disable encoders
@@ -628,6 +560,49 @@ public:
     ControllerConfig getConfiguration() const;
 
     /**
+     * @brief Low-level axis control — set position or velocity target.
+     *
+     * Provides HAL-based manual axis control.
+     *
+     * @param axis_id Axis index (0 = HA/RA/Azimuth, 1 = Dec/Altitude)
+     * @param mode 0 = POSITION_CONTROL, 1 = VELOCITY_CONTROL
+     * @param target_position Target position (degrees), used in position mode
+     * @param target_velocity Target velocity (deg/s), used in velocity mode
+     * @param acceleration Acceleration (deg/s²)
+     * @param relative If true, offsets current position/velocity instead of absolute
+     * @return True if command accepted
+     */
+    bool controlAxis(int axis_id, int mode, double target_position,
+                     double target_velocity, double acceleration, bool relative);
+
+    /**
+     * @brief Stop an axis (smooth or immediate).
+     *
+     * @param axis_id Axis index (0 or 1)
+     * @param decelerate If true, decelerate smoothly; otherwise stop immediately
+     * @param deceleration Deceleration rate (deg/s²)
+     * @return True if command accepted
+     */
+    bool stopAxis(int axis_id, bool decelerate, double deceleration);
+
+    /**
+     * @brief Emergency stop one or all axes.
+     *
+     * @param axis_id Axis index, or -1 for all axes
+     * @param reset_after If true, clear errors / re-enable after stop
+     * @return True if command accepted
+     */
+    bool emergencyStop(int axis_id, bool reset_after);
+
+    /**
+     * @brief Get current axis status (position, velocity, drive state).
+     *
+     * @param status [out] Proto AxisStatus message
+     * @return True if status retrieved successfully
+     */
+    bool getAxisStatus(::astro_mount::AxisStatus& status) const;
+
+    /**
      * @brief Update controller configuration
      * @param config New configuration
      * @return True if update successful
@@ -657,13 +632,13 @@ public:
      * @param orientation Mount orientation quaternion
      * @return True if orientation was accepted
      */
-    bool setMountOrientation(const MountOrientation& orientation);
+    bool setMountOrientation(const config::MountOrientation& orientation);
     
     /**
      * @brief Get current mount orientation
      * @return Current mount orientation
      */
-    MountOrientation getMountOrientation() const;
+    config::MountOrientation getMountOrientation() const;
     
     /**
      * @brief Upload ephemeris data for moving object tracking
@@ -827,7 +802,7 @@ public:
     /**
      * @brief Start the gamepad manual-control loop (axis velocity commands).
      * The gamepad input device must already be open (initGamepadInput).
-     * Safe to call only after CANopen is fully initialised.
+     * Safe to call only after the HAL interface is fully initialised.
      */
     void startGamepadLoop();
     

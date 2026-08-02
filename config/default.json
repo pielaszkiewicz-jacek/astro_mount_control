@@ -216,9 +216,7 @@
     "logging": {
         "console_output": true,
         "directory": "/var/log/astro-mount",
-        "level": "DEBUG",
-        "max_file_size_mb": 10,
-        "rotation_days": 1
+        "level": "DEBUG"
     },
     "mount": {
         "altitude": 100.0,
@@ -429,5 +427,20 @@
         "enabled_terms": 65535,
         "max_residual": 30.0,
         "min_measurements": 10
+    },
+    "external_services": {
+        "_comment": "Dome, derotator and focuser are hosted IN-PROCESS inside the mount controller and served on the unified gRPC port 50051. Weather and power remain separate processes.",
+        "dome": {
+            "enabled": false,
+            "update_interval_ms": 1000
+        },
+        "derotator": {
+            "enabled": false,
+            "update_interval_ms": 1000
+        },
+        "focuser": {
+            "enabled": false,
+            "poll_interval_ms": 5000
+        }
     }
 }

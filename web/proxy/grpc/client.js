@@ -153,6 +153,117 @@ function dbGrpcCall(method, request = {}, timeoutSeconds = 10) {
   });
 }
 
+// ─── Dome gRPC Client ─────────────────────────────────────────────────────────
+
+const DOME_PROTO_PATH = path.join(__dirname, '../../../dome/proto/dome.proto');
+
+const domePackageDefinition = protoLoader.loadSync(DOME_PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
+const domeProtoDescriptor = grpc.loadPackageDefinition(domePackageDefinition);
+const domeProto = domeProtoDescriptor.astro_dome;
+
+let domeGrpcClient = null;
+
+/**
+ * Creates or recreates the gRPC client connection to the dome service.
+ */
+function createDomeGrpcClient() {
+  const address = `${config.dome.host}:${config.dome.port}`;
+
+  if (domeGrpcClient) {
+    domeGrpcClient.close();
+  }
+
+  const credentials = config.ssl.enabled
+    ? grpc.credentials.createSsl()
+    : grpc.credentials.createInsecure();
+
+  domeGrpcClient = new domeProto.DomeService(address, credentials);
+
+  console.log(`[gRPC] Connected to dome service at ${address}`);
+  return domeGrpcClient;
+}
+
+/**
+ * Returns the current dome gRPC client instance.
+ */
+function getDomeGrpcClient() {
+  if (!domeGrpcClient) {
+    throw new Error('Dome gRPC client not initialised. Call createDomeGrpcClient() first.');
+  }
+  return domeGrpcClient;
+}
+
+/**
+ * Wraps a dome gRPC call into a Promise for async/await usage.
+ */
+function domeGrpcCall(method, request = {}, timeoutSeconds = 5) {
+  const client = getDomeGrpcClient();
+  return new Promise((resolve, reject) => {
+    const deadline = new Date();
+    deadline.setSeconds(deadline.getSeconds() + timeoutSeconds);
+
+    client[method](request, { deadline }, (error, response) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
+// ─── Derotator gRPC Client ────────────────────────────────────────────────────
+
+const DEROTATOR_PROTO_PATH = path.join(__dirname, '../../../derotator/proto/derotator.proto');
+
+const derotatorPackageDefinition = protoLoader.loadSync(DEROTATOR_PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true,
+});
+
+const derotatorProtoDescriptor = grpc.loadPackageDefinition(derotatorPackageDefinition);
+const derotatorProto = derotatorProtoDescriptor.astro_derotator;
+
+let derotatorGrpcClient = null;
+
+function createDerotatorGrpcClient() {
+  const address = `${config.derotator.host}:${config.derotator.port}`;
+  if (derotatorGrpcClient) derotatorGrpcClient.close();
+  const creds = config.ssl.enabled ? grpc.credentials.createSsl() : grpc.credentials.createInsecure();
+  derotatorGrpcClient = new derotatorProto.DerotatorService(address, creds);
+  console.log(`[gRPC] Connected to derotator service at ${address}`);
+  return derotatorGrpcClient;
+}
+
+function getDerotatorGrpcClient() {
+  if (!derotatorGrpcClient) {
+    throw new Error('Derotator gRPC client not initialised. Call createDerotatorGrpcClient() first.');
+  }
+  return derotatorGrpcClient;
+}
+
+function derotatorGrpcCall(method, request = {}, timeoutSeconds = 5) {
+  const client = getDerotatorGrpcClient();
+  return new Promise((resolve, reject) => {
+    const deadline = new Date();
+    deadline.setSeconds(deadline.getSeconds() + timeoutSeconds);
+    client[method](request, { deadline }, (error, response) => {
+      if (error) reject(error);
+      else resolve(response);
+    });
+  });
+}
+
 module.exports = {
   createGrpcClient,
   getGrpcClient,
@@ -160,4 +271,10 @@ module.exports = {
   createDbGrpcClient,
   getDbGrpcClient,
   dbGrpcCall,
+  createDomeGrpcClient,
+  getDomeGrpcClient,
+  domeGrpcCall,
+  createDerotatorGrpcClient,
+  getDerotatorGrpcClient,
+  derotatorGrpcCall,
 };

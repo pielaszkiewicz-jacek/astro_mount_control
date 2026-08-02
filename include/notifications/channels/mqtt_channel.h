@@ -37,7 +37,8 @@ public:
         bool retain{false};
     };
 
-    explicit MqttChannel(Config config = {});
+    explicit MqttChannel(Config config);
+    MqttChannel();
     ~MqttChannel() override;
 
     std::string name() const override { return "mqtt"; }

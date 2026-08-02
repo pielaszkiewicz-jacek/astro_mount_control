@@ -117,7 +117,6 @@ public:
         ALL,
         LOGGING,
         NETWORK,
-        CANOPEN,
         MOUNT,
         TELESCOPE,
         GUIDER,

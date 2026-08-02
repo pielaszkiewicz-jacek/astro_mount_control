@@ -1,0 +1,23 @@
+[Unit]
+Description=Astro Mount Weather Monitoring Server
+Documentation=https://github.com/astro-mount/weather
+After=network.target
+
+[Service]
+Type=simple
+User=astro
+ExecStart=/usr/local/bin/astro_weather_server \
+    --address 0.0.0.0:50055 \
+    --config /etc/astro-mount/weather_config.json
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+ProtectSystem=full
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

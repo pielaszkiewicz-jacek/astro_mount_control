@@ -2,6 +2,7 @@
 #define DEROTATOR_CONTROL_H
 #include <string>
 #include <cstdint>
+#include <memory>
 
 namespace astro_mount { namespace hal {
 
@@ -37,6 +38,18 @@ public:
     virtual bool isMoving() const = 0;
     virtual bool initialize() = 0;
 };
+
+/**
+ * @brief Create a DerotatorControl instance based on JSON configuration.
+ *
+ * Expected config format:
+ * { "type": "SIMULATED", ... }
+ *
+ * @param config_path Path to JSON config file
+ * @return std::unique_ptr<DerotatorControl> Initialised and connected derotator
+ * @throws std::runtime_error on parse/connection error
+ */
+std::unique_ptr<DerotatorControl> createDerotatorControl(const std::string& config_path);
 
 }} // namespace astro_mount::hal
 #endif

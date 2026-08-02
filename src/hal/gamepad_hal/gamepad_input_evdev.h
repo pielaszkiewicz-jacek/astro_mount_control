@@ -7,22 +7,17 @@
 #include <vector>
 #include <map>
 
-// Linux input headers for evdev / legacy joystick API types
-#include <linux/joystick.h>
+// Linux input headers for evdev API types
 #include <linux/input.h>
 
 namespace astro_mount {
 namespace hal {
 
 /**
- * @brief Linux evdev / joystick API implementation of GamepadInput.
+ * @brief Linux evdev API implementation of GamepadInput.
  *
- * Supports both:
- *   - Legacy joystick API  (/dev/input/jsX)
- *   - Newer evdev API      (/dev/input/eventX)
- *
- * Auto-detection tries /dev/input/js0 … js3 and /dev/input/event*
- * devices with EV_ABS capability.
+ * Uses the evdev API (/dev/input/eventX). Auto-detection scans
+ * /dev/input/event* devices with EV_ABS capability.
  *
  * Hotplug detection: when no device is found at initialization time,
  * a background standby thread watches /dev/input/ via inotify and
@@ -55,7 +50,6 @@ private:
     std::string device_name_;
     int axis_count_{0};
     int button_count_{0};
-    bool use_evdev_{false};
 
     // Thread that reads events in the background
     std::thread poll_thread_;
@@ -83,7 +77,14 @@ private:
         SPEED_UP,
         SPEED_DOWN,
         MANUAL_TOGGLE,
-        HOME
+        HOME,
+        // New extended button actions
+        BOOTSTRAP_CALIBRATE,
+        TPOINT_CALIBRATE,
+        MERIDIAN_FLIP,
+        MODE_CYCLE,
+        CLEAR_ERRORS,
+        UNPARK
     };
 
     std::map<int, ButtonAction> button_map_;
@@ -110,12 +111,10 @@ private:
 
     // Helpers
     bool openDevice(const std::string& path);
-    bool openJoystickDevice(const std::string& path);
     bool openEvdevDevice(const std::string& path);
     std::string autoDetect();
     void pollLoop();
     void standbyLoop();           ///< Background thread when no device is connected
-    void processJoystickEvent(const js_event& ev);
     void processEvdevEvent(const input_event& ev);
     double normalizeAxis(int raw, int axis_min, int axis_max) const;
     double applyDeadzone(double value) const;

@@ -10,6 +10,8 @@ MqttChannel::MqttChannel(Config config)
     : config_(std::move(config)) {
 }
 
+MqttChannel::MqttChannel() : MqttChannel(Config{}) {}
+
 MqttChannel::~MqttChannel() {
     shutdown();
 }

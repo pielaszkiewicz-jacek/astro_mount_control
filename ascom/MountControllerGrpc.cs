@@ -228,14 +228,6 @@ namespace AstroMount {
         __Marshaller_google_protobuf_Empty);
 
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::AstroMount.Measurement, global::Google.Protobuf.WellKnownTypes.Empty> __Method_AddMeasurement = new grpc::Method<global::AstroMount.Measurement, global::Google.Protobuf.WellKnownTypes.Empty>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "AddMeasurement",
-        __Marshaller_astro_mount_Measurement,
-        __Marshaller_google_protobuf_Empty);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Method<global::AstroMount.BootstrapMeasurement, global::Google.Protobuf.WellKnownTypes.Empty> __Method_AddBootstrapMeasurement = new grpc::Method<global::AstroMount.BootstrapMeasurement, global::Google.Protobuf.WellKnownTypes.Empty>(
         grpc::MethodType.Unary,
         __ServiceName,
@@ -393,30 +385,6 @@ namespace AstroMount {
         __ServiceName,
         "UpdateConfiguration",
         __Marshaller_astro_mount_Configuration,
-        __Marshaller_google_protobuf_Empty);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::AstroMount.TrajectoryParams, global::AstroMount.Trajectory> __Method_GenerateTrajectory = new grpc::Method<global::AstroMount.TrajectoryParams, global::AstroMount.Trajectory>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "GenerateTrajectory",
-        __Marshaller_astro_mount_TrajectoryParams,
-        __Marshaller_astro_mount_Trajectory);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::AstroMount.Trajectory, global::Google.Protobuf.WellKnownTypes.Empty> __Method_ExecuteTrajectory = new grpc::Method<global::AstroMount.Trajectory, global::Google.Protobuf.WellKnownTypes.Empty>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "ExecuteTrajectory",
-        __Marshaller_astro_mount_Trajectory,
-        __Marshaller_google_protobuf_Empty);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty> __Method_StopTrajectory = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "StopTrajectory",
-        __Marshaller_google_protobuf_Empty,
         __Marshaller_google_protobuf_Empty);
 
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
@@ -700,19 +668,6 @@ namespace AstroMount {
       }
 
       /// <summary>
-      /// Measurement and calibration
-      /// Legacy measurement API (for backward compatibility)
-      /// </summary>
-      /// <param name="request">The request received from the client.</param>
-      /// <param name="context">The context of the server-side call handler being invoked.</param>
-      /// <returns>The response to send back to the client (wrapped by a task).</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> AddMeasurement(global::AstroMount.Measurement request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      /// <summary>
       /// Bootstrap calibration API (for initial alignment)
       /// </summary>
       /// <param name="request">The request received from the client.</param>
@@ -880,29 +835,6 @@ namespace AstroMount {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
 
-      /// <summary>
-      /// Trajectory generation and execution
-      /// </summary>
-      /// <param name="request">The request received from the client.</param>
-      /// <param name="context">The context of the server-side call handler being invoked.</param>
-      /// <returns>The response to send back to the client (wrapped by a task).</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::AstroMount.Trajectory> GenerateTrajectory(global::AstroMount.TrajectoryParams request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> ExecuteTrajectory(global::AstroMount.Trajectory request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> StopTrajectory(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
 
       /// <summary>
       /// Health check
@@ -1453,56 +1385,12 @@ namespace AstroMount {
       }
       /// <summary>
       /// Measurement and calibration
-      /// Legacy measurement API (for backward compatibility)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
       /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
       /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
       /// <param name="cancellationToken">An optional token for canceling the call.</param>
       /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty AddMeasurement(global::AstroMount.Measurement request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return AddMeasurement(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Measurement and calibration
-      /// Legacy measurement API (for backward compatibility)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty AddMeasurement(global::AstroMount.Measurement request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_AddMeasurement, null, options, request);
-      }
-      /// <summary>
-      /// Measurement and calibration
-      /// Legacy measurement API (for backward compatibility)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> AddMeasurementAsync(global::AstroMount.Measurement request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return AddMeasurementAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Measurement and calibration
-      /// Legacy measurement API (for backward compatibility)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> AddMeasurementAsync(global::AstroMount.Measurement request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_AddMeasurement, null, options, request);
-      }
       /// <summary>
       /// Bootstrap calibration API (for initial alignment)
       /// </summary>
@@ -2126,94 +2014,6 @@ namespace AstroMount {
       public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> UpdateConfigurationAsync(global::AstroMount.Configuration request, grpc::CallOptions options)
       {
         return CallInvoker.AsyncUnaryCall(__Method_UpdateConfiguration, null, options, request);
-      }
-      /// <summary>
-      /// Trajectory generation and execution
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::AstroMount.Trajectory GenerateTrajectory(global::AstroMount.TrajectoryParams request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return GenerateTrajectory(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Trajectory generation and execution
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::AstroMount.Trajectory GenerateTrajectory(global::AstroMount.TrajectoryParams request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_GenerateTrajectory, null, options, request);
-      }
-      /// <summary>
-      /// Trajectory generation and execution
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::AstroMount.Trajectory> GenerateTrajectoryAsync(global::AstroMount.TrajectoryParams request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return GenerateTrajectoryAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Trajectory generation and execution
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::AstroMount.Trajectory> GenerateTrajectoryAsync(global::AstroMount.TrajectoryParams request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_GenerateTrajectory, null, options, request);
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty ExecuteTrajectory(global::AstroMount.Trajectory request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return ExecuteTrajectory(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty ExecuteTrajectory(global::AstroMount.Trajectory request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_ExecuteTrajectory, null, options, request);
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ExecuteTrajectoryAsync(global::AstroMount.Trajectory request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return ExecuteTrajectoryAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ExecuteTrajectoryAsync(global::AstroMount.Trajectory request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_ExecuteTrajectory, null, options, request);
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty StopTrajectory(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return StopTrajectory(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty StopTrajectory(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_StopTrajectory, null, options, request);
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> StopTrajectoryAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return StopTrajectoryAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> StopTrajectoryAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_StopTrajectory, null, options, request);
       }
       /// <summary>
       /// Health check
@@ -3224,7 +3024,6 @@ namespace AstroMount {
           .AddMethod(__Method_SaveState, serviceImpl.SaveState)
           .AddMethod(__Method_LoadState, serviceImpl.LoadState)
           .AddMethod(__Method_ClearErrors, serviceImpl.ClearErrors)
-          .AddMethod(__Method_AddMeasurement, serviceImpl.AddMeasurement)
           .AddMethod(__Method_AddBootstrapMeasurement, serviceImpl.AddBootstrapMeasurement)
           .AddMethod(__Method_RunBootstrapCalibration, serviceImpl.RunBootstrapCalibration)
           .AddMethod(__Method_GetBootstrapStatus, serviceImpl.GetBootstrapStatus)
@@ -3245,9 +3044,6 @@ namespace AstroMount {
           .AddMethod(__Method_SendGuiderCorrection, serviceImpl.SendGuiderCorrection)
           .AddMethod(__Method_GetConfiguration, serviceImpl.GetConfiguration)
           .AddMethod(__Method_UpdateConfiguration, serviceImpl.UpdateConfiguration)
-          .AddMethod(__Method_GenerateTrajectory, serviceImpl.GenerateTrajectory)
-          .AddMethod(__Method_ExecuteTrajectory, serviceImpl.ExecuteTrajectory)
-          .AddMethod(__Method_StopTrajectory, serviceImpl.StopTrajectory)
           .AddMethod(__Method_CheckHealth, serviceImpl.CheckHealth)
           .AddMethod(__Method_UploadEphemeris, serviceImpl.UploadEphemeris)
           .AddMethod(__Method_StartEphemerisTracking, serviceImpl.StartEphemerisTracking)
@@ -3292,7 +3088,6 @@ namespace AstroMount {
       serviceBinder.AddMethod(__Method_SaveState, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.StateSaveRequest, global::AstroMount.StateSaveResponse>(serviceImpl.SaveState));
       serviceBinder.AddMethod(__Method_LoadState, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.StateLoadRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.LoadState));
       serviceBinder.AddMethod(__Method_ClearErrors, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.ClearErrors));
-      serviceBinder.AddMethod(__Method_AddMeasurement, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.Measurement, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.AddMeasurement));
       serviceBinder.AddMethod(__Method_AddBootstrapMeasurement, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.BootstrapMeasurement, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.AddBootstrapMeasurement));
       serviceBinder.AddMethod(__Method_RunBootstrapCalibration, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.BootstrapCalibrationResult>(serviceImpl.RunBootstrapCalibration));
       serviceBinder.AddMethod(__Method_GetBootstrapStatus, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.BootstrapStatus>(serviceImpl.GetBootstrapStatus));
@@ -3313,9 +3108,6 @@ namespace AstroMount {
       serviceBinder.AddMethod(__Method_SendGuiderCorrection, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.GuiderCorrection, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.SendGuiderCorrection));
       serviceBinder.AddMethod(__Method_GetConfiguration, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Configuration>(serviceImpl.GetConfiguration));
       serviceBinder.AddMethod(__Method_UpdateConfiguration, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.Configuration, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.UpdateConfiguration));
-      serviceBinder.AddMethod(__Method_GenerateTrajectory, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.TrajectoryParams, global::AstroMount.Trajectory>(serviceImpl.GenerateTrajectory));
-      serviceBinder.AddMethod(__Method_ExecuteTrajectory, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.Trajectory, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.ExecuteTrajectory));
-      serviceBinder.AddMethod(__Method_StopTrajectory, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.StopTrajectory));
       serviceBinder.AddMethod(__Method_CheckHealth, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.HealthCheckRequest, global::AstroMount.HealthCheckResponse>(serviceImpl.CheckHealth));
       serviceBinder.AddMethod(__Method_UploadEphemeris, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.EphemerisData, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.UploadEphemeris));
       serviceBinder.AddMethod(__Method_StartEphemerisTracking, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.StartEphemerisTrackingRequest, global::AstroMount.EphemerisTrackStatus>(serviceImpl.StartEphemerisTracking));

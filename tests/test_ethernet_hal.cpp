@@ -58,8 +58,7 @@ TEST(EthernetHALTest, GetSupportedFeatures) {
     EXPECT_TRUE(hal.supportsFeature(HALFeature::ENCODER_FEEDBACK));
     EXPECT_TRUE(hal.supportsFeature(HALFeature::SAFETY_MONITORING));
     EXPECT_TRUE(hal.supportsFeature(HALFeature::SENSOR_MONITORING));
-    EXPECT_TRUE(hal.supportsFeature(HALFeature::DEROTATOR_SUPPORT));
-    EXPECT_FALSE(hal.supportsFeature(HALFeature::CANOPEN_SUPPORT));
+    EXPECT_FALSE(hal.supportsFeature(HALFeature::FIELD_BUS_SUPPORT));
     EXPECT_FALSE(hal.supportsFeature(HALFeature::SERIAL_SUPPORT));
     EXPECT_FALSE(hal.supportsFeature(HALFeature::MANUAL_CONTROL));
 }

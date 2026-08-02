@@ -38,8 +38,6 @@ TEST_F(ConfigurationTest, GetLoggingConfig) {
     auto logging = config->getLoggingConfig();
     EXPECT_EQ(logging.level, "INFO");
     EXPECT_EQ(logging.directory, "/var/log/astro-mount");
-    EXPECT_EQ(logging.rotation_days, 7);
-    EXPECT_EQ(logging.max_file_size_mb, 100);
     EXPECT_TRUE(logging.console_output);
 }
 
@@ -51,15 +49,6 @@ TEST_F(ConfigurationTest, GetNetworkConfig) {
     EXPECT_FALSE(network.enable_ssl);
     EXPECT_TRUE(network.ssl_cert_path.empty());
     EXPECT_TRUE(network.ssl_key_path.empty());
-}
-
-TEST_F(ConfigurationTest, GetCanOpenConfig) {
-    auto canopen = config->getCanOpenConfig();
-    EXPECT_EQ(canopen.interface, "can0");
-    EXPECT_EQ(canopen.node_id, 1);
-    EXPECT_EQ(canopen.baud_rate, 1000000);
-    EXPECT_TRUE(canopen.enable_sync);
-    EXPECT_EQ(canopen.sync_interval_ms, 100);
 }
 
 TEST_F(ConfigurationTest, GetMountConfig) {
@@ -119,8 +108,6 @@ TEST_F(ConfigurationTest, SetLoggingConfig) {
     Configuration::LoggingConfig new_logging;
     new_logging.level = "DEBUG";
     new_logging.directory = "/tmp/logs";
-    new_logging.rotation_days = 3;
-    new_logging.max_file_size_mb = 50;
     new_logging.console_output = false;
     
     config->setLoggingConfig(new_logging);
@@ -128,8 +115,6 @@ TEST_F(ConfigurationTest, SetLoggingConfig) {
     
     EXPECT_EQ(retrieved.level, "DEBUG");
     EXPECT_EQ(retrieved.directory, "/tmp/logs");
-    EXPECT_EQ(retrieved.rotation_days, 3);
-    EXPECT_EQ(retrieved.max_file_size_mb, 50);
     EXPECT_FALSE(retrieved.console_output);
 }
 

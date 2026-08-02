@@ -341,9 +341,6 @@ service MountControllerService {
     rpc ClearErrors(google.protobuf.Empty) returns (google.protobuf.Empty);
     
     // Measurement and calibration
-    // Legacy measurement API (for backward compatibility)
-    rpc AddMeasurement(Measurement) returns (google.protobuf.Empty);
-    
     // Bootstrap calibration API (for initial alignment)
     rpc AddBootstrapMeasurement(BootstrapMeasurement) returns (google.protobuf.Empty);
     rpc RunBootstrapCalibration(google.protobuf.Empty) returns (BootstrapCalibrationResult);
@@ -379,11 +376,6 @@ service MountControllerService {
     // Configuration
     rpc GetConfiguration(google.protobuf.Empty) returns (Configuration);
     rpc UpdateConfiguration(Configuration) returns (google.protobuf.Empty);
-    
-    // Trajectory generation and execution
-    rpc GenerateTrajectory(TrajectoryParams) returns (Trajectory);
-    rpc ExecuteTrajectory(Trajectory) returns (google.protobuf.Empty);
-    rpc StopTrajectory(google.protobuf.Empty) returns (google.protobuf.Empty);
     
     // Health check
     rpc CheckHealth(HealthCheckRequest) returns (HealthCheckResponse);
@@ -585,8 +577,6 @@ message Configuration {
     // Logging
     string log_level = 14;
     string log_directory = 15;
-    int32 log_rotation_days = 16;
-    int32 log_max_file_size_mb = 74;
     optional bool log_console_output = 75;
     
     // Network
@@ -1188,6 +1178,13 @@ message GamepadState {
     bool bootstrap_calibrated = 20;  // Whether bootstrap calibration is done
     bool tpoint_calibrated = 21;     // Whether TPOINT calibration is done
     double max_velocity = 22;        // Current max velocity (deg/s) – adjustable via speed buttons
+    // NEW: Extended button states for advanced mount operations
+    bool button_bootstrap_calibrate = 23;  // Trigger bootstrap calibration
+    bool button_tpoint_calibrate = 24;     // Trigger TPOINT calibration
+    bool button_meridian_flip = 25;        // Execute meridian flip
+    bool button_mode_cycle = 26;           // Cycle through navigation modes
+    bool button_clear_errors = 27;         // Clear error state
+    bool button_unpark = 28;               // Unpark mount
 }
 
 // Wrapper message for SetGamepadMode RPC

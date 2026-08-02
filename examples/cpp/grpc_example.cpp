@@ -209,19 +209,6 @@ public:
     // 3. MEASUREMENT AND CALIBRATION
     // ============================================
     
-    bool addMeasurement(const Measurement& measurement) {
-        std::cout << "\n3.1 AddMeasurement:" << std::endl;
-        printCoordinates("   Observed", measurement.observed());
-        printCoordinates("   Expected", measurement.expected());
-        
-        ClientContext context;
-        Empty response;
-        Status status = stub_->AddMeasurement(&context, measurement, &response);
-        
-        printStatus(status);
-        return status.ok();
-    }
-    
     // Bootstrap calibration
     bool addBootstrapMeasurement(const BootstrapMeasurement& measurement) {
         std::cout << "\n3.2 AddBootstrapMeasurement:" << std::endl;

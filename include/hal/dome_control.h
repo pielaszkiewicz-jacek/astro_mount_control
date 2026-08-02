@@ -3,6 +3,8 @@
 
 #include <string>
 #include <cstdint>
+#include <memory>
+#include <functional>
 
 namespace astro_mount {
 namespace hal {
@@ -58,6 +60,27 @@ public:
     virtual bool isMoving() const = 0;
     virtual DomeType getDomeType() const = 0;
 };
+
+/**
+ * @brief Create a DomeControl instance based on JSON configuration.
+ *
+ * Expected config format (JSON):
+ * {
+ *     "type": "simulated|serial|rolloff",
+ *     "device_path": "/dev/ttyUSB0",       // serial only
+ *     "baud_rate": 9600,                   // serial only
+ *     "home_azimuth_deg": 0.0,
+ *     "park_azimuth_deg": 180.0,
+ *     "open_time_s": 30,                   // rolloff only
+ *     "gpio_open_pin": "gpio17",           // rolloff only
+ *     "gpio_close_pin": "gpio18"           // rolloff only
+ * }
+ *
+ * @param config_json Path to JSON config file
+ * @return std::unique_ptr<DomeControl> Initialised and connected dome control
+ * @throws std::runtime_error on parse error or unknown type
+ */
+std::unique_ptr<DomeControl> createDomeControl(const std::string& config_path);
 
 } // namespace hal
 } // namespace astro_mount

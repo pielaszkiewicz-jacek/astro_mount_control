@@ -10,6 +10,8 @@ WebhookChannel::WebhookChannel(Config config)
     : config_(std::move(config)) {
 }
 
+WebhookChannel::WebhookChannel() : WebhookChannel(Config{}) {}
+
 WebhookChannel::~WebhookChannel() {
     shutdown();
 }

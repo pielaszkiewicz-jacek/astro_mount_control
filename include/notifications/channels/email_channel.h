@@ -35,7 +35,8 @@ public:
         std::string subject_prefix{"[AstroMount]"};
     };
 
-    explicit EmailChannel(Config config = {});
+    explicit EmailChannel(Config config);
+    EmailChannel();
     ~EmailChannel() override;
 
     std::string name() const override { return "email"; }

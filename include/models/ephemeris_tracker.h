@@ -14,6 +14,7 @@
 #include <atomic>
 #include <thread>
 #include <functional>
+#include <optional>
 
 namespace astro_mount {
 namespace models {

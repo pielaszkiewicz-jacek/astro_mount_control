@@ -158,6 +158,15 @@ const DatabaseComponent = (() => {
     if (btnImportUrl) {
       btnImportUrl.addEventListener('click', handleUrlImport);
     }
+    // Load presets when the "Popular Catalogs" section is expanded
+    const presetSection = $('#db-import-preset-section');
+    if (presetSection) {
+      presetSection.addEventListener('toggle', () => {
+        if (presetSection.open) {
+          loadImportPresets();
+        }
+      });
+    }
   }
 
   // ─── Load Database Stats ──────────────────────────────────────────────
@@ -1357,6 +1366,7 @@ async function handleUpdate(event) {
   return {
     init,
     loadStats,
+    loadObjects,
     selectObject,
     toggleFavorite,
   };

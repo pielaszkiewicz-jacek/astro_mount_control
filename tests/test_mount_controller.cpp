@@ -24,46 +24,51 @@ protected:
         controller_ = std::make_unique<MountController>();
 
         // Default config: equatorial mount, no CANopen (uses mock)
-        config_.mount_type = MountController::MountType::EQUATORIAL;
-        config_.latitude = 52.0;
-        config_.longitude = 21.0;
-        config_.altitude = 100.0;
-        config_.max_slew_rate = 5.0;
-        config_.max_tracking_rate = 0.004178;
-        config_.slew_acceleration = 1.0;
-        config_.tracking_acceleration = 0.001;
-        config_.position_tolerance = 0.5;
-        config_.rate_tolerance = 0.001;
-        config_.canopen_interface = "";  // will use mock
-        config_.canopen_node_id = 1;
-        config_.use_encoders = false;
-        config_.encoders_absolute = false;
-        config_.encoder_resolution = 360000;
-        config_.default_temperature = 15.0;
-        config_.default_pressure = 1013.25;
-        config_.default_humidity = 0.5;
+        config_.mount_config.mount_type = config::MountType::EQUATORIAL;
+        config_.mount_config.latitude = 52.0;
+        config_.mount_config.longitude = 21.0;
+        config_.mount_config.altitude = 100.0;
+        config_.mount_config.max_slew_rate = 5.0;
+        config_.mount_config.max_tracking_rate = 0.004178;
+        config_.mount_config.slew_acceleration = 1.0;
+        config_.mount_config.tracking_acceleration = 0.001;
+        config_.mount_config.position_tolerance = 0.5;
+        config_.mount_config.rate_tolerance = 0.001;
+        config_.mount_config.use_encoders = false;
+        config_.mount_config.encoders_absolute = false;
+        config_.mount_config.encoder_resolution = 360000;
+        config_.mount_config.default_temperature = 15.0;
+        config_.mount_config.default_pressure = 1013.25;
+        config_.mount_config.default_humidity = 0.5;
         config_.focal_length = 2000.0;
         config_.aperture = 250.0;
-        config_.enable_guider = false;
-        config_.guider_max_correction = 100.0;
-        config_.guider_aggression = 0.5;
+        config_.tracking_config.enable_guider = false;
+        config_.tracking_config.guider_max_correction = 100.0;
+        config_.tracking_config.guider_aggression = 0.5;
         // Use gear_ratio=1.0 in tests so servo degrees == telescope degrees.
         // The implementation stores positions in servo degrees (telescope × gear_ratio),
         // but the tests were written expecting direct telescope-degree positions.
-        config_.ha_axis_params.gear_ratio = 1.0;
-        config_.dec_axis_params.gear_ratio = 1.0;
+        config_.mount_config.ha_axis_params.gear_ratio = 1.0;
+        config_.mount_config.dec_axis_params.gear_ratio = 1.0;
         // Park at Dec=0° (celestial equator) instead of Dec=90° (NCP) to avoid
         // coordinate singularities in RA/Dec↔Alt/Az transforms during tests.
-        config_.park_position_axis2 = 0.0;
-        config_.ha_axis_params.backlash = 0.0;
-        config_.dec_axis_params.backlash = 0.0;
-        config_.ha_axis_params.encoder_resolution = 360000.0;
-        config_.dec_axis_params.encoder_resolution = 360000.0;
+        config_.safety_config.park_position_axis2 = 0.0;
+        config_.mount_config.ha_axis_params.backlash = 0.0;
+        config_.mount_config.dec_axis_params.backlash = 0.0;
+        config_.mount_config.ha_axis_params.encoder_resolution = 360000.0;
+        config_.mount_config.dec_axis_params.encoder_resolution = 360000.0;
     }
 
     void TearDown() override {
         controller_->shutdown();
         controller_.reset();
+        // Clean up logger state so it doesn't leak between tests.
+        // Without this, spdlog retains registered loggers from the
+        // previous MountController instance, which can cause
+        // "logger with name already exists" errors and stale
+        // sink references in subsequent tests.
+        logging::Logger::shutdown();
+        spdlog::drop_all();
     }
 
     std::unique_ptr<MountController> controller_;
@@ -114,13 +119,13 @@ TEST_F(MountControllerTest, SlewToEquatorialSetsTargets) {
     // Celestial HA (hours) * 15 (deg/hour) * gear_ratio = servo degrees.
     // axis2 target is Declination * gear_ratio = servo degrees.
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ha_hours = lst - 12.0;
     while (ha_hours > 12.0) ha_hours -= 24.0;
     while (ha_hours < -12.0) ha_hours += 24.0;
-    double gear = config_.ha_axis_params.gear_ratio;
+    double gear = config_.mount_config.ha_axis_params.gear_ratio;
     EXPECT_NEAR(status.axis1_target, ha_hours * 15.0 * gear, 1e-6 * gear);
-    EXPECT_DOUBLE_EQ(status.axis2_target, 45.0 * config_.dec_axis_params.gear_ratio);
+    EXPECT_DOUBLE_EQ(status.axis2_target, 45.0 * config_.mount_config.dec_axis_params.gear_ratio);
 }
 
 TEST_F(MountControllerTest, SlewToEquatorialReachesTarget) {
@@ -129,11 +134,11 @@ TEST_F(MountControllerTest, SlewToEquatorialReachesTarget) {
 
     // Compute expected HA target in SERVO degrees (celestial * gear_ratio)
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ha_hours = lst - 12.0;
     while (ha_hours > 12.0) ha_hours -= 24.0;
     while (ha_hours < -12.0) ha_hours += 24.0;
-    double gear = config_.ha_axis_params.gear_ratio;
+    double gear = config_.mount_config.ha_axis_params.gear_ratio;
     double expected_axis1 = ha_hours * 15.0 * gear;
 
     // With mock CANopen, target_reached is true immediately so the background
@@ -144,8 +149,8 @@ TEST_F(MountControllerTest, SlewToEquatorialReachesTarget) {
         auto status = controller_->getStatus();
         if (status.state == MountController::MountStatus::State::IDLE) {
             reached = true;
-            EXPECT_NEAR(status.axis1_position, expected_axis1, config_.position_tolerance * gear);
-            EXPECT_NEAR(status.axis2_position, 45.0 * config_.dec_axis_params.gear_ratio, config_.position_tolerance * config_.dec_axis_params.gear_ratio);
+            EXPECT_NEAR(status.axis1_position, expected_axis1, config_.mount_config.position_tolerance * gear);
+            EXPECT_NEAR(status.axis2_position, 45.0 * config_.mount_config.dec_axis_params.gear_ratio, config_.mount_config.position_tolerance * config_.mount_config.dec_axis_params.gear_ratio);
             break;
         }
     }
@@ -185,8 +190,8 @@ TEST_F(MountControllerTest, SlewToHorizontalSetsTargets) {
 
     auto status = controller_->getStatus();
     // Targets are now in SERVO degrees (azimuth/altitude * gear_ratio)
-    EXPECT_DOUBLE_EQ(status.axis1_target, 180.0 * config_.ha_axis_params.gear_ratio);  // azimuth
-    EXPECT_DOUBLE_EQ(status.axis2_target, 30.0 * config_.dec_axis_params.gear_ratio);   // altitude
+    EXPECT_DOUBLE_EQ(status.axis1_target, 180.0 * config_.mount_config.ha_axis_params.gear_ratio);  // azimuth
+    EXPECT_DOUBLE_EQ(status.axis2_target, 30.0 * config_.mount_config.dec_axis_params.gear_ratio);   // altitude
 }
 
 TEST_F(MountControllerTest, SlewToHorizontalReachesTarget) {
@@ -199,10 +204,10 @@ TEST_F(MountControllerTest, SlewToHorizontalReachesTarget) {
         auto status = controller_->getStatus();
         if (status.state == MountController::MountStatus::State::IDLE) {
             reached = true;
-            double gear1 = config_.ha_axis_params.gear_ratio;
-            double gear2 = config_.dec_axis_params.gear_ratio;
-            EXPECT_NEAR(status.axis1_position, 90.0 * gear1, config_.position_tolerance * gear1);
-            EXPECT_NEAR(status.axis2_position, 45.0 * gear2, config_.position_tolerance * gear2);
+            double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+            double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
+            EXPECT_NEAR(status.axis1_position, 90.0 * gear1, config_.mount_config.position_tolerance * gear1);
+            EXPECT_NEAR(status.axis2_position, 45.0 * gear2, config_.mount_config.position_tolerance * gear2);
             break;
         }
     }
@@ -215,7 +220,7 @@ TEST_F(MountControllerTest, SlewToHorizontalReachesTarget) {
 
 TEST_F(MountControllerTest, StartTrackingSidereal) {
     controller_->initialize(config_);
-    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL));
+    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL));
 
     auto status = controller_->getStatus();
     EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
@@ -223,33 +228,33 @@ TEST_F(MountControllerTest, StartTrackingSidereal) {
 
 TEST_F(MountControllerTest, StartTrackingSetsTargets) {
     controller_->initialize(config_);
-    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL);
 
     auto status = controller_->getStatus();
     // For equatorial mounts, axis1 target is Hour Angle in SERVO degrees.
     // Celestial HA * 15 (deg/hour) * gear_ratio = servo degrees.
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ha_hours = lst - 12.0;
     while (ha_hours > 12.0) ha_hours -= 24.0;
     while (ha_hours < -12.0) ha_hours += 24.0;
-    double gear = config_.ha_axis_params.gear_ratio;
+    double gear = config_.mount_config.ha_axis_params.gear_ratio;
     EXPECT_NEAR(status.axis1_target, ha_hours * 15.0 * gear, 1e-6 * gear);
-    EXPECT_DOUBLE_EQ(status.axis2_target, 45.0 * config_.dec_axis_params.gear_ratio);
+    EXPECT_DOUBLE_EQ(status.axis2_target, 45.0 * config_.mount_config.dec_axis_params.gear_ratio);
 }
 
 TEST_F(MountControllerTest, TrackingUpdatesPosition) {
-    config_.enable_refraction_correction = false;
-    config_.meridian_flip_enabled = false;
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_enabled = false;
     controller_->initialize(config_);
 
     // Use RA = LST so HA = 0, avoiding meridian complications
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ra = lst;
     while (ra >= 24.0) ra -= 24.0;
 
-    controller_->startTracking(ra, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL);
 
     // Take two readings and verify position moved.
     // Servo position advances at ~1.5°/s (0.004178°/s telescope × 360 gear).
@@ -276,14 +281,14 @@ TEST_F(MountControllerTest, StartTrackingWhileSlewingRejected) {
 TEST_F(MountControllerTest, AltAzStartTracking) {
     // For ALT_AZ mounts, axis1 = altitude, axis2 = azimuth.
     // Targets are now in servo degrees (telescope * gear_ratio).
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
 
-    EXPECT_TRUE(controller_->startTracking(45.0, 0.0, MountController::TrackingMode::SIDEREAL));
+    EXPECT_TRUE(controller_->startTracking(45.0, 0.0, config::TrackingMode::SIDEREAL));
 
     auto status = controller_->getStatus();
     EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
-    double gear1 = config_.ha_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
     EXPECT_DOUBLE_EQ(status.axis1_target, 45.0 * gear1);  // altitude * gear
     EXPECT_DOUBLE_EQ(status.axis2_target, 0.0);   // azimuth * gear = 0
 }
@@ -292,11 +297,11 @@ TEST_F(MountControllerTest, AltAzTrackingUpdatesPosition) {
     // Verify that both axis positions change during ALT_AZ tracking.
     // The rates are position-dependent: at alt=60°, az=180°, lat=52°,
     // both axes should drift measurably over 1 second.
-    config_.mount_type = MountController::MountType::ALT_AZ;
-    config_.latitude = 52.0;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
+    config_.mount_config.latitude = 52.0;
     controller_->initialize(config_);
 
-    controller_->startTracking(60.0, 180.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(60.0, 180.0, config::TrackingMode::SIDEREAL);
 
     // Let tracking run for ~1s to accumulate measurable position change
     std::this_thread::sleep_for(600ms);
@@ -319,14 +324,14 @@ TEST_F(MountControllerTest, AltAzZenithClamp) {
     // Verify the zenith singularity guard: telescope altitude should never
     // exceed 90°, even when starting very close to the zenith (alt=89.5°).
     // axis1_position is in servo degrees; divide by gear_ratio for telescope alt.
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
     // Start tracking at alt=89.5° (very close to zenith). The cos(alt) clamp
     // at cos(89.5°) should prevent the azimuth rate from blowing up.
-    controller_->startTracking(89.5, 0.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(89.5, 0.0, config::TrackingMode::SIDEREAL);
 
     // Let multiple tracking iterations occur
     std::this_thread::sleep_for(800ms);
@@ -352,12 +357,12 @@ TEST_F(MountControllerTest, AltAzNanGuard) {
     // Verify NaN guard: starting tracking at exactly alt=90° (where cos=0)
     // should not crash. The zenith clamp prevents division by zero, and
     // tracking should proceed normally.
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear1 = config_.ha_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
 
     // alt=90°, az=0° — cos(90°)=0 would cause az_rate → ∞ without the clamp
-    EXPECT_TRUE(controller_->startTracking(90.0, 0.0, MountController::TrackingMode::SIDEREAL));
+    EXPECT_TRUE(controller_->startTracking(90.0, 0.0, config::TrackingMode::SIDEREAL));
 
     std::this_thread::sleep_for(600ms);
     auto status = controller_->getStatus();
@@ -383,17 +388,17 @@ TEST_F(MountControllerTest, EquatorialNanGuard) {
     // guider_delta_axis1_/axis2_. The tracking loop reads these deltas,
     // producing NaN current_rate_1/2, which propagates to axis positions
     // through the rate update and is caught by the position update guard.
-    config_.meridian_flip_enabled = false;
+    config_.safety_config.meridian_flip_enabled = false;
     controller_->initialize(config_);
 
     // Start tracking in equatorial mode
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ra = lst;
     while (ra < 0.0) ra += 24.0;
     while (ra >= 24.0) ra -= 24.0;
 
-    bool started = controller_->startTracking(ra, 45.0, MountController::TrackingMode::SIDEREAL);
+    bool started = controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL);
     ASSERT_TRUE(started);
 
     // Let tracking establish a few iterations
@@ -474,21 +479,21 @@ TEST_F(MountControllerTest, ParkSuccess) {
 TEST_F(MountControllerTest, ParkReachesPosition) {
     // Set explicit park position (telescope degrees).
     // After fix, park targets and positions are in SERVO degrees.
-    config_.park_position_axis1 = 10.0;
-    config_.park_position_axis2 = 20.0;
+    config_.safety_config.park_position_axis1 = 10.0;
+    config_.safety_config.park_position_axis2 = 20.0;
     controller_->initialize(config_);
     controller_->park();
 
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
     bool parked = false;
     for (int i = 0; i < 50; i++) {
         std::this_thread::sleep_for(200ms);
         auto status = controller_->getStatus();
         if (status.state == MountController::MountStatus::State::PARKED) {
             parked = true;
-            EXPECT_NEAR(status.axis1_position, config_.park_position_axis1 * gear1, config_.position_tolerance * gear1);
-            EXPECT_NEAR(status.axis2_position, config_.park_position_axis2 * gear2, config_.position_tolerance * gear2);
+            EXPECT_NEAR(status.axis1_position, config_.safety_config.park_position_axis1 * gear1, config_.mount_config.position_tolerance * gear1);
+            EXPECT_NEAR(status.axis2_position, config_.safety_config.park_position_axis2 * gear2, config_.mount_config.position_tolerance * gear2);
             break;
         }
     }
@@ -567,7 +572,7 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
   TEST_F(MountControllerTest, BootstrapModeDefaultIsManual) {
     controller_->initialize(config_);
     EXPECT_EQ(controller_->getBootstrapMode(),
-              MountController::BootstrapMode::BOOTSTRAP_MANUAL);
+              config::BootstrapMode::BOOTSTRAP_MANUAL);
   }
   
   TEST_F(MountControllerTest, BootstrapModeSetGet) {
@@ -575,21 +580,21 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
   
     // Set HYBRID
     EXPECT_TRUE(controller_->setBootstrapMode(
-        MountController::BootstrapMode::BOOTSTRAP_HYBRID));
+        config::BootstrapMode::BOOTSTRAP_HYBRID));
     EXPECT_EQ(controller_->getBootstrapMode(),
-              MountController::BootstrapMode::BOOTSTRAP_HYBRID);
+              config::BootstrapMode::BOOTSTRAP_HYBRID);
   
     // Set AUTOMATIC
     EXPECT_TRUE(controller_->setBootstrapMode(
-        MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC));
+        config::BootstrapMode::BOOTSTRAP_AUTOMATIC));
     EXPECT_EQ(controller_->getBootstrapMode(),
-              MountController::BootstrapMode::BOOTSTRAP_AUTOMATIC);
+              config::BootstrapMode::BOOTSTRAP_AUTOMATIC);
   
     // Set back to MANUAL
     EXPECT_TRUE(controller_->setBootstrapMode(
-        MountController::BootstrapMode::BOOTSTRAP_MANUAL));
+        config::BootstrapMode::BOOTSTRAP_MANUAL));
     EXPECT_EQ(controller_->getBootstrapMode(),
-              MountController::BootstrapMode::BOOTSTRAP_MANUAL);
+              config::BootstrapMode::BOOTSTRAP_MANUAL);
   }
   
   TEST_F(MountControllerTest, BootstrapModeInStatus) {
@@ -598,26 +603,26 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
   
     // Default mode in status should be MANUAL
     EXPECT_EQ(status.bootstrap_mode,
-              static_cast<int>(MountController::BootstrapMode::BOOTSTRAP_MANUAL));
+              static_cast<int>(config::BootstrapMode::BOOTSTRAP_MANUAL));
   
     // Set HYBRID and verify status reflects it
     controller_->setBootstrapMode(
-        MountController::BootstrapMode::BOOTSTRAP_HYBRID);
+        config::BootstrapMode::BOOTSTRAP_HYBRID);
     status = controller_->getStatus();
     EXPECT_EQ(status.bootstrap_mode,
-              static_cast<int>(MountController::BootstrapMode::BOOTSTRAP_HYBRID));
+              static_cast<int>(config::BootstrapMode::BOOTSTRAP_HYBRID));
   }
   
   TEST_F(MountControllerTest, EncodersAbsoluteStatusField) {
     // Test with absolute encoders
-    config_.encoders_absolute = true;
+    config_.mount_config.encoders_absolute = true;
     controller_->initialize(config_);
     auto status = controller_->getStatus();
     EXPECT_TRUE(status.encoders_absolute);
     controller_->shutdown();
   
     // Test with incremental encoders
-    config_.encoders_absolute = false;
+    config_.mount_config.encoders_absolute = false;
     controller_->initialize(config_);
     status = controller_->getStatus();
     EXPECT_FALSE(status.encoders_absolute);
@@ -653,8 +658,8 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
 
   TEST_F(MountControllerTest, BootstrapCalibrationAltAz) {
     // Verify Wahba/SVD bootstrap calibration works for ALT_AZ mount type
-    config_.mount_type = MountController::MountType::ALT_AZ;
-    config_.enable_refraction_correction = false;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
+    config_.safety_config.enable_refraction_correction = false;
     controller_->initialize(config_);
 
     // Add 3 well-separated measurements (Wahba/SVD requires >= 3)
@@ -677,11 +682,11 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
 
   TEST_F(MountControllerTest, BootstrapCalibrationCasualUniversal) {
     // Verify Wahba/SVD works for CASUAL mount type (universal code path)
-    config_.mount_type = MountController::MountType::CASUAL;
-    config_.enable_refraction_correction = false;
+    config_.mount_config.mount_type = config::MountType::CASUAL;
+    config_.safety_config.enable_refraction_correction = false;
 
     // Identity quaternion orientation (Alt-Az-like)
-    config_.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
+    config_.mount_config.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
     controller_->initialize(config_);
 
     // Add measurements; the universal Wahba/SVD code path should handle CASUAL.
@@ -734,10 +739,10 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
     // (0°, 90° by default), providing a sensible initial reference.
     controller_->initialize(config_);
     auto status = controller_->getStatus();
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
-    EXPECT_DOUBLE_EQ(status.axis1_position, config_.park_position_axis1 * gear1);
-    EXPECT_DOUBLE_EQ(status.axis2_position, config_.park_position_axis2 * gear2);
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
+    EXPECT_DOUBLE_EQ(status.axis1_position, config_.safety_config.park_position_axis1 * gear1);
+    EXPECT_DOUBLE_EQ(status.axis2_position, config_.safety_config.park_position_axis2 * gear2);
   }
 
   TEST_F(MountControllerTest, AltAzCaveatLogging) {
@@ -753,8 +758,8 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
     auto mount_logger = logging::Logger::mount();
     mount_logger->sinks().push_back(sink);
 
-    config_.mount_type = MountController::MountType::ALT_AZ;
-    config_.enable_refraction_correction = false;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
+    config_.safety_config.enable_refraction_correction = false;
     controller_->initialize(config_);
 
     // Wahba/SVD requires at least 3 measurements
@@ -800,9 +805,9 @@ TEST_F(MountControllerTest, TPointCalibrationWithThreeMeasurements) {
 
 TEST_F(MountControllerTest, TPointCalibrationSimplifiedAPI) {
     controller_->initialize(config_);
-    controller_->addTPointMeasurement(10.0, 45.0, 10.1, 45.1);
-    controller_->addTPointMeasurement(12.0, 30.0, 12.1, 30.1);
-    controller_->addTPointMeasurement(14.0, 60.0, 14.1, 60.1);
+    controller_->addTPointMeasurement(10.0, 45.0, 10.1, 45.1, 2.0, 45.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(12.0, 30.0, 12.1, 30.1, 4.0, 30.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(14.0, 60.0, 14.1, 60.1, 6.0, 60.0, 15.0, 1013.25);
     EXPECT_TRUE(controller_->runTPointCalibration());
 }
 
@@ -814,11 +819,6 @@ TEST_F(MountControllerTest, ClearTPointMeasurements) {
     EXPECT_FALSE(controller_->runTPointCalibration());
 }
 
-TEST_F(MountControllerTest, LegacyCalibrationMeasurement) {
-    controller_->initialize(config_);
-    EXPECT_TRUE(controller_->addCalibrationMeasurement(
-        10.0, 45.0, 10.1, 45.1, 2.0, 45.0, 15.0, 1013.25, 0.5, 0.0, 0.0, 0.0, 2000.0));
-}
 
 // ============================================
 // 10. TPOINT PARAMETERS
@@ -900,7 +900,7 @@ TEST_F(MountControllerTest, ApplyGuiderCorrection) {
 // ============================================
 
 TEST_F(MountControllerTest, DeterminePolePosition) {
-    config_.enable_refraction_correction = false;
+    config_.safety_config.enable_refraction_correction = false;
     controller_->initialize(config_);
     
     // The drift-alignment procedure scales the per-star wait with duration_hours.
@@ -913,8 +913,8 @@ TEST_F(MountControllerTest, DeterminePolePosition) {
     // Dec axis encoder), so the drift-alignment procedure computes corrected
     // pole positions rather than returning the exact configured values.
     // Verify the corrected pole is within ~30 arcmin of the configured values.
-    EXPECT_NEAR(latitude, config_.latitude, 0.5);
-    EXPECT_NEAR(longitude, config_.longitude, 0.5);
+    EXPECT_NEAR(latitude, config_.mount_config.latitude, 0.5);
+    EXPECT_NEAR(longitude, config_.mount_config.longitude, 0.5);
     
     // The accuracy estimate comes from the measurement noise floor, not the
     // old 600" fallback — it should be significantly better.
@@ -959,16 +959,16 @@ TEST_F(MountControllerTest, SetEnvironmentalParams) {
 TEST_F(MountControllerTest, GetConfiguration) {
     controller_->initialize(config_);
     auto retrieved = controller_->getConfiguration();
-    EXPECT_DOUBLE_EQ(retrieved.latitude, config_.latitude);
-    EXPECT_DOUBLE_EQ(retrieved.longitude, config_.longitude);
+    EXPECT_DOUBLE_EQ(retrieved.mount_config.latitude, config_.mount_config.latitude);
+    EXPECT_DOUBLE_EQ(retrieved.mount_config.longitude, config_.mount_config.longitude);
 }
 
 TEST_F(MountControllerTest, UpdateConfiguration) {
     controller_->initialize(config_);
-    config_.latitude = 50.0;
+    config_.mount_config.latitude = 50.0;
     EXPECT_TRUE(controller_->updateConfiguration(config_));
     auto retrieved = controller_->getConfiguration();
-    EXPECT_DOUBLE_EQ(retrieved.latitude, 50.0);
+    EXPECT_DOUBLE_EQ(retrieved.mount_config.latitude, 50.0);
 }
 
 // ============================================
@@ -996,7 +996,7 @@ TEST_F(MountControllerTest, SetStatusCallback) {
 }
 
 TEST_F(MountControllerTest, SetErrorCallback) {
-    config_.meridian_flip_enabled = false;
+    config_.safety_config.meridian_flip_enabled = false;
     controller_->initialize(config_);
     bool callback_called = false;
     std::string error_msg;
@@ -1006,12 +1006,12 @@ TEST_F(MountControllerTest, SetErrorCallback) {
     });
     // Start tracking so that applyGuiderCorrection() can inject NaN
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ra = lst;
     while (ra < 0.0) ra += 24.0;
     while (ra >= 24.0) ra -= 24.0;
     bool started = controller_->startTracking(ra, 45.0,
-        MountController::TrackingMode::SIDEREAL);
+        config::TrackingMode::SIDEREAL);
     ASSERT_TRUE(started);
     // Let tracking establish a few iterations
     std::this_thread::sleep_for(200ms);
@@ -1038,14 +1038,16 @@ TEST_F(MountControllerTest, SetErrorCallback) {
 
 TEST_F(MountControllerTest, GetFieldRotationParams) {
     controller_->initialize(config_);
-    ::astro_mount::FieldRotationParams params;
-    params.set_enabled(true);
-    params.set_altitude(45.0);
-    controller_->enableFieldRotation(params);
-
-    auto retrieved = controller_->getFieldRotationParams();
-    EXPECT_TRUE(retrieved.enabled());
-    EXPECT_DOUBLE_EQ(retrieved.altitude(), 45.0);
+    auto params = controller_->getFieldRotationParams();
+    // getFieldRotationParams() computes the field rotation rate using:
+    //   rate = -sidereal_rate * cos(latitude) / sin(altitude)
+    // With latitude=52° and default altitude=45°:
+    //   sidereal_rate = 360/86164 ≈ 0.004178 deg/s
+    //   rate ≈ -0.004178 * cos(52°) / sin(45°) ≈ -0.003638 deg/s
+    // applied_correction_deg should be zero-initialized (no correction applied yet)
+    const double expected_rate = -360.0 / 86164.0 * std::cos(52.0 * M_PI / 180.0) / std::sin(45.0 * M_PI / 180.0);
+    EXPECT_NEAR(params.computed_rate_deg_s, expected_rate, 1e-12);
+    EXPECT_DOUBLE_EQ(params.applied_correction_deg, 0.0);
 }
 
 // ============================================
@@ -1152,10 +1154,11 @@ TEST_F(MountControllerTest, GetEphemerisMetrics) {
 // 24. CANopen INTERFACE
 // ============================================
 
-TEST_F(MountControllerTest, GetCanOpenInterfaceThrowsBeforeInit) {
+TEST_F(MountControllerTest, GetAxisStatusAfterInit) {
     controller_->initialize(config_);
     // Should not throw after initialization (mock interface)
-    auto canopen = controller_->getCanOpenInterface();
+    astro_mount::AxisStatus status;
+    controller_->getAxisStatus(status);
     // Verify it's usable
     SUCCEED();
 }
@@ -1216,16 +1219,16 @@ TEST_F(MountControllerTest, ParkAndUnparkMultipleTimes) {
 
 TEST_F(MountControllerTest, MeridianFlipDetection) {
     // Verify that tracking past the meridian triggers a pending flip
-    config_.enable_refraction_correction = false;
-    config_.meridian_flip_hysteresis_degrees = 0.0001;
-    config_.meridian_flip_delay_minutes = 5.0; // Long delay to keep it pending
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_hysteresis_degrees = 0.0001;
+    config_.safety_config.meridian_flip_delay_minutes = 5.0; // Long delay to keep it pending
     controller_->initialize(config_);
 
     EXPECT_FALSE(controller_->isMeridianFlipPending());
 
     // Start tracking - axis1_position_ (HA) will increase at sidereal rate
     // After ~3 iterations (300ms), HA exceeds 0.0001° hysteresis
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for HA to cross the hysteresis threshold
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
@@ -1239,13 +1242,13 @@ TEST_F(MountControllerTest, MeridianFlipDetection) {
 
 TEST_F(MountControllerTest, MeridianFlipExecuted) {
     // Verify that the flip completes: state → MERIDIAN_FLIP → back to TRACKING
-    config_.enable_refraction_correction = false;
-    config_.meridian_flip_hysteresis_degrees = 0.0001;
-    config_.meridian_flip_delay_minutes = 0.0; // Immediate flip
-    config_.max_slew_rate = 3600.0; // Fast flip (360 deg/iteration)
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_hysteresis_degrees = 0.0001;
+    config_.safety_config.meridian_flip_delay_minutes = 0.0; // Immediate flip
+    config_.mount_config.max_slew_rate = 3600.0; // Fast flip (360 deg/iteration)
     controller_->initialize(config_);
 
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for HA to cross hysteresis → state becomes MERIDIAN_FLIP → flip completes
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
@@ -1262,12 +1265,12 @@ TEST_F(MountControllerTest, MeridianFlipExecuted) {
 
 TEST_F(MountControllerTest, MeridianFlipInProgressState) {
     // Verify the intermediate MERIDIAN_FLIP state during flip execution
-    config_.meridian_flip_hysteresis_degrees = 0.0001;
-    config_.meridian_flip_delay_minutes = 0.0;
-    config_.max_slew_rate = 5.0; // Slow slew so flip takes many iterations
+    config_.safety_config.meridian_flip_hysteresis_degrees = 0.0001;
+    config_.safety_config.meridian_flip_delay_minutes = 0.0;
+    config_.mount_config.max_slew_rate = 5.0; // Slow slew so flip takes many iterations
     controller_->initialize(config_);
 
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for the flip to start but not complete
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
@@ -1286,12 +1289,12 @@ TEST_F(MountControllerTest, MeridianFlipInProgressState) {
 
 TEST_F(MountControllerTest, MeridianFlipDisabled) {
     // Verify no flip occurs when meridian_flip_enabled is false
-    config_.meridian_flip_enabled = false;
-    config_.meridian_flip_hysteresis_degrees = 0.0001;
-    config_.meridian_flip_delay_minutes = 0.0;
+    config_.safety_config.meridian_flip_enabled = false;
+    config_.safety_config.meridian_flip_hysteresis_degrees = 0.0001;
+    config_.safety_config.meridian_flip_delay_minutes = 0.0;
     controller_->initialize(config_);
 
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
@@ -1305,12 +1308,12 @@ TEST_F(MountControllerTest, MeridianFlipDisabled) {
 
 TEST_F(MountControllerTest, MeridianFlipNonEquatorial) {
     // Verify no flip occurs for ALT_AZ mounts
-    config_.mount_type = MountController::MountType::ALT_AZ;
-    config_.meridian_flip_hysteresis_degrees = 0.0001;
-    config_.meridian_flip_delay_minutes = 0.0;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
+    config_.safety_config.meridian_flip_hysteresis_degrees = 0.0001;
+    config_.safety_config.meridian_flip_delay_minutes = 0.0;
     controller_->initialize(config_);
 
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
@@ -1322,14 +1325,14 @@ TEST_F(MountControllerTest, MeridianFlipNonEquatorial) {
 
 TEST_F(MountControllerTest, MeridianFlipManualTrigger) {
     // Verify executeMeridianFlip() initiates a flip during tracking
-    config_.enable_refraction_correction = false;
-    config_.meridian_flip_hysteresis_degrees = 5.0; // Large hysteresis so auto-flip won't trigger
-    config_.meridian_flip_delay_minutes = 5.0;
-    config_.max_slew_rate = 3600.0;
-    config_.meridian_flip_enabled = true;
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_hysteresis_degrees = 5.0; // Large hysteresis so auto-flip won't trigger
+    config_.safety_config.meridian_flip_delay_minutes = 5.0;
+    config_.mount_config.max_slew_rate = 3600.0;
+    config_.safety_config.meridian_flip_enabled = true;
     controller_->initialize(config_);
 
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for tracking to stabilize
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
@@ -1348,14 +1351,14 @@ TEST_F(MountControllerTest, MeridianFlipManualTrigger) {
 
 TEST_F(MountControllerTest, MeridianFlipManualTriggerRejected) {
     // Verify executeMeridianFlip() is rejected when not tracking
-    config_.meridian_flip_enabled = true;
+    config_.safety_config.meridian_flip_enabled = true;
     controller_->initialize(config_);
 
     // Not tracking yet
     EXPECT_FALSE(controller_->executeMeridianFlip());
 
     // Start tracking
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     // Stop tracking
     controller_->stop();
@@ -1366,9 +1369,9 @@ TEST_F(MountControllerTest, MeridianFlipManualTriggerRejected) {
 
 TEST_F(MountControllerTest, MeridianFlipStatusFields) {
     // Verify getStatus() returns correct meridian fields
-    config_.enable_refraction_correction = false;
-    config_.meridian_flip_hysteresis_degrees = 0.0001;
-    config_.meridian_flip_delay_minutes = 5.0; // Keep pending, don't execute
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_hysteresis_degrees = 0.0001;
+    config_.safety_config.meridian_flip_delay_minutes = 5.0; // Keep pending, don't execute
     controller_->initialize(config_);
 
     auto status = controller_->getStatus();
@@ -1378,7 +1381,7 @@ TEST_F(MountControllerTest, MeridianFlipStatusFields) {
     EXPECT_EQ(status.pier_side, 1); // Default East
     EXPECT_DOUBLE_EQ(status.time_to_meridian, 0.0);
 
-    controller_->startTracking(10.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
@@ -1399,17 +1402,17 @@ TEST_F(MountControllerTest, SoftLimitWarningDuringTracking) {
     // but not the deceleration zone, set park_position_axis2 to 90° (midway between
     // limits 0° and 185°). Distance to min=90°, to max=95° → warning active,
     // deceleration NOT active (90° > 80° decel, 95° > 80° decel).
-    config_.soft_limit_axis2_min = 0.0;
-    config_.soft_limit_axis2_max = 185.0;
-    config_.soft_limit_warning_degrees = 100.0;     // Warning zone: within 100° of a limit
-    config_.soft_limit_deceleration_degrees = 80.0;  // Decel zone: within 80° of a limit
-    config_.park_position_axis2 = 90.0;  // Override fixture default (0°) to match test intent
+    config_.safety_config.soft_limit_axis2_min = 0.0;
+    config_.safety_config.soft_limit_axis2_max = 185.0;
+    config_.safety_config.soft_limit_warning_degrees = 100.0;     // Warning zone: within 100° of a limit
+    config_.safety_config.soft_limit_deceleration_degrees = 80.0;  // Decel zone: within 80° of a limit
+    config_.safety_config.park_position_axis2 = 90.0;  // Override fixture default (0°) to match test intent
     controller_->initialize(config_);
 
     // Start tracking — axis2 starts at park_position_axis2 (90°).
     // Distance to axis2_min = 90-0 = 90°, to axis2_max = 185-90 = 95°.
     // Nearest is 90° → within warning (90 < 100) but NOT deceleration (90 >= 80).
-    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for at least one tracking loop iteration (100ms)
     std::this_thread::sleep_for(300ms);
@@ -1429,17 +1432,17 @@ TEST_F(MountControllerTest, SoftLimitDecelerationDuringTracking) {
     // Verify deceleration flag activates and rate is scaled when axis is near limit.
     // axis2 starts at park_position_axis2 (90°). Set axis2_max just above 90°
     // so the initial position is within the deceleration zone.
-    config_.soft_limit_axis2_min = -5.0;           // Far below
-    config_.soft_limit_axis2_max = 95.0;            // axis2=90°, distance to max = 5°
-    config_.soft_limit_warning_degrees = 10.0;      // Warning zone: 10°
-    config_.soft_limit_deceleration_degrees = 6.0;   // Decel zone: 6° (90° → 5° < 6°)
-    config_.soft_limit_tracking_rate_factor = 0.1;
-    config_.meridian_flip_enabled = false;          // Disable meridian flip to avoid interference
+    config_.safety_config.soft_limit_axis2_min = -5.0;           // Far below
+    config_.safety_config.soft_limit_axis2_max = 95.0;            // axis2=90°, distance to max = 5°
+    config_.safety_config.soft_limit_warning_degrees = 10.0;      // Warning zone: 10°
+    config_.safety_config.soft_limit_deceleration_degrees = 6.0;   // Decel zone: 6° (90° → 5° < 6°)
+    config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
+    config_.safety_config.meridian_flip_enabled = false;          // Disable meridian flip to avoid interference
     controller_->initialize(config_);
 
     // Start tracking with CUSTOM mode (rate=0 for axis2), axis2 stays at 90°.
     // Distance to axis2_max = 95 - 90 = 5° which is < 6° decel zone.
-    bool started = controller_->startTracking(12.0, 45.0, MountController::TrackingMode::CUSTOM);
+    bool started = controller_->startTracking(12.0, 45.0, config::TrackingMode::CUSTOM);
     EXPECT_TRUE(started) << "startTracking should succeed";
 
     // Wait for tracking loop iterations (100ms each)
@@ -1448,19 +1451,19 @@ TEST_F(MountControllerTest, SoftLimitDecelerationDuringTracking) {
     auto status = controller_->getStatus();
     EXPECT_TRUE(status.soft_limit_warning_active)
         << "Warning should be active: axis2=" << status.axis2_position
-        << "°, max2=" << config_.soft_limit_axis2_max
+        << "°, max2=" << config_.safety_config.soft_limit_axis2_max
         << "°, dist2=" << status.soft_limit_distance_axis2;
     EXPECT_TRUE(status.soft_limit_deceleration_active)
         << "Deceleration should be active: axis2=" << status.axis2_position
-        << "°, max2=" << config_.soft_limit_axis2_max
+        << "°, max2=" << config_.safety_config.soft_limit_axis2_max
         << "°, dist2=" << status.soft_limit_distance_axis2;
     // Distance to axis2 limit should be positive and less than decel zone
     EXPECT_GT(status.soft_limit_distance_axis2, 0.0);
-    EXPECT_LT(status.soft_limit_distance_axis2, config_.soft_limit_deceleration_degrees)
+    EXPECT_LT(status.soft_limit_distance_axis2, config_.safety_config.soft_limit_deceleration_degrees)
         << "dist2=" << status.soft_limit_distance_axis2
-        << " decel=" << config_.soft_limit_deceleration_degrees
+        << " decel=" << config_.safety_config.soft_limit_deceleration_degrees
         << " axis2_pos=" << status.axis2_position
-        << " axis2_max=" << config_.soft_limit_axis2_max;
+        << " axis2_max=" << config_.safety_config.soft_limit_axis2_max;
     // State should still be TRACKING
     EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
 }
@@ -1472,25 +1475,25 @@ TEST_F(MountControllerTest, SoftLimitErrorOnExceeded) {
     // axis1 starts at park_position_axis1 (0°) and moves at max_tracking_rate.
     // Disable deceleration zone (set to 0) so the axis moves at full speed
     // right up to and past the soft limit, triggering ERROR state.
-    config_.soft_limit_axis1_min = -270.0;
-    config_.soft_limit_axis1_max = 5.0;          // Tight limit, reachable from 0° in ~1s
-    config_.soft_limit_warning_degrees = 10.0;
-    config_.soft_limit_deceleration_degrees = 0.0; // Disable decel so axis crosses limit
-    config_.soft_limit_tracking_rate_factor = 0.1;
-    config_.max_tracking_rate = 5.0;             // 5°/s → crosses 5° limit in ~1s
-    config_.meridian_flip_enabled = false;
+    config_.safety_config.soft_limit_axis1_min = -270.0;
+    config_.safety_config.soft_limit_axis1_max = 5.0;          // Tight limit, reachable from 0° in ~1s
+    config_.safety_config.soft_limit_warning_degrees = 10.0;
+    config_.safety_config.soft_limit_deceleration_degrees = 0.0; // Disable decel so axis crosses limit
+    config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
+    config_.mount_config.max_tracking_rate = 5.0;             // 5°/s → crosses 5° limit in ~1s
+    config_.safety_config.meridian_flip_enabled = false;
     controller_->initialize(config_);
 
     // Compute RA near current LST so that HA ≈ 0 and axis1_target ≈ 0°.
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ra = lst;
     while (ra < 0.0) ra += 24.0;
     while (ra >= 24.0) ra -= 24.0;
 
     // Start tracking with CUSTOM mode (rate = 5°/s).
     // At 5°/s, axis1 crosses 5° after ~1s (with deceleration slowing the last 2°).
-    bool started = controller_->startTracking(ra, 45.0, MountController::TrackingMode::CUSTOM);
+    bool started = controller_->startTracking(ra, 45.0, config::TrackingMode::CUSTOM);
     EXPECT_TRUE(started) << "startTracking should succeed";
 
     // Wait for axis1 to cross the soft limit (5°/s, limit at 5°, ~1.0–1.5s)
@@ -1504,7 +1507,7 @@ TEST_F(MountControllerTest, SoftLimitErrorOnExceeded) {
         << " axis2=" << status.axis2_position
         << " rate1=" << status.axis1_rate
         << " dist1=" << status.soft_limit_distance_axis1
-        << " max1=" << config_.soft_limit_axis1_max;
+        << " max1=" << config_.safety_config.soft_limit_axis1_max;
     EXPECT_FALSE(status.error_message.empty())
         << "Error message should be set"
         << " msg='" << status.error_message << "'";
@@ -1514,23 +1517,23 @@ TEST_F(MountControllerTest, ClearErrorsRecoversFromError) {
     // Verify clearErrors() transitions ERROR → IDLE and restores normal operation.
     // Disable deceleration zone (set to 0) so the axis moves at full speed
     // right up to and past the soft limit, triggering ERROR state reliably.
-    config_.soft_limit_axis1_min = -270.0;
-    config_.soft_limit_axis1_max = 25.0;
-    config_.soft_limit_warning_degrees = 10.0;
-    config_.soft_limit_deceleration_degrees = 0.0; // Disable decel so axis crosses limit
-    config_.soft_limit_tracking_rate_factor = 0.1;
-    config_.max_tracking_rate = 30.0;
-    config_.meridian_flip_enabled = false;
+    config_.safety_config.soft_limit_axis1_min = -270.0;
+    config_.safety_config.soft_limit_axis1_max = 25.0;
+    config_.safety_config.soft_limit_warning_degrees = 10.0;
+    config_.safety_config.soft_limit_deceleration_degrees = 0.0; // Disable decel so axis crosses limit
+    config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
+    config_.mount_config.max_tracking_rate = 30.0;
+    config_.safety_config.meridian_flip_enabled = false;
     controller_->initialize(config_);
 
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ra = lst;
     while (ra < 0.0) ra += 24.0;
     while (ra >= 24.0) ra -= 24.0;
 
     // Start tracking to trigger soft limit violation → ERROR
-    bool started = controller_->startTracking(ra, 45.0, MountController::TrackingMode::CUSTOM);
+    bool started = controller_->startTracking(ra, 45.0, config::TrackingMode::CUSTOM);
     EXPECT_TRUE(started) << "startTracking should succeed";
 
     // Wait for axis1 to cross the soft limit and enter ERROR
@@ -1576,13 +1579,13 @@ TEST_F(MountControllerTest, ClearErrorsNoEffectInNonErrorState) {
 
 TEST_F(MountControllerTest, SoftLimitDisabled) {
     // Verify no warning/deceleration flags when soft limits are disabled
-    config_.soft_limits_enabled = false;
-    config_.soft_limit_axis2_max = 60.0;  // Tight limit
-    config_.soft_limit_warning_degrees = 15.0;
+    config_.safety_config.soft_limits_enabled = false;
+    config_.safety_config.soft_limit_axis2_max = 60.0;  // Tight limit
+    config_.safety_config.soft_limit_warning_degrees = 15.0;
     controller_->initialize(config_);
 
     // Start tracking at Dec=50° (close to limit, but limits are disabled)
-    controller_->startTracking(12.0, 50.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(12.0, 50.0, config::TrackingMode::SIDEREAL);
 
     std::this_thread::sleep_for(300ms);
 
@@ -1598,14 +1601,14 @@ TEST_F(MountControllerTest, SoftLimitStatusFields) {
     // Verify status fields are populated correctly.
     // axis2_position_ starts at park_position_axis2 = 0.0 (set in fixture).
     // With axis2_min=-5 and axis2_pos=0, distance to min = 0-(-5) = 5.
-    config_.soft_limit_axis2_min = -5.0;
-    config_.soft_limit_axis2_max = 60.0;
-    config_.soft_limit_warning_degrees = 10.0;
-    config_.soft_limit_deceleration_degrees = 3.0;
+    config_.safety_config.soft_limit_axis2_min = -5.0;
+    config_.safety_config.soft_limit_axis2_max = 60.0;
+    config_.safety_config.soft_limit_warning_degrees = 10.0;
+    config_.safety_config.soft_limit_deceleration_degrees = 3.0;
     controller_->initialize(config_);
 
     // Start tracking at Dec=0 — no Dec tracking rate, axis2 stays at park.
-    controller_->startTracking(12.0, 0.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(12.0, 0.0, config::TrackingMode::SIDEREAL);
 
     std::this_thread::sleep_for(300ms);
 
@@ -1626,8 +1629,8 @@ TEST_F(MountControllerTest, SoftLimitRejectsOutOfRangeTarget) {
     // Verify target outside soft limits is rejected.
     // Note: axis1 = Hour Angle (HA), which depends on current LST.
     // We keep default wide axis1 limits (±270°) and test axis2 limits only.
-    config_.soft_limit_axis2_min = -10.0;
-    config_.soft_limit_axis2_max = 10.0;
+    config_.safety_config.soft_limit_axis2_min = -10.0;
+    config_.safety_config.soft_limit_axis2_max = 10.0;
     controller_->initialize(config_);
 
     // Try to slew to a target where axis2 (Dec=20°) is outside limits
@@ -1664,7 +1667,7 @@ protected:
         MountControllerTest::SetUp();
         
         // Use CASUAL mount type
-        config_.mount_type = MountController::MountType::CASUAL;
+        config_.mount_config.mount_type = config::MountType::CASUAL;
         
         // Set a known orientation quaternion: 30° rotation about East axis.
         // This tilts the mount frame so that the mount's "altitude-like" axis
@@ -1678,7 +1681,7 @@ protected:
         //      ≈ (0.258819, 0, 0, 0.965926)
         double theta = 30.0 * M_PI / 180.0;
         double half_theta = theta / 2.0;
-        config_.mount_orientation.quaternion = {{
+        config_.mount_config.mount_orientation.quaternion = {{
             std::sin(half_theta),  // qx: rotation about East
             0.0,                   // qy: no rotation about North
             0.0,                   // qz: no rotation about Up
@@ -1686,7 +1689,7 @@ protected:
         }};
         
         // Disable refraction to keep coordinate transforms predictable
-        config_.enable_refraction_correction = false;
+        config_.safety_config.enable_refraction_correction = false;
         
         controller_->initialize(config_);
     }
@@ -1698,29 +1701,29 @@ protected:
 
 TEST_F(CasualMountTest, MountOrientationIsValid) {
     // Identity quaternion should be valid
-    MountController::MountOrientation identity;
+    config::MountOrientation identity;
     EXPECT_TRUE(identity.isValid());
     
     // Custom quaternion should be valid
-    MountController::MountOrientation custom;
+    config::MountOrientation custom;
     custom.quaternion = {{0.0, 0.0, 0.0, 1.0}};
     EXPECT_TRUE(custom.isValid());
 }
 
 TEST_F(CasualMountTest, MountOrientationInvalidQuaternion) {
     // Zero quaternion should be invalid
-    MountController::MountOrientation zero;
+    config::MountOrientation zero;
     zero.quaternion = {{0.0, 0.0, 0.0, 0.0}};
     EXPECT_FALSE(zero.isValid());
     
     // Non-unit quaternion should be invalid (norm = sqrt(0.25+0.25) ≈ 0.707)
-    MountController::MountOrientation non_unit;
+    config::MountOrientation non_unit;
     non_unit.quaternion = {{0.5, 0.0, 0.0, 0.5}};
     EXPECT_FALSE(non_unit.isValid());
 }
 
 TEST_F(CasualMountTest, MountOrientationSetFromAxisAngles) {
-    MountController::MountOrientation ori;
+    config::MountOrientation ori;
     // axis1 = 30° altitude, axis2 = 180° azimuth (pointing South)
     ori.setFromAxisAngles(30.0, 180.0);
     
@@ -1738,7 +1741,7 @@ TEST_F(CasualMountTest, MountOrientationSetFromAxisAngles) {
 
 TEST_F(CasualMountTest, MountOrientationToRotationMatrix) {
     // Identity quaternion → identity rotation matrix
-    MountController::MountOrientation identity;
+    config::MountOrientation identity;
     auto mat = identity.toRotationMatrix();
     EXPECT_EQ(mat.size(), 9);
     
@@ -1753,7 +1756,7 @@ TEST_F(CasualMountTest, MountOrientationToRotationMatrix) {
 // ----------------------------------------------------------------
 
 TEST_F(CasualMountTest, SetAndGetMountOrientation) {
-    MountController::MountOrientation test_ori;
+    config::MountOrientation test_ori;
     test_ori.quaternion = {{0.5, 0.5, 0.5, 0.5}};
     
     EXPECT_TRUE(controller_->setMountOrientation(test_ori));
@@ -1849,8 +1852,8 @@ TEST_F(CasualMountTest, SlewToHorizontalReachesTarget) {
         if (status.state == MountController::MountStatus::State::IDLE) {
             reached = true;
             // Both axes should reach their transformed targets
-            EXPECT_NEAR(status.axis1_position, status.axis1_target, config_.position_tolerance);
-            EXPECT_NEAR(status.axis2_position, status.axis2_target, config_.position_tolerance);
+            EXPECT_NEAR(status.axis1_position, status.axis1_target, config_.mount_config.position_tolerance);
+            EXPECT_NEAR(status.axis2_position, status.axis2_target, config_.mount_config.position_tolerance);
             break;
         }
     }
@@ -1862,17 +1865,17 @@ TEST_F(CasualMountTest, SlewToHorizontalReachesTarget) {
 // ----------------------------------------------------------------
 
 TEST_F(CasualMountTest, StartTrackingSuccess) {
-    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL));
+    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL));
     
     auto status = controller_->getStatus();
     EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
 }
 
 TEST_F(CasualMountTest, StartTrackingSetsValidTargets) {
-    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL);
     auto status = controller_->getStatus();
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
     // Targets are now in servo degrees (telescope degrees × gear_ratio)
     EXPECT_GE(status.axis1_target, -90.0 * gear1);
@@ -1886,7 +1889,7 @@ TEST_F(CasualMountTest, StartTrackingSetsValidTargets) {
 }
 
 TEST_F(CasualMountTest, TrackingUpdatesPosition) {
-    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL);
     
     // Let tracking run
     std::this_thread::sleep_for(600ms);
@@ -1915,13 +1918,13 @@ class CasualMountIdentityTest : public MountControllerTest {
 protected:
     void SetUp() override {
         MountControllerTest::SetUp();
-        config_.mount_type = MountController::MountType::CASUAL;
+        config_.mount_config.mount_type = config::MountType::CASUAL;
         
         // Identity quaternion: no rotation between ENU and mount frame.
         // With Q = (0, 0, 0, 1), the mount frame IS the ENU frame,
         // so CASUAL should behave identically to ALT_AZ.
-        config_.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
-        config_.enable_refraction_correction = false;
+        config_.mount_config.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
+        config_.safety_config.enable_refraction_correction = false;
         
         controller_->initialize(config_);
     }
@@ -1934,14 +1937,14 @@ TEST_F(CasualMountIdentityTest, SlewToHorizontalMatchesAltAz) {
     
     auto status = controller_->getStatus();
     // Targets are now in servo degrees (telescope * gear_ratio)
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
     EXPECT_DOUBLE_EQ(status.axis1_target, 180.0 * gear1);  // azimuth
     EXPECT_DOUBLE_EQ(status.axis2_target, 30.0 * gear2);   // altitude
 }
 
 TEST_F(CasualMountIdentityTest, TrackingComputesRates) {
-    controller_->startTracking(60.0, 180.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(60.0, 180.0, config::TrackingMode::SIDEREAL);
     
     std::this_thread::sleep_for(600ms);
     auto status1 = controller_->getStatus();
@@ -1962,8 +1965,8 @@ TEST_F(CasualMountIdentityTest, TrackingComputesRates) {
 TEST_F(CasualMountTest, SoftLimitAxis2AllowedExceeds) {
     // For CASUAL mounts, axis2 is azimuth-like [0, 360) and wraps.
     // Setting axis2_min=-10, axis2_max=370 should not reject any target.
-    config_.soft_limit_axis2_min = -10.0;
-    config_.soft_limit_axis2_max = 370.0;
+    config_.safety_config.soft_limit_axis2_min = -10.0;
+    config_.safety_config.soft_limit_axis2_max = 370.0;
     controller_->initialize(config_);
     
     // Azimuth-like axis2 = 350° is within [0, 360) even though it's > 270°.
@@ -1978,7 +1981,7 @@ TEST_F(CasualMountTest, SoftLimitAxis2AllowedExceeds) {
 TEST_F(CasualMountTest, NoMeridianFlip) {
     // CASUAL mounts (like ALT_AZ) don't have a meridian flip.
     // The controller should never report a pending meridian flip.
-    controller_->startTracking(12.0, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL);
     
     // getTimeToMeridian should return a large positive value
     // (indicating no imminent meridian flip needed)
@@ -2006,8 +2009,8 @@ TEST_F(MountControllerTest, TelescopePositionEqualsServoDividedByGearRatio) {
         std::this_thread::sleep_for(200ms);
         auto status = controller_->getStatus();
         if (status.state == MountController::MountStatus::State::IDLE) {
-            double gear1 = config_.ha_axis_params.gear_ratio;
-            double gear2 = config_.dec_axis_params.gear_ratio;
+            double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+            double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
             // telescope position = servo position / gear_ratio (modulo 360°),
             // because the implementation normalizes telescope positions to [0°, 360°)
             // while raw servo positions can be negative (unnormalized).
@@ -2030,8 +2033,8 @@ TEST_F(MountControllerTest, TelescopePositionEqualsServoDividedByGearRatio) {
 TEST_F(MountControllerTest, TargetInServoDegreesIncludesGearRatio) {
     // Verify: slew target = celestial_degrees * gear_ratio
     controller_->initialize(config_);
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
     // Slew to (RA=0h, Dec=+60°). HA = LST - 0 = LST.
     controller_->slewToEquatorial(0.0, 60.0);
@@ -2040,7 +2043,7 @@ TEST_F(MountControllerTest, TargetInServoDegreesIncludesGearRatio) {
 
     // Get expected celestial HA
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ha_hours = lst;
     while (ha_hours > 12.0) ha_hours -= 24.0;
     while (ha_hours < -12.0) ha_hours += 24.0;
@@ -2055,27 +2058,27 @@ TEST_F(MountControllerTest, TargetInServoDegreesIncludesGearRatio) {
 
 TEST_F(MountControllerTest, ParkTargetInServoDegreesIncludesGearRatio) {
     // Verify: park target = park_position * gear_ratio
-    config_.park_position_axis1 = 0.0;     // HA=0° telescope
-    config_.park_position_axis2 = 90.0;    // Dec=90° telescope (NCP)
+    config_.safety_config.park_position_axis1 = 0.0;     // HA=0° telescope
+    config_.safety_config.park_position_axis2 = 90.0;    // Dec=90° telescope (NCP)
     controller_->initialize(config_);
 
     controller_->park();
     auto status = controller_->getStatus();
 
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
     // Park targets should be in servo degrees
-    EXPECT_DOUBLE_EQ(status.axis1_target, config_.park_position_axis1 * gear1);
-    EXPECT_DOUBLE_EQ(status.axis2_target, config_.park_position_axis2 * gear2);
+    EXPECT_DOUBLE_EQ(status.axis1_target, config_.safety_config.park_position_axis1 * gear1);
+    EXPECT_DOUBLE_EQ(status.axis2_target, config_.safety_config.park_position_axis2 * gear2);
 
     // Verify: after parking, telescope position equals park position
     for (int i = 0; i < 50; i++) {
         std::this_thread::sleep_for(200ms);
         status = controller_->getStatus();
         if (status.state == MountController::MountStatus::State::PARKED) {
-            EXPECT_NEAR(status.telescope_axis1_position, config_.park_position_axis1, 1e-6);
-            EXPECT_NEAR(status.telescope_axis2_position, config_.park_position_axis2, 1e-6);
+            EXPECT_NEAR(status.telescope_axis1_position, config_.safety_config.park_position_axis1, 1e-6);
+            EXPECT_NEAR(status.telescope_axis2_position, config_.safety_config.park_position_axis2, 1e-6);
             break;
         }
     }
@@ -2088,24 +2091,24 @@ TEST_F(MountControllerTest, NoPositionNormalizationToSmallRange) {
     // After 1 second of tracking, servo should advance by ~1.5°.
 
     // Disable refraction to keep tracking simple and predictable
-    config_.enable_refraction_correction = false;
-    config_.meridian_flip_enabled = false;
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_enabled = false;
     controller_->initialize(config_);
 
     // Get RA = LST so HA = 0 (tracking won't hit meridian flip)
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
-    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.longitude);
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
     double ra = lst;
     while (ra >= 24.0) ra -= 24.0;
 
-    controller_->startTracking(ra, 45.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait enough time for servo to accumulate >180° servo degrees
     // At 1.504°/s servo, need ~120s for 180° servo
     std::this_thread::sleep_for(std::chrono::milliseconds(2000));
     auto status = controller_->getStatus();
 
-    double gear = config_.ha_axis_params.gear_ratio;
+    double gear = config_.mount_config.ha_axis_params.gear_ratio;
     // After 2s: servo position ≈ initial + 2*1.504 ≈ initial + 3°
     // This tests that the position is NOT wrapped to [-180, 180] servo range
     // (the initial position may be 0, so 3° is well within [-180, 180] —
@@ -2119,7 +2122,7 @@ TEST_F(MountControllerTest, NoPositionNormalizationToSmallRange) {
 TEST_F(MountControllerTest, SoftLimitsCompareTelescopeDegrees) {
     // Verify: soft limits operate on telescope-equivalent degrees,
     // not raw servo degrees. Use the default generous limits.
-    config_.soft_limits_enabled = true;
+    config_.safety_config.soft_limits_enabled = true;
     // Keep default limits: axis1 [-270, 270], axis2 [-5, 185] telescope degrees.
     controller_->initialize(config_);
 
@@ -2133,14 +2136,14 @@ TEST_F(MountControllerTest, SoftLimitsCompareTelescopeDegrees) {
         auto status = controller_->getStatus();
         if (status.state == MountController::MountStatus::State::IDLE) {
             // After slew, telescope position should be within limits
-            double gear1 = config_.ha_axis_params.gear_ratio;
-            double gear2 = config_.dec_axis_params.gear_ratio;
+            double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+            double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
             double telescope_ha = status.axis1_position / gear1;
             double telescope_dec = status.axis2_position / gear2;
-            EXPECT_GE(telescope_ha, config_.soft_limit_axis1_min);
-            EXPECT_LE(telescope_ha, config_.soft_limit_axis1_max);
-            EXPECT_GE(telescope_dec, config_.soft_limit_axis2_min);
-            EXPECT_LE(telescope_dec, config_.soft_limit_axis2_max);
+            EXPECT_GE(telescope_ha, config_.safety_config.soft_limit_axis1_min);
+            EXPECT_LE(telescope_ha, config_.safety_config.soft_limit_axis1_max);
+            EXPECT_GE(telescope_dec, config_.safety_config.soft_limit_axis2_min);
+            EXPECT_LE(telescope_dec, config_.safety_config.soft_limit_axis2_max);
             break;
         }
     }
@@ -2151,11 +2154,11 @@ TEST_F(MountControllerTest, HorizontalTargetsIncludeGearRatio) {
     // With the shortest-path azimuth target optimization, the azimuth target
     // may be negative when the shortest path from the current position goes
     // backwards (e.g., from 0° to 270° → -90° is shorter than +270°).
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
 
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
     controller_->slewToHorizontal(60.0, 270.0); // alt=60°, az=270°
 
@@ -2179,11 +2182,11 @@ TEST_F(CasualMountTest, CasualTargetsIncludeGearRatio) {
     // Verify: CASUAL mount targets are in servo degrees (mount-frame degrees × gear_ratio).
     // Use identity quaternion so CASUAL behaves like ALT_AZ for predictable values.
     // With shortest-path azimuth optimization, azimuth target may be negative.
-    config_.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
+    config_.mount_config.mount_orientation.quaternion = {{0.0, 0.0, 0.0, 1.0}};
     controller_->initialize(config_);
 
-    double gear1 = config_.ha_axis_params.gear_ratio;
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
     // Test slewToHorizontal → CASUAL quaternion path
     controller_->slewToHorizontal(60.0, 270.0); // alt=60°, az=270°
@@ -2200,7 +2203,7 @@ TEST_F(CasualMountTest, CasualTargetsIncludeGearRatio) {
     // Test startTracking → CASUAL path
     controller_->stop();
     std::this_thread::sleep_for(200ms);
-    controller_->startTracking(6.0, 30.0, MountController::TrackingMode::SIDEREAL);
+    controller_->startTracking(6.0, 30.0, config::TrackingMode::SIDEREAL);
     status = controller_->getStatus();
 
     // Targets should be finite and in servo range (telescope range × gear_ratio)
@@ -2225,9 +2228,9 @@ TEST_F(MountControllerTest, AzimuthTargetShortestPath360to0) {
     // After long tracking where azimuth approaches 360°, a slew to ~0° should
     // take the short forward path (crossing the 360° boundary), not the long
     // backward path (~360°).
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear1 = config_.ha_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
 
     // Simulate axis1_position_ at 359.5° azimuth (close to wrapping to 0°)
     // We hack the initial position by slewing to a near-360° azimuth first,
@@ -2261,9 +2264,9 @@ TEST_F(MountControllerTest, AzimuthTargetShortestPath360to0) {
 TEST_F(MountControllerTest, AzimuthTargetShortestPath0to360) {
     // After slewing close to 0° azimuth, a slew to 359° should take the short
     // backward path (crossing 0→360 boundary), not the long forward path.
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear1 = config_.ha_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
 
     // Slew to ~0.5° azimuth first
     controller_->slewToHorizontal(45.0, 0.5);
@@ -2292,9 +2295,9 @@ TEST_F(MountControllerTest, AzimuthTargetShortestPath0to360) {
 TEST_F(MountControllerTest, AltitudeAxisNoWrapping) {
     // Altitude axis (axis2 for ALT_AZ) should NEVER wrap — it's physically
     // limited to [0°, 90°] and the target should match the requested altitude.
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear2 = config_.dec_axis_params.gear_ratio;
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
     controller_->slewToHorizontal(30.0, 180.0);
     auto status = controller_->getStatus();
@@ -2312,9 +2315,9 @@ TEST_F(MountControllerTest, AzimuthTargetAfterAccumulatedTracking) {
     // Simulate that the azimuth axis position has accumulated many revolutions
     // (like after hours of tracking). The target should still be within
     // ±half_turn of the current absolute position, not reset to [0, 360).
-    config_.mount_type = MountController::MountType::ALT_AZ;
+    config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear1 = config_.ha_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
 
     // We can't easily set axis1_position_ to a large value without mocking,
     // but we can verify that after a series of slews and tracks, the target
@@ -2330,132 +2333,6 @@ TEST_F(MountControllerTest, AzimuthTargetAfterAccumulatedTracking) {
     double half_turn = 180.0 * gear1;
     EXPECT_GE(diff_initial, -half_turn);
     EXPECT_LE(diff_initial, half_turn);
-}
-
-// ============================================
-// CANOPEN POSITION REWIND TESTS
-// ============================================
-// Verify that periodic position rewinding does not disrupt tracking,
-// slewing, or position continuity. The rewind mechanism calls
-// setActualPosition() on the CANopen drives to reset their absolute
-// position counters, preventing overflow beyond ±1,000,000 counts.
-
-TEST_F(MountControllerTest, RewindDuringTrackingMaintainsState) {
-    // Verify that tracking continues normally with rewind enabled.
-    // The rewind should be transparent to the tracking loop.
-    config_.mount_type = MountController::MountType::EQUATORIAL;
-    config_.canopen_position_rewind_interval_seconds = 1.0;  // trigger every 1s
-    config_.canopen_position_rewind_threshold_percent = 0.0;  // disable threshold
-    controller_->initialize(config_);
-
-    // Start tracking
-    EXPECT_TRUE(controller_->startTracking(0.0, 45.0, MountController::TrackingMode::SIDEREAL));
-    auto status_start = controller_->getStatus();
-    EXPECT_EQ(status_start.state, MountController::MountStatus::State::TRACKING);
-
-    // Let tracking run for >1 second so rewind triggers
-    std::this_thread::sleep_for(std::chrono::milliseconds(2500));
-
-    // Tracking should still be active
-    auto status = controller_->getStatus();
-    EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING)
-        << "Tracking should continue after rewind";
-
-    // Position should have changed from initial (tracking moves the mount)
-    EXPECT_NE(status.axis1_position, status_start.axis1_position)
-        << "Axis1 position should have changed during tracking";
-}
-
-TEST_F(MountControllerTest, RewindDuringTrackingPreservesPositionContinuity) {
-    // After rewind, the telescope position (servo/gear) should be consistent
-    // and within valid celestial range.
-    config_.mount_type = MountController::MountType::EQUATORIAL;
-    config_.canopen_position_rewind_interval_seconds = 0.5;  // frequent rewinds
-    config_.canopen_position_rewind_threshold_percent = 0.0;
-    controller_->initialize(config_);
-
-    EXPECT_TRUE(controller_->startTracking(0.0, 45.0, MountController::TrackingMode::SIDEREAL));
-
-    // Let tracking run through multiple rewind cycles
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-
-    auto status = controller_->getStatus();
-    EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
-
-    double gear2 = config_.dec_axis_params.gear_ratio;
-
-    // Dec should be in valid range
-    double tel_axis2 = status.axis2_position / gear2;
-    EXPECT_GE(tel_axis2, -90.0);
-    EXPECT_LE(tel_axis2, 90.0);
-
-    // Telescope positions should be in valid display ranges
-    // (getStatus normalizes them: HA→[0,360), Dec→[-90,90])
-    EXPECT_GE(status.telescope_axis1_position, 0.0);
-    EXPECT_LT(status.telescope_axis1_position, 360.0);
-    EXPECT_GE(status.telescope_axis2_position, -90.0);
-    EXPECT_LE(status.telescope_axis2_position, 90.0);
-}
-
-TEST_F(MountControllerTest, SlewWorksWithRewindEnabled) {
-    // Verify that slewing to a target works correctly when rewind is active.
-    config_.mount_type = MountController::MountType::ALT_AZ;
-    config_.canopen_position_rewind_interval_seconds = 1.0;
-    config_.canopen_position_rewind_threshold_percent = 0.0;
-    controller_->initialize(config_);
-
-    double gear2 = config_.dec_axis_params.gear_ratio;
-
-    // Slew to a known position
-    EXPECT_TRUE(controller_->slewToHorizontal(45.0, 90.0));
-
-    // Wait for slew to complete
-    for (int i = 0; i < 20; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        auto s = controller_->getStatus();
-        if (s.state == MountController::MountStatus::State::IDLE) break;
-    }
-
-    auto status = controller_->getStatus();
-    EXPECT_TRUE(status.state == MountController::MountStatus::State::IDLE ||
-                status.state == MountController::MountStatus::State::SLEWING);
-
-    // Altitude target should be set correctly
-    EXPECT_NEAR(status.axis2_target / gear2, 45.0, 1.0);
-}
-
-TEST_F(MountControllerTest, RewindDoesNotErrorAfterSlewAndTrack) {
-    // Slew to a position, start tracking, and verify rewind does not
-    // cause ERROR state.
-    config_.mount_type = MountController::MountType::ALT_AZ;
-    config_.canopen_position_rewind_interval_seconds = 0.5;
-    config_.canopen_position_rewind_threshold_percent = 0.0;
-    controller_->initialize(config_);
-
-    // Slew to a position
-    EXPECT_TRUE(controller_->slewToHorizontal(60.0, 180.0));
-    for (int i = 0; i < 20; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        if (controller_->getStatus().state == MountController::MountStatus::State::IDLE) break;
-    }
-    controller_->stop();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    // Start tracking
-    EXPECT_TRUE(controller_->startTracking(60.0, 180.0, MountController::TrackingMode::SIDEREAL));
-
-    // Let it track through multiple rewinds
-    std::this_thread::sleep_for(std::chrono::milliseconds(3000));
-
-    auto status = controller_->getStatus();
-    EXPECT_NE(status.state, MountController::MountStatus::State::ERROR)
-        << "Rewind should not cause ERROR state during tracking";
-    EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
-
-    // Stop tracking cleanly
-    controller_->stop();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    EXPECT_EQ(controller_->getStatus().state, MountController::MountStatus::State::IDLE);
 }
 
 } // namespace test

@@ -56,15 +56,15 @@
                     "max_acceleration": 1.0,
                     "max_torque": 100.0,
                     "gear_ratio": 360.0,
-                    "encoder_counts_per_degree": 36000.0,
+                    "encoder_counts_per_degree": 728.1778,
                     "enable_current_limit": true,
                     "current_limit": 5.0
                 },
                 "encoder_config": {
                     "type": "ABSOLUTE",
                     "interface": "CANOPEN",
-                    "resolution": 16384,
-                    "counts_per_degree": 100.0
+                    "resolution": 262144,
+                    "counts_per_degree": 728.1778
                 },
                 "safety_limits": {
                     "min_position": -270.0,
@@ -84,15 +84,15 @@
                     "max_acceleration": 1.0,
                     "max_torque": 100.0,
                     "gear_ratio": 360.0,
-                    "encoder_counts_per_degree": 36000.0,
+                    "encoder_counts_per_degree": 728.1778,
                     "enable_current_limit": true,
                     "current_limit": 5.0
                 },
                 "encoder_config": {
                     "type": "ABSOLUTE",
                     "interface": "CANOPEN",
-                    "resolution": 16384,
-                    "counts_per_degree": 100.0
+                    "resolution": 262144,
+                    "counts_per_degree": 728.1778
                 },
                 "safety_limits": {
                     "min_position": -5.0,

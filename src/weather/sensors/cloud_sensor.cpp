@@ -1,4 +1,5 @@
 #include "weather/sensors/cloud_sensor.h"
+#include <algorithm>
 #include <random>
 #include <cmath>
 

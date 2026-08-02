@@ -24,12 +24,18 @@ który monitoruje plik pod kątem zmian czasu modyfikacji i automatycznie przeł
   "guider": { ... },
   "kalman": { ... },
   "tpoint": { ... },
-  "hal": { ... }
+  "hal": { ... },
+  "external_services": { ... }
 }
 ```
 
-Wszystkie sekcje są opcjonalne. W przypadku braku sekcji stosowane są wartości domyślne zdefiniowane w 
+Wszystkie sekcje są opcjonalne. W przypadku braku sekcji stosowane są wartości domyślne zdefiniowane w
 [`Configuration::Impl::initializeDefaults()`](src/config/configuration.cpp:891).
+
+> **Nowość**: Sekcja `external_services` umożliwia włączenie podsystemów w procesie (kopuła,
+> derotator, focuser) oraz klientów usług samodzielnych (pogoda, zasilanie). Dla podsystemów
+> w procesie pole `address` to adres nasłuchu gRPC wystawiony klientom. Patrz
+> [Konfiguracja serwisów zewnętrznych](konfiguracja_serwisow_zewnetrznych.md).
 
 ---
 
@@ -53,7 +59,7 @@ System logowania oparty jest na bibliotece **spdlog**. Inicjalizacja odbywa się
 
 #### Architektura
 
-- **Sink plikowy**: [`basic_file_sink_mt`](src/logging/logger.cpp:90) — zapis w trybie append (`"ab"`, bez rotacji). Rotacja plików logów obsługiwana jest **zewnętrznie** (np. przez `logrotate`). Parametry `rotation_days` i `max_file_size_mb` są zachowane w konfiguracji dla kompatybilności wstecznej, ale nie są funkcjonalnie wykorzystywane.
+- **Sink plikowy**: [`basic_file_sink_mt`](src/logging/logger.cpp:90) — zapis w trybie append (`"ab"`, bez rotacji). Rotacja plików logów obsługiwana jest **zewnętrznie** (np. przez `logrotate`).
 - **Sink konsolowy**: [`stdout_color_sink_mt`](src/logging/logger.cpp:97) — kolorowe wyjście na stdout.
 - **Sink syslog** (opcjonalny): [`syslog_sink_mt`](src/logging/logger.cpp:104).
 - **Rejestracja w globalnym rejestrze spdlog**: Logger-y są rejestrowane przez [`spdlog::register_logger()`](src/logging/logger.cpp:384-386), co umożliwia działanie `spdlog::flush_every()`.
@@ -440,18 +446,15 @@ Tablica obiektów, każdy definiuje jedną oś napędową.
 |---|---|---|---|---|
 | `id` | integer | 0–N | `0` | Indeks osi (0 = HA/Azm, 1 = Dec/Alt) |
 | `name` | string | dowolny | `"Axis_0"` | Nazwa osi (dla logów/debug) |
-| [`can_node_id`](include/hal/hal_config.h:135) | integer | 0–127 | `0` (auto) | CANopen Node ID napędu. **`0` oznacza automatyczne mapowanie: `axis_id + 1`** |
+| [`can_node_id`](include/hal/hal_config.h:135) | integer | 1–127 | `1` | CANopen Node ID napędu. Należy ustawić jawnie. |
 
-**Ważne:** `can_node_id` to adres serwonapędu na magistrali CAN. Wartość `0` (domyślna) zachowuje
-kompatybilność wsteczną: oś 0 → node 1, oś 1 → node 2.
-Dla niestandardowych adresów (np. 5, 6) należy jawnie ustawić tę wartość.
+**Ważne:** `can_node_id` to adres serwonapędu na magistrali CAN. Należy go ustawić jawnie
+dla każdej osi (np. oś 0 → node 1, oś 1 → node 2).
 
-Implementacja w [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp:1450):
+Implementacja w [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp:1546):
 ```cpp
 auto getNodeId = [this](int axis_index) -> uint8_t {
-    if (axis_index < config_.axes.size() && config_.axes[axis_index].can_node_id > 0)
-        return config_.axes[axis_index].can_node_id;
-    return static_cast<uint8_t>(axis_index + 1);  // fallback
+    return static_cast<uint8_t>(config_.axes[axis_index].can_node_id);
 };
 ```
 
@@ -609,8 +612,8 @@ Plik: [`config/dual_servo_config.json`](config/dual_servo_config.json)
 
 Plik: [`config/default.json`](config/default.json)
 
-W domyślnej konfiguracji brak sekcji `hal.axes[]` — system używa wartości domyślnych,
-gdzie `can_node_id = 0` (auto) co daje mapowanie: oś 0 → node 1, oś 1 → node 2.
+W domyślnej konfiguracji brak sekcji `hal.axes[]` — fabryka dostarcza domyślne osie
+z `can_node_id = 1` i `can_node_id = 2` odpowiednio.
 
 ---
 

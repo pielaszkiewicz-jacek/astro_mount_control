@@ -541,7 +541,7 @@ namespace AstroMount {
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.GuiderCorrection), global::AstroMount.GuiderCorrection.Parser, new[]{ "RaCorrection", "DecCorrection", "Timestamp" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisPhysicalParameters), global::AstroMount.AxisPhysicalParameters.Parser, new[]{ "MotorStepsPerRev", "MotorMicrostepping", "MotorStepAngle", "EncoderResolution", "EncoderCountsPerArcsec", "EncoderQuantizationError", "GearRatio", "WormRatio", "WormTeeth", "WormWheelTeeth", "CyclicErrorAmplitude", "CyclicErrorPeriod", "CyclicHarmonics", "Backlash", "BacklashTempCoeff", "AxisStiffness", "TorsionalCompliance", "ExpansionCoeff", "TempGearErrorCoeff", "CalibrationTable", "CalibrationTemp" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.MountOrientation), global::AstroMount.MountOrientation.Parser, new[]{ "Qx", "Qy", "Qz", "Qw" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Configuration), global::AstroMount.Configuration.Parser, new[]{ "Latitude", "Longitude", "Altitude", "MountHeight", "PierWest", "PierEast", "FocalLength", "Aperture", "DefaultTemperature", "DefaultPressure", "DefaultHumidity", "ProcessNoise", "MeasurementNoise", "LogLevel", "LogDirectory", "LogRotationDays", "GrpcAddress", "GrpcPort", "CanopenInterface", "CanopenNodeId", "ParkPositionAxis1", "ParkPositionAxis2", "MaxSlewRate", "MaxTrackingRate", "SlewAcceleration", "TrackingAcceleration", "HaAxisParams", "DecAxisParams", "UseEncoders", "EncodersAbsolute", "EncoderResolutionConfig", "TpointEnabledTerms", "EnableGuider", "GuiderMaxCorrection", "GuiderAggression", "EnableRefractionCorrection", "MountType", "PositionTolerance", "RateTolerance", "MeridianFlipEnabled", "MeridianFlipDelayMinutes", "MeridianFlipHysteresisDegrees", "SoftLimitsEnabled", "SoftLimitAxis1Min", "SoftLimitAxis1Max", "SoftLimitAxis2Min", "SoftLimitAxis2Max", "SoftLimitWarningDegrees", "SoftLimitDecelerationDegrees", "SoftLimitTrackingRateFactor", "MountOrientation" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Configuration), global::AstroMount.Configuration.Parser, new[]{ "Latitude", "Longitude", "Altitude", "MountHeight", "PierWest", "PierEast", "FocalLength", "Aperture", "DefaultTemperature", "DefaultPressure", "DefaultHumidity", "ProcessNoise", "MeasurementNoise", "LogLevel", "LogDirectory", "GrpcAddress", "GrpcPort", "CanopenInterface", "CanopenNodeId", "ParkPositionAxis1", "ParkPositionAxis2", "MaxSlewRate", "MaxTrackingRate", "SlewAcceleration", "TrackingAcceleration", "HaAxisParams", "DecAxisParams", "UseEncoders", "EncodersAbsolute", "EncoderResolutionConfig", "TpointEnabledTerms", "EnableGuider", "GuiderMaxCorrection", "GuiderAggression", "EnableRefractionCorrection", "MountType", "PositionTolerance", "RateTolerance", "MeridianFlipEnabled", "MeridianFlipDelayMinutes", "MeridianFlipHysteresisDegrees", "SoftLimitsEnabled", "SoftLimitAxis1Min", "SoftLimitAxis1Max", "SoftLimitAxis2Min", "SoftLimitAxis2Max", "SoftLimitWarningDegrees", "SoftLimitDecelerationDegrees", "SoftLimitTrackingRateFactor", "MountOrientation" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HealthCheckRequest), global::AstroMount.HealthCheckRequest.Parser, new[]{ "Service" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HealthCheckResponse), global::AstroMount.HealthCheckResponse.Parser, new[]{ "Status", "Service", "Metrics" }, null, new[]{ typeof(global::AstroMount.HealthCheckResponse.Types.ServingStatus) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.SystemMetrics), global::AstroMount.SystemMetrics.Parser, new[]{ "CpuUsagePercent", "MemoryUsageMb", "ActiveConnections", "TotalRequests", "ErrorCount", "AvgResponseTimeMs", "MountMetrics", "KalmanMetrics", "TpointMetrics" }, null, null, null, null),
@@ -13027,18 +13027,6 @@ namespace AstroMount {
       }
     }
 
-    /// <summary>Field number for the "log_rotation_days" field.</summary>
-    public const int LogRotationDaysFieldNumber = 16;
-    private int logRotationDays_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public int LogRotationDays {
-      get { return logRotationDays_; }
-      set {
-        logRotationDays_ = value;
-      }
-    }
-
     /// <summary>Field number for the "grpc_address" field.</summary>
     public const int GrpcAddressFieldNumber = 17;
     private string grpcAddress_ = "";
@@ -13561,7 +13549,6 @@ namespace AstroMount {
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MeasurementNoise, other.MeasurementNoise)) return false;
       if (LogLevel != other.LogLevel) return false;
       if (LogDirectory != other.LogDirectory) return false;
-      if (LogRotationDays != other.LogRotationDays) return false;
       if (GrpcAddress != other.GrpcAddress) return false;
       if (GrpcPort != other.GrpcPort) return false;
       if (CanopenInterface != other.CanopenInterface) return false;
@@ -13619,7 +13606,6 @@ namespace AstroMount {
       if (MeasurementNoise != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MeasurementNoise);
       if (LogLevel.Length != 0) hash ^= LogLevel.GetHashCode();
       if (LogDirectory.Length != 0) hash ^= LogDirectory.GetHashCode();
-      if (LogRotationDays != 0) hash ^= LogRotationDays.GetHashCode();
       if (GrpcAddress.Length != 0) hash ^= GrpcAddress.GetHashCode();
       if (GrpcPort != 0) hash ^= GrpcPort.GetHashCode();
       if (CanopenInterface.Length != 0) hash ^= CanopenInterface.GetHashCode();
@@ -13732,10 +13718,6 @@ namespace AstroMount {
       if (LogDirectory.Length != 0) {
         output.WriteRawTag(122);
         output.WriteString(LogDirectory);
-      }
-      if (LogRotationDays != 0) {
-        output.WriteRawTag(128, 1);
-        output.WriteInt32(LogRotationDays);
       }
       if (GrpcAddress.Length != 0) {
         output.WriteRawTag(138, 1);
@@ -13947,10 +13929,6 @@ namespace AstroMount {
         output.WriteRawTag(122);
         output.WriteString(LogDirectory);
       }
-      if (LogRotationDays != 0) {
-        output.WriteRawTag(128, 1);
-        output.WriteInt32(LogRotationDays);
-      }
       if (GrpcAddress.Length != 0) {
         output.WriteRawTag(138, 1);
         output.WriteString(GrpcAddress);
@@ -14146,9 +14124,6 @@ namespace AstroMount {
       if (LogDirectory.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(LogDirectory);
       }
-      if (LogRotationDays != 0) {
-        size += 2 + pb::CodedOutputStream.ComputeInt32Size(LogRotationDays);
-      }
       if (GrpcAddress.Length != 0) {
         size += 2 + pb::CodedOutputStream.ComputeStringSize(GrpcAddress);
       }
@@ -14310,9 +14285,6 @@ namespace AstroMount {
       }
       if (other.LogDirectory.Length != 0) {
         LogDirectory = other.LogDirectory;
-      }
-      if (other.LogRotationDays != 0) {
-        LogRotationDays = other.LogRotationDays;
       }
       if (other.GrpcAddress.Length != 0) {
         GrpcAddress = other.GrpcAddress;
@@ -14505,10 +14477,6 @@ namespace AstroMount {
           }
           case 122: {
             LogDirectory = input.ReadString();
-            break;
-          }
-          case 128: {
-            LogRotationDays = input.ReadInt32();
             break;
           }
           case 138: {
@@ -14737,10 +14705,6 @@ namespace AstroMount {
           }
           case 122: {
             LogDirectory = input.ReadString();
-            break;
-          }
-          case 128: {
-            LogRotationDays = input.ReadInt32();
             break;
           }
           case 138: {

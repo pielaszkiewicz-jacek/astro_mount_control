@@ -36,7 +36,7 @@ flowchart TB
             CAN_IMPL["✅ CANopen (CiA 402)<br/>PDO/SDO/NMT communication<br/>Node: HA, Dec"]:::done
             MF_IMPL["✅ MF7025v2 (LingKong BLDC)<br/>Proprietary CAN V2.36<br/>CAN ID 0x140+node_id · SocketCAN<br/>Stabilized: thread-safe, dead-node detection, error logging"]:::done
             SIM_IMPL["✅ Simulated<br/>Test/development<br/>Configurable noise & faults"]:::done
-            GAM_IMPL["✅ Gamepad<br/>Manual control via joystick<br/>Evdev + legacy joystick API"]:::done
+            GAM_IMPL["✅ Gamepad<br/>Manual control via joystick<br/>Evdev API"]:::done
             SER_IMPL["✅ Serial<br/>RS-232/485<br/>Modbus RTU/ASCII"]:::done
             ETH_IMPL["✅ Ethernet<br/>Modbus TCP<br/>Configurable IP/port"]:::done
         end
@@ -750,14 +750,13 @@ flowchart TD
 
 ### Input Backend — EvdevGamepadInput
 
-The `EvdevGamepadInput` class supports both Linux input subsystems:
+The `EvdevGamepadInput` class uses the Linux **evdev** input subsystem:
 
 | Backend | Device Path | Description |
 |---------|-------------|-------------|
-| Legacy joystick API | `/dev/input/js0` … `js3` | Older devices, simple event format |
 | evdev API | `/dev/input/event*` | Modern devices, ABS/EV_KEY events |
 
-Auto-detection scans `/dev/input/js0…js3` and then `/dev/input/event*` devices with `EV_ABS` capability. A dedicated background thread polls the device and updates the shared gamepad state.
+Auto-detection scans `/dev/input/event*` devices with `EV_ABS` capability. A dedicated background thread polls the device and updates the shared gamepad state.
 
 ### Button Mapping
 

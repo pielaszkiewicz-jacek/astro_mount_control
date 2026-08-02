@@ -54,7 +54,7 @@ flowchart TD
 
 ### Minimalne wymagania
 
-- **System operacyjny**: Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+)
+- **System operacyjny**: Linux (Ubuntu 20.04+, Debian 11+, RHEL 8+) lub **Windows z WSL2** (sekcja poniżej)
 - **Procesor**: x86_64 lub ARM64, 2+ rdzeni
 - **Pamięć RAM**: 4 GB
 - **Przestrzeń dyskowa**: 2 GB
@@ -66,6 +66,56 @@ flowchart TD
 - **Pamięć RAM**: 8 GB
 - **Przestrzeń dyskowa**: 10 GB (dla logów i danych kalibracyjnych)
 - **CAN interface**: Izolowany adapter CAN z wysoką przepustowością
+
+---
+
+## Budowanie na Windows przez WSL2
+
+Projekt można budować i uruchamiać na Windows używając **WSL2** (Windows Subsystem for Linux). Jest to zalecany sposób na Windows, ponieważ zapewnia pełne środowisko Linux dla kompilacji C++.
+
+### Krok 1: Zainstaluj WSL2
+
+Uruchom **PowerShell jako Administrator** i wykonaj:
+
+```powershell
+wsl --install -d Ubuntu-24.04
+```
+
+Po instalacji uruchom WSL i utwórz konto użytkownika Linux.
+
+### Krok 2: Dostęp do projektu
+
+Pliki Windows są dostępne w WSL pod `/mnt/c/`:
+
+```bash
+cd /mnt/c/Users/jacek/OneDrive/Documents/astro_mount_control
+```
+
+### Krok 3: Zainstaluj zależności
+
+```bash
+chmod +x scripts/setup_wsl_build.sh
+./scripts/setup_wsl_build.sh
+```
+
+### Krok 4: Zbuduj
+
+```bash
+chmod +x scripts/build_wsl.sh
+./scripts/build_wsl.sh
+```
+
+### Krok 5: Uruchom
+
+```bash
+./build/bin/astro_mount_controller config/default.json
+```
+
+Następnie otwórz `http://localhost:8080` w przeglądarce Windows.
+
+> **Więcej szczegółów**: [docs/en/wsl_build_guide.md](wsl_build_guide.md) (angielski)
+
+---
 
 ## Instalacja zależności
 

@@ -116,7 +116,8 @@ int main() {
             double observed_ra = ra + (rand() % 100 - 50) / 36000.0;  // ±0.005 hours
             double observed_dec = dec + (rand() % 100 - 50) / 3600.0; // ±0.05 degrees
             
-            if (controller->addCalibrationMeasurement(observed_ra, observed_dec, ra, dec)) {
+            if (controller->addTPointMeasurement(observed_ra, observed_dec, ra, dec,
+                                                 2.0, dec, 15.0, 1013.25)) {
                 std::cout << "Added calibration measurement " << (i + 1) << std::endl;
             }
         }

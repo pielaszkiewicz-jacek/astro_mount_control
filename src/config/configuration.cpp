@@ -69,15 +69,6 @@ public:
             !isValidLogLevel(logging.value("level", ""))) {
             errors.push_back("Invalid or missing logging.level");
         }
-        int rotation_days = logging.value("rotation_days", 0);
-        if (rotation_days <= 0) {
-            errors.push_back("Invalid logging.rotation_days (must be > 0)");
-        }
-        int max_file_size_mb = logging.value("max_file_size_mb", 0);
-        if (max_file_size_mb <= 0) {
-            errors.push_back("Invalid logging.max_file_size_mb (must be > 0)");
-        }
-        
         // ==========================================
         // Validate network configuration
         // ==========================================
@@ -89,25 +80,6 @@ public:
         int max_connections = network.value("max_connections", 0);
         if (max_connections <= 0) {
             errors.push_back("Invalid network.max_connections (must be > 0)");
-        }
-        
-        // ==========================================
-        // Validate CANopen configuration
-        // (reads from hal.canopen — the single source of truth)
-        // ==========================================
-        auto hal_json = config_.value("hal", json::object());
-        auto canopen = hal_json.value("canopen", json::object());
-        int node_id = canopen.value("node_id", 0);
-        if (node_id < 1 || node_id > 127) {
-            errors.push_back("Invalid canopen.node_id (must be 1-127)");
-        }
-        int baud_rate = canopen.value("bitrate", 0);
-        if (baud_rate <= 0) {
-            errors.push_back("Invalid canopen.baud_rate (must be > 0)");
-        }
-        int sync_interval_ms = canopen.value("sync_period_ms", 0);
-        if (sync_interval_ms <= 0) {
-            errors.push_back("Invalid canopen.sync_interval_ms (must be > 0)");
         }
         
         // ==========================================
@@ -250,8 +222,6 @@ public:
         
         config.level = logging.value("level", "INFO");
         config.directory = logging.value("directory", "/var/log/astro-mount");
-        config.rotation_days = logging.value("rotation_days", 7);
-        config.max_file_size_mb = logging.value("max_file_size_mb", 100);
         config.console_output = logging.value("console_output", true);
         
         return config;
@@ -267,24 +237,6 @@ public:
         config.enable_ssl = network.value("enable_ssl", false);
         config.ssl_cert_path = network.value("ssl_cert_path", "");
         config.ssl_key_path = network.value("ssl_key_path", "");
-        
-        return config;
-    }
-    
-    CanOpenConfig getCanOpenConfig() const {
-        CanOpenConfig config;
-        
-        // ── Single source of truth: hal.canopen ───────────────────────
-        auto hal_json = config_.value("hal", json::object());
-        auto hal_can = hal_json.value("canopen", json::object());
-        
-        config.interface     = hal_can.value("interface_name", "can0");
-        config.node_id       = hal_can.value("node_id", 1);
-        config.baud_rate     = hal_can.value("bitrate", 1000000);
-        config.enable_sync   = hal_can.value("use_sync", true);
-        config.sync_interval_ms = hal_can.value("sync_period_ms", 100);
-        config.accel_mode    = hal_can.value("accel_mode", "time");
-        config.pdo_config_enabled = hal_can.value("pdo_config_enabled", false);
         
         return config;
     }
@@ -483,8 +435,6 @@ public:
         json logging;
         logging["level"] = config.level;
         logging["directory"] = config.directory;
-        logging["rotation_days"] = config.rotation_days;
-        logging["max_file_size_mb"] = config.max_file_size_mb;
         logging["console_output"] = config.console_output;
         
         config_["logging"] = logging;
@@ -501,22 +451,6 @@ public:
         network["ssl_key_path"] = config.ssl_key_path;
         
         config_["network"] = network;
-        modified_ = true;
-    }
-    
-    void setCanOpenConfig(const CanOpenConfig& config) {
-        json canopen;
-        canopen["interface_name"] = config.interface;
-        canopen["node_id"] = config.node_id;
-        canopen["bitrate"] = config.baud_rate;
-        canopen["use_sync"] = config.enable_sync;
-        canopen["sync_period_ms"] = config.sync_interval_ms;
-        canopen["accel_mode"] = config.accel_mode;
-        canopen["pdo_config_enabled"] = config.pdo_config_enabled;
-        
-        // Write to hal.canopen (single source of truth)
-        if (!config_.contains("hal")) config_["hal"] = json::object();
-        config_["hal"]["canopen"] = canopen;
         modified_ = true;
     }
     
@@ -704,33 +638,40 @@ public:
         return config;
     }
 
-    ServoInitConfig getServoInitConfig() const {
-        ServoInitConfig config;
-        auto servo_init = config_.value("servo_init", json::object());
-        
-        config.enabled = servo_init.value("enabled", false);
-        
-        auto seq = servo_init.value("sequence", json::array());
-        for (const auto& entry : seq) {
-            if (!entry.is_object()) continue;
-            
-            ServoInitEntry e;
-            e.axis = entry.value("axis", 0);
-            
-            std::string idx_str = entry.value("index", "0x0000");
-            e.index = static_cast<uint16_t>(std::stoul(idx_str, nullptr, 0));
-            
-            e.subindex = static_cast<uint8_t>(entry.value("subindex", 0));
-            e.value = entry.value("value", 0);
-            e.description = entry.value("description", "");
-            e.data_size = static_cast<uint8_t>(entry.value("data_size", 4));
-            
-            config.sequence.push_back(e);
-        }
-        
+    ExternalIntegrationConfig getExternalIntegrationConfig() const {
+        ExternalIntegrationConfig config;
+        auto ext = config_.value("external_services", json::object());
+
+        auto dome_cfg = ext.value("dome", json::object());
+        config.dome_enabled = dome_cfg.value("enabled", false);
+        config.dome_update_interval_ms = dome_cfg.value("update_interval_ms", 1000);
+
+        auto derotator_cfg = ext.value("derotator", json::object());
+        config.derotator_enabled = derotator_cfg.value("enabled", false);
+        config.derotator_update_interval_ms = derotator_cfg.value("update_interval_ms", 1000);
+
+        auto weather_cfg = ext.value("weather", json::object());
+        config.weather_enabled = weather_cfg.value("enabled", false);
+        config.weather_address = weather_cfg.value("address", "127.0.0.1:50055");
+        config.weather_poll_interval_ms = weather_cfg.value("poll_interval_ms", 10000);
+
+        auto power_cfg = ext.value("power", json::object());
+        config.power_enabled = power_cfg.value("enabled", false);
+        config.power_address = power_cfg.value("address", "127.0.0.1:50056");
+        config.power_poll_interval_ms = power_cfg.value("poll_interval_ms", 10000);
+
+        auto sequencer_cfg = ext.value("sequencer", json::object());
+        config.sequencer_enabled = sequencer_cfg.value("enabled", false);
+        config.sequencer_address = sequencer_cfg.value("address", "127.0.0.1:50057");
+        config.sequencer_poll_interval_ms = sequencer_cfg.value("poll_interval_ms", 5000);
+
+        auto focuser_cfg = ext.value("focuser", json::object());
+        config.focuser_enabled = focuser_cfg.value("enabled", false);
+        config.focuser_poll_interval_ms = focuser_cfg.value("poll_interval_ms", 5000);
+
         return config;
     }
-    
+
     void setFieldRotationParams(const FieldRotationParams& config) {
         json field_rotation;
         field_rotation["enabled"] = config.enabled;
@@ -848,8 +789,6 @@ private:
         LoggingConfig logging_default;
         logging_default.level = "INFO";
         logging_default.directory = "/var/log/astro-mount";
-        logging_default.rotation_days = 7;
-        logging_default.max_file_size_mb = 100;
         logging_default.console_output = true;
         setLoggingConfig(logging_default);
         
@@ -861,14 +800,6 @@ private:
         network_default.ssl_cert_path = "";
         network_default.ssl_key_path = "";
         setNetworkConfig(network_default);
-        
-        CanOpenConfig canopen_default;
-        canopen_default.interface = "can0";
-        canopen_default.node_id = 1;
-        canopen_default.baud_rate = 1000000;
-        canopen_default.enable_sync = true;
-        canopen_default.sync_interval_ms = 100;
-        setCanOpenConfig(canopen_default);
         
         MountConfig mount_default;
         mount_default.type = "equatorial";
@@ -1070,10 +1001,6 @@ Configuration::NetworkConfig Configuration::getNetworkConfig() const {
     return pimpl->getNetworkConfig();
 }
 
-Configuration::CanOpenConfig Configuration::getCanOpenConfig() const {
-    return pimpl->getCanOpenConfig();
-}
-
 Configuration::MountConfig Configuration::getMountConfig() const {
     return pimpl->getMountConfig();
 }
@@ -1098,8 +1025,8 @@ Configuration::TPointConfig Configuration::getTPointConfig() const {
     return pimpl->getTPointConfig();
 }
 
-Configuration::ServoInitConfig Configuration::getServoInitConfig() const {
-    return pimpl->getServoInitConfig();
+Configuration::ExternalIntegrationConfig Configuration::getExternalIntegrationConfig() const {
+    return pimpl->getExternalIntegrationConfig();
 }
 
 Configuration::FieldRotationParams Configuration::getFieldRotationParams() const {
@@ -1116,10 +1043,6 @@ void Configuration::setLoggingConfig(const LoggingConfig& config) {
 
 void Configuration::setNetworkConfig(const NetworkConfig& config) {
     pimpl->setNetworkConfig(config);
-}
-
-void Configuration::setCanOpenConfig(const CanOpenConfig& config) {
-    pimpl->setCanOpenConfig(config);
 }
 
 void Configuration::setMountConfig(const MountConfig& config) {

@@ -5,10 +5,8 @@
 #include <cerrno>
 #include <dirent.h>
 #include "logging/logger.h"
-#include <sys/stat.h>
 #include <sys/inotify.h>
 #include <poll.h>
-#include <linux/joystick.h>
 #include <linux/input.h>
 #include <sys/ioctl.h>
 
@@ -120,14 +118,20 @@ int EvdevGamepadInput::getButtonCount() const {
 
 void EvdevGamepadInput::applyButtonMapping(const std::map<int, std::string>& mapping) {
     for (const auto& [idx, action_str] : mapping) {
-        if (action_str == "home")           button_map_[idx] = ButtonAction::HOME;
-        else if (action_str == "stop")      button_map_[idx] = ButtonAction::STOP;
+        if (action_str == "home")                button_map_[idx] = ButtonAction::HOME;
+        else if (action_str == "stop")           button_map_[idx] = ButtonAction::STOP;
         else if (action_str == "emergency_stop") button_map_[idx] = ButtonAction::EMERGENCY_STOP;
-        else if (action_str == "park")      button_map_[idx] = ButtonAction::PARK;
-        else if (action_str == "speed_up")  button_map_[idx] = ButtonAction::SPEED_UP;
-        else if (action_str == "speed_down") button_map_[idx] = ButtonAction::SPEED_DOWN;
-        else if (action_str == "manual_toggle") button_map_[idx] = ButtonAction::MANUAL_TOGGLE;
-        else if (action_str == "none")      button_map_[idx] = ButtonAction::NONE;
+        else if (action_str == "park")           button_map_[idx] = ButtonAction::PARK;
+        else if (action_str == "speed_up")       button_map_[idx] = ButtonAction::SPEED_UP;
+        else if (action_str == "speed_down")     button_map_[idx] = ButtonAction::SPEED_DOWN;
+        else if (action_str == "manual_toggle")  button_map_[idx] = ButtonAction::MANUAL_TOGGLE;
+        else if (action_str == "bootstrap_calibrate") button_map_[idx] = ButtonAction::BOOTSTRAP_CALIBRATE;
+        else if (action_str == "tpoint_calibrate")    button_map_[idx] = ButtonAction::TPOINT_CALIBRATE;
+        else if (action_str == "meridian_flip")       button_map_[idx] = ButtonAction::MERIDIAN_FLIP;
+        else if (action_str == "mode_cycle")          button_map_[idx] = ButtonAction::MODE_CYCLE;
+        else if (action_str == "clear_errors")        button_map_[idx] = ButtonAction::CLEAR_ERRORS;
+        else if (action_str == "unpark")              button_map_[idx] = ButtonAction::UNPARK;
+        else if (action_str == "none")           button_map_[idx] = ButtonAction::NONE;
         else {
             logging::Logger::get("gamepad")->warn("[EvdevGamepadInput] Unknown button action '{}' for index {}", action_str, idx);
         }
@@ -156,46 +160,7 @@ void EvdevGamepadInput::applyAxisMapping(const std::map<int, std::string>& mappi
 // ============================================================================
 
 bool EvdevGamepadInput::openDevice(const std::string& path) {
-    // Detect API type from path
-    if (path.find("/dev/input/js") != std::string::npos) {
-        return openJoystickDevice(path);
-    } else {
-        return openEvdevDevice(path);
-    }
-}
-
-bool EvdevGamepadInput::openJoystickDevice(const std::string& path) {
-    fd_ = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
-    if (fd_ < 0) {
-        logging::Logger::get("gamepad")->error("[EvdevGamepadInput] Cannot open {}: {}", path, strerror(errno));
-        return false;
-    }
-
-    use_evdev_ = false;
-
-    // Get device name
-    char name[128] = {0};
-    if (ioctl(fd_, JSIOCGNAME(sizeof(name)), name) >= 0) {
-        device_name_ = name;
-    } else {
-        device_name_ = "Unknown Joystick";
-    }
-
-    // Get axis / button counts
-    uint8_t axes = 0, buttons = 0;
-    ioctl(fd_, JSIOCGAXES, &axes);
-    ioctl(fd_, JSIOCGBUTTONS, &buttons);
-    axis_count_ = axes;
-    button_count_ = buttons;
-
-    raw_axes_.assign(axis_count_, 0);
-
-    {
-        std::lock_guard<std::mutex> lock(state_mutex_);
-        state_.connected = true;
-    }
-
-    return true;
+    return openEvdevDevice(path);
 }
 
 bool EvdevGamepadInput::openEvdevDevice(const std::string& path) {
@@ -204,8 +169,6 @@ bool EvdevGamepadInput::openEvdevDevice(const std::string& path) {
         logging::Logger::get("gamepad")->error("[EvdevGamepadInput] Cannot open {}: {}", path, strerror(errno));
         return false;
     }
-
-    use_evdev_ = true;
 
     // Get device name
     char name[256] = {0};
@@ -258,25 +221,7 @@ bool EvdevGamepadInput::openEvdevDevice(const std::string& path) {
 // ============================================================================
 
 std::string EvdevGamepadInput::autoDetect() {
-    // Try legacy joystick API first
-    for (int i = 0; i < 4; ++i) {
-        std::string path = "/dev/input/js" + std::to_string(i);
-        struct stat st;
-        if (stat(path.c_str(), &st) == 0 && S_ISCHR(st.st_mode)) {
-            // Try to open to confirm it's a joystick
-            int fd = ::open(path.c_str(), O_RDONLY | O_NONBLOCK);
-            if (fd >= 0) {
-                uint8_t axes = 0;
-                if (ioctl(fd, JSIOCGAXES, &axes) >= 0 && axes >= 2) {
-                    ::close(fd);
-                    return path;
-                }
-                ::close(fd);
-            }
-        }
-    }
-
-    // Try evdev API — scan /dev/input/event* for devices with ABS axes
+    // Scan /dev/input/event* for devices with ABS axes (evdev API)
     DIR* dir = opendir("/dev/input");
     if (!dir) return "";
 
@@ -324,35 +269,18 @@ void EvdevGamepadInput::pollLoop() {
         // ── Normal polling loop ──────────────────────────────────
         bool disconnected = false;
 
-        if (use_evdev_) {
-            struct input_event ev;
-            while (running_ && !disconnected) {
-                ssize_t n = ::read(fd_, &ev, sizeof(ev));
-                if (n < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                        continue;
-                    }
-                    // Device disconnected
-                    disconnected = true;
-                } else if (n == (ssize_t)sizeof(ev)) {
-                    processEvdevEvent(ev);
+        struct input_event ev;
+        while (running_ && !disconnected) {
+            ssize_t n = ::read(fd_, &ev, sizeof(ev));
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                    continue;
                 }
-            }
-        } else {
-            struct js_event ev;
-            while (running_ && !disconnected) {
-                ssize_t n = ::read(fd_, &ev, sizeof(ev));
-                if (n < 0) {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                        std::this_thread::sleep_for(std::chrono::milliseconds(5));
-                        continue;
-                    }
-                    // Device disconnected
-                    disconnected = true;
-                } else if (n == (ssize_t)sizeof(ev)) {
-                    processJoystickEvent(ev);
-                }
+                // Device disconnected
+                disconnected = true;
+            } else if (n == (ssize_t)sizeof(ev)) {
+                processEvdevEvent(ev);
             }
         }
 
@@ -509,85 +437,6 @@ std::string EvdevGamepadInput::waitForDevicePlug(int timeout_ms) {
 }
 
 // ============================================================================
-// Event processing — legacy joystick API
-// ============================================================================
-
-void EvdevGamepadInput::processJoystickEvent(const js_event& ev) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-
-    if (ev.type & JS_EVENT_INIT) {
-        // Ignore initial calibration events
-        return;
-    }
-
-    state_.timestamp = std::chrono::steady_clock::now();
-    state_.connected = true;
-
-    switch (ev.type) {
-    case JS_EVENT_AXIS: {
-        // Raw value is [-32768, 32767]
-        int idx = ev.number;
-        if (idx >= 0 && idx < (int)raw_axes_.size()) {
-            raw_axes_[idx] = ev.value;
-        }
-
-        double normalized = normalizeAxis(ev.value, -32768, 32767);
-        normalized = applyDeadzone(normalized);
-
-        auto it = axis_map_.find(idx);
-        AxisAction action = (it != axis_map_.end()) ? it->second : AxisAction::NONE;
-
-        switch (action) {
-        case AxisAction::LX: state_.axis_lx = normalized; break;
-        case AxisAction::LY: state_.axis_ly = normalized; break;
-        case AxisAction::RX: state_.axis_rx = normalized; break;
-        case AxisAction::RY: state_.axis_ry = normalized; break;
-        case AxisAction::TRIGGER_L: state_.axis_trigger_l = normalized; break;
-        case AxisAction::TRIGGER_R: state_.axis_trigger_r = normalized; break;
-        case AxisAction::POV_X:
-            if (normalized != 0.0) {
-                // POV hat position: 0°, 45°, 90°, ...
-                // Map continuous axis to discrete angles
-                if (normalized < 0) state_.pov_hat = 270.0;   // left
-                else state_.pov_hat = 90.0;                    // right
-            } else {
-                state_.pov_hat = -1.0;  // neutral
-            }
-            break;
-        case AxisAction::POV_Y:
-            if (normalized != 0.0) {
-                if (normalized < 0) state_.pov_hat = 0.0;     // up
-                else state_.pov_hat = 180.0;                   // down
-            } else {
-                state_.pov_hat = -1.0;  // neutral
-            }
-            break;
-        default: break;
-        }
-        break;
-    }
-
-    case JS_EVENT_BUTTON: {
-        bool pressed = (ev.value != 0);
-        auto it = button_map_.find(ev.number);
-        ButtonAction action = (it != button_map_.end()) ? it->second : ButtonAction::NONE;
-
-        switch (action) {
-        case ButtonAction::STOP:           state_.button_stop = pressed; break;
-        case ButtonAction::EMERGENCY_STOP: state_.button_emergency_stop = pressed; break;
-        case ButtonAction::PARK:           state_.button_park = pressed; break;
-        case ButtonAction::SPEED_UP:       state_.button_speed_up = pressed; break;
-        case ButtonAction::SPEED_DOWN:     state_.button_speed_down = pressed; break;
-        case ButtonAction::MANUAL_TOGGLE:  state_.button_manual_toggle = pressed; break;
-        case ButtonAction::HOME:           state_.button_home = pressed; break;
-        default: break;
-        }
-        break;
-    }
-    }
-}
-
-// ============================================================================
 // Event processing — evdev API
 // ============================================================================
 
@@ -710,7 +559,7 @@ void EvdevGamepadInput::processEvdevEvent(const input_event& ev) {
         } else if (ev.code == BTN_START) {
             btn_idx = 7; // Start
         } else if (ev.code == BTN_BASE) {
-            btn_idx = 8; // Guide button (legacy mapping)
+            btn_idx = 8; // Guide button
         } else {
             break;
         }
@@ -719,13 +568,19 @@ void EvdevGamepadInput::processEvdevEvent(const input_event& ev) {
         ButtonAction action = (it != button_map_.end()) ? it->second : ButtonAction::NONE;
 
         switch (action) {
-        case ButtonAction::STOP:           state_.button_stop = pressed; break;
-        case ButtonAction::EMERGENCY_STOP: state_.button_emergency_stop = pressed; break;
-        case ButtonAction::PARK:           state_.button_park = pressed; break;
-        case ButtonAction::SPEED_UP:       state_.button_speed_up = pressed; break;
-        case ButtonAction::SPEED_DOWN:     state_.button_speed_down = pressed; break;
-        case ButtonAction::MANUAL_TOGGLE:  state_.button_manual_toggle = pressed; break;
-        case ButtonAction::HOME:           state_.button_home = pressed; break;
+        case ButtonAction::STOP:                state_.button_stop = pressed; break;
+        case ButtonAction::EMERGENCY_STOP:      state_.button_emergency_stop = pressed; break;
+        case ButtonAction::PARK:                state_.button_park = pressed; break;
+        case ButtonAction::SPEED_UP:            state_.button_speed_up = pressed; break;
+        case ButtonAction::SPEED_DOWN:          state_.button_speed_down = pressed; break;
+        case ButtonAction::MANUAL_TOGGLE:       state_.button_manual_toggle = pressed; break;
+        case ButtonAction::HOME:                state_.button_home = pressed; break;
+        case ButtonAction::BOOTSTRAP_CALIBRATE: state_.button_bootstrap_calibrate = pressed; break;
+        case ButtonAction::TPOINT_CALIBRATE:    state_.button_tpoint_calibrate = pressed; break;
+        case ButtonAction::MERIDIAN_FLIP:       state_.button_meridian_flip = pressed; break;
+        case ButtonAction::MODE_CYCLE:          state_.button_mode_cycle = pressed; break;
+        case ButtonAction::CLEAR_ERRORS:        state_.button_clear_errors = pressed; break;
+        case ButtonAction::UNPARK:              state_.button_unpark = pressed; break;
         default: break;
         }
         break;
@@ -773,17 +628,17 @@ void EvdevGamepadInput::setupDefaultMappings() {
     //  0=A(south/front), 1=B(east), 2=X(north), 3=Y(west)
     //  4=LB(L1), 5=RB(R1), 6=Back(Select), 7=Start
     //  8=Guide(PS/Xbox), 9=LeftStick, 10=RightStick
-    button_map_[0] = ButtonAction::HOME;           // A → home
-    button_map_[1] = ButtonAction::STOP;            // B → stop
-    button_map_[2] = ButtonAction::NONE;            // X → unassigned
-    button_map_[3] = ButtonAction::PARK;            // Y → park
-    button_map_[4] = ButtonAction::SPEED_DOWN;      // LB → speed down
-    button_map_[5] = ButtonAction::SPEED_UP;        // RB → speed up
-    button_map_[6] = ButtonAction::EMERGENCY_STOP;  // Back → emergency stop
-    button_map_[7] = ButtonAction::STOP;            // Start → stop
-    button_map_[8] = ButtonAction::MANUAL_TOGGLE;   // Guide → toggle manual
-    button_map_[9] = ButtonAction::NONE;            // Left stick press
-    button_map_[10] = ButtonAction::NONE;           // Right stick press
+    button_map_[0] = ButtonAction::HOME;               // A → home
+    button_map_[1] = ButtonAction::STOP;                // B → stop
+    button_map_[2] = ButtonAction::BOOTSTRAP_CALIBRATE; // X → bootstrap calibration
+    button_map_[3] = ButtonAction::PARK;                // Y → park
+    button_map_[4] = ButtonAction::SPEED_DOWN;          // LB → speed down
+    button_map_[5] = ButtonAction::SPEED_UP;            // RB → speed up
+    button_map_[6] = ButtonAction::EMERGENCY_STOP;      // Back → emergency stop
+    button_map_[7] = ButtonAction::STOP;                // Start → stop
+    button_map_[8] = ButtonAction::MANUAL_TOGGLE;       // Guide → toggle manual
+    button_map_[9] = ButtonAction::MODE_CYCLE;          // Left stick press → cycle navigation mode
+    button_map_[10] = ButtonAction::CLEAR_ERRORS;       // Right stick press → clear errors
 
     // Default axis mapping (standard gamepad)
     //  0=LX, 1=LY, 2=Triggers(LTRT as single axis), 3=RX, 4=RY

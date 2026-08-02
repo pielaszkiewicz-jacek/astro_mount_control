@@ -7,16 +7,17 @@
 3. [Mathematical Models](#mathematical-models)
 4. [gRPC API](#grpc-api)
 5. [Configuration](#configuration)
-6. [Web Proxy (HTTP/JSON → gRPC)](#6-web-proxy-httpjson--grpc)
-7. [Web Interface (Browser SPA)](#7-web-interface-browser-spa)
-8. [Object Database Service](#8-object-database-service)
-9. [Configuration System](#9-configuration-system)
-10. [Usage Examples](#usage-examples)
-11. [Installation and Building](#installation-and-building)
-12. [Testing](#testing)
-13. [Axis Physical Parameters](#axis-physical-parameters)
-14. [ASCOM and INDI Drivers](#ascom-and-indi-drivers)
-15. [Web Interface](#web-interface)
+6. [External Services Configuration](external_services_configuration.md)
+7. [Web Proxy (HTTP/JSON → gRPC)](#6-web-proxy-httpjson--grpc)
+8. [Web Interface (Browser SPA)](#7-web-interface-browser-spa)
+9. [Object Database Service](#8-object-database-service)
+10. [Configuration System](#9-configuration-system)
+11. [Usage Examples](#usage-examples)
+12. [Installation and Building](#installation-and-building)
+13. [Testing](#testing)
+14. [Axis Physical Parameters](#axis-physical-parameters)
+15. [ASCOM and INDI Drivers](#ascom-and-indi-drivers)
+16. [Web Interface](#web-interface)
 
 ## Introduction
 
@@ -65,10 +66,12 @@ flowchart TB
     subgraph API["🌐 gRPC API"]
         GRPC["MountControllerServiceImpl<br/>proto/mount_controller.proto"]
         DB_GRPC["ObjectDatabaseServiceImpl<br/>proto/object_database.proto"]
+        INPROC["In-process services:<br/>DomeService · DerotatorService · FocuserService<br/>(unified API :50051)"]
     end
 
     subgraph CORE["⚙️ Mount Controller Core"]
         MC["MountController<br/>src/controllers/mount_controller.cpp<br/>State machine · Tracking loop · Meridian flip"]
+        INPROCSVC["In-process subsystems<br/>dome/ · derotator/ · focuser/"]
     end
 
     subgraph MODELS["🧮 Mathematical Models"]
@@ -109,6 +112,8 @@ flowchart TB
     MC --> ASTRO
     MC --> TPOINT
     MC --> CONFIG
+    MC --> INPROCSVC
+    INPROCSVC --> INPROC
     ASTRO --> KF
     TPOINT --> KF
     KF --> CAN
@@ -122,8 +127,8 @@ flowchart TB
 
     class SPA,PROXY client
     class PY,CPP client
-    class GRPC,DB_GRPC api
-    class MC core
+    class GRPC,DB_GRPC,INPROC api
+    class MC,INPROCSVC core
     class ASTRO,TPOINT,KF model
     class CAN,CONFIG comm
     class HW1,HW2,HW3 hw
@@ -131,89 +136,107 @@ flowchart TB
 
 ### System Components
 
-#### 1. **MountController**
+#### 1. **MountController** ([`src/controllers/mount_controller.cpp`](src/controllers/mount_controller.cpp))
 Main component integrating all modules:
-- Tracking and slewing control
-- Mount state management
-- Encoder and guider integration
-- TPOINT calibration
-- Bootstrap calibration (initial alignment)
+- Tracking and slewing control (state machine with 9 states)
+- Mount state management, meridian flip, 3-zone soft limits
+- Encoder and guider integration, PEC application
+- TPOINT calibration + Bootstrap calibration (initial alignment)
 - Ephemeris tracking (moving objects)
-#### 3. **AstronomicalCalculations**
-Astronomical calculations based on SOFA library:
-- Coordinate system transformations (equatorial ↔ horizontal)
-- Atmospheric refraction correction
-- Precession, nutation, aberration
-- Sidereal time, ephemerides
+- 11 NaN/Inf propagation guards in the tracking loop
 
-#### 4. **TPointModel**
+#### 2. **AstronomicalCalculations** ([`src/core/astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp))
+Astronomical calculations based on SOFA library:
+- Coordinate system transformations (equatorial ↔ horizontal, hour angle)
+- Atmospheric refraction correction
+- Precession, nutation, aberration, light-time, gravitational deflection
+- Sidereal time, ephemerides, proper motion
+
+#### 3. **TPointModel** ([`src/models/tpoint_model.cpp`](src/models/tpoint_model.cpp))
 Full TPOINT model for geometric error correction:
 - 21 TPOINT parameters (IA, IE, NPAE, AN, AW, etc.)
 - Least squares fitting with QR decomposition
 - Atmospheric refraction correction
 - Star proper motion handling
 
-#### 5. **KalmanFilter**
+#### 4. **KalmanFilter** ([`src/models/kalman_filter.cpp`](src/models/kalman_filter.cpp))
 Extended Kalman filter for continuous calibration:
 - Mount orientation estimation (quaternion)
 - TPOINT parameter updates
 - Thermal drift compensation
-- Encoder and optical measurement data fusion
+- Encoder and optical measurement data fusion (Joseph form covariance update)
 
-#### 6. **CanOpenInterface**
-CANopen protocol implementation (CiA 301, CiA 402):
-- Servo drive control
-- Absolute encoder reading
-- Motion trajectory generation
-- Drive status monitoring
+#### 5. **EphemerisTracker** ([`src/models/ephemeris_tracker.cpp`](src/models/ephemeris_tracker.cpp))
+Tracks moving objects (comets, asteroids, satellites):
+- Ephemeris interpolation (linear/quadratic/cubic)
+- Prediction beyond ephemeris range, earth-rotation correction
 
-#### 7. **Web Proxy (HTTP/JSON → gRPC)**
+#### 6. **PECModel** ([`src/models/pec_model.cpp`](src/models/pec_model.cpp))
+Periodic Error Correction:
+- Harmonic extraction via FFT (default 8 harmonics)
+- Phase-synchronized correction during tracking
+
+#### 7. **Hardware Abstraction Layer** ([`src/hal/`](src/hal/))
+Decouples business logic from hardware via [`HALInterface`](include/hal/hal_interface.h) and [`hal_factory`](include/hal/hal_factory.h):
+- **CANopen** (CiA 301/402) · **MF7025v2** (proprietary CAN) · **Serial** (Modbus RTU)
+- **Ethernet** (Modbus TCP) · **Gamepad** (evdev) · **Simulated**
+- Device HALs: dome, derotator (TMC5160), camera (ZWO), focuser (ZWO/MoonLite/Pegasus), power (I²C), ST4
+
+#### 8. **Subsystem Services** (config-gated, disabled by default)
+Dome, derotator and focuser are **hosted in-process** inside `astro_mount_controller` (no separate process); weather, power and sequencer remain independent gRPC processes linked against `astro_mount_core`:
+- **Dome** ([`dome/`](dome/)) :50051 (unified) — shutter, rotation, auto-sync with mount (in-process)
+- **Derotator** ([`derotator/`](derotator/)) :50051 (unified) — field derotation (in-process)
+- **Focuser** ([`focuser/`](focuser/)) :50051 (unified) — focuser control, auto-focus (in-process)
+- **Weather** ([`weather/`](weather/)) :50055 — monitoring, alerts, auto-park (stand-alone)
+- **Power** ([`power/`](power/)) :50056 — battery monitoring, output switching (stand-alone)
+- **Sequencer** ([`sequencer/`](sequencer/)) :50057 — observation plans (stand-alone)
+
+#### 9. **Web Proxy (HTTP/JSON → gRPC)** ([`web/proxy/`](web/proxy/))
 Node.js Express proxy server bridging browser to gRPC backends:
-- HTTP/JSON REST API (~40 endpoints) for mount control, calibration, tracking, config, database
-- Static file serving for the SPA
-- Catalog import data enrichment and filtering
-- Mount state file upload and management
-- CORS support, SSL/TLS, configurable gRPC addresses
+- HTTP/JSON REST API for mount, axis, calibration, tracking, config, HAL, state, database, health, logs
+- Extended routes (config-gated): PEC, power, guider, derotator, sequencer, camera, focuser, dome, weather, pulley
+- Static file serving for the SPA, CORS support, SSL/TLS, configurable gRPC addresses
 
-#### 8. **Web Interface (Browser SPA)**
-Single-page application with 6 tabs:
+#### 10. **Web Interface (Browser SPA)** ([`web/public/`](web/public/))
+Single-page application (vanilla JS) with tabs:
 - **Status** — real-time mount state, position, environment, tracked object
 - **Control** — slew to coordinates, axis control pad (velocity/step mode), state save/load
-- **Settings** — 18 config groups with Save/Restore Defaults, export/import, address config
+- **Settings** — config groups with Save/Restore Defaults, export/import, address config
 - **Calibration** — Bootstrap coarse alignment + TPOINT precise pointing model
 - **Database** — object CRUD, search/filter, favorites, catalog import (presets/file/URL)
-- **Tracking** — ephemeris tracking for moving objects (satellites, comets, asteroids)
+- **Tracking** — ephemeris tracking for moving objects
+- Extended tabs (when services enabled): dome, derotator, weather, power, sequencer, focuser, camera, PEC, guider, pulley
 
-#### 9. **Object Database Service**
+#### 11. **Qt GUI** ([`gui/`](gui/))
+Native Qt desktop application (`astro_mount_gui`) using gRPC:
+- Panels: mount, status, calibration wizard, sequencer, dome, focuser, camera, weather, derotator, PEC, power, notifications, settings
+- Widgets: sky map, star chart, focus graph, weather plot
+
+#### 12. **Object Database Service** ([`db/`](db/))
 SQLite-backed astronomical object catalog:
 - Full CRUD with pagination and search
 - Multiple catalog support (Messier, NGC, IC, Caldwell, HYG, SAO)
 - Favorite objects, categories, import/export
 - gRPC API on port 50052
 
-#### 10. **Configuration System**
+#### 13. **Configuration System** ([`src/config/configuration.cpp`](src/config/configuration.cpp))
 Configuration management system:
-- Loading/saving JSON configuration
-- Parameter validation
-- Default configuration values
+- Loading/saving JSON configuration with 25+ validations
+- Config monitor for hot-reload
+- External services integration section (`external_services`)
 
-#### 11. **ASCOM Telescope Driver** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
-C# ASCOM Alpaca-compatible telescope driver implementing `ITelescopeV3`:
-- SlewToCoordinates, SlewToTarget, SlewToAltAz
-- PulseGuide for autoguider integration
-- MoveAxis with velocity control (VELOCITY_CONTROL via gRPC [`ControlAxis`](proto/mount_controller.proto))
-- Park/Unpark, SyncToCoordinates
-- Action() queries: `tpoint_status`, `temperature`, `pressure`, `humidity`, `tracking_rate_ra`, `tracking_rate_dec`, `guider_status`
-- State cache for low-latency property reads
+#### 14. **Notification Engine** ([`src/notifications/`](src/notifications/))
+Centralized event/alert delivery:
+- Channels: Email (SMTP/TLS), Webhook, MQTT, Log
+- Event categories: mount, weather, sequencer, power, session, system, guider, focuser, camera, dome
 
-#### 12. **INDI Telescope Driver** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
-C++ INDI-compatible telescope driver for Ekos/KStars:
-- Full `INDI::Telescope` interface: Slew, Track, Park, Sync, Abort
-- MoveNS/MoveWE velocity control (axis_id=0 RA/WE, axis_id=1 Dec/NS)
-- `TPOINT_STATUS` text property (coefficients, chi-squared, calibration state)
-- `EnvironmentNP` number property (temperature, pressure, humidity)
-- SetCurrentPark from controller [`state.current_position()`](proto/mount_controller.proto)
-- MountGrpcClient for all gRPC communication
+#### 15. **ASCOM Drivers** (C#)
+- **Telescope** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs)) — `ITelescopeV3`: SlewToCoordinates, PulseGuide, MoveAxis, Park/Unpark, TPOINT status, environmental queries, 2 s state cache
+- **Rotator** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs)) — `IRotatorV3`: MoveAbsolute, Move(rate), Halt, Home
+
+#### 16. **INDI Drivers** (C++)
+- **Telescope** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp)) — `INDI::Telescope` for Ekos/KStars: MoveNS/MoveWE, `TPOINT_STATUS`, `EnvironmentNP`, park/sync/abort
+- **Rotator** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp)) — `INDI::Rotator`: MoveRotator, HomeRotator, AbortRotator
 
 ## Mathematical Models
 

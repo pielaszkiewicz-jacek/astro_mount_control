@@ -1,0 +1,12 @@
+{
+    "_comment": "Dome control configuration for the dome service process",
+    "type": "simulated",
+    "dome_type": "rotating",
+    "device_path": "",
+    "baud_rate": 9600,
+    "home_azimuth_deg": 0.0,
+    "park_azimuth_deg": 180.0,
+    "open_time_s": 30,
+    "gpio_open_pin": "",
+    "gpio_close_pin": ""
+}

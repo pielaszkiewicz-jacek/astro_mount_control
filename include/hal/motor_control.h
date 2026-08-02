@@ -11,7 +11,6 @@ enum class MotorType {
     SERVO,          // Serwonapęd
     BRUSHED_DC,     // Silnik DC z komutatorem
     BRUSHLESS_DC,   // Silnik bezszczotkowy
-    CANOPEN_SERVO,  // Serwonapęd CANopen
     VIRTUAL         // Wirtualny (do testów)
 };
 
@@ -73,6 +72,10 @@ public:
     virtual bool targetReached() const = 0;
     virtual bool inErrorState() const = 0;
     virtual std::string getErrorString() const = 0;
+
+    // Clear drive/hardware errors.  Default: not supported.  Real field-bus
+    // motors (e.g. CANopen) override this to reset the drive fault state.
+    virtual bool clearErrors() { return false; }
     
     // Konfiguracja
     virtual bool configure(const MotorConfig& config) = 0;

@@ -22,8 +22,8 @@ service DomeService {
 
 enum DomeType {
     DOME_UNKNOWN = 0;
-    DOME_ROTATING = 1;
-    DOME_ROLLOFF = 2;
+    DOME_TYPE_ROTATING = 1;
+    DOME_TYPE_ROLLOFF = 2;
 }
 
 enum DomeState {
