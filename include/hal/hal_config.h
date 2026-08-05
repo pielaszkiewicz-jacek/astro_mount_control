@@ -11,6 +11,8 @@ namespace hal {
 
 enum class HALType {
     SIMULATED,   // Symulowany hardware
+    CANOPEN,     // CANopen/CiA 402
+    MF7025V2,    // LingKong MF7025v2 BLDC Servo (proprietary CAN V2.36)
     SERIAL,      // Port szeregowy (RS-232/485)
     ETHERNET,    // Ethernet (EtherCAT, Modbus TCP)
     GAMEPAD,     // Ręczne sterowanie (gamepad/joystick)
@@ -41,7 +43,20 @@ struct HALConfig {
         uint32_t timeout_ms{1000};
         uint32_t retry_count{3};
     } ethernet;
-    
+
+    // Konfiguracja MF7025v2 (LingKong BLDC, proprietary CAN V2.36)
+    struct {
+        std::string can_interface{"can0"};
+        uint32_t bitrate{1000000};
+        uint32_t sdo_timeout_ms{100};
+        double position_units_per_degree{100.0};   // 0.01°/LSB
+        double velocity_units_per_dps{100.0};       // 0.01dps/LSB
+        bool can_trace{true};                       // Log all CAN frames with decoded parameters
+        bool can_trace_read_state{false};           // Log ReadState commands (0x9A,0x9C,0x9D,0x90,0x92,0x94)
+        uint32_t status_poll_ms{50};                // Interval for status reads (0x9C + 0x94) [ms]
+        uint32_t absolute_position_poll_ms{100};    // Interval for absolute position (0x92) [ms]
+    } mf7025v2;
+
     // Konfiguracja symulacji
     struct {
         bool enable_simulation{true};
@@ -141,7 +156,19 @@ struct HALConfig {
         config.simulated.velocity_noise_stddev = simulated.value("velocity_noise_stddev", 0.0001);
         config.simulated.simulate_errors = simulated.value("simulate_errors", false);
         config.simulated.error_probability = simulated.value("error_probability", 0.01);
-        
+
+        // Parse MF7025v2 configuration
+        auto mf7025v2 = json.value("mf7025v2", nlohmann::json::object());
+        config.mf7025v2.can_interface = mf7025v2.value("can_interface", "can0");
+        config.mf7025v2.bitrate = mf7025v2.value("bitrate", 1000000);
+        config.mf7025v2.sdo_timeout_ms = mf7025v2.value("sdo_timeout_ms", 100);
+        config.mf7025v2.position_units_per_degree = mf7025v2.value("position_units_per_degree", 100.0);
+        config.mf7025v2.velocity_units_per_dps = mf7025v2.value("velocity_units_per_dps", 100.0);
+        config.mf7025v2.can_trace = mf7025v2.value("can_trace", true);
+        config.mf7025v2.can_trace_read_state = mf7025v2.value("can_trace_read_state", false);
+        config.mf7025v2.status_poll_ms = mf7025v2.value("status_poll_ms", 50);
+        config.mf7025v2.absolute_position_poll_ms = mf7025v2.value("absolute_position_poll_ms", 100);
+
         // Parse serial configuration
         auto serial = json.value("serial", nlohmann::json::object());
         config.serial.port = serial.value("port", "/dev/ttyUSB0");
@@ -318,7 +345,20 @@ struct HALConfig {
         simulated_json["simulate_errors"] = simulated.simulate_errors;
         simulated_json["error_probability"] = simulated.error_probability;
         hal["simulated"] = simulated_json;
-        
+
+        // Save MF7025v2 configuration
+        nlohmann::json mf7025v2_json;
+        mf7025v2_json["can_interface"] = mf7025v2.can_interface;
+        mf7025v2_json["bitrate"] = mf7025v2.bitrate;
+        mf7025v2_json["sdo_timeout_ms"] = mf7025v2.sdo_timeout_ms;
+        mf7025v2_json["position_units_per_degree"] = mf7025v2.position_units_per_degree;
+        mf7025v2_json["velocity_units_per_dps"] = mf7025v2.velocity_units_per_dps;
+        mf7025v2_json["can_trace"] = mf7025v2.can_trace;
+        mf7025v2_json["can_trace_read_state"] = mf7025v2.can_trace_read_state;
+        mf7025v2_json["status_poll_ms"] = mf7025v2.status_poll_ms;
+        mf7025v2_json["absolute_position_poll_ms"] = mf7025v2.absolute_position_poll_ms;
+        hal["mf7025v2"] = mf7025v2_json;
+
         // Save serial configuration
         nlohmann::json serial_json;
         serial_json["port"] = serial.port;
@@ -500,6 +540,8 @@ struct HALConfig {
     std::string getTypeString() const {
         switch (type) {
             case HALType::SIMULATED: return "simulated";
+            case HALType::CANOPEN: return "canopen";
+            case HALType::MF7025V2: return "mf7025v2";
             case HALType::SERIAL: return "serial";
             case HALType::ETHERNET: return "ethernet";
             case HALType::GAMEPAD: return "gamepad";
@@ -510,6 +552,8 @@ struct HALConfig {
     
     static HALType typeFromString(const std::string& type_str) {
         if (type_str == "simulated") return HALType::SIMULATED;
+        if (type_str == "canopen") return HALType::CANOPEN;
+        if (type_str == "mf7025v2") return HALType::MF7025V2;
         if (type_str == "serial") return HALType::SERIAL;
         if (type_str == "ethernet") return HALType::ETHERNET;
         if (type_str == "gamepad") return HALType::GAMEPAD;

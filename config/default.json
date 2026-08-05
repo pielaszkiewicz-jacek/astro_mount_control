@@ -414,9 +414,9 @@
         ]
     },
     "telescope": {
-        "aperture": 8e-322,
+        "aperture": 200.0,
         "camera_model": "ASI1600",
-        "focal_length": -1.136e-321,
+        "focal_length": 2000.0,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,

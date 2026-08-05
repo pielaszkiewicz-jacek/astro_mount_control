@@ -49,6 +49,32 @@ app.use(express.static(path.join(__dirname, '../public'), {
 
 // ─── Route Registration ──────────────────────────────────────────────────────
 
+// Standalone routes (mounted at /api directly, not under a sub-path)
+const { grpcCall } = require('./grpc/client');
+const { errorResponse } = require('./grpc/converters');
+
+app.post('/api/clear-errors', async (req, res) => {
+  try {
+    await grpcCall('ClearErrors', {});
+    res.json({ success: true, message: 'Errors cleared' });
+  } catch (err) {
+    errorResponse(res, 502, 'Clear errors failed', err.message);
+  }
+});
+
+app.post('/api/home', async (req, res) => {
+  try {
+    const { axis1, axis2 } = req.body;
+    if (axis1 === undefined || axis2 === undefined) {
+      return errorResponse(res, 400, 'Missing required fields: axis1, axis2');
+    }
+    await grpcCall('Home', { axis1, axis2 });
+    res.json({ success: true, message: `Mount homed to axis1=${axis1}°, axis2=${axis2}°` });
+  } catch (err) {
+    errorResponse(res, 502, 'Home failed', err.message);
+  }
+});
+
 app.use('/api', require('./routes/mount'));
 app.use('/api/axis', require('./routes/axis'));
 app.use('/api/calibration', require('./routes/calibration'));

@@ -153,12 +153,12 @@ public:
         // ==========================================
         auto telescope = config_.value("telescope", json::object());
         double focal = telescope.value("focal_length", 0.0);
-        if (focal <= 0.0) {
-            errors.push_back("Invalid telescope.focal_length (must be > 0)");
+        if (!std::isfinite(focal) || focal <= 0.0) {
+            errors.push_back("Invalid telescope.focal_length (must be a finite positive number)");
         }
         double aperture = telescope.value("aperture", 0.0);
-        if (aperture <= 0.0) {
-            errors.push_back("Invalid telescope.aperture (must be > 0)");
+        if (!std::isfinite(aperture) || aperture <= 0.0) {
+            errors.push_back("Invalid telescope.aperture (must be a finite positive number)");
         }
         double pixel_size = telescope.value("pixel_size", 0.0);
         if (pixel_size <= 0.0) {

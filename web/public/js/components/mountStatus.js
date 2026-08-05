@@ -33,8 +33,10 @@ const MountStatusComponent = (() => {
 
   /**
    * Append velocity readings to the rolling buffer and render the chart.
-   * @param {number} rate1 - Axis 1 velocity (arcsec/s)
-   * @param {number} rate2 - Axis 2 velocity (arcsec/s)
+   * Uses actual motor axis rates (deg/s from CANopen hardware) to show
+   * real-time motor rotational speed.
+   * @param {number} rate1 - Axis 1 actual velocity (deg/s)
+   * @param {number} rate2 - Axis 2 actual velocity (deg/s)
    */
   function updateVelocityChart(rate1, rate2) {
     const canvas = $('#velocity-canvas');
@@ -196,7 +198,7 @@ const MountStatusComponent = (() => {
     ctx.save();
     ctx.translate(10, margin.top + plotH / 2);
     ctx.rotate(-Math.PI / 2);
-    ctx.fillText('"/s', 0, 0);
+    ctx.fillText('°/s', 0, 0);
     ctx.restore();
 
     // ── X-axis time labels ──
@@ -384,13 +386,12 @@ const MountStatusComponent = (() => {
       return;
     }
 
-    // Update velocity chart with commanded tracking rates (already in arcsec/s).
-    // Using the commanded rate (tracking_rate_*) instead of the raw CANopen
-    // velocity (actual_rate_*) avoids oscillations: in position mode the drive
-    // stops between updates, causing actual_rate to flicker 0 ↔ small values.
+    // Update velocity chart with actual motor axis rates (deg/s from CANopen).
+    // Exponential moving average smoothing in drawChart handles the inherent
+    // flicker of position-mode velocity readings (0 ↔ small values).
     updateVelocityChart(
-      state.tracking_rate_ra ?? 0,
-      state.tracking_rate_dec ?? 0
+      state.actual_rate_axis1 ?? 0,
+      state.actual_rate_axis2 ?? 0
     );
 
     // Update status badge
@@ -440,31 +441,40 @@ const MountStatusComponent = (() => {
     const posEl = $('#position-content');
     if (posEl) {
       posEl.innerHTML = `
-        <div class="stat-section-label">Servo (motor shaft)</div>
+        <div class="stat-section-label">Servo Position (motor shaft)</div>
         <div class="stat-row">
           <span class="stat-label">Axis 1</span>
-          <span class="stat-value highlight">${formatAngleDeg(state.position?.axis1, false)}</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.position?.axis1, true)}</span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Axis 2</span>
-          <span class="stat-value highlight">${formatAngleDeg(state.position?.axis2, false)}</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.position?.axis2, true)}</span>
+        </div>
+        <div class="stat-section-label">Motor Velocity (actual)</div>
+        <div class="stat-row">
+          <span class="stat-label">Axis 1</span>
+          <span class="stat-value highlight">${formatNumber(state.actual_rate_axis1, 6)} °/s</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Axis 2</span>
+          <span class="stat-value highlight">${formatNumber(state.actual_rate_axis2, 6)} °/s</span>
         </div>
         <div class="stat-section-label">Telescope (after gear ratio)</div>
         <div class="stat-row">
           <span class="stat-label">Axis 1</span>
-          <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis1, false)}</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis1, true)}</span>
         </div>
         <div class="stat-row">
           <span class="stat-label">Axis 2</span>
-          <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis2, false)}</span>
+          <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis2, true)}</span>
         </div>
-        <div class="stat-section-label">Tracking</div>
+        <div class="stat-section-label">Tracking Rates</div>
         <div class="stat-row">
-          <span class="stat-label">Rate RA</span>
+          <span class="stat-label">RA</span>
           <span class="stat-value">${formatNumber(state.tracking_rate_ra, 4)} "/s</span>
         </div>
         <div class="stat-row">
-          <span class="stat-label">Rate Dec</span>
+          <span class="stat-label">Dec</span>
           <span class="stat-value">${formatNumber(state.tracking_rate_dec, 4)} "/s</span>
         </div>
       `;

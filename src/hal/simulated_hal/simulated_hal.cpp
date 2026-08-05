@@ -1,6 +1,7 @@
 #include "hal/simulated_hal/simulated_hal.h"
 #include "hal/safety_monitor.h"
 #include "hal/sensor_interface.h"
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <thread>
@@ -539,23 +540,17 @@ bool SimulatedHAL::isInitialized() const {
 }
 
 std::unique_ptr<MotorControl> SimulatedHAL::createMotorControl(int axis_id) {
-    if (axis_id < 0 || axis_id >= motors_.size()) {
+    if (axis_id < 0 || axis_id >= static_cast<int>(motors_.size()) || !motors_[axis_id]) {
         return nullptr;
     }
-    
-    // Return a copy of the motor control interface
-    // In reality, we would return the existing instance
-    // For now, just return nullptr as the motors are already created
-    return nullptr;
+    return std::make_unique<MotorProxy>(motors_[axis_id].get());
 }
 
 std::unique_ptr<EncoderReader> SimulatedHAL::createEncoderReader(int axis_id) {
-    if (axis_id < 0 || axis_id >= encoders_.size()) {
+    if (axis_id < 0 || axis_id >= static_cast<int>(encoders_.size()) || !encoders_[axis_id]) {
         return nullptr;
     }
-    
-    // Return a copy of the encoder interface
-    return nullptr;
+    return std::make_unique<EncoderProxy>(encoders_[axis_id].get());
 }
 
 std::unique_ptr<SafetyMonitor> SimulatedHAL::createSafetyMonitor() {

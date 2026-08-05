@@ -14,15 +14,24 @@ endif()
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
 
-file(GLOB_RECURSE PROTO_FILES ${CMAKE_SOURCE_DIR}/../proto/*.proto)
-set(PROTO_GEN_DIR ${CMAKE_BINARY_DIR}/gen)
-file(MAKE_DIRECTORY ${PROTO_GEN_DIR})
-protobuf_generate(PROTO_PATH ${CMAKE_SOURCE_DIR}/.. PROTOS ${PROTO_FILES}
-    LANGUAGE cpp PROTOC_OUT_DIR ${PROTO_GEN_DIR} OUT_VAR PROTO_SRCS)
-protobuf_generate(PROTO_PATH ${CMAKE_SOURCE_DIR}/.. PROTOS ${PROTO_FILES}
-    LANGUAGE grpc PLUGIN protoc-gen-grpc=$<TARGET_FILE:gRPC::grpc_cpp_plugin>
-    GENERATE_EXTENSIONS .grpc.pb.h .grpc.pb.cc PROTOC_OUT_DIR ${PROTO_GEN_DIR}
-    OUT_VAR PROTO_GRPC_SRCS)
+# Reuse proto-generated sources from the main build — avoids redundant
+# protoc invocation and sidesteps protobuf_generate() PROTO_PATH issues
+# in CMake ≥4.x subdirectory contexts.
+set(MAIN_BUILD_DIR ${CMAKE_SOURCE_DIR}/../build)
+set(PROTO_GEN_DIR ${MAIN_BUILD_DIR}/gen)
+
+if(NOT EXISTS ${PROTO_GEN_DIR})
+    message(FATAL_ERROR "Main build proto output not found at ${PROTO_GEN_DIR}. "
+            "Build the top-level project first: cd ../.. && cmake -B build && cmake --build build")
+endif()
+
+file(GLOB_RECURSE PROTO_SRCS
+    ${PROTO_GEN_DIR}/proto/*.pb.cc
+    ${PROTO_GEN_DIR}/proto/*.grpc.pb.cc
+)
+
+# Qt resource file for stylesheet
+set(RESOURCE_FILES resources.qrc)
 
 set(PANEL_SOURCES
     src/panels/mount_panel.cpp src/panels/mount_panel.h
@@ -38,6 +47,8 @@ set(PANEL_SOURCES
     src/panels/power_panel.cpp src/panels/power_panel.h
     src/panels/notifications_panel.cpp src/panels/notifications_panel.h
     src/panels/settings_dialog.cpp src/panels/settings_dialog.h
+    src/panels/settings_panel.cpp src/panels/settings_panel.h
+    src/panels/database_panel.cpp src/panels/database_panel.h
 )
 
 set(WIDGET_SOURCES
@@ -51,13 +62,15 @@ add_executable(astro_mount_gui
     src/main.cpp
     src/main_window.cpp
     src/grpc_client.cpp
+    src/db_grpc_client.cpp
+    ${RESOURCE_FILES}
     ${PANEL_SOURCES}
     ${WIDGET_SOURCES}
     ${PROTO_SRCS}
 )
 
 target_include_directories(astro_mount_gui PRIVATE
-    ${PROTO_GEN_DIR} src ${CMAKE_SOURCE_DIR}/..)
+    ${PROTO_GEN_DIR} ${PROTO_GEN_DIR}/proto src ${CMAKE_SOURCE_DIR}/..)
 
 target_link_libraries(astro_mount_gui PRIVATE
     Qt5::Widgets Qt5::Network Qt5::Svg

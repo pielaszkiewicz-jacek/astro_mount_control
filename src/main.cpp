@@ -46,9 +46,10 @@ std::unique_ptr<PowerService::Stub> power_stub;
 // Integration config
 config::Configuration::ExternalIntegrationConfig ext_config;
 
-void signal_handler(int signal) {
-    auto logger = logging::Logger::get("main");
-    logger->info("Received signal {}, shutting down...", signal);
+void signal_handler(int /*signal*/) {
+    // Only set the atomic flag — calling non-async-signal-safe functions
+    // (like Logger, malloc, mutex lock) from a signal handler is UB and
+    // can cause deadlocks.
     running = false;
 }
 
@@ -310,7 +311,7 @@ int main(int argc, char* argv[]) {
                 weather_client = std::make_unique<controllers::WeatherClient>(
                     ext_config.weather_address);
                 weather_client->start(ext_config.weather_poll_interval_ms,
-                    [&mount_controller, logger](const std::string& msg) {
+                    [logger](const std::string& msg) {
                         logger->warn("Weather DANGER: {} — auto-parking mount", msg);
                         if (mount_controller) {
                             mount_controller->park();

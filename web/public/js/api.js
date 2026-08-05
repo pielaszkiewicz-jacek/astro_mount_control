@@ -283,7 +283,7 @@ const Api = (() => {
    * @returns {Promise<object>}
    */
   async function moveAxis(axisId, velocity, acceleration) {
-    const body = { axis_id: axisId, velocity };
+    const body = { axis: axisId, velocity };
     if (acceleration !== undefined && acceleration > 0) {
       body.acceleration = acceleration;
     }
@@ -304,7 +304,7 @@ const Api = (() => {
    * @returns {Promise<object>}
    */
   async function moveAxisRelative(axisId, offsetDeg, velocity, acceleration, deceleration) {
-    const body = { axis_id: axisId, offset_deg: offsetDeg };
+    const body = { axis: axisId, offset_deg: offsetDeg };
     if (velocity !== undefined && velocity > 0) {
       body.velocity = velocity;
     }
@@ -331,7 +331,7 @@ const Api = (() => {
    * @returns {Promise<object>}
    */
   async function moveAxisAbsolute(axisId, targetDeg, velocity, acceleration, deceleration) {
-    const body = { axis_id: axisId, target_deg: targetDeg };
+    const body = { axis: axisId, target_deg: targetDeg };
     if (velocity !== undefined && velocity > 0) {
       body.velocity = velocity;
     }
@@ -355,7 +355,7 @@ const Api = (() => {
    * @returns {Promise<object>}
    */
   async function stopAxis(axisId, deceleration) {
-    const body = { axis_id: axisId };
+    const body = { axis: axisId };
     if (deceleration !== undefined && deceleration > 0) {
       body.deceleration = deceleration;
     }

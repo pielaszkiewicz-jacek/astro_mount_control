@@ -1,4 +1,5 @@
 #include "hal/focuser_control.h"
+#include <algorithm>
 #include <thread>
 #include <chrono>
 #include <cstring>

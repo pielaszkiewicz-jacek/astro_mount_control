@@ -15,6 +15,13 @@ const { formatState, errorResponse } = require('../grpc/converters');
 router.get('/status', async (req, res) => {
   try {
     const state = await grpcCall('GetState', {});
+    // DEBUG: log raw gRPC position data
+    const cp = state.current_position;
+    console.log('[DEBUG /api/status] current_position:', cp ? JSON.stringify(cp) : 'MISSING',
+                '| telescope_axis1:', state.telescope_axis1,
+                '| telescope_axis2:', state.telescope_axis2,
+                '| actual_rate_axis1:', state.actual_rate_axis1,
+                '| actual_rate_axis2:', state.actual_rate_axis2);
     res.json(formatState(state));
   } catch (err) {
     errorResponse(res, 503, 'Mount controller unreachable', err.message);

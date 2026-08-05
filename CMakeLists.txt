@@ -166,6 +166,8 @@ set(CORE_SOURCES
     src/hal/ethernet_hal/ethernet_hal.cpp
     src/hal/gamepad_hal/gamepad_hal.cpp
     src/hal/gamepad_hal/gamepad_input_evdev.cpp
+    src/hal/mf7025v2_hal/mf7025v2_hal.cpp
+    src/controllers/mf7025v2_interface.cpp
 )
 
 set(DEROTATOR_SOURCES
@@ -313,7 +315,7 @@ target_link_libraries(astro_mount_core
     $<$<BOOL:${spdlog_FOUND}>:spdlog::spdlog>
     $<$<BOOL:${fmt_FOUND}>:fmt::fmt>
     Eigen3::Eigen
-    SQLite::SQLite3
+    SQLite3::SQLite3
 )
 
 # Add include directories
@@ -513,6 +515,7 @@ if(GTest_FOUND)
 
     add_test(NAME GrpcIntegrationTest
         COMMAND test_grpc_integration)
+    set_tests_properties(GrpcIntegrationTest PROPERTIES TIMEOUT 1800)
 
     add_executable(test_subarcsecond_accuracy
         tests/test_subarcsecond_accuracy.cpp

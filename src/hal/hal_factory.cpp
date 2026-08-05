@@ -1,5 +1,7 @@
 #include "hal/hal_factory.h"
 #include "hal/simulated_hal/simulated_hal.h"
+#include "hal/mf7025v2_hal/mf7025v2_hal.h"
+#include "controllers/imf7025v2_interface.h"
 #include "serial_hal/serial_hal.h"
 #include "ethernet_hal/ethernet_hal.h"
 #include "gamepad_hal/gamepad_hal.h"
@@ -16,6 +18,10 @@ std::unique_ptr<HALInterface> HALFactory::create(const HALConfig& config) {
     switch (config.type) {
         case HALType::SIMULATED:
             return createSimulatedHAL(config);
+        case HALType::CANOPEN:
+            throw std::runtime_error("CANopen HAL implementation not yet available");
+        case HALType::MF7025V2:
+            return createMf7025v2HAL(config);
         case HALType::SERIAL:
             return createSerialHAL(config);
         case HALType::ETHERNET:
@@ -55,6 +61,11 @@ std::vector<HALType> HALFactory::getAvailableTypes() {
         types.push_back(HALType::ETHERNET);
     }
     
+    // MF7025v2 HAL is available on Linux (SocketCAN)
+#ifdef __linux__
+    types.push_back(HALType::MF7025V2);
+#endif
+
     // Gamepad HAL is always available
     types.push_back(HALType::GAMEPAD);
     
@@ -68,6 +79,8 @@ std::vector<std::string> HALFactory::getAvailableTypeNames() {
     for (const auto& type : types) {
         switch (type) {
             case HALType::SIMULATED: names.push_back("simulated"); break;
+            case HALType::CANOPEN: names.push_back("canopen"); break;
+            case HALType::MF7025V2: names.push_back("mf7025v2"); break;
             case HALType::SERIAL: names.push_back("serial"); break;
             case HALType::ETHERNET: names.push_back("ethernet"); break;
             case HALType::GAMEPAD: names.push_back("gamepad"); break;
@@ -236,6 +249,25 @@ std::unique_ptr<HALInterface> HALFactory::createGamepadHAL(const HALConfig& conf
         return std::make_unique<GamepadHAL>(config);
     } catch (const std::exception& e) {
         std::cerr << "Failed to create GamepadHAL: " << e.what() << std::endl;
+        throw;
+    }
+}
+
+std::unique_ptr<HALInterface> HALFactory::createCanOpenHAL(const HALConfig& config) {
+    (void)config;
+    throw std::runtime_error("CANopen HAL not yet implemented");
+}
+
+std::unique_ptr<HALInterface> HALFactory::createMf7025v2HAL(const HALConfig& config) {
+    try {
+        auto can = controllers::createMf7025v2CanInterface();
+        auto hal = std::make_unique<Mf7025v2Hal>(std::move(can));
+        if (!hal->initialize(config)) {
+            throw std::runtime_error("Failed to initialize Mf7025v2Hal");
+        }
+        return hal;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create Mf7025v2Hal: " << e.what() << std::endl;
         throw;
     }
 }

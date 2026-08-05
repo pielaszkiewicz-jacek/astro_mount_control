@@ -2,6 +2,7 @@
 #include "core/astronomical_calculations.h"
 #include "hal/hal_interface.h"
 #include "hal/hal_config.h"
+#include "hal/hal_factory.h"
 #include "hal/safety_monitor.h"
 #include "hal/sensor_interface.h"
 #include "models/ephemeris_tracker.h"
@@ -308,6 +309,13 @@ public:
             // Park positions are in telescope degrees; convert to servo degrees.
             axis1_position_ = config_.safety_config.park_position_axis1 * config_.mount_config.ha_axis_params.gear_ratio;
             axis2_position_ = config_.safety_config.park_position_axis2 * config_.mount_config.dec_axis_params.gear_ratio;
+            // Also initialise raw servo positions so getStatus() reports
+            // correct telescope positions from the start (status tab).
+            raw_servo_axis1_position_ = axis1_position_;
+            raw_servo_axis2_position_ = axis2_position_;
+            MOUNT_LOG_INFO("Park init: axis1_pos={:.2f} axis2_pos={:.2f} raw_servo1={:.2f} raw_servo2={:.2f}",
+                          axis1_position_, axis2_position_,
+                          raw_servo_axis1_position_, raw_servo_axis2_position_);
         }
 
         // Initialize position Kalman filter with config noise parameters.
@@ -317,7 +325,18 @@ public:
         position_kf_->init(axis1_position_, axis2_position_,
                            config_.mount_config.process_noise, config_.mount_config.measurement_noise);
         
-        // Initialize HAL interface if available
+        // Initialize HAL interface — create it from config type if not injected
+        if (!hal_interface_) {
+            hal_interface_ = hal::HALFactory::create(hal_config_.type);
+            if (!hal_interface_) {
+                MOUNT_LOG_ERROR("Failed to create HAL interface for type={}",
+                               static_cast<int>(hal_config_.type));
+                return false;
+            }
+            MOUNT_LOG_INFO("HAL interface created from config type");
+        }
+
+        // Initialize HAL interface
         if (hal_interface_) {
             // hal_config_ was loaded from config.hal_config and keeps its type
             // (SIMULATED, SERIAL, ETHERNET or GAMEPAD — the supported HAL types).
@@ -374,37 +393,69 @@ public:
             // For incremental encoders the park position is used as a
             // fallback when the drive does not respond to position queries.
             bool drive_positions_read = false;
+            bool pos0_valid = false;
+            bool pos1_valid = false;
             if (hal_axis1_motor_ && hal_axis2_motor_) {
                 try {
                     double pos0 = hal_axis1_motor_->getActualPosition();
                     double pos1 = hal_axis2_motor_->getActualPosition();
                     if (std::isfinite(pos0) && std::isfinite(pos1)) {
-                        axis1_position_ = pos0;
-                        axis2_position_ = pos1;
-                        raw_servo_axis1_position_ = pos0;
-                        raw_servo_axis2_position_ = pos1;
-                        drive_positions_read = true;
+                        // For incremental encoders, the drive reports 0.0 at
+                        // power-up.  Only sync from the drive when it returns a
+                        // plausible non-zero position; otherwise keep the
+                        // park-position initialisation done above.
+                        pos0_valid = (std::abs(pos0) > 0.001);
+                        pos1_valid = (std::abs(pos1) > 0.001);
+                        if (pos0_valid) {
+                            axis1_position_ = pos0;
+                            raw_servo_axis1_position_ = pos0;
+                        }
+                        if (pos1_valid) {
+                            axis2_position_ = pos1;
+                            raw_servo_axis2_position_ = pos1;
+                        }
+                        drive_positions_read = (pos0_valid || pos1_valid);
                         MOUNT_LOG_INFO("Synced internal state to drive positions: "
-                                      "axis1={:.4f}°, axis2={:.4f}°",
-                                      axis1_position_, axis2_position_);
+                                      "axis1={:.4f}° (from_drive={}), axis2={:.4f}° (from_drive={})",
+                                      axis1_position_, pos0_valid,
+                                      axis2_position_, pos1_valid);
                     }
                 } catch (const std::exception& e) {
                     MOUNT_LOG_WARN("Could not read drive positions during init: {}", e.what());
                 }
             }
 
-            // Now set position targets to the current position (no-op motion)
-            // using a moderate velocity to prevent sudden moves if the positions
-            // didn't match (shouldn't happen since we just synced).
-            hal_axis1_motor_->setPosition(axis1_position_,
-                                          config_.mount_config.max_slew_rate,
-                                          config_.mount_config.slew_acceleration);
-            hal_axis2_motor_->setPosition(axis2_position_,
-                                          config_.mount_config.max_slew_rate,
-                                          config_.mount_config.slew_acceleration);
-            MOUNT_LOG_DEBUG("Position targets set to ({:.4f}°, {:.4f}°) "
-                           "(drive_positions_read={})",
-                           axis1_position_, axis2_position_, drive_positions_read);
+            // Set position targets only for axes where we read an actual
+            // drive position.  For incremental encoders that returned 0.0
+            // we kept the park-position value — sending that as a target
+            // would cause an unwanted slew (e.g. 0° → 32400°).
+            if (pos0_valid) {
+                hal_axis1_motor_->setPosition(axis1_position_,
+                                              config_.mount_config.max_slew_rate,
+                                              config_.mount_config.slew_acceleration);
+            }
+            if (pos1_valid) {
+                hal_axis2_motor_->setPosition(axis2_position_,
+                                              config_.mount_config.max_slew_rate,
+                                              config_.mount_config.slew_acceleration);
+            }
+            MOUNT_LOG_DEBUG("Position targets set: axis1={} axis2={} (drive_positions_read={})",
+                           pos0_valid, pos1_valid, drive_positions_read);
+
+            // Stop both axes to cancel any residual motion from motor
+            // power-on (motorRun).  Some BLDC drives twitch or drift
+            // briefly when enabled; an explicit stop ensures they are
+            // stationary before normal operation begins.
+            hal_axis1_motor_->stop();
+            hal_axis2_motor_->stop();
+
+            // Start HAL monitor thread — reads status, temperature,
+            // encoder position, and multi-turn angle from the drive
+            // at regular intervals via the CAN bus.
+            if (hal_interface_) {
+                hal_interface_->start();
+                MOUNT_LOG_INFO("HAL monitor started for periodic CAN status reads");
+            }
         }
         
         // Configure TPointModel with mount and telescope physical parameters.
@@ -2929,10 +2980,24 @@ public:
             if (hal_axis1_motor_) hal_axis1_motor_->stop();
             if (hal_axis2_motor_) hal_axis2_motor_->stop();
             
-            // Stop HAL interface — halts periodic hardware I/O after active motion ends.
-            if (hal_interface_) {
-                hal_interface_->stop();
-            }
+            // Clear velocity/position-control flags so refreshPositionsFromHAL
+            // does not overwrite zeroed rates with stale 0x606C data.
+            axis_velocity_control_active_[0] = false;
+            axis_velocity_control_active_[1] = false;
+            axis_position_control_active_[0] = false;
+            axis_position_control_active_[1] = false;
+            
+            // Zero the actual motor velocity cache so the UI shows 0 °/s
+            // immediately after Stop (the CANopen 0x606C object may still
+            // report stale non-zero velocity).
+            actual_axis1_rate_ = 0.0;
+            actual_axis2_rate_ = 0.0;
+            
+            // NOTE: hal_interface_->stop() is intentionally NOT called here.
+            // Stopping the HAL would halt all CAN bus communication, preventing
+            // refreshPositionsFromHAL() from reading motor positions. The UI
+            // needs live position updates even when the mount is idle.
+            // The HAL is only stopped during shutdown().
             
             if (state_ == MountStatus::State::SLEWING ||
                 state_ == MountStatus::State::TRACKING ||
@@ -3220,9 +3285,20 @@ public:
         if (ha_gear < 1.0) ha_gear = 360.0;
         if (dec_gear < 1.0) dec_gear = 360.0;
 
-        // Compute raw telescope positions from CANopen ground-truth (servo / gear_ratio)
-        double raw_tel_axis1 = raw_servo_axis1_position_ / ha_gear;
-        double raw_tel_axis2 = raw_servo_axis2_position_ / dec_gear;
+        // Compute raw telescope positions from CANopen ground-truth (servo / gear_ratio).
+        // For incremental encoders at startup, the HAL reports 0.0 until the mount
+        // moves.  Fall back to the internally tracked axis positions (initialised
+        // from park config) when the raw servo position is zero but the internal
+        // position is non-zero.
+        double raw_servo1 = raw_servo_axis1_position_;
+        double raw_servo2 = raw_servo_axis2_position_;
+        if (std::abs(raw_servo1) < 0.001 && std::abs(axis1_position_) > 0.001)
+            raw_servo1 = axis1_position_;
+        if (std::abs(raw_servo2) < 0.001 && std::abs(axis2_position_) > 0.001)
+            raw_servo2 = axis2_position_;
+
+        double raw_tel_axis1 = raw_servo1 / ha_gear;
+        double raw_tel_axis2 = raw_servo2 / dec_gear;
 
         // Normalize telescope positions to [0°, 360°) for consistent display.
         // -50° → 310°, 400° → 40°, etc.
@@ -3346,8 +3422,8 @@ public:
             // This is the ground-truth position; getStatus() reports the
             // telescope position derived from these values regardless of
             // whether tracking is active.
-            raw_servo_axis1_position_ = pos0;
-            raw_servo_axis2_position_ = pos1;
+            raw_servo_axis1_position_ = pos0 + home_offset_axis1_;
+            raw_servo_axis2_position_ = pos1 + home_offset_axis2_;
 
             // During active tracking, the tracking loop OWNS axis1_position_ /
             // axis2_position_.  Overwriting them here with the motor position
@@ -3360,15 +3436,47 @@ public:
             // update axis1_position_/axis2_position_ so getStatus() returns
             // the correct drive position for UI display and status queries.
             if (!tracking_active_) {
-                axis1_position_ = pos0;
-                axis2_position_ = pos1;
+                // Only update from HAL if the motor reports a plausible
+                // position.  At startup with incremental encoders the HAL
+                // returns 0.0, which would overwrite the park-position
+                // initialisation done during mount init.
+                //
+                // Apply home_offset so axis1/2_position_ stays in the
+                // offset-adjusted (homed) reference frame.  Without this,
+                // getStatus()'s fallback would override the home reference
+                // when raw_servo_axis* is near zero (e.g. after Home(0,0)).
+                if (std::abs(pos0) > 0.001 || std::abs(axis1_position_) < 0.001)
+                    axis1_position_ = pos0 + home_offset_axis1_;
+                if (std::abs(pos1) > 0.001 || std::abs(axis2_position_) < 0.001)
+                    axis2_position_ = pos1 + home_offset_axis2_;
             }
             // Store actual motor velocities in dedicated fields.
             // Do NOT overwrite axis1_rate_/axis2_rate_ which hold the
             // commanded tracking rates set by startTracking() — the UI
             // needs both values (commanded vs actual).
+            //
+            // Always update actual motor velocity from HAL.
+            // MF7025v2 reads fresh velocity from 0x9C every cycle
+            // and reports 0 when stopped — no stale-data issue.
             actual_axis1_rate_ = vel0;
             actual_axis2_rate_ = vel1;
+
+            // Auto-clear position-control flag when the velocity drops to
+            // near-zero, indicating the position profile has completed.
+            // We check actual velocity (0x606C) rather than isMoving()
+            // because some CANopen drives keep isMoving()=true indefinitely
+            // while holding position in "operation enabled" state.  The
+            // 0x606C velocity is reliable once the profile finishes — the
+            // stale-reading issue documented above only occurs after an
+            // explicit stopAxis(), not after normal profile completion.
+            if (axis_position_control_active_[0] && std::abs(vel0) < 0.0001) {
+                actual_axis1_rate_ = 0.0;
+                axis_position_control_active_[0] = false;
+            }
+            if (axis_position_control_active_[1] && std::abs(vel1) < 0.0001) {
+                actual_axis2_rate_ = 0.0;
+                axis_position_control_active_[1] = false;
+            }
 
             // Throttled log: servo → telescope position + velocity.
             // Logs every ~50 calls (~5 s at 100 ms main loop) to help
@@ -4547,6 +4655,8 @@ public:
         
         state["axis1_position"] = axis1_position_;
         state["axis2_position"] = axis2_position_;
+        state["home_offset_axis1"] = home_offset_axis1_;
+        state["home_offset_axis2"] = home_offset_axis2_;
         state["axis1_target"] = axis1_target_;
         state["axis2_target"] = axis2_target_;
         state["state"] = static_cast<int>(state_);
@@ -4619,6 +4729,8 @@ public:
                 
                 axis1_position_ = state.value("axis1_position", 0.0);
                 axis2_position_ = state.value("axis2_position", 0.0);
+                home_offset_axis1_ = state.value("home_offset_axis1", 0.0);
+                home_offset_axis2_ = state.value("home_offset_axis2", 0.0);
                 axis1_target_ = state.value("axis1_target", 0.0);
                 axis2_target_ = state.value("axis2_target", 0.0);
                 
@@ -4717,26 +4829,60 @@ public:
     
     bool controlAxis(int axis_id, int mode, double target_position,
                      double target_velocity, double acceleration, bool relative) {
-        if (axis_id < 0 || axis_id > 1) return false;
+        if (axis_id < 0 || axis_id > 1) {
+            MOUNT_LOG_ERROR("controlAxis: invalid axis_id={}", axis_id);
+            return false;
+        }
         try {
-            if (hal_axis1_motor_ && hal_axis2_motor_) {
-                auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
-                if (mode == 0) {  // POSITION_CONTROL
-                    double final_position = target_position;
-                    if (relative) {
-                        final_position = motor->getActualPosition() + target_position;
-                    }
-                    return motor->setPosition(final_position, target_velocity, acceleration);
-                } else {  // VELOCITY_CONTROL
-                    double final_velocity = target_velocity;
-                    if (relative) {
-                        final_velocity = motor->getActualVelocity() + target_velocity;
-                    }
-                    return motor->setVelocity(final_velocity, acceleration);
+            if (!hal_axis1_motor_ || !hal_axis2_motor_) {
+                MOUNT_LOG_ERROR("controlAxis: HAL motors not initialised (hal_axis1={}, hal_axis2={})",
+                               static_cast<bool>(hal_axis1_motor_), static_cast<bool>(hal_axis2_motor_));
+                return false;
+            }
+            auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+
+            if (!motor->isEnabled()) {
+                MOUNT_LOG_ERROR("controlAxis: motor {} is not enabled (error_state={})",
+                               axis_id, motor->inErrorState());
+                return false;
+            }
+            if (motor->inErrorState()) {
+                MOUNT_LOG_ERROR("controlAxis: motor {} is in error state: {}",
+                               axis_id, motor->getErrorString());
+                return false;
+            }
+
+            if (mode == 0) {  // POSITION_CONTROL
+                double final_position = target_position;
+                if (relative) {
+                    final_position = motor->getActualPosition() + target_position;
                 }
+                bool ok = motor->setPosition(final_position, target_velocity, acceleration);
+                if (ok) {
+                    axis_position_control_active_[axis_id] = true;
+                }
+                if (!ok) {
+                    MOUNT_LOG_ERROR("controlAxis: motor {} setPosition(pos={:.2f}, vel={:.2f}) failed",
+                                   axis_id, final_position, target_velocity);
+                }
+                return ok;
+            } else {  // VELOCITY_CONTROL
+                double final_velocity = target_velocity;
+                if (relative) {
+                    final_velocity = motor->getActualVelocity() + target_velocity;
+                }
+                bool ok = motor->setVelocity(final_velocity, acceleration);
+                if (ok) {
+                    axis_velocity_control_active_[axis_id] = true;
+                }
+                if (!ok) {
+                    MOUNT_LOG_ERROR("controlAxis: motor {} setVelocity(vel={:.2f}, accel={:.2f}) failed",
+                                   axis_id, final_velocity, acceleration);
+                }
+                return ok;
             }
         } catch (const std::exception& e) {
-            MOUNT_LOG_ERROR("controlAxis failed: {}", e.what());
+            MOUNT_LOG_ERROR("controlAxis exception: {}", e.what());
         }
         return false;
     }
@@ -4746,11 +4892,25 @@ public:
         try {
             if (hal_axis1_motor_ && hal_axis2_motor_) {
                 auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+                bool ok = false;
                 if (decelerate && std::abs(motor->getActualVelocity()) > 0.001) {
-                    return motor->setVelocity(0.0, deceleration > 0 ? deceleration : 2.0);
+                    ok = motor->setVelocity(0.0, deceleration > 0 ? deceleration : 2.0);
+                } else {
+                    motor->stop();
+                    ok = true;
                 }
-                motor->stop();
-                return true;
+                // Immediately zero the cached actual rate so the UI (Status tab)
+                // does not keep showing stale non-zero velocity from 0x606C,
+                // which is documented as unreliable on some CANopen hardware.
+                if (ok) {
+                    if (axis_id == 0)
+                        actual_axis1_rate_ = 0.0;
+                    else
+                        actual_axis2_rate_ = 0.0;
+                    axis_velocity_control_active_[axis_id] = false;
+                    axis_position_control_active_[axis_id] = false;
+                }
+                return ok;
             }
         } catch (const std::exception& e) {
             MOUNT_LOG_ERROR("stopAxis failed: {}", e.what());
@@ -5305,7 +5465,16 @@ public:
             return false;
         }
         
-        // Set internal positions
+        double drive_pos1 = 0.0, drive_pos2 = 0.0;
+        if (hal_axis1_motor_) {
+            try { drive_pos1 = hal_axis1_motor_->getActualPosition(); } catch (...) {}
+        }
+        if (hal_axis2_motor_) {
+            try { drive_pos2 = hal_axis2_motor_->getActualPosition(); } catch (...) {}
+        }
+        home_offset_axis1_ = new_axis1 - drive_pos1;
+        home_offset_axis2_ = new_axis2 - drive_pos2;
+
         axis1_position_ = new_axis1;
         axis2_position_ = new_axis2;
         axis1_target_ = new_axis1;
@@ -5337,10 +5506,12 @@ public:
         pier_side_ = 1;
         time_to_meridian_ = 24.0;
         
-        MOUNT_LOG_INFO("Mount homed: axis1={:.4f}° (telescope), axis2={:.4f}° (telescope) | "
-                 "servo: axis1={:.2f}°, axis2={:.2f}°",
+        MOUNT_LOG_INFO("Mount homed: axis1={:.4f}° axis2={:.4f}° (telescope) | "
+                 "servo axis1={:.2f}° axis2={:.2f}° | "
+                 "offset axis1={:.2f}° axis2={:.2f}°",
                  request.axis1(), request.axis2(),
-                 axis1_position_, axis2_position_);
+                 axis1_position_, axis2_position_,
+                 home_offset_axis1_, home_offset_axis2_);
         
         return true;
     }
@@ -6307,12 +6478,16 @@ private:
     double axis2_position_;             // Absolute servo motor degrees (unbounded; CANopen absolute positioning)
     double raw_servo_axis1_position_{0.0}; // Non-normalized (absolute) servo motor degrees
     double raw_servo_axis2_position_{0.0}; // Non-normalized (absolute) servo motor degrees
+    double home_offset_axis1_{0.0};      // Position offset applied after Home (new_ref − drive_pos)
+    double home_offset_axis2_{0.0};      // Position offset applied after Home (new_ref − drive_pos)
     double axis1_target_;
     double axis2_target_;
     double axis1_rate_;
     double axis2_rate_;
     double actual_axis1_rate_{0.0};      // Actual CANopen motor velocity [deg/s], updated by refreshPositions
     double actual_axis2_rate_{0.0};      // Actual CANopen motor velocity [deg/s], updated by refreshPositions
+    bool axis_velocity_control_active_[2]{false, false};  // True when axis is in VELOCITY_CONTROL mode (manual joystick); prevents refreshPositions from overwriting zeroed rates with stale 0x606C data
+    bool axis_position_control_active_[2]{false, false};  // True when axis is in POSITION_CONTROL mode (step/nudge); allows refreshPositions to show real velocity during position moves
     bool encoders_active_;
     bool guider_active_;
     bool tpoint_calibrated_;

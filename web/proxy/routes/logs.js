@@ -21,6 +21,14 @@ router.get('/stream', (req, res) => {
 
   const client = require('../grpc/client').getGrpcClient();
 
+  // SubscribeToLogs is a server-streaming RPC.  If the gRPC service doesn't
+  // expose it yet, notify the client gracefully instead of crashing.
+  if (typeof client.SubscribeToLogs !== 'function') {
+    res.write(`data: ${JSON.stringify({ error: 'Log streaming not available on this server' })}\n\n`);
+    res.end();
+    return;
+  }
+
   const call = client.SubscribeToLogs({});
   call.on('data', (logEntry) => {
     res.write(`data: ${JSON.stringify(logEntry)}\n\n`);

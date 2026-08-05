@@ -9,52 +9,110 @@
  * Format the mount controller state for JSON response.
  */
 function formatState(state) {
+  // Proto ControllerState fields → UI-compatible JSON.
+  // See proto/mount_controller.proto message ControllerState for source fields.
+  const pos = state.current_position || {};
+  const tracked = state.tracked_object || {};
+  const coords = tracked.coordinates || {};
+
   return {
-    state: state.state || 'UNKNOWN',
+    // --- Mount state ---
+    status: state.status || 'UNKNOWN',
+
+    // --- Axis positions (servo / motor shaft) ---
+    position: {
+      axis1: pos.axis1 || 0,
+      axis2: pos.axis2 || 0,
+    },
+
+    // --- Telescope positions (after gear ratio) ---
+    telescope: {
+      axis1: state.telescope_axis1 || 0,
+      axis2: state.telescope_axis2 || 0,
+    },
+
+    // --- Tracking rates (already in arcsec/s from proto) ---
+    tracking_rate_ra: state.tracking_rate_ra || 0,
+    tracking_rate_dec: state.tracking_rate_dec || 0,
+
+    // --- Actual motor axis velocities (from CANopen hardware, deg/s) ---
+    actual_rate_axis1: state.actual_rate_axis1 || 0,
+    actual_rate_axis2: state.actual_rate_axis2 || 0,
+
+    // --- Encoders / guider ---
+    encoders_enabled: state.encoders_enabled || false,
+    guider_active: state.guider_active || false,
+
+    // --- Meridian / pier side ---
+    pier_side: state.pier_side || 1,
+    meridian_flipped: state.meridian_flipped || false,
+    time_to_meridian: state.time_to_meridian || 0,
+
+    // --- Environment ---
+    temperature: state.temperature || 0,
+    pressure: state.pressure || 0,
+    humidity: state.humidity || 0,
+
+    // --- Tracked object ---
+    tracked_object: tracked.coordinates ? {
+      name: coords.name || '',
+      ra: coords.ra || 0,
+      dec: coords.dec || 0,
+      tracking_error_ra: tracked.tracking_error_ra || 0,
+      tracking_error_dec: tracked.tracking_error_dec || 0,
+    } : null,
+
+    // --- Performance ---
+    tracking_performance: state.tracking_performance || 0,
+    pointing_error: state.pointing_error || 0,
+
+    // --- Legacy fields (kept for backward compatibility) ---
     axis1: {
-      position: state.axis1_position || 0,
-      target: state.axis1_target || 0,
-      rate: state.axis1_rate || 0,
-      actualRate: state.actual_axis1_rate || 0,
+      position: pos.axis1 || 0,
+      target: 0,
+      rate: state.tracking_rate_ra || 0,
+      actualRate: state.actual_rate_axis1 || 0,
     },
     axis2: {
-      position: state.axis2_position || 0,
-      target: state.axis2_target || 0,
-      rate: state.axis2_rate || 0,
-      actualRate: state.actual_axis2_rate || 0,
+      position: pos.axis2 || 0,
+      target: 0,
+      rate: state.tracking_rate_dec || 0,
+      actualRate: state.actual_rate_axis2 || 0,
     },
-    telescope: {
-      axis1Position: state.telescope_axis1_position || 0,
-      axis2Position: state.telescope_axis2_position || 0,
+    telescope_legacy: {
+      axis1Position: state.telescope_axis1 || 0,
+      axis2Position: state.telescope_axis2 || 0,
     },
     tracking: {
-      errorRA: state.tracking_error_ra || 0,
-      errorDec: state.tracking_error_dec || 0,
-      ra: state.tracking_ra || 0,
-      dec: state.tracking_dec || 0,
+      errorRA: tracked.tracking_error_ra || 0,
+      errorDec: tracked.tracking_error_dec || 0,
+      ra: coords.ra || 0,
+      dec: coords.dec || 0,
     },
-    encodersActive: state.encoders_active || false,
+    encodersActive: state.encoders_enabled || false,
     guiderActive: state.guider_active || false,
-    tpointCalibrated: state.tpoint_calibrated || false,
+    tpointCalibrated: (state.tpoint_params && state.tpoint_params.calibrated) || false,
     meridianFlip: {
-      pending: state.meridian_flip_pending || false,
-      inProgress: state.meridian_flip_in_progress || false,
+      pending: false,
+      inProgress: state.meridian_flipped || false,
       pierSide: state.pier_side || 1,
       timeToMeridian: state.time_to_meridian || 0,
     },
     softLimits: {
-      warningActive: state.soft_limit_warning_active || false,
-      decelerationActive: state.soft_limit_deceleration_active || false,
-      distanceAxis1: state.soft_limit_distance_axis1 || 0,
-      distanceAxis2: state.soft_limit_distance_axis2 || 0,
-      warningMessage: state.soft_limit_warning_message || '',
+      warningActive: false,
+      decelerationActive: false,
+      distanceAxis1: 0,
+      distanceAxis2: 0,
+      warningMessage: '',
     },
     bootstrap: {
-      calibrated: state.bootstrap_calibrated || false,
-      mode: state.bootstrap_mode || 0,
-      measurementCount: state.bootstrap_measurement_count || 0,
+      calibrated: (state.bootstrap_status && state.bootstrap_status.calibrated) || false,
+      mode: (state.bootstrap_status && state.bootstrap_status.mode) || 0,
+      measurementCount: (state.bootstrap_status && state.bootstrap_status.measurement_count) || 0,
     },
-    timestamp: state.timestamp || new Date().toISOString(),
+    timestamp: (state.state_time && state.state_time.seconds)
+      ? new Date(state.state_time.seconds * 1000).toISOString()
+      : new Date().toISOString(),
     error: state.error_message || '',
   };
 }

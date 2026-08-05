@@ -15,6 +15,71 @@ namespace astro_mount {
 namespace hal {
 
 class SimulatedHAL : public HALInterface {
+public:
+    // ── Proxy wrappers returned by createMotorControl / createEncoderReader ─
+    // These delegate to the internal SimulatedMotor / SimulatedEncoder
+    // instances owned by the HAL, avoiding shared-ownership issues.
+
+    struct MotorProxy : public MotorControl {
+        explicit MotorProxy(MotorControl* target) : target_(target) {}
+        bool enable() override { return target_->enable(); }
+        bool disable() override { return target_->disable(); }
+        bool isEnabled() const override { return target_->isEnabled(); }
+        bool setPosition(double p, double v, double a) override { return target_->setPosition(p, v, a); }
+        bool setVelocity(double v, double a) override { return target_->setVelocity(v, a); }
+        bool setTorque(double t) override { return target_->setTorque(t); }
+        bool stop() override { return target_->stop(); }
+        bool emergencyStop() override { return target_->emergencyStop(); }
+        double getActualPosition() const override { return target_->getActualPosition(); }
+        double getActualVelocity() const override { return target_->getActualVelocity(); }
+        double getActualTorque() const override { return target_->getActualTorque(); }
+        bool isMoving() const override { return target_->isMoving(); }
+        bool targetReached() const override { return target_->targetReached(); }
+        bool inErrorState() const override { return target_->inErrorState(); }
+        std::string getErrorString() const override { return target_->getErrorString(); }
+        bool configure(const MotorConfig& c) override { return target_->configure(c); }
+        MotorConfig getConfiguration() const override { return target_->getConfiguration(); }
+        void setPositionCallback(PositionCallback cb) override { target_->setPositionCallback(cb); }
+        void setErrorCallback(ErrorCallback cb) override { target_->setErrorCallback(cb); }
+        void setStateChangeCallback(StateChangeCallback cb) override { target_->setStateChangeCallback(cb); }
+        double getTemperature() const override { return target_->getTemperature(); }
+        double getCurrent() const override { return target_->getCurrent(); }
+        double getVoltage() const override { return target_->getVoltage(); }
+        uint32_t getOperationTime() const override { return target_->getOperationTime(); }
+    private:
+        MotorControl* target_;
+    };
+
+    struct EncoderProxy : public EncoderReader {
+        explicit EncoderProxy(EncoderReader* target) : target_(target) {}
+        bool initialize(const EncoderConfig& c) override { return target_->initialize(c); }
+        void shutdown() override { target_->shutdown(); }
+        bool isInitialized() const override { return target_->isInitialized(); }
+        EncoderReading read() const override { return target_->read(); }
+        bool isDataValid() const override { return target_->isDataValid(); }
+        double getUpdateRate() const override { return target_->getUpdateRate(); }
+        bool calibrate(double r) override { return target_->calibrate(r); }
+        bool autoCalibrate() override { return target_->autoCalibrate(); }
+        double getCalibrationOffset() const override { return target_->getCalibrationOffset(); }
+        void setCalibrationOffset(double o) override { target_->setCalibrationOffset(o); }
+        bool saveCalibration() override { return target_->saveCalibration(); }
+        bool loadCalibration() override { return target_->loadCalibration(); }
+        EncoderType getType() const override { return target_->getType(); }
+        EncoderInterface getInterface() const override { return target_->getInterface(); }
+        uint32_t getResolution() const override { return target_->getResolution(); }
+        double getCountsPerDegree() const override { return target_->getCountsPerDegree(); }
+        void setReadingCallback(ReadingCallback cb) override { target_->setReadingCallback(cb); }
+        void setErrorCallback(ErrorCallback cb) override { target_->setErrorCallback(cb); }
+        uint32_t getTotalReadings() const override { return target_->getTotalReadings(); }
+        uint32_t getErrorCount() const override { return target_->getErrorCount(); }
+        double getUptime() const override { return target_->getUptime(); }
+        std::string getDiagnostics() const override { return target_->getDiagnostics(); }
+        bool synchronize() override { return target_->synchronize(); }
+        bool isSynchronized() const override { return target_->isSynchronized(); }
+    private:
+        EncoderReader* target_;
+    };
+
 private:
     struct SimulatedMotor : public MotorControl {
         SimulatedMotor(int axis_id);
