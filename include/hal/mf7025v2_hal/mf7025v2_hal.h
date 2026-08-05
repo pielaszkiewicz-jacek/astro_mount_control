@@ -43,6 +43,7 @@ private:
         bool inErrorState() const override;
         std::string getErrorString() const override;
         bool clearErrors() override;
+        bool zeroPosition() override;
 
         bool configure(const MotorConfig& config) override;
         MotorConfig getConfiguration() const override;
@@ -220,6 +221,7 @@ public:
     bool inErrorState() const override { return target_->inErrorState(); }
     std::string getErrorString() const override { return target_->getErrorString(); }
     bool clearErrors() override { return target_->clearErrors(); }
+    bool zeroPosition() override { return target_->zeroPosition(); }
     bool configure(const MotorConfig& c) override { return target_->configure(c); }
     MotorConfig getConfiguration() const override { return target_->getConfiguration(); }
     void setPositionCallback(PositionCallback cb) override { target_->setPositionCallback(cb); }

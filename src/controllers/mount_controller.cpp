@@ -5465,15 +5465,18 @@ public:
             return false;
         }
         
-        double drive_pos1 = 0.0, drive_pos2 = 0.0;
-        if (hal_axis1_motor_) {
-            try { drive_pos1 = hal_axis1_motor_->getActualPosition(); } catch (...) {}
-        }
-        if (hal_axis2_motor_) {
-            try { drive_pos2 = hal_axis2_motor_->getActualPosition(); } catch (...) {}
-        }
-        home_offset_axis1_ = new_axis1 - drive_pos1;
-        home_offset_axis2_ = new_axis2 - drive_pos2;
+        // First, zero the motor's internal position counter at the
+        // current physical location (e.g. MF7025v2 0x95 SetZeroRAM).
+        // After this, drive_pos = 0, so home_offset = desired_position.
+        // Default no-op for HALs that don't support hardware zeroing.
+        if (hal_axis1_motor_) hal_axis1_motor_->zeroPosition();
+        if (hal_axis2_motor_) hal_axis2_motor_->zeroPosition();
+
+        // After zeroing, the drive position is nominally 0.
+        // The offset to reach the desired telescope position is simply
+        // the desired value itself.
+        home_offset_axis1_ = new_axis1;
+        home_offset_axis2_ = new_axis2;
 
         axis1_position_ = new_axis1;
         axis2_position_ = new_axis2;

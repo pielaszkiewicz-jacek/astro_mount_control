@@ -20,6 +20,8 @@ const MountStatusComponent = (() => {
   let _velDataAxis1 = [];       // Array of { time: Date, value: number }
   let _velDataAxis2 = [];
   let _chartInitialized = false;
+  let _lockedYMin = -1.0;       // Locked Y-axis scale
+  let _lockedYMax = 1.0;
 
   /**
    * Initialize the velocity chart canvas and data buffers.
@@ -29,6 +31,45 @@ const MountStatusComponent = (() => {
     _chartInitialized = true;
     _velDataAxis1 = [];
     _velDataAxis2 = [];
+
+    // Moving average toggle — redraw chart on change
+    const maToggle = $('#vel-ma-toggle');
+    if (maToggle) {
+      maToggle.addEventListener('change', () => {
+        redrawVelocityChart();
+      });
+    }
+    const maWindow = $('#vel-ma-window');
+    if (maWindow) {
+      maWindow.addEventListener('change', () => {
+        redrawVelocityChart();
+      });
+    }
+    // Smooth toggle — redraw chart on change
+    const smoothToggle = $('#vel-smooth-toggle');
+    if (smoothToggle) {
+      smoothToggle.addEventListener('change', () => {
+        redrawVelocityChart();
+      });
+    }
+    // Scale lock toggle — reset locked range when toggled on
+    const scaleLock = $('#vel-scale-lock');
+    if (scaleLock) {
+      scaleLock.addEventListener('change', () => {
+        if (scaleLock.checked) {
+          // Reset locked range from current data
+          _lockedYMin = Infinity;
+          _lockedYMax = -Infinity;
+          const allData = _velDataAxis1.concat(_velDataAxis2);
+          for (const pt of allData) {
+            if (pt.value < _lockedYMin) _lockedYMin = pt.value;
+            if (pt.value > _lockedYMax) _lockedYMax = pt.value;
+          }
+          if (_lockedYMax - _lockedYMin < 0.001) { _lockedYMin = -0.1; _lockedYMax = 0.1; }
+        }
+        redrawVelocityChart();
+      });
+    }
   }
 
   /**
@@ -62,7 +103,11 @@ const MountStatusComponent = (() => {
     const placeholder = container.querySelector('.status-placeholder');
     if (placeholder) placeholder.style.display = 'none';
     container.classList.remove('empty');
-    drawChart(canvas);
+    try {
+      drawChart(canvas);
+    } catch (e) {
+      console.warn('[VelChart] drawChart error:', e.message);
+    }
   }
 
   /**
@@ -71,14 +116,18 @@ const MountStatusComponent = (() => {
    * to restore the chart that was skipped by drawChart's zero-dimension guard.
    */
   function redrawVelocityChart() {
-    const canvas = $('#velocity-canvas');
-    const container = $('#velocity-chart-content');
-    if (!canvas || !container) return;
-    if (_velDataAxis1.length === 0 && _velDataAxis2.length === 0) return;
-    const placeholder = container.querySelector('.status-placeholder');
-    if (placeholder) placeholder.style.display = 'none';
-    container.classList.remove('empty');
-    drawChart(canvas);
+    try {
+      const canvas = $('#velocity-canvas');
+      const container = $('#velocity-chart-content');
+      if (!canvas || !container) return;
+      if (_velDataAxis1.length === 0 && _velDataAxis2.length === 0) return;
+      const placeholder = container.querySelector('.status-placeholder');
+      if (placeholder) placeholder.style.display = 'none';
+      container.classList.remove('empty');
+      drawChart(canvas);
+    } catch (e) {
+      console.warn('[VelChart] redrawVelocityChart error:', e.message);
+    }
   }
 
   /**
@@ -99,6 +148,28 @@ const MountStatusComponent = (() => {
       });
     }
     return smoothed;
+  }
+
+  /**
+   * Apply simple moving average (SMA) smoothing to a data series.
+   * Each point is the arithmetic mean of the last `window` values.
+   * @param {Array<{time: number, value: number}>} data
+   * @param {number} window - Number of samples in the averaging window
+   * @returns {Array<{time: number, value: number}>} Smoothed data (same timestamps)
+   */
+  function smaData(data, window) {
+    if (!data || data.length === 0) return data;
+    const w = Math.max(1, Math.min(window, data.length));
+    const result = [];
+    for (let i = 0; i < data.length; i++) {
+      let sum = 0;
+      const start = Math.max(0, i - w + 1);
+      for (let j = start; j <= i; j++) {
+        sum += data[j].value;
+      }
+      result.push({ time: data[i].time, value: sum / (i - start + 1) });
+    }
+    return result;
   }
 
   /**
@@ -130,9 +201,30 @@ const MountStatusComponent = (() => {
     const plotH = h - margin.top - margin.bottom;
 
     // Smooth data for display (raw data preserved in _velDataAxis*)
-    const EMA_ALPHA = 0.35;  // moderate smoothing — still responsive
-    const smoothAxis1 = smoothData(_velDataAxis1, EMA_ALPHA);
-    const smoothAxis2 = smoothData(_velDataAxis2, EMA_ALPHA);
+    // Pipeline: raw → [SMA] → [EMA] → display
+    const maToggle = $('#vel-ma-toggle');
+    const maEnabled = maToggle ? maToggle.checked : true;
+    const smoothToggle = $('#vel-smooth-toggle');
+    const smoothEnabled = smoothToggle ? smoothToggle.checked : true;
+    const EMA_ALPHA = 0.35;
+    let smoothAxis1, smoothAxis2;
+
+    // Start from raw data
+    smoothAxis1 = _velDataAxis1;
+    smoothAxis2 = _velDataAxis2;
+
+    // Step 1: Simple Moving Average (if enabled)
+    if (maEnabled) {
+      const maWindow = parseInt($('#vel-ma-window')?.value) || 5;
+      smoothAxis1 = smaData(smoothAxis1, maWindow);
+      smoothAxis2 = smaData(smoothAxis2, maWindow);
+    }
+
+    // Step 2: Exponential smoothing (if enabled, default ON)
+    if (smoothEnabled) {
+      smoothAxis1 = smoothData(smoothAxis1, EMA_ALPHA);
+      smoothAxis2 = smoothData(smoothAxis2, EMA_ALPHA);
+    }
 
     // Clear
     ctx.clearRect(0, 0, w, h);
@@ -141,19 +233,36 @@ const MountStatusComponent = (() => {
     ctx.fillStyle = '#0f0f1a';
     ctx.fillRect(0, 0, w, h);
 
-    // Compute Y range from smoothed data (with padding for readability)
-    let yMin = Infinity, yMax = -Infinity;
-    const allData = smoothAxis1.concat(smoothAxis2);
-    for (const pt of allData) {
-      if (pt.value < yMin) yMin = pt.value;
-      if (pt.value > yMax) yMax = pt.value;
+    // Compute Y range from smoothed data
+    const scaleLock = $('#vel-scale-lock');
+    const scaleLocked = scaleLock ? scaleLock.checked : true;
+    let yMin, yMax;
+
+    if (scaleLocked) {
+      // Update locked range from data (expand only, never shrink)
+      const allData = smoothAxis1.concat(smoothAxis2);
+      for (const pt of allData) {
+        if (pt.value < _lockedYMin) _lockedYMin = pt.value;
+        if (pt.value > _lockedYMax) _lockedYMax = pt.value;
+      }
+      // Ensure minimum range
+      if (_lockedYMax - _lockedYMin < 0.001) { _lockedYMin -= 0.1; _lockedYMax += 0.1; }
+      yMin = _lockedYMin;
+      yMax = _lockedYMax;
+    } else {
+      // Auto-scale from data (current behavior)
+      yMin = Infinity; yMax = -Infinity;
+      const allData = smoothAxis1.concat(smoothAxis2);
+      for (const pt of allData) {
+        if (pt.value < yMin) yMin = pt.value;
+        if (pt.value > yMax) yMax = pt.value;
+      }
+      if (yMax - yMin < 0.001) { yMin -= 0.1; yMax += 0.1; }
+      const pad = (yMax - yMin) * 0.1;
+      yMin -= pad;
+      yMax += pad;
     }
-    // Ensure we have some range even with zero velocities
-    if (yMax - yMin < 0.001) { yMin -= 0.1; yMax += 0.1; }
-    // Add 10% padding
     const yRange = yMax - yMin;
-    yMin -= yRange * 0.1;
-    yMax += yRange * 0.1;
 
     // Compute X range from timestamps
     const now = Date.now();

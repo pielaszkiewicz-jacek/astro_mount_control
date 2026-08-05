@@ -714,21 +714,68 @@ const MountControlComponent = (() => {
    * speed slider, and emergency stop.
    */
   function initAxisControl() {
+    // ── Speed: slider ↔ numeric input ────────────────────────────────
     const speedSlider = $('#axis-speed');
+    const speedInput = $('#axis-speed-input');
     if (speedSlider) {
-      speedSlider.addEventListener('input', updateSpeedLabel);
-      // Sync slider max with the backend max_slew_rate config
+      speedSlider.addEventListener('input', () => {
+        updateSpeedLabel();
+        if (speedInput) speedInput.value = speedSlider.value;
+      });
       syncSpeedSliderMax(speedSlider);
     }
-
-    const accelSlider = $('#axis-accel');
-    if (accelSlider) {
-      accelSlider.addEventListener('input', updateAccelLabel);
+    if (speedInput) {
+      speedInput.addEventListener('change', () => {
+        let v = parseFloat(speedInput.value);
+        if (isFinite(v)) {
+          v = Math.max(parseFloat(speedSlider.min), Math.min(parseFloat(speedSlider.max), v));
+          speedSlider.value = v;
+          speedInput.value = v;
+          updateSpeedLabel();
+        }
+      });
     }
 
+    // ── Acceleration: slider ↔ numeric input ─────────────────────────
+    const accelSlider = $('#axis-accel');
+    const accelInput = $('#axis-accel-input');
+    if (accelSlider) {
+      accelSlider.addEventListener('input', () => {
+        updateAccelLabel();
+        if (accelInput) accelInput.value = accelSlider.value;
+      });
+    }
+    if (accelInput) {
+      accelInput.addEventListener('change', () => {
+        let v = parseFloat(accelInput.value);
+        if (isFinite(v)) {
+          v = Math.max(parseFloat(accelSlider.min), Math.min(parseFloat(accelSlider.max), v));
+          accelSlider.value = v;
+          accelInput.value = v;
+          updateAccelLabel();
+        }
+      });
+    }
+
+    // ── Deceleration: slider ↔ numeric input ─────────────────────────
     const decelSlider = $('#axis-decel');
+    const decelInput = $('#axis-decel-input');
     if (decelSlider) {
-      decelSlider.addEventListener('input', updateDecelLabel);
+      decelSlider.addEventListener('input', () => {
+        updateDecelLabel();
+        if (decelInput) decelInput.value = decelSlider.value;
+      });
+    }
+    if (decelInput) {
+      decelInput.addEventListener('change', () => {
+        let v = parseFloat(decelInput.value);
+        if (isFinite(v)) {
+          v = Math.max(parseFloat(decelSlider.min), Math.min(parseFloat(decelSlider.max), v));
+          decelSlider.value = v;
+          decelInput.value = v;
+          updateDecelLabel();
+        }
+      });
     }
 
     // Bind speed reference toggle (servo motor vs telescope axis)

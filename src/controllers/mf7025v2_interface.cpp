@@ -249,6 +249,16 @@ public:
         return true;
     }
 
+    // ── Zero position ─────────────────────────────────────────────────────
+
+    bool setZeroRAM(uint8_t node_id) override {
+        // 0x95: Set current position as zero point (RAM, volatile).
+        // Motor stops after receiving this command.
+        uint8_t cmd[] = { 0x95, 0, 0, 0, 0, 0, 0, 0 };
+        std::vector<uint8_t> resp;
+        return executeCommand(node_id, cmd, sizeof(cmd), resp);
+    }
+
     // ── Configuration ──────────────────────────────────────────────────────
 
     bool readParam(uint8_t node_id, uint8_t param_id,

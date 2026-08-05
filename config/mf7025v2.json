@@ -58,7 +58,7 @@
         "park_position_axis2": 90.0,
 
         "enable_refraction_correction": true,
-        "equatorial_tracking_velocity_mode": false,
+        "equatorial_tracking_velocity_mode": true,
         "invert_axis1": false,
         "invert_axis2": false,
         "controller_poll_ms": 50,

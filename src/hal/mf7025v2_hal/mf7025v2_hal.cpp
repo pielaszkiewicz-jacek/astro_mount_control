@@ -251,6 +251,28 @@ bool Mf7025v2Hal::Mf7025v2Motor::clearErrors() {
     return true;
 }
 
+bool Mf7025v2Hal::Mf7025v2Motor::zeroPosition() {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto* can = parent_->getCanInterface();
+    if (!can || !can->isOpen()) return false;
+
+    // 0x95: Set current position as zero point (RAM, volatile).
+    // Motor stops after receiving this command.
+    if (!can->setZeroRAM(can_node_id_)) {
+        auto logger = logging::Logger::get("mf7025v2");
+        logger->warn("Motor {} zeroPosition (0x95) failed on node {}", axis_id_, can_node_id_);
+        return false;
+    }
+
+    // Reset our position tracking to match the new zero
+    actual_position_ = 0.0;
+    target_position_ = 0.0;
+
+    auto logger = logging::Logger::get("mf7025v2");
+    logger->info("Motor {} (node {}) position zeroed (0x95 SetZeroRAM)", axis_id_, can_node_id_);
+    return true;
+}
+
 bool Mf7025v2Hal::Mf7025v2Motor::configure(const MotorConfig& config) {
     std::lock_guard<std::mutex> lock(mutex_);
     config_ = config;

@@ -76,6 +76,10 @@ public:
     // Clear drive/hardware errors.  Default: not supported.  Real field-bus
     // motors (e.g. CANopen) override this to reset the drive fault state.
     virtual bool clearErrors() { return false; }
+
+    // Reset the motor's internal position counter to zero at the current
+    // physical position (e.g. MF7025v2 0x95 SetZeroRAM).  Default: no-op.
+    virtual bool zeroPosition() { return false; }
     
     // Konfiguracja
     virtual bool configure(const MotorConfig& config) = 0;

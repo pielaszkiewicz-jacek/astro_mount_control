@@ -66,6 +66,9 @@ public:
     virtual bool readMultiTurnAngle(uint8_t node_id, int64_t& angle_001deg) = 0; // 0x92
     virtual bool readSingleTurnAngle(uint8_t node_id, uint32_t& angle_001deg) = 0; // 0x94
 
+    // Zero position
+    virtual bool setZeroRAM(uint8_t node_id) = 0;              // 0x95 — set current pos as zero (RAM)
+
     // Configuration
     virtual bool readParam(uint8_t node_id, uint8_t param_id,
                            std::vector<uint8_t>& data) = 0;   // 0xC0

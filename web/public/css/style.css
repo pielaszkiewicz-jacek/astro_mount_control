@@ -892,6 +892,31 @@ body {
   cursor: pointer;
 }
 
+/* Slider + numeric input side-by-side */
+.slider-with-input {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.slider-with-input .speed-slider {
+  flex: 1;
+}
+.speed-input {
+  width: 72px;
+  padding: 4px 6px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  text-align: right;
+  font-family: monospace;
+  font-size: 0.85em;
+}
+.speed-input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+
 .speed-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
@@ -916,6 +941,41 @@ body {
   background: var(--color-primary);
   cursor: pointer;
   border: 2px solid var(--color-surface);
+}
+
+/* Velocity chart moving average controls */
+.chart-ma-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.chart-ma-controls .toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.75em;
+  color: #888;
+  cursor: pointer;
+  user-select: none;
+}
+.chart-ma-controls .toggle-label input {
+  cursor: pointer;
+}
+.ma-window-input {
+  width: 40px;
+  padding: 2px 4px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  text-align: center;
+  font-family: monospace;
+  font-size: 0.75em;
+}
+.ma-window-input:focus {
+  border-color: var(--color-accent);
+  outline: none;
 }
 
 .speed-labels {
