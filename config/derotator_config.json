@@ -1,7 +1,7 @@
 {
     "_comment": "Derotator control configuration",
     "type": "SIMULATED",
-    "enabled": false,
+    "enabled": true,
     "gear_ratio": 10.0,
     "max_speed": 5.0,
     "max_acceleration": 2.0,

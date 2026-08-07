@@ -35,6 +35,12 @@ function flattenHALConfig(proto) {
     hal_gamepad_sensitivity:   (proto.gamepad && proto.gamepad.sensitivity) || 1.0,
     hal_gamepad_poll_interval_ms: (proto.gamepad && proto.gamepad.update_rate_hz) ? Math.round(1000 / proto.gamepad.update_rate_hz) : 20,
     hal_gamepad_autostart:     (proto.gamepad && proto.gamepad.autostart) || false,
+    // MF7025v2 CAN trace flags
+    hal_mf7025v2_can_trace:            (proto.can_trace !== undefined) ? proto.can_trace : true,
+    hal_mf7025v2_can_trace_read_state: (proto.can_trace_read_state !== undefined) ? proto.can_trace_read_state : false,
+    // Per-axis invert direction
+    hal_axis0_invert_direction: (proto.axes && proto.axes[0]) ? (proto.axes[0].invert_direction || false) : false,
+    hal_axis1_invert_direction: (proto.axes && proto.axes[1]) ? (proto.axes[1].invert_direction || false) : false,
   };
 }
 
@@ -62,10 +68,100 @@ router.post('/config', async (req, res) => {
     if (!updateData || typeof updateData !== 'object') {
       return errorResponse(res, 400, 'Request body must be a JSON object');
     }
-    await grpcCall('SetHALConfig', updateData);
+
+    // Build the nested proto structure for HALConfigRequest.
+    // HALConfigRequest { config: HALConfig { axes[], can_trace, can_trace_read_state, ... } }
+    const configMsg = {};
+
+    // Map flat UI keys to direct HALConfig proto fields
+    if ('hal_mf7025v2_can_trace' in updateData) {
+      configMsg.can_trace = updateData.hal_mf7025v2_can_trace;
+    }
+    if ('hal_mf7025v2_can_trace_read_state' in updateData) {
+      configMsg.can_trace_read_state = updateData.hal_mf7025v2_can_trace_read_state;
+    }
+
+    // Map per-axis invert direction to nested axes[] structure
+    // Proto: HALConfig.axes[] = AxisConfig { id, invert_direction }
+    if ('hal_axis0_invert_direction' in updateData || 'hal_axis1_invert_direction' in updateData) {
+      configMsg.axes = [];
+      if ('hal_axis0_invert_direction' in updateData) {
+        configMsg.axes.push({
+          id: 0,
+          invert_direction: !!updateData.hal_axis0_invert_direction,
+        });
+      }
+      if ('hal_axis1_invert_direction' in updateData) {
+        configMsg.axes.push({
+          id: 1,
+          invert_direction: !!updateData.hal_axis1_invert_direction,
+        });
+      }
+    }
+
+    const protoData = { config: configMsg };
+    await grpcCall('SetHALConfig', protoData);
     res.json({ success: true });
   } catch (err) {
     errorResponse(res, 502, 'Failed to update HAL configuration', err.message);
+  }
+});
+
+/**
+ * GET /api/hal/gamepad/state
+ * Returns the live gamepad state (axes, buttons, connection).
+ */
+router.get('/gamepad/state', async (req, res) => {
+  try {
+    const halStatus = await grpcCall('GetHALStatus', {});
+    const gamepad = halStatus.gamepad || {};
+    res.json(gamepad);
+  } catch (err) {
+    errorResponse(res, 503, 'Failed to get gamepad state: ' + err.message, err.details || '');
+  }
+});
+
+/**
+ * POST /api/hal/gamepad/start
+ * Starts the gamepad manual-control loop (sends axis velocity commands).
+ */
+router.post('/gamepad/start', async (req, res) => {
+  try {
+    await grpcCall('StartGamepad', {});
+    res.json({ success: true, message: 'Gamepad control started' });
+  } catch (err) {
+    errorResponse(res, 502, 'Failed to start gamepad control: ' + err.message, err.details || '');
+  }
+});
+
+/**
+ * POST /api/hal/gamepad/stop
+ * Stops the gamepad manual-control loop.
+ */
+router.post('/gamepad/stop', async (req, res) => {
+  try {
+    await grpcCall('StopGamepad', {});
+    res.json({ success: true, message: 'Gamepad control stopped' });
+  } catch (err) {
+    errorResponse(res, 502, 'Failed to stop gamepad control: ' + err.message, err.details || '');
+  }
+});
+
+/**
+ * POST /api/hal/gamepad/mode
+ * Sets the gamepad navigation mode.
+ * Body: { mode: number } — 0=RAW, 1=CELESTIAL, 2=ALT_AZ, 3=PRECISION
+ */
+router.post('/gamepad/mode', async (req, res) => {
+  try {
+    const { mode } = req.body;
+    if (mode === undefined || mode === null) {
+      return errorResponse(res, 400, 'Missing required field: mode');
+    }
+    await grpcCall('SetGamepadMode', { mode });
+    res.json({ success: true, message: 'Gamepad mode set to ' + mode });
+  } catch (err) {
+    errorResponse(res, 502, 'Failed to set gamepad mode: ' + err.message, err.details || '');
   }
 });
 

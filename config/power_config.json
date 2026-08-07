@@ -1,6 +1,6 @@
 {
     "comment": "Power management service configuration. Disabled by default.",
-    "enabled": false,
+    "enabled": true,
     "hal_type": "simulated",
     "low_voltage_threshold": 11.5,
     "poll_interval_s": 10

@@ -120,11 +120,9 @@ function flattenConfig(proto) {
     // Atmospheric correction
     enable_refraction_correction: proto.enable_refraction_correction || false,
 
-    // Equatorial tracking mode / axis inversion
+    // Equatorial tracking mode
     equatorial_tracking_velocity_mode: proto.equatorial_tracking_velocity_mode || false,
-    invert_axis1:                      proto.invert_axis1 || false,
-    invert_axis2:                      proto.invert_axis2 || false,
-
+    
     // Mount orientation (quaternion)
     mount_orientation: proto.mount_orientation ? {
       qx: proto.mount_orientation.qx || 0,

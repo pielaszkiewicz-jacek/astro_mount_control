@@ -62,6 +62,9 @@ private:
         // Called by monitor thread to sync absolute position from drive (0x92)
         void updateAbsolutePosition(double abs_pos_deg);
 
+        // Low-level direction inversion (negates all position/velocity commands)
+        bool invert_direction_{false};
+        
     private:
         int axis_id_;
         uint8_t can_node_id_;

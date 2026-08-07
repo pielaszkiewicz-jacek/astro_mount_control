@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signal_handler);
     
     // Default configuration
-    std::string server_address = "0.0.0.0:50051";
+    std::string server_address = "0.0.0.0:50052";
     std::string db_path = "astronomy_objects.db";
     
     // Parse command line arguments
@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]\n";
             std::cout << "Options:\n";
-            std::cout << "  --address HOST:PORT  Server address (default: 0.0.0.0:50051)\n";
+            std::cout << "  --address HOST:PORT  Server address (default: 0.0.0.0:50052)\n";
             std::cout << "  --db PATH            Database file path (default: astronomy_objects.db)\n";
             std::cout << "  --help               Show this help message\n";
             return 0;

@@ -42,13 +42,17 @@
             "bitrate": 1000000,
             "sdo_timeout_ms": 100,
             "position_units_per_degree": 100.0,
-            "velocity_units_per_dps": 100.0
+            "velocity_units_per_dps": 100.0,
+            "can_trace": false,
+            "can_trace_read_state": false,
+            "status_poll_ms": 50
         },
         "axes": [
             {
                 "id": 0,
                 "name": "HA_Axis",
                 "can_node_id": 1,
+                "invert_direction": false,
                 "motor_config": {
                     "type": "BRUSHLESS_DC",
                     "default_mode": "POSITION",
@@ -77,6 +81,7 @@
                 "id": 1,
                 "name": "Dec_Axis",
                 "can_node_id": 2,
+                "invert_direction": false,
                 "motor_config": {
                     "type": "BRUSHLESS_DC",
                     "default_mode": "POSITION",

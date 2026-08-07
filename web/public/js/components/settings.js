@@ -154,8 +154,6 @@ const SettingsComponent = (() => {
       restartRequired: false,
       fields: [
         { key: 'equatorial_tracking_velocity_mode', label: 'Velocity Mode (experimental)', type: 'checkbox', warn: 'Velocity mode uses drive internal PID — may be unreliable on some hardware (0x606C feedback bug). Position mode is recommended.' },
-        { key: 'invert_axis1', label: 'Invert Axis 1 (HA/RA) Direction', type: 'checkbox', help: 'Reverses the physical rotation direction of axis 1. Enable if telescope moves opposite to the expected direction.' },
-        { key: 'invert_axis2', label: 'Invert Axis 2 (Dec) Direction', type: 'checkbox', help: 'Reverses the physical rotation direction of axis 2. Enable if telescope moves opposite to the expected direction.' },
       ],
     },
     {
@@ -379,6 +377,17 @@ const SettingsComponent = (() => {
         { key: 'hal_mf7025v2_sdo_timeout_ms', label: 'SDO Timeout (ms)', type: 'number', min: 10, max: 10000 },
         { key: 'hal_mf7025v2_position_units_per_degree', label: 'Position Units/°', type: 'number', min: 0.1, max: 100000, step: 0.1, help: 'Multi-turn angle units per degree (default: 100.0 = 0.01°/LSB)' },
         { key: 'hal_mf7025v2_velocity_units_per_dps', label: 'Velocity Units per °/s', type: 'number', min: 0.1, max: 100000, step: 0.1, help: 'Speed units per deg/s (default: 100.0 = 0.01dps/LSB)' },
+        { key: 'hal_mf7025v2_can_trace', label: 'CAN Trace', type: 'checkbox', help: 'Log all CAN frames with decoded parameters (speedControl, positionControl, etc.)' },
+        { key: 'hal_mf7025v2_can_trace_read_state', label: 'CAN Trace Read State', type: 'checkbox', help: 'Also log periodic status-read commands (0x9A, 0x9C, 0x9D, 0x90, 0x92, 0x94)' },
+      ],
+    },
+    {
+      id: 'hal_axes',
+      label: 'HAL - Axis Direction Inversion',
+      restartRequired: false,
+      fields: [
+        { key: 'hal_axis0_invert_direction', label: 'Axis 0 (HA/RA) Invert Direction', type: 'checkbox', help: 'Negates all position/velocity commands sent to the axis 0 drive. When enabled, the drive rotates in the opposite direction.' },
+        { key: 'hal_axis1_invert_direction', label: 'Axis 1 (Dec) Invert Direction', type: 'checkbox', help: 'Negates all position/velocity commands sent to the axis 1 drive. When enabled, the drive rotates in the opposite direction.' },
       ],
     },
     {
@@ -421,6 +430,7 @@ const SettingsComponent = (() => {
     servo_init:       '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>',
     hal:              '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="4" x2="9" y2="9"/><line x1="15" y1="4" x2="15" y2="9"/><line x1="9" y1="15" x2="9" y2="20"/><line x1="15" y1="15" x2="15" y2="20"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="15" y1="9" x2="20" y2="9"/></svg>',
     hal_mf7025v2:     '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="17" y1="6.5" x2="14" y2="10.5"/><line x1="7" y1="6.5" x2="10" y2="10.5"/><line x1="17" y1="17.5" x2="14" y2="13.5"/><line x1="7" y1="17.5" x2="10" y2="13.5"/></svg>',
+    hal_axes:         '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>',
     hal_gamepad:      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>',
     // Sub-group icons (axis physical parameters)
     ha_encoder:       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20z"/><line x1="12" y1="12" x2="17" y2="7"/><line x1="12" y1="12" x2="8" y2="16"/></svg>',
@@ -461,6 +471,7 @@ const SettingsComponent = (() => {
     servo_init: 'Sekwencja inicjalizacyjna SDO dla serwonap\u0119dów: w\u0142\u0105czenie/wy\u0142\u0105czenie oraz lista wpisów JSON ({axis, index, subindex, value, description}) wysy\u0142anych podczas startu.',
     hal: 'Warstwa abstrakcji sprz\u0119towej (HAL): typ interfejsu, parametry CAN, heartbeat i mapowanie PDO.',
     hal_mf7025v2: 'Konfiguracja sterownik\u00f3w LingKong MF7025v2 BLDC: w\u0142asny protok\u00f3\u0142 CAN (V2.36), parametry magistrali CAN i skalowanie jednostek pozycji/pr\u0119dko\u015bci.',
+    hal_axes: 'Inwersja kierunku obrotu osi silnik\u00f3w: zmiana znaku dla wszystkich komend pozycji i pr\u0119dko\u015bci wysy\u0142anych do sterownika. Zmiana obowi\u0105zuje natychmiast po zapisaniu.',
     hal_gamepad: 'Konfiguracja gamepada: \u015bcie\u017cka urz\u0105dzenia, strefa martwa, czu\u0142o\u015b\u0107, cz\u0119stotliwo\u015b\u0107 odczytu.',
     // Sub-group help
     ha_encoder: 'Konfiguracja enkodera osi HA: rozdzielczo\u015b\u0107, liczba impulsów, b\u0142\u0105d kwantyzacji.',
@@ -1239,6 +1250,18 @@ const SettingsComponent = (() => {
     defaultValue: '100.0',
     type: 'float',
     range: '0.1 – 100000',
+  },
+  hal_mf7025v2_can_trace: {
+    description: 'W\u0142\u0105cza szczeg\u00f3\u0142owe logowanie wszystkich ramek CAN (0xA2 speedControl, 0xA4 positionControl, itd.) z odkodowanymi parametrami. Przydatne przy debugowaniu problem\u00f3w ze sterownikami LingKong.',
+    defaultValue: 'true (w\u0142\u0105czone)',
+    type: 'boolean',
+    range: 'true / false',
+  },
+  hal_mf7025v2_can_trace_read_state: {
+    description: 'Dodatkowo loguje okresowe komendy odczytu stanu (0x9A, 0x9C, 0x9D, 0x90, 0x92, 0x94). Generuje du\u017co log\u00f3w — w\u0142\u0105czaj tylko przy debugowaniu enkoder\u00f3w/pozycji.',
+    defaultValue: 'false (wy\u0142\u0105czone)',
+    type: 'boolean',
+    range: 'true / false',
   },
   servo_init_sequence: {
     description: 'Tablica JSON wpisów SDO do wys\u0142ania. Ka\u017cdy wpis: {"axis": 0|1, "index": "0x2005", "subindex": 0, "value": 16, "description": "HA axis microstep"}. O\u015b 0 = HA, O\u015b 1 = Dec. Indeksy per instrukcja serwonap\u0119du (sekcja 3.2.1).',

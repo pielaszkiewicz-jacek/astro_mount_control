@@ -785,9 +785,6 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_equatorial_tracking_velocity_mode(config.mount_config.equatorial_tracking_velocity_mode);
 
         // Per-axis rotation direction inversion
-        response->set_invert_axis1(config.mount_config.invert_axis1);
-        response->set_invert_axis2(config.mount_config.invert_axis2);
-        
         // Meridian flip configuration
         response->set_meridian_flip_enabled(config.safety_config.meridian_flip_enabled);
         response->set_meridian_flip_delay_minutes(config.safety_config.meridian_flip_delay_minutes);
@@ -971,10 +968,6 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     // ── Equatorial tracking mode ─────────────────────────────────
     if (request->has_equatorial_tracking_velocity_mode()) config.mount_config.equatorial_tracking_velocity_mode = request->equatorial_tracking_velocity_mode();
 
-    // ── Per-axis rotation direction inversion ────────────────────
-    if (request->has_invert_axis1()) config.mount_config.invert_axis1 = request->invert_axis1();
-    if (request->has_invert_axis2()) config.mount_config.invert_axis2 = request->invert_axis2();
-    
     // ── Meridian flip configuration ──────────────────────────────
     if (request->has_meridian_flip_enabled()) config.safety_config.meridian_flip_enabled = request->meridian_flip_enabled();
     if (request->meridian_flip_delay_minutes() != 0.0) config.safety_config.meridian_flip_delay_minutes = request->meridian_flip_delay_minutes();

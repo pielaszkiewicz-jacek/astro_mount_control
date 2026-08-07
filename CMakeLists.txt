@@ -460,6 +460,37 @@ install(TARGETS astro_sequencer_server
     RUNTIME DESTINATION bin
 )
 
+# ============================================
+# Derotator server
+# ============================================
+set(DEROTATOR_SERVER_SOURCES
+    derotator/src/main.cpp
+    derotator/src/derotator_server.cpp
+    derotator/src/derotator_service_impl.cpp
+    derotator/src/derotator_factory.cpp
+)
+
+add_executable(astro_derotator_server
+    ${DEROTATOR_SERVER_SOURCES}
+    ${PROTO_SRCS}
+)
+
+target_include_directories(astro_derotator_server PRIVATE
+    ${CMAKE_SOURCE_DIR}
+)
+
+target_link_libraries(astro_derotator_server
+    astro_mount_core
+    gRPC::grpc++
+    protobuf::libprotobuf
+)
+
+add_dependencies(astro_derotator_server generate_proto)
+
+install(TARGETS astro_derotator_server
+    RUNTIME DESTINATION bin
+)
+
 # Create tests
 enable_testing()
 

@@ -669,10 +669,6 @@ public:
                 }
 
                 // Apply per-axis rotation direction inversion after soft limit check
-                // (soft limits operate in telescope degrees, inversion is applied in servo degrees)
-                if (config_.mount_config.invert_axis1) axis1_target_ = -axis1_target_;
-                if (config_.mount_config.invert_axis2) axis2_target_ = -axis2_target_;
-                
                 state_ = MountStatus::State::SLEWING;
                 slew_count_++;
             }  // state_mutex_ released
@@ -1064,10 +1060,6 @@ public:
                     }
                 }
 
-                // Apply per-axis rotation direction inversion after soft limit check
-                if (config_.mount_config.invert_axis1) axis1_target_ = -axis1_target_;
-                if (config_.mount_config.invert_axis2) axis2_target_ = -axis2_target_;
-                
                 state_ = MountStatus::State::SLEWING;
             }  // state_mutex_ released
             
@@ -2788,10 +2780,6 @@ public:
                             const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
                             double new_axis1_target = ha_hours * 15.0 * ha_gear;
                             double new_axis2_target = snap_target_dec * dec_gear;
-
-                            // Apply per-axis rotation direction inversion
-                            if (config_.mount_config.invert_axis1) new_axis1_target = -new_axis1_target;
-                            if (config_.mount_config.invert_axis2) new_axis2_target = -new_axis2_target;
                             
                             // Use profile velocity 1.5× the sidereal servo rate so the
                             // drive smoothly catches up to the lead target without
@@ -2865,12 +2853,11 @@ public:
                         const double sidereal_servo_rate = 0.004178074 * ha_gear;
                         double eq_vel_rate_1 = sidereal_servo_rate;   // sidereal HA rate
                         double eq_vel_rate_2 = 0.0;                    // Dec rate = 0
-
-                        // Apply per-axis rotation direction inversion
-                        if (config_.mount_config.invert_axis1) eq_vel_rate_1 = -eq_vel_rate_1;
-                        if (config_.mount_config.invert_axis2) eq_vel_rate_2 = -eq_vel_rate_2;
                         
-                        bool rate_changed = (std::abs(eq_vel_rate_1 - last_sent_rate_1_) > EQUAT_VEL_THRESHOLD) ||
+                        // Also send on first iteration (last_sent_rate_* are NaN initially)
+                        bool rate_changed = !std::isfinite(last_sent_rate_1_) ||
+                                           !std::isfinite(last_sent_rate_2_) ||
+                                           (std::abs(eq_vel_rate_1 - last_sent_rate_1_) > EQUAT_VEL_THRESHOLD) ||
                                            (std::abs(eq_vel_rate_2 - last_sent_rate_2_) > EQUAT_VEL_THRESHOLD);
                         if (rate_changed) {
                             try {
@@ -5150,9 +5137,7 @@ public:
             m["park_position_axis2"] = config_.safety_config.park_position_axis2;
             m["enable_refraction_correction"] = config_.safety_config.enable_refraction_correction;
             m["equatorial_tracking_velocity_mode"] = config_.mount_config.equatorial_tracking_velocity_mode;
-            m["invert_axis1"] = config_.mount_config.invert_axis1;
-            m["invert_axis2"] = config_.mount_config.invert_axis2;
-
+            
             // Orientation quaternion — always update
             m["orientation_quaternion"] = {
                 config_.mount_config.mount_orientation.quaternion[0],
@@ -5576,6 +5561,7 @@ public:
             auto* proto_axis = config.add_axes();
             proto_axis->set_id(axis.id);
             proto_axis->set_name(axis.name);
+            proto_axis->set_invert_direction(axis.invert_direction);
             // Axis-level safety limits
             proto_axis->mutable_safety_limits()->set_min_position(axis.safety_limits.min_position);
             proto_axis->mutable_safety_limits()->set_max_position(axis.safety_limits.max_position);
@@ -5613,6 +5599,10 @@ public:
         gp->set_read_frequency(hal_config_.gamepad.update_rate_hz);
         gp->set_autostart(hal_config_.gamepad.autostart);
         gp->set_gamepad_mode(static_cast<::astro_mount::GamepadMode>(hal_config_.gamepad.gamepad_mode));
+        
+        // MF7025v2 debug/tracing flags
+        config.set_can_trace(hal_config_.mf7025v2.can_trace);
+        config.set_can_trace_read_state(hal_config_.mf7025v2.can_trace_read_state);
         
         return true;
     }
@@ -5666,6 +5656,10 @@ public:
                 if (saf.max_voltage() != 0.0) hal_config_.safety.max_voltage = saf.max_voltage();
                 if (saf.monitoring_rate() != 0) hal_config_.safety.monitoring_rate = saf.monitoring_rate();
             }
+            
+            // Update MF7025v2 trace flags in place
+            hal_config_.mf7025v2.can_trace = req_config.can_trace();
+            hal_config_.mf7025v2.can_trace_read_state = req_config.can_trace_read_state();
             
             // Persist to disk if a config file path has been set
             if (!config_file_path_.empty()) {
@@ -5753,6 +5747,18 @@ public:
             // gamepad_mode: proto3 default is GAMEPAD_RAW=0, always apply
             new_config.gamepad.gamepad_mode = static_cast<int>(gp.gamepad_mode());
         }
+        
+        // Axis config: update invert_direction from proto axes
+        for (int i = 0; i < req_config.axes_size() && i < static_cast<int>(new_config.axes.size()); ++i) {
+            const auto& proto_axis = req_config.axes(i);
+            if (proto_axis.id() == new_config.axes[i].id) {
+                new_config.axes[i].invert_direction = proto_axis.invert_direction();
+            }
+        }
+        
+        // MF7025v2 trace flags (always apply — booleans, proto3 default is false)
+        new_config.mf7025v2.can_trace = req_config.can_trace();
+        new_config.mf7025v2.can_trace_read_state = req_config.can_trace_read_state();
         
         // PID config
         if (req_config.has_pid_params()) {
@@ -6615,6 +6621,10 @@ private:
     double gamepad_min_velocity_{0.1};     ///< Minimum allowed max velocity
     double gamepad_max_velocity_limit_{20.0}; ///< Maximum allowed max velocity
     
+    // Emergency-stop hold-duration tracking (prevents accidental triggers)
+    std::chrono::steady_clock::time_point gamepad_es_press_start_{};
+    bool gamepad_es_triggered_{false};  ///< true once E-stop fires; reset on release
+    
   public:
     void initGamepadInput() {
         if (gamepad_input_) return;
@@ -6697,24 +6707,41 @@ private:
             }
             
             // ── Button actions ──────────────────────────────────
+            // Emergency stop: require the button to be held for
+            // GAMEPAD_ES_HOLD_MS (500 ms) before triggering.
+            // This prevents accidental activation from button noise
+            // or brief presses during vigorous stick use.
             if (state.button_emergency_stop) {
-                static auto last_emergency_stop = std::chrono::steady_clock::now();
                 auto now_es = std::chrono::steady_clock::now();
-                // Debounce: only trigger once per 3 seconds to avoid
-                // flooding the log and bouncing on noisy buttons.
-                if (std::chrono::duration_cast<std::chrono::seconds>(now_es - last_emergency_stop).count() >= 3) {
-                    MOUNT_LOG_WARN("Gamepad: EMERGENCY STOP");
-                    last_emergency_stop = now_es;
+                
+                if (!gamepad_es_triggered_) {
+                    // Button just pressed — record start time
+                    if (gamepad_es_press_start_ == std::chrono::steady_clock::time_point{}) {
+                        gamepad_es_press_start_ = now_es;
+                    }
+                    
+                    constexpr auto GAMEPAD_ES_HOLD_MS = std::chrono::milliseconds(500);
+                    auto held_for = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        now_es - gamepad_es_press_start_);
+                    
+                    if (held_for >= GAMEPAD_ES_HOLD_MS) {
+                        MOUNT_LOG_WARN("Gamepad: EMERGENCY STOP (held for {} ms)", held_for.count());
+                        if (hal_axis1_motor_) hal_axis1_motor_->emergencyStop();
+                        if (hal_axis2_motor_) hal_axis2_motor_->emergencyStop();
+                        state_ = MountStatus::State::ERROR;
+                        error_message_ = "Gamepad emergency stop";
+                        gamepad_es_triggered_ = true;
+                    }
                 }
-                if (hal_axis1_motor_) hal_axis1_motor_->emergencyStop();
-                if (hal_axis2_motor_) hal_axis2_motor_->emergencyStop();
-                state_ = MountStatus::State::ERROR;
-                error_message_ = "Gamepad emergency stop";
                 // Do NOT break — the loop continues running so that
                 // after clearErrors() returns to IDLE, gamepad control
                 // resumes without needing to call StartGamepad again.
                 std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 continue;
+            } else {
+                // Button released — reset emergency-stop tracking
+                gamepad_es_press_start_ = std::chrono::steady_clock::time_point{};
+                gamepad_es_triggered_ = false;
             }
             if (state.button_stop) {
                 if (hal_axis1_motor_) hal_axis1_motor_->stop();
@@ -6902,10 +6929,6 @@ private:
                     vel0 *= gamepad_max_velocity_;
                     vel1 *= gamepad_max_velocity_;
 
-                    // Apply per-axis rotation direction inversion
-                    if (config_.mount_config.invert_axis1) vel0 = -vel0;
-                    if (config_.mount_config.invert_axis2) vel1 = -vel1;
-                    
                     if (hal_axis1_motor_->isEnabled()) {
                         if (axis0_deflected || gamepad_axis0_active_) {
                             hal_axis1_motor_->setVelocity(vel0, config_.mount_config.slew_acceleration);

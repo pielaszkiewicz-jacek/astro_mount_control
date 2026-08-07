@@ -1040,6 +1040,10 @@ message AxisConfig {
     }
     
     SafetyLimits safety_limits = 5;
+    
+    // HAL-level direction inversion: negates all position/velocity
+    // commands sent to the drive. Transparent to the controller.
+    bool invert_direction = 6;
 }
 
 // PID controller parameters
@@ -1128,6 +1132,10 @@ message HALConfig {
     
     // Gamepad configuration (HAL gamepad subsystem)
     GamepadConfig gamepad = 10;
+    
+    // MF7025v2 debug/tracing flags (LingKong BLDC CAN protocol)
+    bool can_trace = 11;              // Log all CAN frames with decoded parameters (default: true)
+    bool can_trace_read_state = 12;   // Also log periodic status-read commands (default: false)
 }
 
 // Gamepad / joystick configuration for manual mount control

@@ -51,11 +51,11 @@ const config = {
 // Set these via environment variables (EXT_SERVICE_*) or leave disabled by default.
 config.external_services = {
   dome:       process.env.EXT_SERVICE_DOME === 'true',
-  derotator:  process.env.EXT_SERVICE_DEROTATOR === 'true',
+  derotator:  process.env.EXT_SERVICE_DEROTATOR !== 'false',   // in-process, enabled by default
   weather:    process.env.EXT_SERVICE_WEATHER === 'true',
   power:      process.env.EXT_SERVICE_POWER === 'true',
   sequencer:  process.env.EXT_SERVICE_SEQUENCER === 'true',
-  focuser:    process.env.EXT_SERVICE_FOCUSER === 'true',
+  focuser:    process.env.EXT_SERVICE_FOCUSER !== 'false',     // in-process, enabled by default
 };
 
 module.exports = config;

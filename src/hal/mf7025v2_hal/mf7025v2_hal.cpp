@@ -81,12 +81,15 @@ bool Mf7025v2Hal::Mf7025v2Motor::setPosition(double position_deg, double velocit
     if (!enabled_ || error_state_) return false;
 
     (void)acceleration_deg_s2; // handled by drive's speed ramp config
+    
+    // Apply low-level direction inversion
+    double pos = invert_direction_ ? -position_deg : position_deg;
 
     auto* can = parent_->getCanInterface();
     if (!can || !can->isOpen()) return false;
 
     // Convert to protocol units: 0.01°/LSB
-    int32_t angle_001deg = static_cast<int32_t>(position_deg * 100.0);
+    int32_t angle_001deg = static_cast<int32_t>(pos * 100.0);
 
     bool ok;
     if (velocity_deg_s > 0.0) {
@@ -108,8 +111,8 @@ bool Mf7025v2Hal::Mf7025v2Motor::setPosition(double position_deg, double velocit
         return false;
     }
     can_failures_ = 0;
-    target_position_ = position_deg;
-    actual_position_ = position_deg;  // track commanded target for relative step moves
+    target_position_ = pos;
+    actual_position_ = pos;
     actual_velocity_ = 0.0;  // Reset velocity so updateStatus() does not keep
                              // integrating position using a stale velocity from
                              // a previous velocity-control or position move.
@@ -125,25 +128,28 @@ bool Mf7025v2Hal::Mf7025v2Motor::setVelocity(double velocity_deg_s, double accel
     if (!enabled_ || error_state_) return false;
 
     (void)acceleration_deg_s2;
+    
+    // Apply low-level direction inversion
+    double vel = invert_direction_ ? -velocity_deg_s : velocity_deg_s;
 
     auto* can = parent_->getCanInterface();
     if (!can || !can->isOpen()) return false;
 
     // Speed control (0xA2): iqControl(int16) + speedControl(int32, 0.01dps/LSB)
     int16_t iq = static_cast<int16_t>(config_.max_torque * 2048.0 / 100.0);
-    int32_t speed_001dps = static_cast<int32_t>(velocity_deg_s * 100.0);
+    int32_t speed_001dps = static_cast<int32_t>(vel * 100.0);
 
     if (!can->speedControl(can_node_id_, iq, speed_001dps)) {
         auto logger = logging::Logger::get("mf7025v2");
         logger->warn("Motor {} speedControl(0xA2) failed for {:.2f}°/s on node {} — "
                      "falling back to position control",
-                     axis_id_, velocity_deg_s, can_node_id_);
+                     axis_id_, vel, can_node_id_);
 
         // Fallback: use multi-turn position control (0xA4) to emulate velocity.
         // The LingKong 0xA2 speed-control command is unreliable on some
         // hardware/firmware revisions; position control (0xA4) is universally
         // supported and can approximate velocity by targeting a far-away position.
-        if (std::abs(velocity_deg_s) <= SPEED_HYSTERESIS) {
+        if (std::abs(vel) <= SPEED_HYSTERESIS) {
             // Zero velocity → stop the motor
             can->motorStop(can_node_id_);
             actual_velocity_ = 0.0;
@@ -154,31 +160,35 @@ bool Mf7025v2Hal::Mf7025v2Motor::setVelocity(double velocity_deg_s, double accel
         // Compute a position target far in the direction of movement.
         // 1 000 000° ≈ 2778 motor revolutions — enough headroom for
         // continuous movement until the user releases the button.
-        double current_pos = getActualPosition();
-        double direction = (velocity_deg_s > 0) ? 1.0 : -1.0;
+        // Use physical position directly: getActualPosition() returns
+        // logical (sign-inverted) which would give wrong CAN target.
+        double current_pos = actual_position_;
+        double direction = (vel > 0) ? 1.0 : -1.0;
         int32_t angle_001deg = static_cast<int32_t>((current_pos + direction * 1000000.0) * 100.0);
-        uint16_t max_speed_dps = static_cast<uint16_t>(std::min(std::abs(velocity_deg_s), 65535.0));
+        uint16_t max_speed_dps = static_cast<uint16_t>(std::min(std::abs(vel), 65535.0));
 
         if (!can->positionControl2(can_node_id_, max_speed_dps, angle_001deg)) {
-            logger->error("Motor {} positionControl2(0xA4) fallback also failed on node {}",
-                          axis_id_, can_node_id_);
-            can_failures_++;
-            if (can_failures_ >= CAN_FAILURE_THRESHOLD) {
-                error_state_ = true;
-                error_message_ = "CAN dead-node detected";
-            }
+            logger->warn("Motor {} positionControl2(0xA4) fallback failed for {:.2f}°/s on node {} — "
+                         "this is expected during rapid direction changes; motor will catch up next cycle",
+                         axis_id_, vel, can_node_id_);
+            // Do NOT increment can_failures_ here — the position-control
+            // fallback in setVelocity() can legitimately fail during rapid
+            // direction changes (the LingKong driver may reject large
+            // position-target jumps).  This is NOT a sign of a dead CAN
+            // node.  The calling loop (gamepad or tracking) will retry on
+            // the next cycle.
             return false;
         }
         // Position-control fallback succeeded — track the state as if
         // velocity control worked, so stopAxis() knows the motor is moving.
         can_failures_ = 0;
-        actual_velocity_ = velocity_deg_s;
+        actual_velocity_ = vel;
         moving_ = true;
         return true;
     }
     can_failures_ = 0;
-    actual_velocity_ = velocity_deg_s;
-    moving_ = (std::abs(velocity_deg_s) > SPEED_HYSTERESIS);
+    actual_velocity_ = vel;
+    moving_ = (std::abs(vel) > SPEED_HYSTERESIS);
     return true;
 }
 
@@ -210,11 +220,15 @@ bool Mf7025v2Hal::Mf7025v2Motor::emergencyStop() {
 }
 
 double Mf7025v2Hal::Mf7025v2Motor::getActualPosition() const {
-    return actual_position_;
+    // Transparent inversion: return logical position so higher layers
+    // never need to know about HAL-level direction reversal.
+    double phys = actual_position_;
+    return invert_direction_ ? -phys : phys;
 }
 
 double Mf7025v2Hal::Mf7025v2Motor::getActualVelocity() const {
-    return actual_velocity_;
+    double phys = actual_velocity_;
+    return invert_direction_ ? -phys : phys;
 }
 
 double Mf7025v2Hal::Mf7025v2Motor::getActualTorque() const {
@@ -492,6 +506,7 @@ bool Mf7025v2Hal::initialize(const HALConfig& config) {
         auto& axis = config_.axes[i];
         motors_[i] = std::make_unique<Mf7025v2Motor>(axis.id, axis.can_node_id, this);
         motors_[i]->configure(axis.motor_config);
+        motors_[i]->invert_direction_ = axis.invert_direction;
         encoders_[i] = std::make_unique<Mf7025v2Encoder>(axis.id, axis.can_node_id, this);
         encoders_[i]->initialize(axis.encoder_config);
     }

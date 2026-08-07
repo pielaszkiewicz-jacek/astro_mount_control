@@ -96,6 +96,7 @@ struct HALConfig {
         int id{0};
         std::string name{"Axis_0"};
         uint8_t can_node_id{1};  // CANopen node ID (1-127), must be set explicitly
+        bool invert_direction{false};  // Negate all position/velocity commands at HAL level
         MotorConfig motor_config;
         EncoderConfig encoder_config;
         
@@ -231,6 +232,7 @@ struct HALConfig {
             axis.id = axis_json.value("id", 0);
             axis.name = axis_json.value("name", "Axis_0");
             axis.can_node_id = axis_json.value("can_node_id", 1);
+            axis.invert_direction = axis_json.value("invert_direction", false);
             
             // Parse motor config
             auto motor_json = axis_json.value("motor_config", nlohmann::json::object());
@@ -327,10 +329,12 @@ struct HALConfig {
         std::string type_str;
         switch (type) {
             case HALType::SIMULATED: type_str = "simulated"; break;
-            case HALType::SERIAL: type_str = "serial"; break;
-            case HALType::ETHERNET: type_str = "ethernet"; break;
-            case HALType::GAMEPAD: type_str = "gamepad"; break;
-            case HALType::CUSTOM: type_str = "custom"; break;
+            case HALType::CANOPEN:   type_str = "canopen"; break;
+            case HALType::MF7025V2:  type_str = "mf7025v2"; break;
+            case HALType::SERIAL:    type_str = "serial"; break;
+            case HALType::ETHERNET:  type_str = "ethernet"; break;
+            case HALType::GAMEPAD:   type_str = "gamepad"; break;
+            case HALType::CUSTOM:    type_str = "custom"; break;
             default: type_str = "simulated";
         }
         hal["type"] = type_str;
@@ -419,6 +423,7 @@ struct HALConfig {
             axis_json["id"] = axis.id;
             axis_json["name"] = axis.name;
             axis_json["can_node_id"] = axis.can_node_id;
+            axis_json["invert_direction"] = axis.invert_direction;
             
             // Save motor config
             nlohmann::json motor_json;

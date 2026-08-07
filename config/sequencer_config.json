@@ -1,6 +1,6 @@
 {
     "comment": "Observation Sequencer configuration. Disabled by default.",
-    "enabled": false,
+    "enabled": true,
     "simulated": true,
     "mount_address": "127.0.0.1:50051",
     "camera_address": "",
