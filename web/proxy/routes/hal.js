@@ -41,6 +41,24 @@ function flattenHALConfig(proto) {
     // Per-axis invert direction
     hal_axis0_invert_direction: (proto.axes && proto.axes[0]) ? (proto.axes[0].invert_direction || false) : false,
     hal_axis1_invert_direction: (proto.axes && proto.axes[1]) ? (proto.axes[1].invert_direction || false) : false,
+    // PID params
+    hal_pid_kp:                (proto.pid_params && proto.pid_params.kp) || 0,
+    hal_pid_ki:                (proto.pid_params && proto.pid_params.ki) || 0,
+    hal_pid_kd:                (proto.pid_params && proto.pid_params.kd) || 0,
+    hal_pid_integral_limit:    (proto.pid_params && proto.pid_params.integral_limit) || 0,
+    hal_pid_output_limit:      (proto.pid_params && proto.pid_params.output_limit) || 0,
+    hal_pid_anti_windup_gain:  (proto.pid_params && proto.pid_params.anti_windup_gain) || 0,
+    hal_pid_enable_anti_windup:(proto.pid_params && proto.pid_params.enable_anti_windup) || false,
+    // Safety config
+    hal_safety_enable_limits:                (proto.safety && proto.safety.enable_limits) || false,
+    hal_safety_enable_emergency_stop:        (proto.safety && proto.safety.enable_emergency_stop) || false,
+    hal_safety_emergency_stop_timeout_ms:    (proto.safety && proto.safety.emergency_stop_timeout_ms) || 0,
+    hal_safety_enable_temperature_monitoring:(proto.safety && proto.safety.enable_temperature_monitoring) || false,
+    hal_safety_enable_current_monitoring:    (proto.safety && proto.safety.enable_current_monitoring) || false,
+    hal_safety_enable_voltage_monitoring:    (proto.safety && proto.safety.enable_voltage_monitoring) || false,
+    hal_safety_min_voltage:     (proto.safety && proto.safety.min_voltage) || 0,
+    hal_safety_max_voltage:     (proto.safety && proto.safety.max_voltage) || 0,
+    hal_safety_monitoring_rate: (proto.safety && proto.safety.monitoring_rate) || 0,
   };
 }
 
@@ -61,6 +79,23 @@ router.get('/config', async (req, res) => {
  * POST /api/hal/config
  * Update HAL configuration.  Accepts a flat JSON object whose keys
  * are mapped to the corresponding protobuf fields in SetHALConfig.
+ *
+ * Supported fields (mapped to proto):
+ *   hal_mf7025v2_can_trace              → config.can_trace
+ *   hal_mf7025v2_can_trace_read_state   → config.can_trace_read_state
+ *   hal_mf7025v2_can_interface          → config.mf7025v2.can_interface
+ *   hal_mf7025v2_bitrate                → config.mf7025v2.bitrate
+ *   hal_mf7025v2_sdo_timeout_ms         → config.mf7025v2.sdo_timeout_ms
+ *   hal_mf7025v2_position_units_per_degree → config.mf7025v2.position_units_per_degree
+ *   hal_mf7025v2_velocity_units_per_dps    → config.mf7025v2.velocity_units_per_dps
+ *   hal_axis0_invert_direction          → config.axes[0].invert_direction
+ *   hal_axis1_invert_direction          → config.axes[1].invert_direction
+ *   hal_gamepad_*                       → config.gamepad.*
+ *   hal_pid_*                           → config.pid_params.*
+ *   hal_safety_*                        → config.safety.*
+ *
+ * Fields NOT available in the gRPC proto (configure via config file):
+ *   hal_interface_type, hal_can_*, hal_heartbeat_interval_ms, hal_pdo_mapping_mode
  */
 router.post('/config', async (req, res) => {
   try {
@@ -70,19 +105,47 @@ router.post('/config', async (req, res) => {
     }
 
     // Build the nested proto structure for HALConfigRequest.
-    // HALConfigRequest { config: HALConfig { axes[], can_trace, can_trace_read_state, ... } }
+    // HALConfigRequest { config: HALConfig { axes[], gamepad, can_trace, can_trace_read_state } }
     const configMsg = {};
 
-    // Map flat UI keys to direct HALConfig proto fields
+    // ── Direct HALConfig fields ───────────────────────────────────────────
     if ('hal_mf7025v2_can_trace' in updateData) {
-      configMsg.can_trace = updateData.hal_mf7025v2_can_trace;
+      configMsg.can_trace = !!updateData.hal_mf7025v2_can_trace;
     }
     if ('hal_mf7025v2_can_trace_read_state' in updateData) {
-      configMsg.can_trace_read_state = updateData.hal_mf7025v2_can_trace_read_state;
+      configMsg.can_trace_read_state = !!updateData.hal_mf7025v2_can_trace_read_state;
     }
 
-    // Map per-axis invert direction to nested axes[] structure
-    // Proto: HALConfig.axes[] = AxisConfig { id, invert_direction }
+    // ── MF7025v2 full config (CAN interface, bitrate, timeouts, scaling) ─
+    const mf7025v2Fields = [
+      'hal_mf7025v2_can_interface',
+      'hal_mf7025v2_bitrate',
+      'hal_mf7025v2_sdo_timeout_ms',
+      'hal_mf7025v2_position_units_per_degree',
+      'hal_mf7025v2_velocity_units_per_dps',
+    ];
+    const hasMf7025v2Data = mf7025v2Fields.some(f => f in updateData);
+    if (hasMf7025v2Data) {
+      const mf7 = {};
+      if ('hal_mf7025v2_can_interface' in updateData) {
+        mf7.can_interface = String(updateData.hal_mf7025v2_can_interface);
+      }
+      if ('hal_mf7025v2_bitrate' in updateData) {
+        mf7.bitrate = Number(updateData.hal_mf7025v2_bitrate) || 0;
+      }
+      if ('hal_mf7025v2_sdo_timeout_ms' in updateData) {
+        mf7.sdo_timeout_ms = Number(updateData.hal_mf7025v2_sdo_timeout_ms) || 0;
+      }
+      if ('hal_mf7025v2_position_units_per_degree' in updateData) {
+        mf7.position_units_per_degree = Number(updateData.hal_mf7025v2_position_units_per_degree) || 0;
+      }
+      if ('hal_mf7025v2_velocity_units_per_dps' in updateData) {
+        mf7.velocity_units_per_dps = Number(updateData.hal_mf7025v2_velocity_units_per_dps) || 0;
+      }
+      configMsg.mf7025v2 = mf7;
+    }
+
+    // ── Axis invert direction ─────────────────────────────────────────────
     if ('hal_axis0_invert_direction' in updateData || 'hal_axis1_invert_direction' in updateData) {
       configMsg.axes = [];
       if ('hal_axis0_invert_direction' in updateData) {
@@ -97,6 +160,78 @@ router.post('/config', async (req, res) => {
           invert_direction: !!updateData.hal_axis1_invert_direction,
         });
       }
+    }
+
+    // ── Gamepad config ────────────────────────────────────────────────────
+    const gamepadFields = [
+      'hal_gamepad_device_path',
+      'hal_gamepad_deadzone',
+      'hal_gamepad_sensitivity',
+      'hal_gamepad_poll_interval_ms',
+      'hal_gamepad_autostart',
+    ];
+    const hasGamepadData = gamepadFields.some(f => f in updateData);
+    if (hasGamepadData) {
+      const gp = {};
+      if ('hal_gamepad_device_path' in updateData) {
+        gp.device_path = String(updateData.hal_gamepad_device_path);
+      }
+      if ('hal_gamepad_deadzone' in updateData) {
+        gp.dead_zone = Number(updateData.hal_gamepad_deadzone) || 0;
+      }
+      if ('hal_gamepad_sensitivity' in updateData) {
+        gp.sensitivity = Number(updateData.hal_gamepad_sensitivity) || 1.0;
+      }
+      if ('hal_gamepad_poll_interval_ms' in updateData) {
+        const pollMs = Number(updateData.hal_gamepad_poll_interval_ms);
+        gp.read_frequency = pollMs > 0 ? Math.round(1000 / pollMs) : 50;
+      }
+      if ('hal_gamepad_autostart' in updateData) {
+        gp.autostart = !!updateData.hal_gamepad_autostart;
+      }
+      configMsg.gamepad = gp;
+    }
+
+    // ── PID params config ────────────────────────────────────────────────
+    const pidFields = [
+      'hal_pid_kp', 'hal_pid_ki', 'hal_pid_kd',
+      'hal_pid_integral_limit', 'hal_pid_output_limit',
+      'hal_pid_anti_windup_gain', 'hal_pid_enable_anti_windup',
+    ];
+    const hasPidData = pidFields.some(f => f in updateData);
+    if (hasPidData) {
+      const pid = {};
+      if ('hal_pid_kp' in updateData) pid.kp = Number(updateData.hal_pid_kp) || 0;
+      if ('hal_pid_ki' in updateData) pid.ki = Number(updateData.hal_pid_ki) || 0;
+      if ('hal_pid_kd' in updateData) pid.kd = Number(updateData.hal_pid_kd) || 0;
+      if ('hal_pid_integral_limit' in updateData) pid.integral_limit = Number(updateData.hal_pid_integral_limit) || 0;
+      if ('hal_pid_output_limit' in updateData) pid.output_limit = Number(updateData.hal_pid_output_limit) || 0;
+      if ('hal_pid_anti_windup_gain' in updateData) pid.anti_windup_gain = Number(updateData.hal_pid_anti_windup_gain) || 0;
+      if ('hal_pid_enable_anti_windup' in updateData) pid.enable_anti_windup = !!updateData.hal_pid_enable_anti_windup;
+      configMsg.pid_params = pid;
+    }
+
+    // ── Safety config ────────────────────────────────────────────────────
+    const safetyFields = [
+      'hal_safety_enable_limits', 'hal_safety_enable_emergency_stop',
+      'hal_safety_emergency_stop_timeout_ms',
+      'hal_safety_enable_temperature_monitoring', 'hal_safety_enable_current_monitoring',
+      'hal_safety_enable_voltage_monitoring',
+      'hal_safety_min_voltage', 'hal_safety_max_voltage', 'hal_safety_monitoring_rate',
+    ];
+    const hasSafetyData = safetyFields.some(f => f in updateData);
+    if (hasSafetyData) {
+      const saf = {};
+      if ('hal_safety_enable_limits' in updateData) saf.enable_limits = !!updateData.hal_safety_enable_limits;
+      if ('hal_safety_enable_emergency_stop' in updateData) saf.enable_emergency_stop = !!updateData.hal_safety_enable_emergency_stop;
+      if ('hal_safety_emergency_stop_timeout_ms' in updateData) saf.emergency_stop_timeout_ms = Number(updateData.hal_safety_emergency_stop_timeout_ms) || 0;
+      if ('hal_safety_enable_temperature_monitoring' in updateData) saf.enable_temperature_monitoring = !!updateData.hal_safety_enable_temperature_monitoring;
+      if ('hal_safety_enable_current_monitoring' in updateData) saf.enable_current_monitoring = !!updateData.hal_safety_enable_current_monitoring;
+      if ('hal_safety_enable_voltage_monitoring' in updateData) saf.enable_voltage_monitoring = !!updateData.hal_safety_enable_voltage_monitoring;
+      if ('hal_safety_min_voltage' in updateData) saf.min_voltage = Number(updateData.hal_safety_min_voltage) || 0;
+      if ('hal_safety_max_voltage' in updateData) saf.max_voltage = Number(updateData.hal_safety_max_voltage) || 0;
+      if ('hal_safety_monitoring_rate' in updateData) saf.monitoring_rate = Number(updateData.hal_safety_monitoring_rate) || 0;
+      configMsg.safety = saf;
     }
 
     const protoData = { config: configMsg };

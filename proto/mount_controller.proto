@@ -578,6 +578,8 @@ message Configuration {
     string log_level = 14;
     string log_directory = 15;
     optional bool log_console_output = 75;
+    int32 log_rotation_days = 89;      // Log rotation period in days (default: 7)
+    int32 log_max_file_size_mb = 90;   // Max log file size in MB (default: 10)
     
     // Network
     string grpc_address = 17;
@@ -1112,6 +1114,15 @@ message EthernetConfig {
     uint32 retry_count = 5;
 }
 
+// MF7025v2 (LingKong BLDC) configuration
+message Mf7025v2Config {
+    string can_interface = 1;            // SocketCAN interface name, e.g. "can0"
+    uint32 bitrate = 2;                  // CAN bitrate in bps (default: 1000000)
+    uint32 sdo_timeout_ms = 3;           // CAN response timeout (default: 100)
+    double position_units_per_degree = 4; // Position scaling (default: 100.0 = 0.01°/LSB)
+    double velocity_units_per_dps = 5;    // Velocity scaling (default: 100.0 = 0.01dps/LSB)
+}
+
 // HAL configuration
 message HALConfig {
     HALType type = 1;
@@ -1136,6 +1147,9 @@ message HALConfig {
     // MF7025v2 debug/tracing flags (LingKong BLDC CAN protocol)
     bool can_trace = 11;              // Log all CAN frames with decoded parameters (default: true)
     bool can_trace_read_state = 12;   // Also log periodic status-read commands (default: false)
+
+    // MF7025v2 full configuration (CAN interface, bitrate, timeouts, scaling)
+    Mf7025v2Config mf7025v2 = 13;
 }
 
 // Gamepad / joystick configuration for manual mount control

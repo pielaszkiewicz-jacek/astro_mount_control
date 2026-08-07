@@ -728,6 +728,8 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_log_level(config.log_level);
         response->set_log_directory(config.log_directory);
         response->set_log_console_output(config.log_console_output);
+        response->set_log_rotation_days(config.log_rotation_days);
+        response->set_log_max_file_size_mb(config.log_max_file_size_mb);
         response->set_grpc_address(config.grpc_address);
         response->set_grpc_port(config.grpc_port);
         response->set_network_max_connections(config.network_max_connections);
@@ -911,6 +913,8 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     }
     if (!request->log_directory().empty()) config.log_directory = request->log_directory();
     if (request->has_log_console_output()) config.log_console_output = request->log_console_output();
+    if (request->log_rotation_days() != 0) config.log_rotation_days = request->log_rotation_days();
+    if (request->log_max_file_size_mb() != 0) config.log_max_file_size_mb = request->log_max_file_size_mb();
     if (request->focal_length() != 0.0) config.focal_length = request->focal_length();
     if (request->aperture() != 0.0) config.aperture = request->aperture();
     

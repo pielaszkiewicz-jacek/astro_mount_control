@@ -90,6 +90,8 @@ public:
         std::string log_level{"info"};
         std::string log_directory{"/var/log/astro-mount"};
         bool log_console_output{true};
+        int log_rotation_days{7};
+        int log_max_file_size_mb{10};
         
         // Telescope parameters
         double focal_length{1000.0};

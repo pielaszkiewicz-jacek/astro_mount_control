@@ -23,6 +23,8 @@ public:
         std::string level;
         std::string directory;
         bool console_output;
+        int rotation_days{7};
+        int max_file_size_mb{10};
     };
 
     struct NetworkConfig {

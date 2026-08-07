@@ -209,9 +209,7 @@
     "logging": {
         "console_output": true,
         "directory": "/var/log/astro-mount",
-        "level": "INFO",
-        "max_file_size_mb": 10,
-        "rotation_days": 7
+        "level": "INFO"
     },
     "mount": {
         "altitude": 100.0,
@@ -332,9 +330,9 @@
         "sequence": []
     },
     "telescope": {
-        "aperture": 2000.0,
+        "aperture": 200.0,
         "camera_model": "ASI1600",
-        "focal_length": 5e-323,
+        "focal_length": 2000.0,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,

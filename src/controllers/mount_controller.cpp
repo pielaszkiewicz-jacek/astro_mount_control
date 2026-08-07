@@ -5065,6 +5065,8 @@ public:
             setIfStr("logging", "level", config_.log_level);
             setIfStr("logging", "directory", config_.log_directory);
             setAlways("logging", "console_output", config_.log_console_output);
+            setIfInt("logging", "rotation_days", config_.log_rotation_days);
+            setIfInt("logging", "max_file_size_mb", config_.log_max_file_size_mb);
 
             // ── network ──────────────────────────────────────────────
             setIfStr("network", "grpc_address", config_.grpc_address);
@@ -5603,6 +5605,14 @@ public:
         // MF7025v2 debug/tracing flags
         config.set_can_trace(hal_config_.mf7025v2.can_trace);
         config.set_can_trace_read_state(hal_config_.mf7025v2.can_trace_read_state);
+
+        // MF7025v2 full config (CAN interface, bitrate, timeouts, scaling)
+        auto* mf7 = config.mutable_mf7025v2();
+        mf7->set_can_interface(hal_config_.mf7025v2.can_interface);
+        mf7->set_bitrate(hal_config_.mf7025v2.bitrate);
+        mf7->set_sdo_timeout_ms(hal_config_.mf7025v2.sdo_timeout_ms);
+        mf7->set_position_units_per_degree(hal_config_.mf7025v2.position_units_per_degree);
+        mf7->set_velocity_units_per_dps(hal_config_.mf7025v2.velocity_units_per_dps);
         
         return true;
     }
@@ -5660,6 +5670,20 @@ public:
             // Update MF7025v2 trace flags in place
             hal_config_.mf7025v2.can_trace = req_config.can_trace();
             hal_config_.mf7025v2.can_trace_read_state = req_config.can_trace_read_state();
+            // Update MF7025v2 full config if present
+            if (req_config.has_mf7025v2()) {
+                const auto& mf7 = req_config.mf7025v2();
+                if (!mf7.can_interface().empty())
+                    hal_config_.mf7025v2.can_interface = mf7.can_interface();
+                if (mf7.bitrate() != 0)
+                    hal_config_.mf7025v2.bitrate = mf7.bitrate();
+                if (mf7.sdo_timeout_ms() != 0)
+                    hal_config_.mf7025v2.sdo_timeout_ms = mf7.sdo_timeout_ms();
+                if (mf7.position_units_per_degree() != 0.0)
+                    hal_config_.mf7025v2.position_units_per_degree = mf7.position_units_per_degree();
+                if (mf7.velocity_units_per_dps() != 0.0)
+                    hal_config_.mf7025v2.velocity_units_per_dps = mf7.velocity_units_per_dps();
+            }
             
             // Persist to disk if a config file path has been set
             if (!config_file_path_.empty()) {
@@ -5759,6 +5783,21 @@ public:
         // MF7025v2 trace flags (always apply — booleans, proto3 default is false)
         new_config.mf7025v2.can_trace = req_config.can_trace();
         new_config.mf7025v2.can_trace_read_state = req_config.can_trace_read_state();
+
+        // MF7025v2 full config (CAN interface, bitrate, timeouts, scaling)
+        if (req_config.has_mf7025v2()) {
+            const auto& mf7 = req_config.mf7025v2();
+            if (!mf7.can_interface().empty())
+                new_config.mf7025v2.can_interface = mf7.can_interface();
+            if (mf7.bitrate() != 0)
+                new_config.mf7025v2.bitrate = mf7.bitrate();
+            if (mf7.sdo_timeout_ms() != 0)
+                new_config.mf7025v2.sdo_timeout_ms = mf7.sdo_timeout_ms();
+            if (mf7.position_units_per_degree() != 0.0)
+                new_config.mf7025v2.position_units_per_degree = mf7.position_units_per_degree();
+            if (mf7.velocity_units_per_dps() != 0.0)
+                new_config.mf7025v2.velocity_units_per_dps = mf7.velocity_units_per_dps();
+        }
         
         // PID config
         if (req_config.has_pid_params()) {

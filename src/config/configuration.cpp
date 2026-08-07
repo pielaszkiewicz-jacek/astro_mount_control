@@ -223,6 +223,8 @@ public:
         config.level = logging.value("level", "INFO");
         config.directory = logging.value("directory", "/var/log/astro-mount");
         config.console_output = logging.value("console_output", true);
+        config.rotation_days = logging.value("rotation_days", 7);
+        config.max_file_size_mb = logging.value("max_file_size_mb", 10);
         
         return config;
     }

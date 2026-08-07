@@ -39,7 +39,6 @@
                     "use_index_pulse": true
                 },
                 "id": 0,
-                "invert_direction": true,
                 "motor_config": {
                     "current_limit": 5.0,
                     "default_mode": "POSITION",
@@ -54,6 +53,7 @@
                     "type": "BRUSHLESS_DC"
                 },
                 "name": "HA_Axis",
+                "invert_direction": true,
                 "safety_limits": {
                     "max_acceleration": 2.0,
                     "max_current": 10.0,
@@ -134,8 +134,6 @@
             "deadzone": 0.15,
             "device_path": "",
             "gamepad_mode": 0,
-            "invert_axis1": false,
-            "invert_axis2": false,
             "max_velocity_deg_s": 500.0,
             "sensitivity": 1.0,
             "speed_presets": [
@@ -209,9 +207,7 @@
     "logging": {
         "console_output": true,
         "directory": "/var/log/astro-mount",
-        "level": "INFO",
-        "max_file_size_mb": 10,
-        "rotation_days": 7
+        "level": "DEBUG"
     },
     "mount": {
         "altitude": 100.0,
@@ -327,14 +323,10 @@
         "ssl_cert_path": "certs/server.crt",
         "ssl_key_path": "certs/server.key"
     },
-    "servo_init": {
-        "enabled": false,
-        "sequence": []
-    },
     "telescope": {
-        "aperture": 2000.0,
+        "aperture": 200.0,
         "camera_model": "ASI1600",
-        "focal_length": 5e-323,
+        "focal_length": 2000.0,
         "pixel_size": 3.8,
         "sensor_height": 3520,
         "sensor_width": 4656,
@@ -345,5 +337,9 @@
         "enabled_terms": 65535,
         "max_residual": 30.0,
         "min_measurements": 10
+    },
+    "servo_init": {
+        "enabled": false,
+        "sequence": []
     }
 }

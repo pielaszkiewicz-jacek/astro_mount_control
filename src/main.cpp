@@ -200,6 +200,8 @@ int main(int argc, char* argv[]) {
         controller_config.log_level = logging_config.level;
         controller_config.log_directory = logging_config.directory;
         controller_config.log_console_output = logging_config.console_output;
+        controller_config.log_rotation_days = logging_config.rotation_days;
+        controller_config.log_max_file_size_mb = logging_config.max_file_size_mb;
 
         // Set network configuration
         auto network_config = config.getNetworkConfig();
