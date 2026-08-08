@@ -133,7 +133,7 @@
             },
             "deadzone": 0.15,
             "device_path": "",
-            "gamepad_mode": 1,
+            "gamepad_mode": 0,
             "invert_axis1": false,
             "invert_axis2": false,
             "max_velocity_deg_s": 500.0,
@@ -209,21 +209,16 @@
     "logging": {
         "console_output": true,
         "directory": "/var/log/astro-mount",
-        "level": "DEBUG",
+        "level": "INFO",
         "max_file_size_mb": 10,
         "rotation_days": 7
-    },
-    "lx200": {
-        "baud_rate": 9600,
-        "enabled": false,
-        "port": "/dev/ttyUSB0"
     },
     "mount": {
         "altitude": 100.0,
         "axis_physical_parameters": {
             "dec_axis": {
                 "axis_stiffness": 0.6,
-                "backlash": 20.0,
+                "backlash": 6.3,
                 "backlash_temp_coeff": 0.015,
                 "calibration_table": [],
                 "calibration_temp": 20.0,
@@ -291,7 +286,7 @@
         "enable_refraction_correction": true,
         "encoder_resolution": 1000.0,
         "encoders_absolute": false,
-        "equatorial_tracking_velocity_mode": false,
+        "equatorial_tracking_velocity_mode": true,
         "latitude": 54.350833333333334,
         "longitude": 18.64388888888889,
         "max_slew_rate": 1000.0,
@@ -338,12 +333,12 @@
     },
     "telescope": {
         "aperture": 2000.0,
-        "camera_model": "Player One Poseidon-C-PRO",
-        "focal_length": 1600.0,
-        "pixel_size": 3.76,
-        "sensor_height": 4176,
-        "sensor_width": 6252,
-        "tube_length": 465.0
+        "camera_model": "ASI1600",
+        "focal_length": 5e-323,
+        "pixel_size": 3.8,
+        "sensor_height": 3520,
+        "sensor_width": 4656,
+        "tube_length": 1800.0
     },
     "tpoint": {
         "auto_calibrate": true,

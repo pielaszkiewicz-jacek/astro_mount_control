@@ -670,6 +670,8 @@ void Mf7025v2Hal::monitorLoop() {
                 bool abs_ok = false;
                 if (can_iface_->readMultiTurnAngle(node_id, angle_001deg)) {
                     double abs_pos_deg = static_cast<double>(angle_001deg) * 0.01;
+                    MF7025V2_LOGGER()->debug("axis{} 0x92 raw={} → {:.4f}°",
+                        i, angle_001deg, abs_pos_deg);
                     if (std::abs(abs_pos_deg) < 10000000.0) {
                         motors_[i]->updateAbsolutePosition(abs_pos_deg);
                         // Sync encoder to motor absolute position so the

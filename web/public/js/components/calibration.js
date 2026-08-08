@@ -474,13 +474,22 @@ const CalibrationComponent = (() => {
 
     resultDiv.style.display = 'none';
 
+    // Get current mount position for observed coordinates
+    const state = App.getLastState();
+    const observedRa = state ? (state.telescope?.axis1 ?? 0) : 0;
+    const observedDec = state ? (state.telescope?.axis2 ?? 0) : 0;
+    const mountHa = state ? (state.position?.axis1 ?? 0) : 0;
+    const mountDec = state ? (state.position?.axis2 ?? 0) : 0;
+
     const measurement = {
       object_id: obj.id || obj.name,
       object_name: obj.name || '',
-      expected: {
-        ra: ra,
-        dec: dec,
-      },
+      observed_ra: observedRa,
+      observed_dec: observedDec,
+      expected_ra: ra,
+      expected_dec: dec,
+      mount_ha: mountHa,
+      mount_dec: mountDec,
     };
 
     try {

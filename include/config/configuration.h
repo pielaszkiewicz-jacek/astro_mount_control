@@ -147,6 +147,11 @@ public:
         double pixel_size;
         int sensor_width;
         int sensor_height;
+
+        // LX200 serial interface
+        bool lx200_enabled{false};
+        std::string lx200_port{"/dev/ttyUSB0"};
+        int lx200_baud_rate{9600};
     };
 
     struct GuiderConfig {

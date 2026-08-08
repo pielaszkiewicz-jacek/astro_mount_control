@@ -154,6 +154,7 @@ const App = (() => {
       { id: 'dome-component-mount',     render: DomeComponent.render },
       { id: 'weather-component-mount',  render: WeatherComponent.render },
       { id: 'pulley-component-mount',   render: PulleyComponent.render },
+      { id: 'lx200-component-mount',    render: Lx200Component.render },
     ];
 
     mounts.forEach(m => {
@@ -297,6 +298,10 @@ const App = (() => {
         }
         if (tabName === 'pulley') {
           PulleyComponent.refreshStatus();
+        }
+        if (tabName === 'lx200') {
+          Lx200Component.refreshStatus();
+          setTimeout(() => Lx200Component.init(), 100);
         }
 
       });

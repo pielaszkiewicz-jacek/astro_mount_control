@@ -149,11 +149,21 @@ const SettingsComponent = (() => {
       ],
     },
     {
+      id: 'lx200',
+      label: 'LX200 Serial Interface',
+      restartRequired: false,
+      fields: [
+        { key: 'lx200_enabled', label: 'Enable LX200', type: 'checkbox', help: 'Enables the LX200 serial protocol server on the configured serial port. When enabled, planetarium software (Stellarium, Cartes du Ciel, SkySafari) can connect and control the mount.' },
+        { key: 'lx200_port', label: 'Serial Port', type: 'text', help: 'Device path of the serial interface (e.g. /dev/ttyUSB0, /dev/ttyS0).' },
+        { key: 'lx200_baud_rate', label: 'Baud Rate', type: 'select', options: ['4800', '9600', '19200', '38400', '57600', '115200'] },
+      ],
+    },
+    {
       id: 'mount_tracking_mode',
       label: 'Equatorial Tracking Mode',
       restartRequired: false,
       fields: [
-        { key: 'equatorial_tracking_velocity_mode', label: 'Velocity Mode (experimental)', type: 'checkbox', warn: 'Velocity mode uses drive internal PID — may be unreliable on some hardware (0x606C feedback bug). Position mode is recommended.' },
+        { key: 'equatorial_tracking_velocity_mode', label: 'Velocity Mode', type: 'checkbox', warn: 'Velocity mode uses drive internal PID — may be unreliable on some hardware (0x606C feedback bug). Position mode is recommended.' },
       ],
     },
     {
@@ -448,6 +458,8 @@ const SettingsComponent = (() => {
     mount_meridian_flip: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>',
     mount_soft_limits:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>',
     mount_park:       '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+    mount_tracking_mode: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>',
+    lx200:            '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>',
     mount_atmosphere: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>',
     mount_orientation:'<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>',
     ha_axis_params:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2.5"/><circle cx="5" cy="19" r="2.5"/><circle cx="19" cy="19" r="2.5"/><line x1="12" y1="7.5" x2="5" y2="16.5"/><line x1="12" y1="7.5" x2="19" y2="16.5"/><line x1="5" y1="19" x2="19" y2="19"/></svg>',
@@ -457,6 +469,7 @@ const SettingsComponent = (() => {
     kalman:           '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>',
     tpoint:           '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/><line x1="12" y1="2" x2="12" y2="12"/><line x1="12" y1="12" x2="16" y2="16"/></svg>',
     loop_timing:      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+    field_rotation:   '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>',
     servo_init:       '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="12" y2="15"/></svg>',
     hal:              '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="4" x2="9" y2="9"/><line x1="15" y1="4" x2="15" y2="9"/><line x1="9" y1="15" x2="9" y2="20"/><line x1="15" y1="15" x2="15" y2="20"/><line x1="4" y1="9" x2="9" y2="9"/><line x1="15" y1="9" x2="20" y2="9"/></svg>',
     hal_mf7025v2:     '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><circle cx="19" cy="5" r="2"/><circle cx="5" cy="5" r="2"/><circle cx="19" cy="19" r="2"/><circle cx="5" cy="19" r="2"/><line x1="12" y1="9" x2="12" y2="15"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="17" y1="6.5" x2="14" y2="10.5"/><line x1="7" y1="6.5" x2="10" y2="10.5"/><line x1="17" y1="17.5" x2="14" y2="13.5"/><line x1="7" y1="17.5" x2="10" y2="13.5"/></svg>',
@@ -501,6 +514,8 @@ const SettingsComponent = (() => {
     tpoint: 'Model TPoint do korekcji b\u0142\u0119dów systematycznych monta\u017cu: aktywne terminy, pomiary, residua.',
     loop_timing: 'Czasy p\u0119tli g\u0142ównej sterownika: interwa\u0142 odpytywania CANopen i cz\u0119stotliwo\u015b\u0107 aktualizacji trackingu.',
     servo_init: 'Sekwencja inicjalizacyjna SDO dla serwonap\u0119dów: w\u0142\u0105czenie/wy\u0142\u0105czenie oraz lista wpisów JSON ({axis, index, subindex, value, description}) wysy\u0142anych podczas startu.',
+    mount_tracking_mode: 'Tryb \u015bledzenia dla monta\u017cu paralaktycznego. "Position Mode" (domy\u015blny) wysy\u0142a bezwzgl\u0119dne pozycje docelowe do nap\u0119du, co zapewnia stabilne dzia\u0142anie. "Velocity Mode" korzysta z wewn\u0119trznego regulatora PID nap\u0119du, mo\u017ce by\u0107 mniej niezawodny przy niekt\u00f3rych sterownikach (problem z odczytem pr\u0119dko\u015bci 0x606C).',
+    lx200: 'Interfejs szeregowy z protoko\u0142em LX200 (Meade). Umo\u017cliwia pod\u0142\u0105czenie planetarium (Stellarium, Cartes du Ciel, SkySafari) przez port szeregowy. Protok\u00f3\u0142 tekstowy, kompatybilny z wi\u0119kszo\u015bci\u0105 oprogramowania astronomicznego.',
     hal: 'Warstwa abstrakcji sprz\u0119towej (HAL): typ interfejsu, parametry CAN, heartbeat i mapowanie PDO.',
     hal_mf7025v2: 'Konfiguracja sterownik\u00f3w LingKong MF7025v2 BLDC: w\u0142asny protok\u00f3\u0142 CAN (V2.36), parametry magistrali CAN i skalowanie jednostek pozycji/pr\u0119dko\u015bci.',
     hal_pid_params: 'Parametry regulatora PID: wzmocnienia proporcjonalne (Kp), ca\u0142kuj\u0105ce (Ki), r\u00f3\u017cniczkuj\u0105ce (Kd), limity ca\u0142kowania i wyj\u015bcia oraz anti-windup.',
@@ -1290,6 +1305,12 @@ const SettingsComponent = (() => {
     defaultValue: 'true (w\u0142\u0105czone)',
     type: 'boolean',
     range: 'true / false',
+  },
+  equatorial_tracking_velocity_mode: {
+    description: 'Prze\u0142\u0105cza tryb \u015bledzenia z pozycyjnego (Profile Position) na pr\u0119dko\u015bciowy (Profile Velocity). Tryb pr\u0119dko\u015bciowy korzysta z wewn\u0119trznego PID nap\u0119du \u2014 mo\u017ce dzia\u0142a\u0107 niestabilnie na niekt\u00f3rych sterownikach z powodu b\u0142\u0119dnego odczytu sprz\u0119\u017cenia pr\u0119dko\u015bci (0x606C). Zalecany jest tryb pozycyjny.',
+    defaultValue: 'false (Position Mode)',
+    type: 'boolean',
+    range: 'true (Velocity Mode) / false (Position Mode)',
   },
   hal_mf7025v2_can_trace_read_state: {
     description: 'Dodatkowo loguje okresowe komendy odczytu stanu (0x9A, 0x9C, 0x9D, 0x90, 0x92, 0x94). Generuje du\u017co log\u00f3w — w\u0142\u0105czaj tylko przy debugowaniu enkoder\u00f3w/pozycji.',

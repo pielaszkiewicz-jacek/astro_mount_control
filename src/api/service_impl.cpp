@@ -129,7 +129,22 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         
         // Set timestamp
         *response->mutable_state_time() = TimeUtil::GetCurrentTime();
+
+        // Environmental conditions
+        response->set_temperature(status.env_temperature);
+        response->set_pressure(status.env_pressure);
+        response->set_humidity(status.env_humidity);
         
+        // Tracking target info
+        if (status.tracking_active) {
+            auto* tracked = response->mutable_tracked_object();
+            auto* coords = tracked->mutable_coordinates();
+            coords->set_ra(status.tracking_target_ra);
+            coords->set_dec(status.tracking_target_dec);
+            tracked->set_tracking_error_ra(status.tracking_error_ra);
+            tracked->set_tracking_error_dec(status.tracking_error_dec);
+        }
+
         // === NEW: Bootstrap status in GetState (plan §5.6) ===
         auto* bs = response->mutable_bootstrap_status();
         bs->set_calibrated(status.bootstrap_calibrated);
@@ -180,6 +195,11 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             // Telescope axis positions — normalized telescope degrees [0°, 360°).
             state.set_telescope_axis1(status.telescope_axis1_position);
             state.set_telescope_axis2(status.telescope_axis2_position);
+
+            // Environmental conditions
+            state.set_temperature(status.env_temperature);
+            state.set_pressure(status.env_pressure);
+            state.set_humidity(status.env_humidity);
             
             *state.mutable_state_time() = TimeUtil::GetCurrentTime();
             
@@ -720,6 +740,18 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_altitude(config.mount_config.altitude);
         response->set_focal_length(config.focal_length);
         response->set_aperture(config.aperture);
+        response->set_tube_length(config.tube_length);
+        response->set_camera_model(config.camera_model);
+        response->set_pixel_size(config.pixel_size);
+        response->set_sensor_width(config.sensor_width);
+        response->set_sensor_height(config.sensor_height);
+
+        // LX200 serial interface config
+        auto* lx200 = response->mutable_lx200_config();
+        lx200->set_enabled(config.lx200_enabled);
+        lx200->set_port(config.lx200_port);
+        lx200->set_baud_rate(config.lx200_baud_rate);
+
         response->set_default_temperature(config.mount_config.default_temperature);
         response->set_default_pressure(config.mount_config.default_pressure);
         response->set_default_humidity(config.mount_config.default_humidity);
@@ -917,6 +949,19 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->log_max_file_size_mb() != 0) config.log_max_file_size_mb = request->log_max_file_size_mb();
     if (request->focal_length() != 0.0) config.focal_length = request->focal_length();
     if (request->aperture() != 0.0) config.aperture = request->aperture();
+    if (request->tube_length() != 0.0) config.tube_length = request->tube_length();
+    if (!request->camera_model().empty()) config.camera_model = request->camera_model();
+    if (request->pixel_size() != 0.0) config.pixel_size = request->pixel_size();
+    if (request->sensor_width() != 0) config.sensor_width = request->sensor_width();
+    if (request->sensor_height() != 0) config.sensor_height = request->sensor_height();
+
+    // ── LX200 serial interface config ────────────────────────────
+    if (request->has_lx200_config()) {
+        const auto& lx200 = request->lx200_config();
+        config.lx200_enabled = lx200.enabled();
+        if (!lx200.port().empty()) config.lx200_port = lx200.port();
+        if (lx200.baud_rate() != 0) config.lx200_baud_rate = lx200.baud_rate();
+    }
     
     // ── Mount control parameters ─────────────────────────────────
     if (request->max_slew_rate() != 0.0) config.mount_config.max_slew_rate = request->max_slew_rate();
@@ -2167,6 +2212,60 @@ grpc::Status MountControllerServiceImpl::GetMountOrientation(
         API_LOG_ERROR("GetMountOrientation failed: {}", e.what());
         return grpc::Status(grpc::StatusCode::INTERNAL,
                            std::string("Error: ") + e.what());
+    }
+}
+
+// ============================================
+// LX200 Serial Interface Management
+// ============================================
+
+grpc::Status MountControllerServiceImpl::GetLx200Status(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    astro_mount::Lx200Status* response) {
+    try {
+        auto config = controller_.getConfiguration();
+        response->set_enabled(config.lx200_enabled);
+        response->set_running(controller_.isLx200Running());
+        response->set_port(config.lx200_port);
+        response->set_baud_rate(config.lx200_baud_rate);
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::StartLx200(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    astro_mount::Lx200Status* response) {
+    try {
+        controller_.startLx200();
+        auto config = controller_.getConfiguration();
+        response->set_enabled(config.lx200_enabled);
+        response->set_running(controller_.isLx200Running());
+        response->set_port(config.lx200_port);
+        response->set_baud_rate(config.lx200_baud_rate);
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::StopLx200(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    astro_mount::Lx200Status* response) {
+    try {
+        controller_.stopLx200();
+        auto config = controller_.getConfiguration();
+        response->set_enabled(config.lx200_enabled);
+        response->set_running(controller_.isLx200Running());
+        response->set_port(config.lx200_port);
+        response->set_baud_rate(config.lx200_baud_rate);
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
     }
 }
 

@@ -385,6 +385,12 @@ public:
         config.pixel_size = telescope.value("pixel_size", 3.8);
         config.sensor_width = telescope.value("sensor_width", 4656);
         config.sensor_height = telescope.value("sensor_height", 3520);
+
+        // LX200 serial interface
+        auto lx200 = config_.value("lx200", json::object());
+        config.lx200_enabled = lx200.value("enabled", false);
+        config.lx200_port = lx200.value("port", "/dev/ttyUSB0");
+        config.lx200_baud_rate = lx200.value("baud_rate", 9600);
         
         return config;
     }
@@ -574,6 +580,13 @@ public:
         telescope["pixel_size"] = config.pixel_size;
         telescope["sensor_width"] = config.sensor_width;
         telescope["sensor_height"] = config.sensor_height;
+
+        // LX200 serial interface (saved as separate top-level section)
+        json lx200;
+        lx200["enabled"] = config.lx200_enabled;
+        lx200["port"] = config.lx200_port;
+        lx200["baud_rate"] = config.lx200_baud_rate;
+        config_["lx200"] = lx200;
         
         config_["telescope"] = telescope;
         modified_ = true;

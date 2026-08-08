@@ -268,6 +268,19 @@ public:
     grpc::Status GetMountOrientation(grpc::ServerContext* context,
                                      const google::protobuf::Empty* request,
                                      astro_mount::MountOrientation* response) override;
+
+    // ── LX200 serial interface management ─────────────────────────
+    grpc::Status GetLx200Status(grpc::ServerContext* context,
+                                const google::protobuf::Empty* request,
+                                astro_mount::Lx200Status* response) override;
+
+    grpc::Status StartLx200(grpc::ServerContext* context,
+                            const google::protobuf::Empty* request,
+                            astro_mount::Lx200Status* response) override;
+
+    grpc::Status StopLx200(grpc::ServerContext* context,
+                           const google::protobuf::Empty* request,
+                           astro_mount::Lx200Status* response) override;
     
 private:
     controllers::MountController& controller_;

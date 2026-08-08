@@ -216,6 +216,16 @@ int main(int argc, char* argv[]) {
         auto telescope_cfg = config.getTelescopeConfig();
         controller_config.focal_length = telescope_cfg.focal_length;
         controller_config.aperture = telescope_cfg.aperture;
+        controller_config.tube_length = telescope_cfg.tube_length;
+        controller_config.camera_model = telescope_cfg.camera_model;
+        controller_config.pixel_size = telescope_cfg.pixel_size;
+        controller_config.sensor_width = telescope_cfg.sensor_width;
+        controller_config.sensor_height = telescope_cfg.sensor_height;
+
+        // LX200 serial interface
+        controller_config.lx200_enabled = telescope_cfg.lx200_enabled;
+        controller_config.lx200_port = telescope_cfg.lx200_port;
+        controller_config.lx200_baud_rate = telescope_cfg.lx200_baud_rate;
         
         // Initialize mount controller
         if (!mount_controller->initialize(controller_config)) {
@@ -232,6 +242,17 @@ int main(int argc, char* argv[]) {
         if (controller_config.hal_config.gamepad.autostart) {
             logger->info("Gamepad autostart enabled — starting gamepad loop");
             mount_controller->startGamepadLoop();
+        }
+
+        // ─── LX200 serial interface ──────────────────────────────────────────
+        if (controller_config.lx200_enabled) {
+            if (mount_controller->startLx200()) {
+                logger->info("LX200 serial interface started on {} @ {} bps",
+                    controller_config.lx200_port, controller_config.lx200_baud_rate);
+            } else {
+                logger->warn("Failed to start LX200 server on {}",
+                    controller_config.lx200_port);
+            }
         }
         
         // ─── In-process subsystem services (dome, derotator, focuser) ────────

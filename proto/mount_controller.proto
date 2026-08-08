@@ -447,6 +447,22 @@ service MountControllerService {
     
     // Get current mount orientation
     rpc GetMountOrientation(google.protobuf.Empty) returns (MountOrientation);
+
+    // ── LX200 serial interface management ─────────────────────────
+    // Start the LX200 serial protocol server
+    rpc StartLx200(google.protobuf.Empty) returns (Lx200Status);
+    // Stop the LX200 serial protocol server
+    rpc StopLx200(google.protobuf.Empty) returns (Lx200Status);
+    // Get current LX200 server status
+    rpc GetLx200Status(google.protobuf.Empty) returns (Lx200Status);
+}
+
+// LX200 server status
+message Lx200Status {
+    bool enabled = 1;
+    bool running = 2;
+    string port = 3;
+    int32 baud_rate = 4;
 }
 
 // State save/load requests
@@ -554,6 +570,13 @@ enum MountType {
 }
 
 
+// LX200 serial interface configuration
+message Lx200Config {
+    bool enabled = 1;               // Enable LX200 serial interface
+    string port = 2;                // Serial port device (e.g. /dev/ttyUSB0)
+    int32 baud_rate = 3;            // Baud rate (default: 9600)
+}
+
 // Configuration
 message Configuration {
     // Location
@@ -564,6 +587,14 @@ message Configuration {
     // Telescope parameters
     double focal_length = 7;
     double aperture = 8;
+    double tube_length = 91;        // Tube length [mm]
+    string camera_model = 92;       // Camera model name
+    double pixel_size = 93;         // Pixel size [µm]
+    int32 sensor_width = 94;        // Sensor width [pixels]
+    int32 sensor_height = 95;       // Sensor height [pixels]
+
+    // LX200 serial interface
+    Lx200Config lx200_config = 96;
     
     // Environmental defaults
     double default_temperature = 9;

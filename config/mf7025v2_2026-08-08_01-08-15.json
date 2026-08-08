@@ -133,7 +133,7 @@
             },
             "deadzone": 0.15,
             "device_path": "",
-            "gamepad_mode": 1,
+            "gamepad_mode": 0,
             "invert_axis1": false,
             "invert_axis2": false,
             "max_velocity_deg_s": 500.0,
@@ -209,14 +209,9 @@
     "logging": {
         "console_output": true,
         "directory": "/var/log/astro-mount",
-        "level": "DEBUG",
+        "level": "INFO",
         "max_file_size_mb": 10,
         "rotation_days": 7
-    },
-    "lx200": {
-        "baud_rate": 9600,
-        "enabled": false,
-        "port": "/dev/ttyUSB0"
     },
     "mount": {
         "altitude": 100.0,

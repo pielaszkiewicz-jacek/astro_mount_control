@@ -15,8 +15,11 @@
 #include "config/safety_config.h"
 #include "config/calibration_config.h"
 
-// Forward declaration for HAL
+// Forward declarations
 namespace astro_mount {
+namespace controllers {
+class LX200Server;
+}
 namespace hal {
 class HALInterface;
 } // namespace hal
@@ -96,6 +99,16 @@ public:
         // Telescope parameters
         double focal_length{1000.0};
         double aperture{100.0};
+        double tube_length{1800.0};
+        std::string camera_model{"ASI1600"};
+        double pixel_size{3.8};
+        int sensor_width{4656};
+        int sensor_height{3520};
+
+        // LX200 serial interface configuration
+        bool lx200_enabled{false};
+        std::string lx200_port{"/dev/ttyUSB0"};
+        int lx200_baud_rate{9600};
     };
 
     struct MountStatus {
@@ -148,6 +161,16 @@ public:
         int bootstrap_mode{0};                    ///< Current bootstrap mode (BootstrapMode enum)
         bool bootstrap_calibrated{false};         ///< Whether bootstrap calibration completed
         int bootstrap_measurement_count{0};       ///< Number of bootstrap measurements stored
+
+        // === Environmental conditions ===
+        double env_temperature{0.0};  ///< Temperature from HAL sensors [°C]
+        double env_pressure{0.0};     ///< Pressure from HAL sensors [hPa]
+        double env_humidity{0.0};     ///< Humidity from HAL sensors [%]
+
+        // === Tracking target ===
+        bool tracking_active{false};       ///< True when mount is tracking a target
+        double tracking_target_ra{0.0};    ///< Target RA [hours]
+        double tracking_target_dec{0.0};   ///< Target Dec [degrees]
         
         std::chrono::system_clock::time_point timestamp;
         std::string error_message;
@@ -818,6 +841,32 @@ public:
      * @param mode GamepadMode (RAW=0, CELESTIAL=1, ALT_AZ=2)
      */
     void setGamepadMode(GamepadMode mode);
+
+    // ============================================
+    // LX200 Serial Interface
+    // ============================================
+
+    /**
+     * @brief Start the LX200 serial protocol server.
+     * @return true if started successfully
+     */
+    bool startLx200();
+
+    /**
+     * @brief Stop the LX200 serial protocol server.
+     */
+    void stopLx200();
+
+    /**
+     * @brief Check if the LX200 server is running.
+     */
+    bool isLx200Running() const;
+
+    /**
+     * @brief Get LX200 server status information.
+     * @return JSON string with status fields
+     */
+    std::string getLx200Status() const;
     
 private:
     class Impl;

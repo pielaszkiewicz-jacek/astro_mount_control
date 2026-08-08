@@ -240,6 +240,7 @@ set(ST4_SOURCES
 set(CONTROLLER_SOURCES
     src/controllers/mount_controller.cpp
     src/controllers/weather_client.cpp
+    src/controllers/lx200_server.cpp
 )
 
 set(API_SOURCES

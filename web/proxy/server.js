@@ -98,6 +98,7 @@ app.use('/api/focuser', require('./routes/focuser'));
 app.use('/api/dome', require('./routes/dome'));
 app.use('/api/weather', require('./routes/weather'));
 app.use('/api/pulley', require('./routes/pulley'));
+app.use('/api/lx200', require('./routes/lx200'));
 
 // ─── Error Handling ──────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 #include "controllers/mount_controller.h"
+#include "controllers/lx200_server.h"
 #include "core/astronomical_calculations.h"
 #include "hal/hal_interface.h"
 #include "hal/hal_config.h"
@@ -268,6 +269,7 @@ public:
     }
     
     ~Impl() {
+        stopLx200();
         stopGamepad();  // must join gamepad thread before destroying members
     }
     
@@ -466,7 +468,7 @@ public:
         //                                   config.pier_east);
         tpoint_model_->setTelescopeParameters(config.focal_length,
                                               config.aperture,
-                                              0.0);  // tube_length not in config
+                                              config.tube_length);
         
         // Enable TPoint error terms from configuration.
         // Respects user's explicit term selection; falls back to DEFAULT_TERMS
@@ -590,11 +592,11 @@ public:
                     // to find the mount HA/Dec that produces the correct on-sky position
                     if (tpoint_calibrated_) {
                         auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
-                        axis1_target_ = mount_ha * 15.0 * ha_gear;  // Convert hours→degrees→servo degrees
-                        axis2_target_ = mount_dec * dec_gear;
+                        axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
+                        axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
                     } else {
-                        axis1_target_ = ha_hours * 15.0 * ha_gear;  // Convert hours→degrees→servo degrees
-                        axis2_target_ = dec * dec_gear;
+                        axis1_target_ = ha_hours * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
+                        axis2_target_ = dec * dec_gear - home_offset_axis2_;
                     }
                 } else if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                     // Convert RA/Dec to mount-frame alt/az using the orientation quaternion.
@@ -1357,14 +1359,14 @@ public:
                 // to find the mount HA/Dec that produces the correct on-sky position
                 if (tpoint_calibrated_) {
                     auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
-                    axis1_target_ = mount_ha * 15.0 * ha_gear;  // Convert hours→degrees→servo degrees
-                    axis2_target_ = mount_dec * dec_gear;
+                    axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
+                    axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
                     // Store TPOINT-corrected target for the tracking loop
                     tracking_target_ra_hours_ = mount_ha;
                     tracking_target_dec_deg_ = mount_dec;
                 } else {
-                    axis1_target_ = ha_hours * 15.0 * ha_gear;  // Convert hours→degrees→servo degrees
-                    axis2_target_ = dec * dec_gear;
+                    axis1_target_ = ha_hours * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
+                    axis2_target_ = dec * dec_gear - home_offset_axis2_;
                     // Store celestial target for the tracking loop so it can
                     // compute HA = LST - RA correctly as sidereal time advances.
                     tracking_target_ra_hours_ = ra;
@@ -1493,16 +1495,38 @@ public:
                 pier_side_ = 1;
             }
             
-            // For EQUATORIAL mounts, use Profile Position mode instead of
-            // Profile Velocity for tracking.  Velocity mode is unreliable
-            // on this drive (SDO to 0x60FF and 0x6061 confirmed correct,
-            // but 0x6064 position changes at 800+ °/s while 0x606C reports
-            // 1.5 °/s).  Position mode is universally supported and more
-            // robust — we update the target position periodically in the
-            // tracking loop via setPositionTarget().
-            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
-                // Set an initial position target at the current celestial
-                // position.  The tracking loop will advance it periodically.
+            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL &&
+                config_.mount_config.equatorial_tracking_velocity_mode) {
+                // ── EQUATORIAL velocity-mode tracking ──────────────────────
+                // User explicitly enabled velocity mode via config flag
+                // equatorial_tracking_velocity_mode.  The tracking loop will
+                // periodically send updated setVelocity() calls (rate changes
+                // are detected via last_sent_rate_* thresholds).
+                bool velocity_set_ok = false;
+                if (hal_axis1_motor_ && hal_axis2_motor_) {
+                    bool ok1 = hal_axis1_motor_->setVelocity(axis1_tracking_rate, config_.mount_config.tracking_acceleration);
+                    bool ok2 = hal_axis2_motor_->setVelocity(axis2_tracking_rate, config_.mount_config.tracking_acceleration);
+                    velocity_set_ok = ok1 && ok2;
+                } else {
+                    // No HAL motors — simulated tracking.  Velocity targets are
+                    // accepted and the tracking loop advances positions internally.
+                    velocity_set_ok = true;
+                }
+                if (!velocity_set_ok) {
+                    MOUNT_LOG_ERROR("startTracking: failed to set velocity targets — aborting");
+                    axis1_rate_ = 0.0;
+                    axis2_rate_ = 0.0;
+                    state_ = MountStatus::State::IDLE;
+                    return false;
+                }
+                // Reset last-sent rate cache to NaN so the tracking loop
+                // sends the initial velocity command on its first iteration.
+                last_sent_rate_1_ = std::numeric_limits<double>::quiet_NaN();
+                last_sent_rate_2_ = std::numeric_limits<double>::quiet_NaN();
+            } else if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
+                // ── EQUATORIAL position-mode tracking (default) ────────────
+                // Robust position mode — we update the target position
+                // periodically in the tracking loop via setPosition().
                 const double TRACK_POS_VEL = std::max(axis1_tracking_rate * 2.0, 2.0);  // °/s servo
                 bool pos_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
@@ -2845,14 +2869,15 @@ public:
                         // velocity PID (0x606C feedback). On some hardware the
                         // velocity feedback register reports incorrect values,
                         // causing tracking errors. Use position mode by default.
-                        // Rate is constant for sidereal tracking, so send once
-                        // and then only on significant changes or periodically.
+                        //
+                        // Use snap_rate_1/snap_rate_2 from the tracking loop
+                        // state, which hold the correct rate for the current
+                        // tracking mode (SIDEREAL/SOLAR/LUNAR/CUSTOM) as computed
+                        // by startTracking().  Previously the hardcoded sidereal
+                        // rate was used, ignoring the actual tracking mode.
                         constexpr double EQUAT_VEL_THRESHOLD = 1e-6;
-                        const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
-                        const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
-                        const double sidereal_servo_rate = 0.004178074 * ha_gear;
-                        double eq_vel_rate_1 = sidereal_servo_rate;   // sidereal HA rate
-                        double eq_vel_rate_2 = 0.0;                    // Dec rate = 0
+                        double eq_vel_rate_1 = snap_rate_1;
+                        double eq_vel_rate_2 = snap_rate_2;
                         
                         // Also send on first iteration (last_sent_rate_* are NaN initially)
                         bool rate_changed = !std::isfinite(last_sent_rate_1_) ||
@@ -2876,30 +2901,35 @@ public:
                         // Apply exponential smoothing to rate updates to prevent
                         // abrupt velocity changes that cause mechanical vibration (A5 fix).
                         const double RATE_SMOOTHING_ALPHA = 0.3;
-                        double smoothed_rate_1 = last_sent_rate_1_;
-                        double smoothed_rate_2 = last_sent_rate_2_;
+                        const bool first_iteration = !std::isfinite(last_sent_rate_1_) ||
+                                                     !std::isfinite(last_sent_rate_2_);
+                        double smoothed_rate_1 = first_iteration ? snap_rate_1 : last_sent_rate_1_;
+                        double smoothed_rate_2 = first_iteration ? snap_rate_2 : last_sent_rate_2_;
                         // Only smooth if we have a valid previous rate (not NaN from init)
-                        if (std::isfinite(last_sent_rate_1_)) {
+                        if (!first_iteration) {
                             smoothed_rate_1 = last_sent_rate_1_ + RATE_SMOOTHING_ALPHA * (snap_rate_1 - last_sent_rate_1_);
                             smoothed_rate_2 = last_sent_rate_2_ + RATE_SMOOTHING_ALPHA * (snap_rate_2 - last_sent_rate_2_);
                         }
                         
                         // Use a meaningful threshold (1e-6 deg/s servo) instead of 1e-12
-                        // to reduce CANopen bus traffic while still catching real changes.
+                        // to reduce CAN bus traffic while still catching real changes.
                         const double RATE_CHANGE_THRESHOLD = 1e-6;
-                        bool rate_changed = false;
-                        if (hal_axis1_motor_ && hal_axis2_motor_) {
-                            rate_changed = (std::abs(smoothed_rate_1 - last_sent_rate_1_) > RATE_CHANGE_THRESHOLD) ||
+                        // Detect first iteration (last_sent_rate_* are NaN initially)
+                        // or rate change beyond threshold.  Without the isfinite()
+                        // guard, NaN-NaN=NaN causes rate_changed to stay false forever.
+                        bool rate_changed = first_iteration ||
+                                           (std::abs(smoothed_rate_1 - last_sent_rate_1_) > RATE_CHANGE_THRESHOLD) ||
                                            (std::abs(smoothed_rate_2 - last_sent_rate_2_) > RATE_CHANGE_THRESHOLD);
-                            if (rate_changed) {
-                                try {
+                        if (rate_changed) {
+                            try {
+                                if (hal_axis1_motor_ && hal_axis2_motor_) {
                                     hal_axis1_motor_->setVelocity(smoothed_rate_1, snap_tracking_accel);
                                     hal_axis2_motor_->setVelocity(smoothed_rate_2, snap_tracking_accel);
-                                    last_sent_rate_1_ = smoothed_rate_1;
-                                    last_sent_rate_2_ = smoothed_rate_2;
-                                } catch (const std::exception& e) {
-                                    MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
                                 }
+                                last_sent_rate_1_ = smoothed_rate_1;
+                                last_sent_rate_2_ = smoothed_rate_2;
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
                             }
                         }
                     }
@@ -3286,6 +3316,8 @@ public:
 
         double raw_tel_axis1 = raw_servo1 / ha_gear;
         double raw_tel_axis2 = raw_servo2 / dec_gear;
+        MOUNT_LOG_DEBUG("getStatus telescope: raw_servo1={:.2f} raw_servo2={:.2f} ha_gear={:.1f} dec_gear={:.1f} → tel1={:.4f}° tel2={:.4f}°",
+            raw_servo1, raw_servo2, ha_gear, dec_gear, raw_tel_axis1, raw_tel_axis2);
 
         // Normalize telescope positions to [0°, 360°) for consistent display.
         // -50° → 310°, 400° → 40°, etc.
@@ -3358,6 +3390,19 @@ public:
         status.bootstrap_calibrated = bootstrap_calibrated_;
         status.bootstrap_measurement_count = static_cast<int>(bootstrap_measurements_.size());
 
+        // Environmental conditions — read under env_mutex_ (level 1 below state_mutex_)
+        {
+            std::shared_lock<std::shared_mutex> env_lock(*env_mutex_);
+            status.env_temperature = env_temperature_;
+            status.env_pressure = env_pressure_;
+            status.env_humidity = env_humidity_;
+        }
+
+        // Tracking target info
+        status.tracking_active = (state_ == MountStatus::State::TRACKING);
+        status.tracking_target_ra = tracking_target_ra_hours_;
+        status.tracking_target_dec = tracking_target_dec_deg_;
+
         return status;
     }
 
@@ -3411,6 +3456,9 @@ public:
             // whether tracking is active.
             raw_servo_axis1_position_ = pos0 + home_offset_axis1_;
             raw_servo_axis2_position_ = pos1 + home_offset_axis2_;
+            MOUNT_LOG_DEBUG("refreshPositions: pos0={:.4f} pos1={:.4f} home_off1={:.2f} home_off2={:.2f} → raw1={:.2f} raw2={:.2f}",
+                pos0, pos1, home_offset_axis1_, home_offset_axis2_,
+                raw_servo_axis1_position_, raw_servo_axis2_position_);
 
             // During active tracking, the tracking loop OWNS axis1_position_ /
             // axis2_position_.  Overwriting them here with the motor position
@@ -5214,6 +5262,26 @@ public:
                 ensureSection("telescope");
                 j["telescope"]["aperture"] = config_.aperture;
             }
+            if (config_.tube_length != 0.0) {
+                ensureSection("telescope");
+                j["telescope"]["tube_length"] = config_.tube_length;
+            }
+            if (!config_.camera_model.empty()) {
+                ensureSection("telescope");
+                j["telescope"]["camera_model"] = config_.camera_model;
+            }
+            if (config_.pixel_size != 0.0) {
+                ensureSection("telescope");
+                j["telescope"]["pixel_size"] = config_.pixel_size;
+            }
+            if (config_.sensor_width != 0) {
+                ensureSection("telescope");
+                j["telescope"]["sensor_width"] = config_.sensor_width;
+            }
+            if (config_.sensor_height != 0) {
+                ensureSection("telescope");
+                j["telescope"]["sensor_height"] = config_.sensor_height;
+            }
 
             // ── guider ───────────────────────────────────────────────
             ensureSection("guider");
@@ -5231,6 +5299,14 @@ public:
             if (config_.mount_config.measurement_noise != 0.0) {
                 ensureSection("kalman");
                 j["kalman"]["measurement_noise"] = config_.mount_config.measurement_noise;
+            }
+
+            // ── lx200 ──────────────────────────────────────────────
+            if (!config_.lx200_port.empty() || config_.lx200_enabled) {
+                ensureSection("lx200");
+                j["lx200"]["enabled"] = config_.lx200_enabled;
+                j["lx200"]["port"] = config_.lx200_port;
+                j["lx200"]["baud_rate"] = config_.lx200_baud_rate;
             }
 
             // ── hal (gamepad, PID, safety) ─────────────────────────
@@ -5452,18 +5528,24 @@ public:
             return false;
         }
         
-        // First, zero the motor's internal position counter at the
-        // current physical location (e.g. MF7025v2 0x95 SetZeroRAM).
-        // After this, drive_pos = 0, so home_offset = desired_position.
-        // Default no-op for HALs that don't support hardware zeroing.
+        // Zero the motor's internal position counter (e.g. MF7025v2 0x95 SetZeroRAM).
+        // Slew/tracking targets are adjusted by home_offset (axis_target = dec*gear − offset),
+        // so the coordinate mismatch is handled correctly regardless of zeroPoint result.
         if (hal_axis1_motor_) hal_axis1_motor_->zeroPosition();
         if (hal_axis2_motor_) hal_axis2_motor_->zeroPosition();
 
-        // After zeroing, the drive position is nominally 0.
-        // The offset to reach the desired telescope position is simply
-        // the desired value itself.
-        home_offset_axis1_ = new_axis1;
-        home_offset_axis2_ = new_axis2;
+        // Read actual motor positions after zeroing and compute home offset.
+        // offset = desired_servo − actual_logical_motor
+        double actual1 = hal_axis1_motor_ ? hal_axis1_motor_->getActualPosition() : 0.0;
+        double actual2 = hal_axis2_motor_ ? hal_axis2_motor_->getActualPosition() : 0.0;
+
+        home_offset_axis1_ = new_axis1 - actual1;
+        home_offset_axis2_ = new_axis2 - actual2;
+
+        MOUNT_LOG_INFO("Home: actual1={:.2f}° actual2={:.2f}° | "
+                       "desired1={:.2f}° desired2={:.2f}° | offset1={:.2f}° offset2={:.2f}°",
+                       actual1, actual2, new_axis1, new_axis2,
+                       home_offset_axis1_, home_offset_axis2_);
 
         axis1_position_ = new_axis1;
         axis2_position_ = new_axis2;
@@ -6158,7 +6240,10 @@ public:
     std::function<void(const std::string&)> error_callback_;
     std::string error_message_;
     std::string config_file_path_;
-    
+
+    // LX200 serial interface
+    std::unique_ptr<LX200Server> lx200_server_;
+
     /**
      * @brief Build a MountStatus snapshot and invoke status_callback_ if set.
      *
@@ -6246,6 +6331,14 @@ public:
             status.bootstrap_mode = static_cast<int>(bootstrap_mode_);
             status.bootstrap_calibrated = bootstrap_calibrated_;
             status.bootstrap_measurement_count = static_cast<int>(bootstrap_measurements_.size());
+
+            // Environmental conditions (mirrors getStatus())
+            {
+                std::shared_lock<std::shared_mutex> env_lock(*env_mutex_);
+                status.env_temperature = env_temperature_;
+                status.env_pressure = env_pressure_;
+                status.env_humidity = env_humidity_;
+            }
         }
         if (status_callback_) {
             status_callback_(status);
@@ -6696,6 +6789,45 @@ private:
         gamepad_thread_ = std::thread(&Impl::gamepadLoop, this);
     }
     
+    void startLx200(MountController& controller) {
+        if (!config_.lx200_enabled) return;
+        if (lx200_server_ && lx200_server_->isRunning()) return;
+
+        LX200Server::Config cfg;
+        cfg.enabled = config_.lx200_enabled;
+        cfg.port = config_.lx200_port;
+        cfg.baud_rate = config_.lx200_baud_rate;
+
+        lx200_server_ = std::make_unique<LX200Server>(controller, cfg);
+        if (!lx200_server_->start()) {
+            MOUNT_LOG_WARN("Failed to start LX200 server on {}", cfg.port);
+            lx200_server_.reset();
+        } else {
+            MOUNT_LOG_INFO("LX200 server started on {} @ {} bps", cfg.port, cfg.baud_rate);
+        }
+    }
+
+    void stopLx200() {
+        if (lx200_server_) {
+            lx200_server_->stop();
+            lx200_server_.reset();
+            MOUNT_LOG_INFO("LX200 server stopped");
+        }
+    }
+
+    bool isLx200Running() const {
+        return lx200_server_ && lx200_server_->isRunning();
+    }
+
+    std::string getLx200Status() const {
+        nlohmann::json j;
+        j["enabled"] = config_.lx200_enabled;
+        j["running"] = isLx200Running();
+        j["port"] = config_.lx200_port;
+        j["baud_rate"] = config_.lx200_baud_rate;
+        return j.dump();
+    }
+
     void stopGamepad() {
         gamepad_control_enabled_ = false;
         gamepad_running_ = false;
@@ -7515,6 +7647,27 @@ void MountController::stopGamepad() {
 
 void MountController::setGamepadMode(GamepadMode mode) {
     pimpl->setGamepadMode(static_cast<int>(mode));
+}
+
+// ============================================
+// LX200 SERIAL INTERFACE
+// ============================================
+
+bool MountController::startLx200() {
+    pimpl->startLx200(*this);
+    return pimpl->isLx200Running();
+}
+
+void MountController::stopLx200() {
+    pimpl->stopLx200();
+}
+
+bool MountController::isLx200Running() const {
+    return pimpl->isLx200Running();
+}
+
+std::string MountController::getLx200Status() const {
+    return pimpl->getLx200Status();
 }
 
 bool MountController::restart() {

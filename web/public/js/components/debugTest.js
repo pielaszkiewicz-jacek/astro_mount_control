@@ -244,13 +244,35 @@ const DebugTestComponent = (() => {
   /**
    * Load current config to sync mount type selector and observer coordinates.
    */
+  /**
+   * Normalize mount_type from config proxy (which returns strings like
+   * "EQUATORIAL"/"ALT_AZ"/"CASUAL") to the numeric value the HTML select
+   * expects (0=EQUATORIAL, 1=ALT_AZ, 3=CASUAL).  Without this, the select
+   * appears empty and mountType becomes a string, breaking the
+   * `mountType === 0` check in transformReferenceCoordinates().
+   */
+  function normalizeMountType(raw) {
+    if (typeof raw === 'number') return raw;
+    if (typeof raw === 'string') {
+      const s = raw.toUpperCase();
+      if (s === 'EQUATORIAL') return 0;
+      if (s === 'ALT_AZ' || s === 'ALTAZ') return 1;
+      if (s === 'CASUAL') return 3;
+      // Try parsing as integer
+      const num = parseInt(s, 10);
+      if (!isNaN(num)) return num;
+    }
+    return 3; // default to CASUAL
+  }
+
   async function loadCurrentConfig() {
     try {
       const config = await Api.getConfig();
       const select = $('#debug-mount-type');
       if (select && config.mount_type !== undefined) {
-        select.value = config.mount_type;
-        mountType = config.mount_type;
+        const normalizedType = normalizeMountType(config.mount_type);
+        select.value = normalizedType;
+        mountType = normalizedType;
         select.dispatchEvent(new Event('change'));
         logOutput(`Loaded config: mount_type=${mountType}`);
       }
@@ -654,6 +676,15 @@ const DebugTestComponent = (() => {
       axis1Deg = haHours * 15.0;
       axis2Deg = decDeg;
 
+      // ── Normalize to match backend getStatus() [0°, 360°) ──────
+      // HA: [-180°, 180°] → [0°, 360°)
+      axis1Deg = ((axis1Deg % 360) + 360) % 360;
+      // Dec: first fold to [-90°, 90°], then normalize to [0°, 360°)
+      let decNorm = axis2Deg;
+      if (decNorm > 90) decNorm = 180 - decNorm;
+      if (decNorm < -90) decNorm = -180 - decNorm;
+      axis2Deg = ((decNorm % 360) + 360) % 360;
+
       logOutput(`Transform (EQUATORIAL): RA=${raHours.toFixed(3)}h, Dec=${decDeg.toFixed(3)}° → HA=${haHours.toFixed(4)}h → Axis1=${axis1Deg.toFixed(4)}°, Axis2=${axis2Deg.toFixed(4)}°`);
       logOutput(`  LST=${lstHours.toFixed(4)}h, observer lon=${observerLongitude.toFixed(2)}°`);
     } else {
@@ -690,8 +721,25 @@ const DebugTestComponent = (() => {
       const nz = mfZ / mfNorm;
 
       // Step 4: Mount-frame vector → axis angles
-      axis1Deg = Math.atan2(ny, nx) * 180 / Math.PI;
-      axis2Deg = Math.asin(nz) * 180 / Math.PI;
+      // Mount-frame Z = up → altitude-like axis (asin)
+      // Mount-frame XY plane angle → azimuth-like axis (atan2)
+      // The backend uses: axis1 = altitude-like, axis2 = azimuth-like
+      const azLike = Math.atan2(ny, nx) * 180 / Math.PI;
+      const altLike = Math.asin(nz) * 180 / Math.PI;
+
+      // ── Assign axes to match backend convention ──────────────────
+      // Backend: telescope.axis1 = altitude-like, telescope.axis2 = azimuth-like
+      axis1Deg = altLike;
+      axis2Deg = azLike;
+
+      // ── Normalize to match backend getStatus() [0°, 360°) ──────
+      // Altitude-like: clamp to [0°, 90°], then normalize to [0°, 360°)
+      let altNorm = axis1Deg;
+      if (altNorm > 90) altNorm = 90;
+      if (altNorm < 0) altNorm = 0;
+      axis1Deg = ((altNorm % 360) + 360) % 360;
+      // Azimuth-like: normalize to [0°, 360°)
+      axis2Deg = ((axis2Deg % 360) + 360) % 360;
 
       logOutput(`Transform (${mountType === 1 ? 'ALT_AZ' : 'CASUAL'}): RA=${raHours.toFixed(3)}h, Dec=${decDeg.toFixed(3)}° → Axis1=${axis1Deg.toFixed(4)}°, Axis2=${axis2Deg.toFixed(4)}°`);
       logOutput(`  Celestial vector: [${cx.toFixed(4)}, ${cy.toFixed(4)}, ${cz.toFixed(4)}]`);
@@ -783,15 +831,23 @@ const DebugTestComponent = (() => {
       logOutput(`Target (transformed): Axis1=${axis1Tel.toFixed(4)}°, Axis2=${axis2Tel.toFixed(4)}°`);
 
       if (mountType === 0) {
-        // EQUATORIAL: convert HA/Dec → RA/Dec, use slewToEquatorial
-        const lstRad = computeApproximateLST();
-        const lstHours = lstRad * 12 / Math.PI;
-        const haHours = axis1Tel / 15.0;
-        let raHours = lstHours - haHours;
-        while (raHours < 0) raHours += 24;
-        while (raHours >= 24) raHours -= 24;
-        logOutput(`LST=${lstHours.toFixed(4)}h → RA=${raHours.toFixed(4)}h, Dec=${axis2Tel.toFixed(4)}°`);
-        await Api.slewToCoordinates(raHours, axis2Tel);
+        // EQUATORIAL: use original celestial RA/Dec directly.
+        // The backend's slewToEquatorial() computes HA = LST - RA
+        // using its own SOFA-based LST, which is more accurate than
+        // the JS approximation.  Sending the original RA/Dec avoids
+        // double LST computation and potential rounding errors.
+        const raHours = readFloat('debug-ref-ra', 0);
+        const decDeg = readFloat('debug-ref-dec', 0);
+
+        if (isNaN(raHours) || isNaN(decDeg)) {
+          logOutput('ERROR: Original RA/Dec reference coordinates not available. Import a reference object first.', true);
+          App.showToast('Import a reference object first', 'error');
+          return;
+        }
+
+        logOutput(`Sending original celestial: RA=${raHours.toFixed(4)}h, Dec=${decDeg.toFixed(4)}°`);
+        logOutput(`Transformed for reference: HA=${axis1Tel.toFixed(4)}° (normalized [0°,360°)), Dec=${axis2Tel.toFixed(4)}°`);
+        await Api.slewToCoordinates(raHours, decDeg);
       } else {
         // ALT_AZ / CASUAL: use original celestial coordinates.
         // The backend's slewToEquatorial() handles mount-type conversion:
