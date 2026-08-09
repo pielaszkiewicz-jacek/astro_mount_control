@@ -748,10 +748,19 @@ const DebugTestComponent = (() => {
     }
 
     // Display transformed coordinates
+    // Use setAngleDecimal for enhanced angle inputs so internal state matches
+    // the displayed value.  If setAngleDecimal is unavailable (plain text input),
+    // fall back to direct .value assignment.
     const axis1El = $('#debug-tf-axis1');
     const axis2El = $('#debug-tf-axis2');
-    if (axis1El) axis1El.value = axis1Deg.toFixed(4);
-    if (axis2El) axis2El.value = axis2Deg.toFixed(4);
+    if (axis1El) {
+      if (axis1El.setAngleDecimal) axis1El.setAngleDecimal(axis1Deg);
+      else axis1El.value = axis1Deg.toFixed(4);
+    }
+    if (axis2El) {
+      if (axis2El.setAngleDecimal) axis2El.setAngleDecimal(axis2Deg);
+      else axis2El.value = axis2Deg.toFixed(4);
+    }
 
     App.showToast(`Transformed: Axis1=${axis1Deg.toFixed(2)}°, Axis2=${axis2Deg.toFixed(2)}°`, 'info');
   }

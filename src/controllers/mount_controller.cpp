@@ -606,12 +606,12 @@ public:
                         ra, dec, jd, mount_orientation_.quaternion);
                     const double ha_gear_se = config_.mount_config.ha_axis_params.gear_ratio;
                     const double dec_gear_se = config_.mount_config.dec_axis_params.gear_ratio;
-                    axis1_target_ = mount_alt * ha_gear_se;   // Altitude in mount frame → servo (no wrapping)
+                    axis1_target_ = mount_alt * ha_gear_se - home_offset_axis1_;   // Altitude in mount frame → servo (no wrapping)
                     
                     // Azimuth-like axis (axis2 for CASUAL): find target nearest to current
                     // position to avoid the drive unwinding many revolutions.
                     double full_turn_se = 360.0 * dec_gear_se;
-                    double raw_az_target_se = mount_az * dec_gear_se;
+                    double raw_az_target_se = mount_az * dec_gear_se - home_offset_axis2_;
                     double diff_se = raw_az_target_se - std::fmod(axis2_position_, full_turn_se);
                     if (diff_se < 0.0) diff_se += full_turn_se;
                     if (diff_se > full_turn_se / 2.0) diff_se -= full_turn_se;
@@ -628,13 +628,13 @@ public:
                     // Azimuth axis (axis1 for ALT_AZ): find target nearest to current position
                     // to avoid the drive unwinding many revolutions after long tracking.
                     double full_turn_az = 360.0 * ha_gear_az;
-                    double raw_az_target_eq = true_az * ha_gear_az;
+                    double raw_az_target_eq = true_az * ha_gear_az - home_offset_axis1_;
                     double diff_eq = raw_az_target_eq - std::fmod(axis1_position_, full_turn_az);
                     if (diff_eq < 0.0) diff_eq += full_turn_az;
                     if (diff_eq > full_turn_az / 2.0) diff_eq -= full_turn_az;
                     axis1_target_ = axis1_position_ + diff_eq;  // shortest path to azimuth target
                     
-                    axis2_target_ = true_alt * dec_gear_az;     // Altitude → axis2 servo (no wrapping)
+                    axis2_target_ = true_alt * dec_gear_az - home_offset_axis2_;     // Altitude → axis2 servo (no wrapping)
                 }
                 
                 // Check soft limits before initiating slew
@@ -1006,13 +1006,13 @@ public:
                     // servo position, ensuring the drive takes the physically shortest path.
                     // Altitude-like axis: no wrapping needed (physical range [0°, 90°]).
                     double full_turn_sh = 360.0 * ha_gear_sh;
-                    double raw_az_target_sh = mount_az * ha_gear_sh;
+                    double raw_az_target_sh = mount_az * ha_gear_sh - home_offset_axis1_;
                     double diff_sh = raw_az_target_sh - std::fmod(axis1_position_, full_turn_sh);
                     // Normalize diff to (-full_turn, +full_turn), then to [-half_turn, +half_turn]
                     if (diff_sh < 0.0) diff_sh += full_turn_sh;
                     if (diff_sh > full_turn_sh / 2.0) diff_sh -= full_turn_sh;
                     axis1_target_ = axis1_position_ + diff_sh;  // shortest path to azimuth target
-                    axis2_target_ = mount_alt * dec_gear_sh;    // altitude, no wrapping needed
+                    axis2_target_ = mount_alt * dec_gear_sh - home_offset_axis2_;    // altitude, no wrapping needed
                 } else {
                     // Convert telescope/mount degrees to servo degrees.
                     // ALT_AZ mounts: axis1=azimuth, axis2=altitude in telescope frame.
@@ -1025,12 +1025,12 @@ public:
                     // servo position, ensuring the drive takes the physically shortest path.
                     // Altitude axis: no wrapping needed (physical range [0°, 90°]).
                     double full_turn_h = 360.0 * ha_gear_h;
-                    double raw_az_target_h = azimuth * ha_gear_h;
+                    double raw_az_target_h = azimuth * ha_gear_h - home_offset_axis1_;
                     double diff_h = raw_az_target_h - std::fmod(axis1_position_, full_turn_h);
                     if (diff_h < 0.0) diff_h += full_turn_h;
                     if (diff_h > full_turn_h / 2.0) diff_h -= full_turn_h;
                     axis1_target_ = axis1_position_ + diff_h;  // shortest path to azimuth target
-                    axis2_target_ = altitude * dec_gear_h;     // altitude, no wrapping needed
+                    axis2_target_ = altitude * dec_gear_h - home_offset_axis2_;     // altitude, no wrapping needed
                 }
                 
                 // Check soft limits before initiating slew
@@ -1381,12 +1381,12 @@ public:
                     ra, dec, jd, mount_orientation_.quaternion);
                 const double ha_gear_cas = config_.mount_config.ha_axis_params.gear_ratio;
                 const double dec_gear_cas = config_.mount_config.dec_axis_params.gear_ratio;
-                axis1_target_ = mount_alt * ha_gear_cas;   // Altitude in mount frame → servo (no wrapping)
+                axis1_target_ = mount_alt * ha_gear_cas - home_offset_axis1_;   // Altitude in mount frame → servo (no wrapping)
                 
                 // Azimuth-like axis (axis2 for CASUAL): find target nearest to current
                 // position to avoid the drive unwinding many revolutions.
                 double full_turn_cas = 360.0 * dec_gear_cas;
-                double raw_az_cas = mount_az * dec_gear_cas;
+                double raw_az_cas = mount_az * dec_gear_cas - home_offset_axis2_;
                 double diff_cas = raw_az_cas - std::fmod(axis2_position_, full_turn_cas);
                 if (diff_cas < 0.0) diff_cas += full_turn_cas;
                 if (diff_cas > full_turn_cas / 2.0) diff_cas -= full_turn_cas;
@@ -1395,11 +1395,11 @@ public:
                 // axis1 = altitude, axis2 = azimuth — convert telescope degrees → servo degrees
                 const double ha_gear_az = config_.mount_config.ha_axis_params.gear_ratio;
                 const double dec_gear_az = config_.mount_config.dec_axis_params.gear_ratio;
-                axis1_target_ = ra * ha_gear_az;  // altitude → axis1 servo (no wrapping)
+                axis1_target_ = ra * ha_gear_az - home_offset_axis1_;  // altitude → axis1 servo (no wrapping)
                 
                 // Azimuth axis (axis2 for ALT_AZ): find target nearest to current position
                 double full_turn_az = 360.0 * dec_gear_az;
-                double raw_az_eq = dec * dec_gear_az;
+                double raw_az_eq = dec * dec_gear_az - home_offset_axis2_;
                 double diff_az = raw_az_eq - std::fmod(axis2_position_, full_turn_az);
                 if (diff_az < 0.0) diff_az += full_turn_az;
                 if (diff_az > full_turn_az / 2.0) diff_az -= full_turn_az;
