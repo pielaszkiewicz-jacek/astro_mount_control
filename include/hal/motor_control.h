@@ -2,9 +2,15 @@
 #include <functional>
 #include <chrono>
 #include <string>
+#include <vector>
 
 namespace astro_mount {
 namespace hal {
+
+// Forward declaration — full definition in hal_config.h
+// (hal_config.h includes motor_control.h, so the type is complete at every
+//  call site that includes both headers).
+struct SpeedPidEntry;
 
 enum class MotorType {
     STEPPER,        // Silnik krokowy
@@ -80,7 +86,26 @@ public:
     // Reset the motor's internal position counter to zero at the current
     // physical position (e.g. MF7025v2 0x95 SetZeroRAM).  Default: no-op.
     virtual bool zeroPosition() { return false; }
-    
+
+    // Reinstall the speed-dependent PID gain schedule on an already-running
+    // drive WITHOUT a full HAL restart.  This lets a Web-UI config change take
+    // effect immediately instead of requiring a restart/reinit.
+    //
+    // send_speed_pid / send_current_pid / send_position_pid select which of the
+    // per-loop PID gains from the schedule are actually written to the drive.
+    //
+    // Implementations that do not support live gain scheduling (e.g. CANopen
+    // CiA 402) return false; the caller then falls back to "restart required".
+    virtual bool applySpeedPidSchedule(const std::vector<SpeedPidEntry>& schedule,
+                                       bool enabled, double update_interval_ms,
+                                       bool send_speed_pid = true,
+                                       bool send_current_pid = false,
+                                       bool send_position_pid = true) {
+        (void)schedule; (void)enabled; (void)update_interval_ms;
+        (void)send_speed_pid; (void)send_current_pid; (void)send_position_pid;
+        return false;
+    }
+
     // Konfiguracja
     virtual bool configure(const MotorConfig& config) = 0;
     virtual MotorConfig getConfiguration() const = 0;

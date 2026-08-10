@@ -1145,6 +1145,20 @@ message EthernetConfig {
     uint32 retry_count = 5;
 }
 
+// Single entry of the speed-dependent PID gain schedule (MF7025v2 BLDC).
+// Maps a motor-shaft speed [RPM] to the PID gains applied to the drive's
+// current, speed and position loops at that speed (RAM-only writes).
+message SpeedPidEntry {
+    double speed_rpm = 1;        // Motor shaft speed breakpoint [RPM]
+    double current_kp = 2;       // Current loop Kp
+    double current_ki = 3;       // Current loop Ki
+    double speed_kp = 4;         // Speed loop Kp
+    double speed_ki = 5;         // Speed loop Ki
+    double speed_filter_hz = 6;  // Speed loop filter cutoff [Hz]
+    double position_kp = 7;      // Position loop Kp
+    double position_ki = 8;      // Position loop Ki
+}
+
 // MF7025v2 (LingKong BLDC) configuration
 message Mf7025v2Config {
     string can_interface = 1;            // SocketCAN interface name, e.g. "can0"
@@ -1152,6 +1166,16 @@ message Mf7025v2Config {
     uint32 sdo_timeout_ms = 3;           // CAN response timeout (default: 100)
     double position_units_per_degree = 4; // Position scaling (default: 100.0 = 0.01°/LSB)
     double velocity_units_per_dps = 5;    // Velocity scaling (default: 100.0 = 0.01dps/LSB)
+
+    // Speed-dependent PID gain scheduling (RAM writes, volatile)
+    bool speed_pid_adaptation_enabled = 6;     // Master switch
+    double speed_pid_adaptation_update_ms = 7; // Min. interval between PID re-evaluations [ms]
+    repeated SpeedPidEntry speed_pid_schedule = 8; // Sorted ascending by speed_rpm
+
+    // Which PID loop gains from the schedule are actually written to the drive.
+    bool send_speed_pid = 9;     // Send speed-loop PID gains (default: true)
+    bool send_current_pid = 10;  // Send current-loop PID gains (default: false)
+    bool send_position_pid = 11; // Send position-loop PID gains (default: true)
 }
 
 // HAL configuration

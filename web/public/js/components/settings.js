@@ -389,6 +389,9 @@ const SettingsComponent = (() => {
         { key: 'hal_mf7025v2_velocity_units_per_dps', label: 'Velocity Units per °/s', type: 'number', min: 0.1, max: 100000, step: 0.1, help: 'Speed units per deg/s (default: 100.0 = 0.01dps/LSB)' },
         { key: 'hal_mf7025v2_can_trace', label: 'CAN Trace', type: 'checkbox', help: 'Log all CAN frames with decoded parameters (speedControl, positionControl, etc.)' },
         { key: 'hal_mf7025v2_can_trace_read_state', label: 'CAN Trace Read State', type: 'checkbox', help: 'Also log periodic status-read commands (0x9A, 0x9C, 0x9D, 0x90, 0x92, 0x94)' },
+        { key: 'hal_mf7025v2_speed_pid_adaptation_enabled', label: 'Speed-PID Adaptation', type: 'checkbox', help: 'Enable live retuning of current/speed/position loop PID gains based on motor-shaft speed (RPM). Gains are written to drive RAM only (volatile, lost on power cycle).' },
+        { key: 'hal_mf7025v2_speed_pid_adaptation_update_ms', label: 'Speed-PID Update Interval (ms)', type: 'number', min: 10, max: 10000, step: 10, help: 'Minimum interval between PID gain re-evaluations to avoid spamming the CAN bus.' },
+        { key: 'hal_mf7025v2_speed_pid_schedule', label: 'Speed-PID Schedule (JSON)', type: 'json', help: 'Array of {speed_rpm, current_kp, current_ki, speed_kp, speed_ki, speed_filter_hz, position_kp, position_ki} entries, sorted ascending by speed_rpm. Speed is motor-shaft RPM (1 RPM = 6°/s).' },
       ],
     },
     {
@@ -1739,6 +1742,27 @@ const SettingsComponent = (() => {
       return wrapper;
     }
 
+    // JSON (multiline) — renders an object/array as pretty-printed JSON text
+    if (field.type === 'json') {
+      let display = '';
+      try {
+        display = value !== undefined && value !== null && value !== ''
+          ? JSON.stringify(value, null, 2)
+          : '';
+      } catch (e) {
+        display = String(value || '');
+      }
+      wrapper.innerHTML = `
+        <label class="config-field-label">${fieldLabel}
+          <button class="help-icon" data-help-key="${field.key}" aria-label="Pokaż opis parametru: ${fieldLabel}">i</button>
+        </label>
+        <textarea class="form-input config-input" data-group="${groupId}" data-key="${field.key}" data-type="json"
+          rows="12" style="font-family:monospace; font-size:0.72rem; min-height:180px;"
+        >${escapeHtml(display)}</textarea>
+      `;
+      return wrapper;
+    }
+
     // Textarea (multiline)
     if (field.type === 'textarea') {
       wrapper.innerHTML = `
@@ -1828,6 +1852,21 @@ const SettingsComponent = (() => {
           qz: parts[2] || 0.0,
           qw: parts[3] || 0.0,
         };
+      } else if (type === 'json') {
+        // Parse the JSON textarea content back into an object/array.
+        // Empty input is sent as-is (proxy/backend treat missing/empty as "no change").
+        const raw = input.value.trim();
+        if (raw === '') {
+          value = '';
+        } else {
+          try {
+            value = JSON.parse(raw);
+          } catch (e) {
+            // Keep the raw string; the backend will reject invalid JSON and
+            // surface a clear error to the user.
+            value = input.value;
+          }
+        }
       } else {
         value = input.value;
       }

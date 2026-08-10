@@ -5695,6 +5695,24 @@ public:
         mf7->set_sdo_timeout_ms(hal_config_.mf7025v2.sdo_timeout_ms);
         mf7->set_position_units_per_degree(hal_config_.mf7025v2.position_units_per_degree);
         mf7->set_velocity_units_per_dps(hal_config_.mf7025v2.velocity_units_per_dps);
+
+        // Speed-dependent PID gain schedule (RAM writes, volatile)
+        mf7->set_speed_pid_adaptation_enabled(hal_config_.mf7025v2.speed_pid_adaptation_enabled);
+        mf7->set_speed_pid_adaptation_update_ms(hal_config_.mf7025v2.speed_pid_adaptation_update_ms);
+        mf7->set_send_speed_pid(hal_config_.mf7025v2.send_speed_pid);
+        mf7->set_send_current_pid(hal_config_.mf7025v2.send_current_pid);
+        mf7->set_send_position_pid(hal_config_.mf7025v2.send_position_pid);
+        for (const auto& e : hal_config_.mf7025v2.speed_pid_schedule) {
+            auto* proto_entry = mf7->add_speed_pid_schedule();
+            proto_entry->set_speed_rpm(e.speed_rpm);
+            proto_entry->set_current_kp(e.current_kp);
+            proto_entry->set_current_ki(e.current_ki);
+            proto_entry->set_speed_kp(e.speed_kp);
+            proto_entry->set_speed_ki(e.speed_ki);
+            proto_entry->set_speed_filter_hz(e.speed_filter_hz);
+            proto_entry->set_position_kp(e.position_kp);
+            proto_entry->set_position_ki(e.position_ki);
+        }
         
         return true;
     }
@@ -5765,6 +5783,31 @@ public:
                     hal_config_.mf7025v2.position_units_per_degree = mf7.position_units_per_degree();
                 if (mf7.velocity_units_per_dps() != 0.0)
                     hal_config_.mf7025v2.velocity_units_per_dps = mf7.velocity_units_per_dps();
+
+                // Speed-dependent PID gain schedule (RAM writes, volatile)
+                // Booleans are applied unconditionally (proto3 scalar, like can_trace)
+                hal_config_.mf7025v2.speed_pid_adaptation_enabled = mf7.speed_pid_adaptation_enabled();
+                if (mf7.speed_pid_adaptation_update_ms() != 0.0)
+                    hal_config_.mf7025v2.speed_pid_adaptation_update_ms = mf7.speed_pid_adaptation_update_ms();
+                hal_config_.mf7025v2.send_speed_pid = mf7.send_speed_pid();
+                hal_config_.mf7025v2.send_current_pid = mf7.send_current_pid();
+                hal_config_.mf7025v2.send_position_pid = mf7.send_position_pid();
+                if (mf7.speed_pid_schedule_size() > 0) {
+                    hal_config_.mf7025v2.speed_pid_schedule.clear();
+                    for (int i = 0; i < mf7.speed_pid_schedule_size(); ++i) {
+                        const auto& pe = mf7.speed_pid_schedule(i);
+                        hal::SpeedPidEntry entry;
+                        entry.speed_rpm = pe.speed_rpm();
+                        entry.current_kp = pe.current_kp();
+                        entry.current_ki = pe.current_ki();
+                        entry.speed_kp = pe.speed_kp();
+                        entry.speed_ki = pe.speed_ki();
+                        entry.speed_filter_hz = pe.speed_filter_hz();
+                        entry.position_kp = pe.position_kp();
+                        entry.position_ki = pe.position_ki();
+                        hal_config_.mf7025v2.speed_pid_schedule.push_back(entry);
+                    }
+                }
             }
             
             // Persist to disk if a config file path has been set
@@ -5879,6 +5922,31 @@ public:
                 new_config.mf7025v2.position_units_per_degree = mf7.position_units_per_degree();
             if (mf7.velocity_units_per_dps() != 0.0)
                 new_config.mf7025v2.velocity_units_per_dps = mf7.velocity_units_per_dps();
+
+            // Speed-dependent PID gain schedule (RAM writes, volatile)
+            // Booleans are applied unconditionally (proto3 scalar, like can_trace)
+            new_config.mf7025v2.speed_pid_adaptation_enabled = mf7.speed_pid_adaptation_enabled();
+            if (mf7.speed_pid_adaptation_update_ms() != 0.0)
+                new_config.mf7025v2.speed_pid_adaptation_update_ms = mf7.speed_pid_adaptation_update_ms();
+            new_config.mf7025v2.send_speed_pid = mf7.send_speed_pid();
+            new_config.mf7025v2.send_current_pid = mf7.send_current_pid();
+            new_config.mf7025v2.send_position_pid = mf7.send_position_pid();
+            if (mf7.speed_pid_schedule_size() > 0) {
+                new_config.mf7025v2.speed_pid_schedule.clear();
+                for (int i = 0; i < mf7.speed_pid_schedule_size(); ++i) {
+                    const auto& pe = mf7.speed_pid_schedule(i);
+                    hal::SpeedPidEntry entry;
+                    entry.speed_rpm = pe.speed_rpm();
+                    entry.current_kp = pe.current_kp();
+                    entry.current_ki = pe.current_ki();
+                    entry.speed_kp = pe.speed_kp();
+                    entry.speed_ki = pe.speed_ki();
+                    entry.speed_filter_hz = pe.speed_filter_hz();
+                    entry.position_kp = pe.position_kp();
+                    entry.position_ki = pe.position_ki();
+                    new_config.mf7025v2.speed_pid_schedule.push_back(entry);
+                }
+            }
         }
         
         // PID config
@@ -5916,6 +5984,35 @@ public:
             // Just update config in memory — no HAL restart needed
             hal_config_ = new_config;
             MOUNT_LOG_INFO("setHALConfig: config updated in place (no reinit required)");
+
+            // ── Live speed-PID schedule push ────────────────────────────
+            // When only the MF7025v2 speed-PID schedule (or its enable flag /
+            // update interval) changed, reinstall it on the running drives
+            // immediately so the Web-UI change takes effect WITHOUT a restart.
+            // The HAL's applySpeedPidSchedule() re-copies the schedule into
+            // each motor; the next setPosition()/setVelocity() call then writes
+            // the matching gains to the drive RAM (0xC1).  For HAL types that
+            // do not support live gain scheduling the default no-op returns
+            // false and the change simply takes effect after a restart.
+            if (hal_axis1_motor_) {
+                hal_axis1_motor_->applySpeedPidSchedule(
+                    hal_config_.mf7025v2.speed_pid_schedule,
+                    hal_config_.mf7025v2.speed_pid_adaptation_enabled,
+                    hal_config_.mf7025v2.speed_pid_adaptation_update_ms,
+                    hal_config_.mf7025v2.send_speed_pid,
+                    hal_config_.mf7025v2.send_current_pid,
+                    hal_config_.mf7025v2.send_position_pid);
+            }
+            if (hal_axis2_motor_) {
+                hal_axis2_motor_->applySpeedPidSchedule(
+                    hal_config_.mf7025v2.speed_pid_schedule,
+                    hal_config_.mf7025v2.speed_pid_adaptation_enabled,
+                    hal_config_.mf7025v2.speed_pid_adaptation_update_ms,
+                    hal_config_.mf7025v2.send_speed_pid,
+                    hal_config_.mf7025v2.send_current_pid,
+                    hal_config_.mf7025v2.send_position_pid);
+            }
+
             // Persist to disk
             if (!config_file_path_.empty()) {
                 saveConfigToFile();

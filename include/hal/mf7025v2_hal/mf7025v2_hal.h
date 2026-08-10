@@ -57,6 +57,31 @@ private:
         double getVoltage() const override;
         uint32_t getOperationTime() const override;
 
+        // Speed-dependent PID gain scheduling (MF7025v2 BLDC).
+        // Installs the per-speed PID table from config.  While enabled, the
+        // drive's current/speed/position loop gains are rewritten in RAM
+        // (control-parameter write 0xC1, volatile) whenever the commanded
+        // speed crosses into a new RPM band.
+        // send_speed_pid / send_current_pid / send_position_pid select which
+        // per-loop gains from the schedule are actually written to the drive.
+        void setSpeedPidSchedule(const std::vector<hal::SpeedPidEntry>& schedule,
+                                 bool enabled, double update_interval_ms,
+                                 bool send_speed_pid = true,
+                                 bool send_current_pid = false,
+                                 bool send_position_pid = true);
+
+        // Live re-install of the speed-PID schedule on the running drive
+        // (no HAL restart).  Returns true.
+        bool applySpeedPidSchedule(const std::vector<hal::SpeedPidEntry>& schedule,
+                                   bool enabled, double update_interval_ms,
+                                   bool send_speed_pid = true,
+                                   bool send_current_pid = false,
+                                   bool send_position_pid = true) override {
+            setSpeedPidSchedule(schedule, enabled, update_interval_ms,
+                                send_speed_pid, send_current_pid, send_position_pid);
+            return true;
+        }
+
         // Called by Mf7025v2Hal monitor thread
         void updateStatus(const controllers::Mf7025v2Status& st);
         // Called by monitor thread to sync absolute position from drive (0x92)
@@ -70,6 +95,30 @@ private:
         uint8_t can_node_id_;
         Mf7025v2Hal* parent_;
         MotorConfig config_;
+
+        // ── Speed-dependent PID scheduling state ────────────────────────
+        std::vector<hal::SpeedPidEntry> speed_pid_schedule_;
+        bool speed_pid_enabled_{false};
+        double speed_pid_update_interval_ms_{50.0};
+        // Per-loop send switches (which PID gains are written to the drive).
+        bool send_speed_pid_{true};      // Speed loop (always sent by default)
+        bool send_current_pid_{false};   // Current loop (not sent by default)
+        bool send_position_pid_{true};   // Position loop (sent by default)
+        // Cache of the last PID gains actually written to the drive, so we
+        // never resend a command when the gains are already up to date.
+        struct LastSentPid {
+            double current_kp{-1.0};
+            double current_ki{-1.0};
+            double speed_kp{-1.0};
+            double speed_ki{-1.0};
+            double speed_filter_hz{-1.0};
+            double position_kp{-1.0};
+            double position_ki{-1.0};
+        } last_sent_pid_;
+        std::chrono::steady_clock::time_point last_pid_update_{};
+        // Apply the PID gains matching the given commanded speed (deg/s).
+        // Sends 0xC1 RAM writes only when the gains differ from last_sent_pid_.
+        void applySpeedBasedPid(double speed_deg_s);
 
         std::atomic<bool> enabled_{false};
         std::atomic<bool> moving_{false};
@@ -225,6 +274,15 @@ public:
     std::string getErrorString() const override { return target_->getErrorString(); }
     bool clearErrors() override { return target_->clearErrors(); }
     bool zeroPosition() override { return target_->zeroPosition(); }
+    bool applySpeedPidSchedule(const std::vector<SpeedPidEntry>& s,
+                               bool enabled, double update_ms,
+                               bool send_speed_pid = true,
+                               bool send_current_pid = false,
+                               bool send_position_pid = true) override {
+        return target_->applySpeedPidSchedule(s, enabled, update_ms,
+                                              send_speed_pid, send_current_pid,
+                                              send_position_pid);
+    }
     bool configure(const MotorConfig& c) override { return target_->configure(c); }
     MotorConfig getConfiguration() const override { return target_->getConfiguration(); }
     void setPositionCallback(PositionCallback cb) override { target_->setPositionCallback(cb); }

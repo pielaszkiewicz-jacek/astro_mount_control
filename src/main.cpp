@@ -494,8 +494,32 @@ int main(int argc, char* argv[]) {
         
         logger->info("Shutdown complete");
         
+        // Shut down the logging subsystem (joins spdlog's periodic flush thread
+        // and releases all sinks) while still inside main. This is the LAST
+        // logging operation — do not log anything after this point.
+        logging::Logger::shutdown();
+        
     } catch (const std::exception& e) {
         std::cerr << "Fatal error: " << e.what() << std::endl;
+
+        // Tear down the global objects here, while the logging subsystem and
+        // all linked libraries are still fully alive.  Relying on implicit
+        // destruction at process exit is unsafe: a global destructor
+        // (e.g. ~MountController → shutdown → stopGamepad) calls into
+        // logging::Logger, whose static state may already have been destroyed
+        // by then, causing a segfault after main() returns.
+        mount_controller.reset();
+        grpc_server_instance.reset();
+        dome_service_impl.reset();
+        derotator_service_impl.reset();
+        focuser_service_impl.reset();
+        weather_client.reset();
+        power_stub.reset();
+
+        // Shut down spdlog (joins its periodic flush thread) while we are
+        // still inside main, avoiding teardown-order issues at process exit.
+        logging::Logger::shutdown();
+
         return 1;
     }
     

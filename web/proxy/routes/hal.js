@@ -29,6 +29,21 @@ function flattenHALConfig(proto) {
     hal_mf7025v2_sdo_timeout_ms:          (proto.mf7025v2 && proto.mf7025v2.sdo_timeout_ms) || 0,
     hal_mf7025v2_position_units_per_degree:  (proto.mf7025v2 && proto.mf7025v2.position_units_per_degree) || 0,
     hal_mf7025v2_velocity_units_per_dps:     (proto.mf7025v2 && proto.mf7025v2.velocity_units_per_dps) || 0,
+    // Speed-dependent PID gain scheduling (RAM writes, volatile)
+    hal_mf7025v2_speed_pid_adaptation_enabled:    (proto.mf7025v2 && proto.mf7025v2.speed_pid_adaptation_enabled !== undefined) ? proto.mf7025v2.speed_pid_adaptation_enabled : false,
+    hal_mf7025v2_speed_pid_adaptation_update_ms:  (proto.mf7025v2 && proto.mf7025v2.speed_pid_adaptation_update_ms) || 50,
+    hal_mf7025v2_speed_pid_schedule:              (proto.mf7025v2 && Array.isArray(proto.mf7025v2.speed_pid_schedule))
+      ? proto.mf7025v2.speed_pid_schedule.map((e) => ({
+          speed_rpm: e.speed_rpm || 0,
+          current_kp: e.current_kp || 0,
+          current_ki: e.current_ki || 0,
+          speed_kp: e.speed_kp || 0,
+          speed_ki: e.speed_ki || 0,
+          speed_filter_hz: e.speed_filter_hz || 0,
+          position_kp: e.position_kp || 0,
+          position_ki: e.position_ki || 0,
+        }))
+      : [],
     // Gamepad
     hal_gamepad_device_path:   (proto.gamepad && proto.gamepad.device_path) || '',
     hal_gamepad_deadzone:      (proto.gamepad && proto.gamepad.deadzone) || 0.15,
@@ -116,13 +131,17 @@ router.post('/config', async (req, res) => {
       configMsg.can_trace_read_state = !!updateData.hal_mf7025v2_can_trace_read_state;
     }
 
-    // ── MF7025v2 full config (CAN interface, bitrate, timeouts, scaling) ─
+    // ── MF7025v2 full config (CAN interface, bitrate, timeouts, scaling,
+    //    speed-dependent PID gain schedule) ─────────────────────────────
     const mf7025v2Fields = [
       'hal_mf7025v2_can_interface',
       'hal_mf7025v2_bitrate',
       'hal_mf7025v2_sdo_timeout_ms',
       'hal_mf7025v2_position_units_per_degree',
       'hal_mf7025v2_velocity_units_per_dps',
+      'hal_mf7025v2_speed_pid_adaptation_enabled',
+      'hal_mf7025v2_speed_pid_adaptation_update_ms',
+      'hal_mf7025v2_speed_pid_schedule',
     ];
     const hasMf7025v2Data = mf7025v2Fields.some(f => f in updateData);
     if (hasMf7025v2Data) {
@@ -141,6 +160,26 @@ router.post('/config', async (req, res) => {
       }
       if ('hal_mf7025v2_velocity_units_per_dps' in updateData) {
         mf7.velocity_units_per_dps = Number(updateData.hal_mf7025v2_velocity_units_per_dps) || 0;
+      }
+      // Speed-dependent PID gain scheduling (RAM writes, volatile)
+      if ('hal_mf7025v2_speed_pid_adaptation_enabled' in updateData) {
+        mf7.speed_pid_adaptation_enabled = !!updateData.hal_mf7025v2_speed_pid_adaptation_enabled;
+      }
+      if ('hal_mf7025v2_speed_pid_adaptation_update_ms' in updateData) {
+        mf7.speed_pid_adaptation_update_ms = Number(updateData.hal_mf7025v2_speed_pid_adaptation_update_ms) || 50;
+      }
+      if ('hal_mf7025v2_speed_pid_schedule' in updateData &&
+          Array.isArray(updateData.hal_mf7025v2_speed_pid_schedule)) {
+        mf7.speed_pid_schedule = updateData.hal_mf7025v2_speed_pid_schedule.map((e) => ({
+          speed_rpm: Number(e.speed_rpm) || 0,
+          current_kp: Number(e.current_kp) || 0,
+          current_ki: Number(e.current_ki) || 0,
+          speed_kp: Number(e.speed_kp) || 0,
+          speed_ki: Number(e.speed_ki) || 0,
+          speed_filter_hz: Number(e.speed_filter_hz) || 0,
+          position_kp: Number(e.position_kp) || 0,
+          position_ki: Number(e.position_ki) || 0,
+        }));
       }
       configMsg.mf7025v2 = mf7;
     }

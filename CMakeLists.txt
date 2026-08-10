@@ -145,6 +145,15 @@ find_package(Eigen3 REQUIRED)
 # Find SQLite3
 find_package(SQLite3 REQUIRED)
 
+# CMake's FindSQLite3 module (>= 3.14) creates the imported target
+# SQLite::SQLite3.  Create a compatibility alias SQLite3::SQLite3 so the
+# canonical name used throughout this project always resolves, regardless
+# of the CMake version in use.
+if(TARGET SQLite::SQLite3 AND NOT TARGET SQLite3::SQLite3)
+    add_library(SQLite3::SQLite3 INTERFACE IMPORTED)
+    set_property(TARGET SQLite3::SQLite3 PROPERTY INTERFACE_LINK_LIBRARIES SQLite::SQLite3)
+endif()
+
 # Find uuid
 find_library(UUID_LIB uuid)
 if(NOT UUID_LIB)

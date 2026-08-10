@@ -120,6 +120,9 @@ bool Mf7025v2Hal::Mf7025v2Motor::setPosition(double position_deg, double velocit
                              // readStatus2 (0x9C) will be non-zero and correctly
                              // drive the position integration in updateStatus().
     moving_ = true;
+
+    // Apply speed-dependent PID gains for this position move (RAM writes).
+    applySpeedBasedPid(velocity_deg_s);
     return true;
 }
 
@@ -184,11 +187,17 @@ bool Mf7025v2Hal::Mf7025v2Motor::setVelocity(double velocity_deg_s, double accel
         can_failures_ = 0;
         actual_velocity_ = vel;
         moving_ = true;
+
+        // Apply speed-dependent PID gains for this velocity command.
+        applySpeedBasedPid(vel);
         return true;
     }
     can_failures_ = 0;
     actual_velocity_ = vel;
     moving_ = (std::abs(vel) > SPEED_HYSTERESIS);
+
+    // Apply speed-dependent PID gains for this velocity command.
+    applySpeedBasedPid(vel);
     return true;
 }
 
@@ -296,6 +305,177 @@ bool Mf7025v2Hal::Mf7025v2Motor::configure(const MotorConfig& config) {
 MotorConfig Mf7025v2Hal::Mf7025v2Motor::getConfiguration() const {
     std::lock_guard<std::mutex> lock(mutex_);
     return config_;
+}
+
+void Mf7025v2Hal::Mf7025v2Motor::setSpeedPidSchedule(
+        const std::vector<hal::SpeedPidEntry>& schedule,
+        bool enabled, double update_interval_ms,
+        bool send_speed_pid, bool send_current_pid, bool send_position_pid) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    speed_pid_schedule_ = schedule;
+    speed_pid_enabled_ = enabled && !schedule.empty();
+    speed_pid_update_interval_ms_ = update_interval_ms > 0.0 ? update_interval_ms : 50.0;
+    send_speed_pid_ = send_speed_pid;
+    send_current_pid_ = send_current_pid;
+    send_position_pid_ = send_position_pid;
+    // Reset the last-sent cache so the next command applies the gains for
+    // the current speed band (the drive may have been re-powered meanwhile).
+    last_sent_pid_ = LastSentPid{};
+    last_pid_update_ = std::chrono::steady_clock::time_point{};
+    MF7025V2_LOGGER()->debug("Motor {} (node {}) speed-PID schedule: enabled={} entries={} "
+               "send speed={} current={} position={}",
+               axis_id_, can_node_id_, speed_pid_enabled_, speed_pid_schedule_.size(),
+               send_speed_pid_, send_current_pid_, send_position_pid_);
+}
+
+void Mf7025v2Hal::Mf7025v2Motor::applySpeedBasedPid(double speed_deg_s) {
+    if (!speed_pid_enabled_ || speed_pid_schedule_.empty()) return;
+
+    // Convert servo degrees/second → motor shaft RPM. 1 RPM = 360°/60s = 6°/s.
+    double rpm = std::abs(speed_deg_s) / 6.0;
+
+    // Throttle re-evaluations to the configured minimum interval to avoid
+    // spamming the CAN bus with parameter writes at high loop rates.
+    auto now = std::chrono::steady_clock::now();
+    if (last_pid_update_.time_since_epoch().count() != 0) {
+        auto elapsed_ms = std::chrono::duration<double, std::milli>(now - last_pid_update_).count();
+        if (elapsed_ms < speed_pid_update_interval_ms_) return;
+    }
+
+    // Find the schedule entry: the largest breakpoint <= current RPM.
+    // Entries are expected to be sorted ascending by speed_rpm.
+    const hal::SpeedPidEntry* selected = nullptr;
+    for (const auto& e : speed_pid_schedule_) {
+        if (e.speed_rpm <= rpm) {
+            selected = &e;
+        } else {
+            break;  // table is sorted; no later entry can match either
+        }
+    }
+    if (!selected) {
+        // Speed below the first breakpoint — clamp to the first entry.
+        selected = &speed_pid_schedule_.front();
+    }
+
+    // Skip the write if the gains already match what was last sent.
+    // Only the loops enabled for sending participate in this check.
+    bool changed = false;
+    if (send_speed_pid_) {
+        changed |= (selected->speed_kp        != last_sent_pid_.speed_kp ||
+                    selected->speed_ki        != last_sent_pid_.speed_ki ||
+                    selected->speed_filter_hz != last_sent_pid_.speed_filter_hz);
+    }
+    if (send_current_pid_) {
+        changed |= (selected->current_kp      != last_sent_pid_.current_kp ||
+                    selected->current_ki      != last_sent_pid_.current_ki);
+    }
+    if (send_position_pid_) {
+        changed |= (selected->position_kp     != last_sent_pid_.position_kp ||
+                    selected->position_ki     != last_sent_pid_.position_ki);
+    }
+    if (!changed) return;
+
+    auto* can = parent_->getCanInterface();
+    if (!can || !can->isOpen()) return;
+
+    // Clamp gains to the documented uint16 range [0, 2000] for all PID loops.
+    auto clamp16 = [](double v) -> uint16_t {
+        if (v < 0.0) return 0;
+        if (v > 2000.0) return 2000;
+        return static_cast<uint16_t>(std::lround(v));
+    };
+
+    bool all_ok = true;
+
+    // ── Current Loop PID (controlParamID 0x0C) ──────────────────────────
+    if (send_current_pid_) {
+        uint16_t kp = clamp16(selected->current_kp);
+        uint16_t ki = clamp16(selected->current_ki);
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(kp & 0xFF), static_cast<uint8_t>((kp >> 8) & 0xFF),
+            static_cast<uint8_t>(ki & 0xFF), static_cast<uint8_t>((ki >> 8) & 0xFF),
+            0, 0  // Kd = 0 (not used by LingKong MF drives)
+        };
+        if (!can->writeParam(can_node_id_, 0x0C, data)) {
+            MF7025V2_LOGGER()->warn("Motor {} (node {}) current PID write (0x0C) failed @ {:.0f} RPM",
+                       axis_id_, can_node_id_, rpm);
+            all_ok = false;
+        }
+    }
+
+    // ── Speed Loop PID (controlParamID 0x0B) ────────────────────────────
+    if (send_speed_pid_) {
+        uint16_t kp = clamp16(selected->speed_kp);
+        uint16_t ki = clamp16(selected->speed_ki);
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(kp & 0xFF), static_cast<uint8_t>((kp >> 8) & 0xFF),
+            static_cast<uint8_t>(ki & 0xFF), static_cast<uint8_t>((ki >> 8) & 0xFF),
+            0, 0  // Kd = 0
+        };
+        if (!can->writeParam(can_node_id_, 0x0B, data)) {
+            MF7025V2_LOGGER()->warn("Motor {} (node {}) speed PID write (0x0B) failed @ {:.0f} RPM",
+                       axis_id_, can_node_id_, rpm);
+            all_ok = false;
+        }
+    }
+
+    // ── Position Loop PID (controlParamID 0x0A) ─────────────────────────
+    if (send_position_pid_) {
+        uint16_t kp = clamp16(selected->position_kp);
+        uint16_t ki = clamp16(selected->position_ki);
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(kp & 0xFF), static_cast<uint8_t>((kp >> 8) & 0xFF),
+            static_cast<uint8_t>(ki & 0xFF), static_cast<uint8_t>((ki >> 8) & 0xFF),
+            0, 0  // Kd = 0
+        };
+        if (!can->writeParam(can_node_id_, 0x0A, data)) {
+            MF7025V2_LOGGER()->warn("Motor {} (node {}) position PID write (0x0A) failed @ {:.0f} RPM",
+                       axis_id_, can_node_id_, rpm);
+            all_ok = false;
+        }
+    }
+
+    // ── Speed filter cutoff ─────────────────────────────────────────────
+    // The speed loop filter frequency (speed_filter_hz) is intentionally NOT
+    // written to the drive: the LingKong V2.36 protocol does not document a
+    // RAM-writable control-parameter ID for the speed loop filter, so there is
+    // no safe 0xC1 write for it.  The value is preserved in the schedule for
+    // reference / future firmware support, and a matching speed-filter gain
+    // change is treated as "changed" in the cache check above so a later
+    // documented firmware could pick it up.
+
+    if (!all_ok) {
+        // Do NOT update the cache on partial failure — the next command will
+        // retry the failed writes.
+        return;
+    }
+
+    // Record the gains now resident in the drive so we don't resend them.
+    // Disabled loops keep their previous cache value, so they never trigger
+    // the "changed" check above.
+    if (send_speed_pid_) {
+        last_sent_pid_.speed_kp       = selected->speed_kp;
+        last_sent_pid_.speed_ki       = selected->speed_ki;
+        last_sent_pid_.speed_filter_hz = selected->speed_filter_hz;
+    }
+    if (send_current_pid_) {
+        last_sent_pid_.current_kp     = selected->current_kp;
+        last_sent_pid_.current_ki     = selected->current_ki;
+    }
+    if (send_position_pid_) {
+        last_sent_pid_.position_kp    = selected->position_kp;
+        last_sent_pid_.position_ki    = selected->position_ki;
+    }
+    last_pid_update_ = now;
+
+    MF7025V2_LOGGER()->debug("Motor {} (node {}) speed-PID applied @ {:.0f} RPM: "
+               "cur Kp={:.0f}/Ki={:.0f}, spd Kp={:.0f}/Ki={:.0f}, filter={:.0f}Hz, "
+               "pos Kp={:.0f}/Ki={:.0f}",
+               axis_id_, can_node_id_, rpm,
+               selected->current_kp, selected->current_ki,
+               selected->speed_kp, selected->speed_ki,
+               selected->speed_filter_hz,
+               selected->position_kp, selected->position_ki);
 }
 
 void Mf7025v2Hal::Mf7025v2Motor::setPositionCallback(PositionCallback callback) {
@@ -507,6 +687,19 @@ bool Mf7025v2Hal::initialize(const HALConfig& config) {
         motors_[i] = std::make_unique<Mf7025v2Motor>(axis.id, axis.can_node_id, this);
         motors_[i]->configure(axis.motor_config);
         motors_[i]->invert_direction_ = axis.invert_direction;
+
+        // Install the speed-dependent PID gain schedule (RAM writes only).
+        // Both axes share the single schedule from the mf7025v2 config section.
+        // send_speed_pid / send_current_pid / send_position_pid select which
+        // per-loop gains from the schedule are written to the drive.
+        motors_[i]->setSpeedPidSchedule(
+            config_.mf7025v2.speed_pid_schedule,
+            config_.mf7025v2.speed_pid_adaptation_enabled,
+            config_.mf7025v2.speed_pid_adaptation_update_ms,
+            config_.mf7025v2.send_speed_pid,
+            config_.mf7025v2.send_current_pid,
+            config_.mf7025v2.send_position_pid);
+
         encoders_[i] = std::make_unique<Mf7025v2Encoder>(axis.id, axis.can_node_id, this);
         encoders_[i]->initialize(axis.encoder_config);
     }

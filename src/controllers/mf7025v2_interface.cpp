@@ -45,6 +45,11 @@ public:
         if (::ioctl(sock_fd_, SIOCGIFINDEX, &ifr) < 0) {
             std::cerr << "[MF7025v2] ioctl SIOCGIFINDEX failed for " << can_iface
                       << ": " << strerror(errno) << std::endl;
+            std::cerr << "[MF7025v2] HINT: the SocketCAN interface '" << can_iface
+                      << "' is not available. Create/bring it up first, e.g.:\n"
+                      << "[MF7025v2]   sudo ip link add dev " << can_iface
+                      << " type can bitrate 1000000   # only if it does not exist yet\n"
+                      << "[MF7025v2]   sudo ip link set up " << can_iface << std::endl;
             ::close(sock_fd_);
             sock_fd_ = -1;
             return false;

@@ -20,6 +20,30 @@ enum class HALType {
 };
 // (Derotator types removed — derotator functionality eliminated from the project)
 
+/**
+ * @brief Single entry of the speed-dependent PID gain schedule (MF7025v2 BLDC).
+ *
+ * Each row maps a motor-shaft rotational speed [RPM] to the PID gains that
+ * should be applied to the drive's current, speed and position loops at that
+ * speed.  Gains are written to the drive RAM only (volatile, lost on power
+ * cycle) via the proprietary control-parameter write command (0xC1).
+ *
+ * The schedule is applied in real time while the mount moves: whenever the
+ * commanded/actual speed crosses into a new RPM band, the corresponding PID
+ * gains are sent to the drive.  Speeds are given in RPM of the motor shaft
+ * (not the telescope axis) — this matches the LingKong configuration tables.
+ */
+struct SpeedPidEntry {
+    double speed_rpm{0.0};       ///< Motor shaft speed breakpoint [RPM]
+    double current_kp{0.0};      ///< Current loop Kp
+    double current_ki{0.0};      ///< Current loop Ki
+    double speed_kp{0.0};        ///< Speed loop Kp
+    double speed_ki{0.0};        ///< Speed loop Ki
+    double speed_filter_hz{0.0}; ///< Speed loop filter cutoff [Hz]
+    double position_kp{0.0};     ///< Position loop Kp
+    double position_ki{0.0};     ///< Position loop Ki
+};
+
 struct HALConfig {
     HALType type{HALType::SIMULATED};
     std::string name{"Default_HAL"};
@@ -55,6 +79,26 @@ struct HALConfig {
         bool can_trace_read_state{false};           // Log ReadState commands (0x9A,0x9C,0x9D,0x90,0x92,0x94)
         uint32_t status_poll_ms{50};                // Interval for status reads (0x9C + 0x94) [ms]
         uint32_t absolute_position_poll_ms{100};    // Interval for absolute position (0x92) [ms]
+
+        // ── Speed-dependent PID gain scheduling ─────────────────────────
+        // Enables live PID retuning based on motor-shaft speed (RPM).
+        // When enabled, the drive's current/speed/position loop gains are
+        // rewritten in RAM (via control-parameter write 0xC1, volatile) each
+        // time the motor speed crosses into a new band defined by the
+        // schedule.  Gains already matching the current band are NOT resent.
+        bool speed_pid_adaptation_enabled{false};   // Master switch
+        double speed_pid_adaptation_update_ms{50.0}; // Min. interval between PID re-evaluations [ms]
+        std::vector<SpeedPidEntry> speed_pid_schedule; // Sorted ascending by speed_rpm
+
+        // ── Which PID loop gains are actually sent to the drive ─────────
+        // Independent per-loop switches for the speed-based PID schedule
+        // (0xC1 RAM writes).  Speed-loop gains are always sent by default,
+        // current-loop gains are NOT sent by default (avoids altering the
+        // factory-tuned current loop unless explicitly requested), and
+        // position-loop gains are sent by default.
+        bool send_speed_pid{true};       // Send speed-loop PID gains (always on by default)
+        bool send_current_pid{false};    // Send current-loop PID gains (off by default)
+        bool send_position_pid{true};    // Send position-loop PID gains (on by default)
     } mf7025v2;
 
     // Konfiguracja symulacji
@@ -169,6 +213,32 @@ struct HALConfig {
         config.mf7025v2.can_trace_read_state = mf7025v2.value("can_trace_read_state", false);
         config.mf7025v2.status_poll_ms = mf7025v2.value("status_poll_ms", 50);
         config.mf7025v2.absolute_position_poll_ms = mf7025v2.value("absolute_position_poll_ms", 100);
+
+        // ── Speed-dependent PID gain schedule ──────────────────────────
+        config.mf7025v2.speed_pid_adaptation_enabled =
+            mf7025v2.value("speed_pid_adaptation_enabled", false);
+        config.mf7025v2.speed_pid_adaptation_update_ms =
+            mf7025v2.value("speed_pid_adaptation_update_ms", 50.0);
+        config.mf7025v2.send_speed_pid =
+            mf7025v2.value("send_speed_pid", true);
+        config.mf7025v2.send_current_pid =
+            mf7025v2.value("send_current_pid", false);
+        config.mf7025v2.send_position_pid =
+            mf7025v2.value("send_position_pid", true);
+        config.mf7025v2.speed_pid_schedule.clear();
+        auto pid_schedule = mf7025v2.value("speed_pid_schedule", nlohmann::json::array());
+        for (const auto& row : pid_schedule) {
+            SpeedPidEntry entry;
+            entry.speed_rpm      = row.value("speed_rpm", 0.0);
+            entry.current_kp     = row.value("current_kp", 0.0);
+            entry.current_ki     = row.value("current_ki", 0.0);
+            entry.speed_kp       = row.value("speed_kp", 0.0);
+            entry.speed_ki       = row.value("speed_ki", 0.0);
+            entry.speed_filter_hz = row.value("speed_filter_hz", 0.0);
+            entry.position_kp    = row.value("position_kp", 0.0);
+            entry.position_ki    = row.value("position_ki", 0.0);
+            config.mf7025v2.speed_pid_schedule.push_back(entry);
+        }
 
         // Parse serial configuration
         auto serial = json.value("serial", nlohmann::json::object());
@@ -361,6 +431,27 @@ struct HALConfig {
         mf7025v2_json["can_trace_read_state"] = mf7025v2.can_trace_read_state;
         mf7025v2_json["status_poll_ms"] = mf7025v2.status_poll_ms;
         mf7025v2_json["absolute_position_poll_ms"] = mf7025v2.absolute_position_poll_ms;
+
+        // ── Speed-dependent PID gain schedule ──────────────────────────
+        mf7025v2_json["speed_pid_adaptation_enabled"] = mf7025v2.speed_pid_adaptation_enabled;
+        mf7025v2_json["speed_pid_adaptation_update_ms"] = mf7025v2.speed_pid_adaptation_update_ms;
+        mf7025v2_json["send_speed_pid"] = mf7025v2.send_speed_pid;
+        mf7025v2_json["send_current_pid"] = mf7025v2.send_current_pid;
+        mf7025v2_json["send_position_pid"] = mf7025v2.send_position_pid;
+        nlohmann::json sched_json = nlohmann::json::array();
+        for (const auto& entry : mf7025v2.speed_pid_schedule) {
+            sched_json.push_back({
+                {"speed_rpm", entry.speed_rpm},
+                {"current_kp", entry.current_kp},
+                {"current_ki", entry.current_ki},
+                {"speed_kp", entry.speed_kp},
+                {"speed_ki", entry.speed_ki},
+                {"speed_filter_hz", entry.speed_filter_hz},
+                {"position_kp", entry.position_kp},
+                {"position_ki", entry.position_ki}
+            });
+        }
+        mf7025v2_json["speed_pid_schedule"] = sched_json;
         hal["mf7025v2"] = mf7025v2_json;
 
         // Save serial configuration
