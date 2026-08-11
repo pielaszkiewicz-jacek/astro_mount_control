@@ -15,8 +15,8 @@ using namespace astro_mount::hal;
 SimulatedHAL::SimulatedMotor::SimulatedMotor(int axis_id)
     : axis_id_(axis_id),
       rng_(std::random_device{}()),
-      position_noise_(0.0, 0.001),  // 0.001 degree stddev
-      velocity_noise_(0.0, 0.0001), // 0.0001 deg/s stddev
+      position_noise_(0.0, 0.00001), // 0.00001 degree stddev (~0.036 arcsec, high-precision encoder)
+      velocity_noise_(0.0, 0.0001),  // 0.0001 deg/s stddev
       start_time_(std::chrono::steady_clock::now()) {
     
     // Start simulation thread
@@ -52,6 +52,8 @@ bool SimulatedHAL::SimulatedMotor::disable() {
     
     enabled_ = false;
     moving_ = false;
+    velocity_mode_ = false;
+    target_velocity_ = 0.0;
     actual_velocity_ = 0.0;
     
     if (state_change_callback_) {
@@ -65,7 +67,7 @@ bool SimulatedHAL::SimulatedMotor::isEnabled() const {
     return enabled_;
 }
 
-bool SimulatedHAL::SimulatedMotor::setPosition(double position_deg, double velocity_deg_s, 
+bool SimulatedHAL::SimulatedMotor::setPosition(double position_deg, double velocity_deg_s,
                                               double acceleration_deg_s2) {
     std::lock_guard<std::mutex> lock(mutex_);
     
@@ -74,11 +76,12 @@ bool SimulatedHAL::SimulatedMotor::setPosition(double position_deg, double veloc
     }
     
     target_position_ = position_deg;
+    // Remember the commanded profile velocity so the simulation thread can
+    // move toward the target at the requested speed (as a real drive does).
+    target_velocity_ = std::abs(velocity_deg_s);
+    velocity_mode_ = false;
     moving_ = true;
     
-    // Simulate motion parameters
-    // In a real implementation, these would be used for trajectory generation
-    (void)velocity_deg_s;      // Unused in simulation
     (void)acceleration_deg_s2; // Unused in simulation
     
     if (state_change_callback_) {
@@ -97,6 +100,7 @@ bool SimulatedHAL::SimulatedMotor::setVelocity(double velocity_deg_s, double acc
     
     // In velocity mode, we continuously move
     actual_velocity_ = velocity_deg_s;
+    velocity_mode_ = true;
     moving_ = true;
     
     (void)acceleration_deg_s2; // Unused in simulation
@@ -135,6 +139,8 @@ bool SimulatedHAL::SimulatedMotor::stop() {
     std::lock_guard<std::mutex> lock(mutex_);
     
     moving_ = false;
+    velocity_mode_ = false;
+    target_velocity_ = 0.0;
     actual_velocity_ = 0.0;
     actual_torque_ = 0.0;
     
@@ -256,25 +262,43 @@ void SimulatedHAL::SimulatedMotor::simulationThread() {
             std::lock_guard<std::mutex> lock(mutex_);
             
             if (enabled_ && moving_) {
-                // Update position based on velocity
                 double dt = 1.0 / update_rate;
-                actual_position_.store(actual_position_.load(std::memory_order_relaxed) + actual_velocity_ * dt, std::memory_order_relaxed);
                 
-                // If in position mode and close to target, stop
-                if (std::abs(actual_velocity_) < 0.0001) { // Not in velocity mode
-                    if (std::abs(target_position_ - actual_position_) < 0.001) {
+                if (velocity_mode_) {
+                    // ── Velocity mode: keep moving at the commanded velocity ──
+                    actual_position_.store(actual_position_.load(std::memory_order_relaxed) + actual_velocity_ * dt, std::memory_order_relaxed);
+                } else {
+                    // ── Position mode: move toward the target at the commanded
+                    //    profile velocity (set by setPosition) and stop when the
+                    //    target is reached. ──
+                    double error = target_position_ - actual_position_;
+                    if (std::abs(error) < 0.001) {
                         moving_ = false;
+                        actual_position_.store(target_position_.load(std::memory_order_relaxed), std::memory_order_relaxed);
                         actual_velocity_ = 0.0;
                         
                         if (state_change_callback_) {
                             state_change_callback_(true, false);
                         }
                     } else {
-                        // Move toward target with simulated PID
-                        double error = target_position_ - actual_position_;
-                        double max_velocity = config_.max_velocity;
-                        double velocity = std::clamp(error * 0.1, -max_velocity, max_velocity);
-                        actual_velocity_ = velocity;
+                        // Use the commanded velocity; fall back to a proportional
+                        // controller if none was supplied.  Following the commanded
+                        // velocity makes simulated slews complete in a realistic
+                        // distance/velocity time instead of asymptotically
+                        // approaching the target at a low gain (which never reaches
+                        // the position tolerance).
+                        double commanded = target_velocity_.load(std::memory_order_relaxed);
+                        double v = commanded > 0.0 ? commanded
+                                                   : (config_.max_velocity > 0.0 ? config_.max_velocity : 10.0);
+                        v = std::copysign(v, error);
+                        // Never overshoot: cap the per-iteration step so the motor
+                        // converges on the target instead of oscillating past it.
+                        double max_step = std::abs(error) / dt * 0.99;
+                        if (std::abs(v) > max_step) {
+                            v = std::copysign(max_step, error);
+                        }
+                        actual_velocity_ = v;
+                        actual_position_.store(actual_position_.load(std::memory_order_relaxed) + actual_velocity_ * dt, std::memory_order_relaxed);
                     }
                 }
                 
@@ -293,8 +317,9 @@ void SimulatedHAL::SimulatedMotor::simulationThread() {
 // SimulatedEncoder implementation
 // ============================================================================
 
-SimulatedHAL::SimulatedEncoder::SimulatedEncoder(int axis_id)
+SimulatedHAL::SimulatedEncoder::SimulatedEncoder(int axis_id, const SimulatedMotor* motor)
     : axis_id_(axis_id),
+      motor_(motor),
       rng_(std::random_device{}()),
       position_noise_(0.0, 0.0001), // 0.0001 degree stddev
       start_time_(std::chrono::steady_clock::now()) {}
@@ -351,16 +376,23 @@ EncoderReading SimulatedHAL::SimulatedEncoder::read() const {
     
     EncoderReading reading;
     
-    // Get position from simulated motor (would need access to motor instance)
-    // For now, simulate based on time
-    auto now = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration<double>(now - start_time_);
-    
-    // Simulate encoder readings
-    double base_position = duration.count() * 0.01; // 0.01 deg/s drift
+    // Report the position of the associated simulated motor — a real encoder
+    // measures the actual axis position, so the controller's slew/track
+    // completion feedback matches the motor's simulated motion.  Fall back to
+    // a slow time-based drift only when no motor is associated (edge case).
+    double base_position = 0.0;
+    double base_velocity = 0.01; // deg/s drift fallback
+    if (motor_) {
+        base_position = motor_->getActualPosition();
+        base_velocity = motor_->getActualVelocity();
+    } else {
+        auto now = std::chrono::steady_clock::now();
+        auto duration = std::chrono::duration<double>(now - start_time_);
+        base_position = duration.count() * 0.01; // 0.01 deg/s drift
+    }
     
     reading.position_deg = base_position + position_noise_(rng_);
-    reading.velocity_deg_s = 0.01; // Constant drift
+    reading.velocity_deg_s = base_velocity;
     reading.raw_counts = static_cast<int32_t>(reading.position_deg * config_.counts_per_degree);
     reading.index_pulse = (total_readings_ % static_cast<uint32_t>(config_.counts_per_degree)) == 0;
     reading.direction = reading.velocity_deg_s >= 0;
@@ -463,7 +495,7 @@ SimulatedHAL::SimulatedHAL() {
     // Initialize motors and encoders
     for (int i = 0; i < 3; ++i) {
         motors_[i] = std::make_unique<SimulatedMotor>(i);
-        encoders_[i] = std::make_unique<SimulatedEncoder>(i);
+        encoders_[i] = std::make_unique<SimulatedEncoder>(i, motors_[i].get());
     }
 }
 
@@ -472,7 +504,7 @@ SimulatedHAL::SimulatedHAL(const HALConfig& config) : config_(config) {
     // that happens during explicit initialize() call)
     for (int i = 0; i < 3; ++i) {
         motors_[i] = std::make_unique<SimulatedMotor>(i);
-        encoders_[i] = std::make_unique<SimulatedEncoder>(i);
+        encoders_[i] = std::make_unique<SimulatedEncoder>(i, motors_[i].get());
         
         // Configure with HAL config if available, otherwise use defaults
         if (i < static_cast<int>(config_.axes.size())) {

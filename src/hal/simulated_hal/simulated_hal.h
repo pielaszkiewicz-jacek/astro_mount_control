@@ -125,6 +125,8 @@ private:
         std::atomic<bool> enabled_{false};
         std::atomic<bool> moving_{false};
         std::atomic<double> target_position_{0.0};
+        std::atomic<double> target_velocity_{0.0};
+        std::atomic<bool> velocity_mode_{false};
         std::atomic<double> actual_position_{0.0};
         std::atomic<double> actual_velocity_{0.0};
         std::atomic<double> actual_torque_{0.0};
@@ -145,7 +147,7 @@ private:
     };
     
     struct SimulatedEncoder : public EncoderReader {
-        SimulatedEncoder(int axis_id);
+        SimulatedEncoder(int axis_id, const SimulatedMotor* motor);
         ~SimulatedEncoder() override;
         
         bool initialize(const EncoderConfig& config) override;
@@ -181,6 +183,7 @@ private:
         
     private:
         int axis_id_;
+        const SimulatedMotor* motor_{nullptr};
         EncoderConfig config_;
         std::atomic<bool> initialized_{false};
         std::atomic<double> calibration_offset_{0.0};

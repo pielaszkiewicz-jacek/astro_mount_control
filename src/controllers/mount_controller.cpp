@@ -563,8 +563,15 @@ public:
                 if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) {
                     return false;
                 }
-                if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::TRACKING) {
-                    return false;  // Already moving
+                if (state_ == MountStatus::State::SLEWING) {
+                    return false;  // Slew already in progress
+                }
+                if (state_ == MountStatus::State::TRACKING) {
+                    // A tracking loop was running; it was signaled to stop
+                    // (tracking_active_ = false) and joined above. Transition to
+                    // IDLE so the new slew can proceed — allows re-slewing to a
+                    // new object while the mount is tracking.
+                    state_ = MountStatus::State::IDLE;
                 }
                 
                 // Convert RA/Dec to mount coordinates
@@ -877,6 +884,11 @@ public:
                                 if (enc1.data_valid && enc2.data_valid) {
                                     axis1_position_ = enc1.position_deg;
                                     axis2_position_ = enc2.position_deg;
+                                    // Keep raw servo positions in sync so getStatus()
+                                    // reports consistent telescope positions
+                                    // (telescope = raw_servo / gear_ratio).
+                                    raw_servo_axis1_position_ = enc1.position_deg;
+                                    raw_servo_axis2_position_ = enc2.position_deg;
                                 }
                             } catch (const std::exception& e) {
                                 MOUNT_LOG_WARN("HAL encoder read error during slew: {}", e.what());
@@ -935,7 +947,12 @@ public:
                 std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 
                 if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) return false;
-                if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::TRACKING) return false;
+                if (state_ == MountStatus::State::SLEWING) return false;  // Slew already in progress
+                if (state_ == MountStatus::State::TRACKING) {
+                    // Tracking loop was signaled to stop (tracking_active_ = false)
+                    // and joined above. Transition to IDLE so the new slew can proceed.
+                    state_ = MountStatus::State::IDLE;
+                }
                 
                 if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                     // CASUAL mount: transform true horizontal (alt/az) to mount-frame coordinates
@@ -1301,19 +1318,28 @@ public:
         }
         
         // Quick state check WITHOUT joining the work thread first.
-        // If a slew/track/park is in progress, reject immediately rather than
-        // waiting for it to complete (preserves original behavior).
+        // If a slew/park is in progress, reject immediately rather than
+        // waiting for it to complete (preserves original behavior). If the
+        // mount is currently TRACKING, allow the re-target: the running
+        // tracking loop is stopped below so the mount can move to the new
+        // object ("Slew and Track" while already tracking).
         {
             std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             if (state_ == MountStatus::State::SLEWING ||
-                state_ == MountStatus::State::TRACKING ||
                 state_ == MountStatus::State::PARKING) {
-                return false;  // Already moving
+                return false;  // Move in progress
             }
             if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) {
                 return false;
             }
         }
+        
+        // Stop any running tracking loop and return to IDLE so the new target
+        // can be applied.  stop() is idempotent: it sets tracking_active_ = false,
+        // synchronously joins the tracking thread and stops the HAL motors.
+        // This makes re-targeting possible while already in TRACKING state
+        // (previously the code returned false — "Already moving").
+        stop();
         
         // Join any previous work thread WITHOUT holding state_mutex_.
         // This avoids deadlock: if we held state_mutex_, a running work thread
@@ -1330,8 +1356,8 @@ public:
             if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) {
                 return false;
             }
-            if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::TRACKING) {
-                return false;  // Already moving (started between quick check and join)
+            if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::PARKING) {
+                return false;  // Move started between quick check and join
             }
             
             // For equatorial mounts, axis1 tracks Hour Angle (HA = LST - RA).
@@ -2980,6 +3006,22 @@ public:
     
     void stop() {
         tracking_active_ = false;
+        
+        // Signal any running work thread (slew / tracking / park / flip) to
+        // stop by transitioning to IDLE BEFORE joining.  The slew and park
+        // monitoring threads exit when state_ != SLEWING / state_ != PARKING;
+        // setting IDLE here lets them terminate promptly instead of blocking
+        // joinWorkThread() until the move completes (or the watchdog fires).
+        {
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+            if (state_ == MountStatus::State::SLEWING ||
+                state_ == MountStatus::State::TRACKING ||
+                state_ == MountStatus::State::MERIDIAN_FLIP ||
+                state_ == MountStatus::State::PARKING) {
+                state_ = MountStatus::State::IDLE;
+            }
+        }
+        
         joinWorkThread();
         
         {
@@ -3015,13 +3057,6 @@ public:
             // refreshPositionsFromHAL() from reading motor positions. The UI
             // needs live position updates even when the mount is idle.
             // The HAL is only stopped during shutdown().
-            
-            if (state_ == MountStatus::State::SLEWING ||
-                state_ == MountStatus::State::TRACKING ||
-                state_ == MountStatus::State::MERIDIAN_FLIP ||
-                state_ == MountStatus::State::PARKING) {
-                state_ = MountStatus::State::IDLE;
-            }
         }  // state_mutex_ released here
         
         // Notify status callback outside state_mutex_ lock
@@ -3124,6 +3159,10 @@ public:
                                 std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                                 axis1_position_ = enc1.position_deg;
                                 axis2_position_ = enc2.position_deg;
+                                // Keep raw servo positions in sync so getStatus()
+                                // reports consistent telescope positions.
+                                raw_servo_axis1_position_ = enc1.position_deg;
+                                raw_servo_axis2_position_ = enc2.position_deg;
                             }
                         }
                     } catch (const std::exception& e) {
@@ -4508,7 +4547,24 @@ public:
         // per star — enough for the tracking loop to accumulate measurable drift.
         double wait_per_star_ms = std::clamp(duration_hours * 1800.0, 200.0, 5000.0);
         double actual_wait_hours = (wait_per_star_ms / 1000.0) / 3600.0;
-        
+
+        // ── Statistical significance threshold ──────────────────────────
+        // A seconds-long drift window cannot resolve small polar errors: the
+        // measured Dec drift is the difference of two single-point position
+        // reads, each carrying encoder/measurement noise σ_pos, so the
+        // drift-rate resolution is ~ sqrt(2)·σ_pos / actual_wait_hours.  A
+        // measured drift below a few × that resolution is indistinguishable
+        // from noise and MUST NOT be turned into a polar correction —
+        // otherwise a perfectly aligned mount can "measure" a bogus
+        // multi-arcminute pole error from a few seconds of encoder jitter
+        // (amplified ~2000× by the /hour extrapolation).
+        const double POS_READ_NOISE_ARCSEC = 2.0;  // single position-read noise (encoder jitter + stop tolerance)
+        const double DRIFT_SIGMA = 5.0;            // 5σ → false-positive rate < 1e-6
+        const double drift_noise_arcsec_h = std::sqrt(2.0) * POS_READ_NOISE_ARCSEC / actual_wait_hours;
+        const double drift_deadband_arcsec_h = DRIFT_SIGMA * drift_noise_arcsec_h;
+        MOUNT_LOG_DEBUG("Drift alignment significance gate: wait={:.1f}ms -> deadband={:.1f}\"/h",
+                        wait_per_star_ms, drift_deadband_arcsec_h);
+
         // ===================================================================
         // STAR 1 — Meridian (HA = 0h, Dec = 0°) → polar altitude error
         // ===================================================================
@@ -4573,7 +4629,10 @@ public:
         
         double dec_drift1_arcsec   = (final_dec - initial_dec) * 3600.0;
         double polar_alt_err_asec_h = dec_drift1_arcsec / actual_wait_hours;
-        
+
+        // Gate out sub-resolution drift — see significance threshold above.
+        if (std::abs(polar_alt_err_asec_h) < drift_deadband_arcsec_h) polar_alt_err_asec_h = 0.0;
+
         MOUNT_LOG_INFO("Drift alignment star 1: dec {:.4f}° -> {:.4f}°  drift = {:.2f}\"/h -> polar_alt_error = {:.2f}\"/h",
                  initial_dec, final_dec, polar_alt_err_asec_h, polar_alt_err_asec_h);
         
@@ -4643,7 +4702,10 @@ public:
         //   dDec/dt = polar_alt_error * cos(-90°) + polar_az_error * sin(-90°)
         //   dDec/dt = -polar_az_error
         double polar_az_err_asec_h  = -dec_drift2_arcsec / actual_wait_hours;
-        
+
+        // Gate out sub-resolution drift — see significance threshold above.
+        if (std::abs(polar_az_err_asec_h) < drift_deadband_arcsec_h) polar_az_err_asec_h = 0.0;
+
         MOUNT_LOG_INFO("Drift alignment star 2: dec {:.4f}° -> {:.4f}°  drift = {:.2f}\"/h -> polar_az_error = {:.2f}\"/h",
                  initial_dec, final_dec, polar_az_err_asec_h, polar_az_err_asec_h);
         

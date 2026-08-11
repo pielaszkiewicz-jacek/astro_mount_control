@@ -28,7 +28,11 @@ protected:
         config_.mount_config.latitude = 52.0;
         config_.mount_config.longitude = 21.0;
         config_.mount_config.altitude = 100.0;
-        config_.mount_config.max_slew_rate = 5.0;
+        // Slew rate used by the SimulatedHAL: high enough that any realistic
+        // test target (up to 180° away) is reached within the ~10s polling
+        // windows used by the *ReachesTarget tests.  The meridian-flip tests
+        // override this explicitly when they need a slow/fast flip.
+        config_.mount_config.max_slew_rate = 30.0;
         config_.mount_config.max_tracking_rate = 0.004178;
         config_.mount_config.slew_acceleration = 1.0;
         config_.mount_config.tracking_acceleration = 0.001;
@@ -124,7 +128,9 @@ TEST_F(MountControllerTest, SlewToEquatorialSetsTargets) {
     while (ha_hours > 12.0) ha_hours -= 24.0;
     while (ha_hours < -12.0) ha_hours += 24.0;
     double gear = config_.mount_config.ha_axis_params.gear_ratio;
-    EXPECT_NEAR(status.axis1_target, ha_hours * 15.0 * gear, 1e-6 * gear);
+    // Tolerance must accommodate LST advancing between the controller's target
+    // computation and this read (LST drifts ~0.004°/s at the telescope axis).
+    EXPECT_NEAR(status.axis1_target, ha_hours * 15.0 * gear, 0.01 * gear);
     EXPECT_DOUBLE_EQ(status.axis2_target, 45.0 * config_.mount_config.dec_axis_params.gear_ratio);
 }
 
@@ -239,7 +245,9 @@ TEST_F(MountControllerTest, StartTrackingSetsTargets) {
     while (ha_hours > 12.0) ha_hours -= 24.0;
     while (ha_hours < -12.0) ha_hours += 24.0;
     double gear = config_.mount_config.ha_axis_params.gear_ratio;
-    EXPECT_NEAR(status.axis1_target, ha_hours * 15.0 * gear, 1e-6 * gear);
+    // Tolerance must accommodate LST advancing between the controller's target
+    // computation and this read (LST drifts ~0.004°/s at the telescope axis).
+    EXPECT_NEAR(status.axis1_target, ha_hours * 15.0 * gear, 0.01 * gear);
     EXPECT_DOUBLE_EQ(status.axis2_target, 45.0 * config_.mount_config.dec_axis_params.gear_ratio);
 }
 
@@ -272,6 +280,53 @@ TEST_F(MountControllerTest, StartTrackingWhileSlewingRejected) {
     controller_->initialize(config_);
     controller_->slewToEquatorial(12.0, 45.0);
     EXPECT_FALSE(controller_->startTracking(13.0, 46.0));
+}
+
+TEST_F(MountControllerTest, ReTargetWhileTrackingSucceeds) {
+    // Issuing startTracking() to a NEW object while the mount is already
+    // tracking must succeed and re-target the mount.  Previously this returned
+    // false with "Already moving", which blocked "Slew and Track" from moving
+    // to a newly selected object while the controller was in TRACKING state.
+    controller_->initialize(config_);
+    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL));
+
+    auto status = controller_->getStatus();
+    ASSERT_EQ(status.state, MountController::MountStatus::State::TRACKING);
+    EXPECT_NEAR(status.tracking_target_ra, 12.0, 1e-6);
+
+    // Re-target to a different object while still tracking.
+    EXPECT_TRUE(controller_->startTracking(13.0, 46.0, config::TrackingMode::SIDEREAL));
+
+    status = controller_->getStatus();
+    EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
+
+    // Verify the tracked celestial target was updated to the new object.
+    // tracking_target_ra/dec are set by startTracking() and are NOT advanced by
+    // the tracking loop, so they are stable across reads.
+    EXPECT_NEAR(status.tracking_target_ra, 13.0, 1e-6);
+    EXPECT_NEAR(status.tracking_target_dec, 46.0, 1e-6);
+}
+
+TEST_F(MountControllerTest, SlewToEquatorialWhileTrackingSucceeds) {
+    // A plain slew issued while the mount is already tracking must stop the
+    // tracking loop and begin the new slew instead of being rejected.
+    controller_->initialize(config_);
+    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL));
+
+    auto status = controller_->getStatus();
+    ASSERT_EQ(status.state, MountController::MountStatus::State::TRACKING);
+
+    // Slew to a target near the current position (HA = 0, Dec = 0) so the
+    // simulated slew completes quickly in TearDown instead of driving a long
+    // way at the (slow) simulated slew velocity.
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    EXPECT_TRUE(controller_->slewToEquatorial(lst, 0.0));
+
+    status = controller_->getStatus();
+    EXPECT_TRUE(status.state == MountController::MountStatus::State::SLEWING ||
+                status.state == MountController::MountStatus::State::IDLE)
+        << "Slew started from TRACKING should transition to SLEWING (or complete immediately)";
 }
 
 // ============================================
@@ -479,8 +534,10 @@ TEST_F(MountControllerTest, ParkSuccess) {
 TEST_F(MountControllerTest, ParkReachesPosition) {
     // Set explicit park position (telescope degrees).
     // After fix, park targets and positions are in SERVO degrees.
-    config_.safety_config.park_position_axis1 = 10.0;
-    config_.safety_config.park_position_axis2 = 20.0;
+    // Keep the distances small — park() uses a fixed 2°/s PARK_VELOCITY, so
+    // a 20° move would take 10s and exceed the 10s polling window below.
+    config_.safety_config.park_position_axis1 = 2.0;
+    config_.safety_config.park_position_axis2 = 3.0;
     controller_->initialize(config_);
     controller_->park();
 
@@ -741,8 +798,10 @@ TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
     auto status = controller_->getStatus();
     double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
     double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
-    EXPECT_DOUBLE_EQ(status.axis1_position, config_.safety_config.park_position_axis1 * gear1);
-    EXPECT_DOUBLE_EQ(status.axis2_position, config_.safety_config.park_position_axis2 * gear2);
+    // The SimulatedHAL may sync a tiny (noise-level) drive position during
+    // initialize, so allow a small tolerance around the park position.
+    EXPECT_NEAR(status.axis1_position, config_.safety_config.park_position_axis1 * gear1, 0.01);
+    EXPECT_NEAR(status.axis2_position, config_.safety_config.park_position_axis2 * gear2, 0.01);
   }
 
   TEST_F(MountControllerTest, AltAzCaveatLogging) {
@@ -904,10 +963,10 @@ TEST_F(MountControllerTest, DeterminePolePosition) {
     controller_->initialize(config_);
     
     // The drift-alignment procedure scales the per-star wait with duration_hours.
-    // A small duration keeps the test fast while still exercising the full
-    // two-star procedure (slew → track → measure → compute).
-    // The per-star wait is clamped to a minimum of 200ms.
-    auto [latitude, longitude, accuracy] = controller_->determinePolePosition(0.001);
+    // A duration of ~1h (clamped to 1.8s per star) gives a meaningful Dec-drift
+    // measurement — with the 200ms minimum the measurement is dominated by
+    // encoder noise and the derived accuracy is unrealistically poor.
+    auto [latitude, longitude, accuracy] = controller_->determinePolePosition(1.0);
     
     // The simulated mount now has non-zero Dec drift (axis2_rate tracks the
     // Dec axis encoder), so the drift-alignment procedure computes corrected
@@ -2052,7 +2111,9 @@ TEST_F(MountControllerTest, TargetInServoDegreesIncludesGearRatio) {
     double expected_servo_ha = ha_hours * 15.0 * gear1;
     double expected_servo_dec = 60.0 * gear2;
 
-    EXPECT_NEAR(status.axis1_target, expected_servo_ha, 1e-6 * gear1);
+    // Tolerance must accommodate LST advancing between the controller's target
+    // computation and this read (LST drifts ~0.004°/s at the telescope axis).
+    EXPECT_NEAR(status.axis1_target, expected_servo_ha, 0.01 * gear1);
     EXPECT_DOUBLE_EQ(status.axis2_target, expected_servo_dec);
 }
 

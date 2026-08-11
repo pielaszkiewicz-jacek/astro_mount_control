@@ -34,7 +34,10 @@ protected:
         config_.mount_config.latitude = 52.0;
         config_.mount_config.longitude = 21.0;
         config_.mount_config.altitude = 100.0;
-        config_.mount_config.max_slew_rate = 5.0;
+        // Slew rate is in SERVO °/s.  With gear_ratio = 360, a 90° telescope
+        // move is 32400 servo degrees — 5 servo °/s would take hours and block
+        // TearDown.  Use a fast rate so in-flight slews complete quickly.
+        config_.mount_config.max_slew_rate = 100000.0;
         config_.mount_config.max_tracking_rate = 0.004178;
         config_.mount_config.slew_acceleration = 1.0;
         config_.mount_config.tracking_acceleration = 0.001;
