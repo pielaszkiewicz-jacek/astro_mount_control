@@ -34,7 +34,7 @@ flowchart TB
 
         subgraph IMPL["Implementacje HAL"]
             MF_IMPL["✅ MF7025v2 (LingKong BLDC)<br/>Własny protokół CAN V2.36<br/>CAN ID 0x140+node_id · SocketCAN<br/>Węzły: HA (ID=1), Dec (ID=2)"]:::done
-            CAN_IMPL["✅ CANopen (CiA 402)<br/>Komunikacja PDO/SDO/NMT<br/>Węzły: RA, Dec"]:::done
+            CAN_IMPL["⚠️ CANopen (CiA 402)<br/>NIEZIMPLEMENTOWANY — fabryka rzuca wyjątek<br/>Do CAN używaj MF7025v2"]:::planned
             SIM_IMPL["✅ Symulowana<br/>Testy/rozwój<br/>Konfigurowalny szum i błędy"]:::done
             GAM_IMPL["✅ Gamepad<br/>Ręczne sterowanie joystickiem<br/>Evdev API"]:::done
             SER_IMPL["✅ Szeregowa<br/>RS-232/485<br/>Modbus RTU/ASCII"]:::done
@@ -81,7 +81,7 @@ flowchart TB
 | Typ | Enum | Opis | Status |
 |-----|------|------|--------|
 | Symulowany | `HALType::SIMULATED` | Symulowany sprzęt do testów/rozwoju | ✅ Zaimplementowany |
-| CANopen | `HALType::CANOPEN` | Napędy CANopen/CiA 402 | ✅ Zaimplementowany |
+| CANopen | `HALType::CANOPEN` | Napędy CANopen/CiA 402 | ❌ **Niezaimplementowany** — fabryka rzuca wyjątek ([`hal_factory.cpp:22`](../src/hal/hal_factory.cpp:22)); do CAN używaj MF7025v2 |
 | **MF7025v2** | **`HALType::MF7025V2`** | **LingKong BLDC Servo (własny protokół CAN)** | **✅ Zaimplementowany** |
 | Gamepad | `HALType::GAMEPAD` | Sterowanie ręczne przez gamepad/joystick | ✅ Zaimplementowany |
 | Szeregowy | `HALType::SERIAL` | Komunikacja szeregowa RS-232/485 (Modbus) | ✅ Zaimplementowany |
@@ -630,6 +630,13 @@ public:
 ---
 
 ## Implementacja CANopen HAL
+
+> ⚠️ **STATUS: NIEZIMPLEMENTOWANE (2026-08-11).**
+> Katalog `src/hal/canopen_hal/` **nie istnieje** w bieżącym drzewie, a
+> `HALFactory::create(HALType::CANOPEN)` rzuca „CANopen HAL implementation not yet
+> available” ([`hal_factory.cpp:22`](../src/hal/hal_factory.cpp:22)). Sekcje poniżej
+> opisują projekt docelowy/historyczny i pozostają wyłącznie jako referencja. Do
+> rzeczywistego sprzętu CAN używaj **HAL MF7025v2** (`src/hal/mf7025v2_hal/`, SocketCAN).
 
 Implementacja CANopen HAL (`src/hal/canopen_hal/`) zapewnia sterowanie napędami zgodne z CiA 402:
 

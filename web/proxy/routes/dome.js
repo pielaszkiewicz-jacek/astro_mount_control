@@ -1,8 +1,10 @@
 /**
  * Dome Control Routes
  *
- * Proxies dome operations to the standalone DomeService gRPC process.
- * Falls back to simulated data when the service is unavailable.
+ * Proxies dome operations to the DomeService gRPC service (hosted IN-PROCESS
+ * on the mount controller's unified port 50051).
+ * No silent simulated fallback — an unreachable service returns an explicit
+ * 503 so the UI never shows fake data (P1 fix).
  */
 'use strict';
 
@@ -152,25 +154,7 @@ router.get('/status', async (req, res) => {
       moving: status.moving || false,
     });
   } catch (err) {
-    // Return simulated fallback when dome service is unavailable
-    res.json({
-      dome_type: 0,
-      state: 0,
-      azimuth_deg: 0,
-      target_azimuth_deg: 0,
-      can_rotate: true,
-      can_open: true,
-      shutter_open: false,
-      aperture_deg: 180,
-      parked: true,
-      sync_enabled: false,
-      sync_offset_deg: 0,
-      error_message: '',
-      home_azimuth_deg: 0,
-      park_azimuth_deg: 180,
-      connected: false,
-      moving: false,
-    });
+    errorResponse(res, 503, 'Dome service unavailable', err.message);
   }
 });
 

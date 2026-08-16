@@ -9,6 +9,8 @@
 #include <mutex>
 #include <map>
 #include <queue>
+#include <deque>
+#include <optional>
 #include <atomic>
 #include <thread>
 #include <condition_variable>
@@ -185,8 +187,22 @@ private:
     // Filter event against current configuration
     bool shouldDeliver(const NotificationEvent& event) const;
 
-    // Aggregate similar events (combine repeated events within interval)
+    // Deliver an event to all channels + subscribers + stats (N4).
+    void deliver(const NotificationEvent& event);
+
+    // Aggregate similar events (combine repeated events within interval).
+    // N4: windowed — matching events are merged into pending_aggregate_ and
+    // flushed only when the aggregation window expires or a non-matching event
+    // arrives, so the client receives one digest per window instead of a flood.
     NotificationEvent aggregate(const NotificationEvent& event);
+
+    // True when `event` belongs to the same aggregation bucket as `base`.
+    bool matchesAggregate(const NotificationEvent& base, const NotificationEvent& event) const;
+
+    // Remove any dynamically-managed channels (email/webhook/mqtt) before
+    // re-applying a NotificationConfig (N2). The always-on "log" channel and
+    // any channels registered outside configure() are left untouched.
+    void clearManagedChannels();
 
     // Convert internal event to protobuf
     astro_mount::NotificationEvent toProto(const NotificationEvent& event) const;
@@ -205,6 +221,14 @@ private:
     Config config_;
     std::vector<std::unique_ptr<NotificationChannel>> channels_;
     std::queue<NotificationEvent> event_queue_;
+
+    // Aggregation state (N4) — guarded by mutex_.
+    std::optional<NotificationEvent> pending_aggregate_;
+    std::chrono::system_clock::time_point pending_aggregate_time_{};
+    int pending_aggregate_count_{0};
+
+    // Rolling 1-hour send timestamps (N4) — guarded by mutex_.
+    std::deque<std::chrono::system_clock::time_point> sent_timestamps_;
 
     // Subscribers
     std::map<int, std::function<void(const NotificationEvent&)>> subscribers_;

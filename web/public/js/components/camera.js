@@ -100,13 +100,24 @@ const CameraComponent = (() => {
     const time = parseFloat(document.getElementById('cam-exposure').value);
     const gain = parseInt(document.getElementById('cam-gain').value);
     const binning = parseInt(document.getElementById('cam-binning').value);
-    Api.post('/api/camera/expose', { exposure_time_s: time, gain, binning });
+    const filter = parseInt(document.getElementById('cam-filter').value);
+    Api.post('/api/camera/expose', { exposure_time_s: time, gain, binning, filter: { position: filter } });
   }
 
   function abort() { Api.post('/api/camera/abort', {}); }
   function setCooler() {
     const target = parseFloat(document.getElementById('cam-cooler-target').value);
-    Api.post('/api/camera/cooler', { target_c: target });
+    Api.post('/api/camera/cooler', { target_c: target, enabled: true })
+      .then(refreshCooler);
+  }
+
+  function refreshCooler() {
+    Api.get('/api/camera/cooler').then(data => {
+      const cur = document.getElementById('cam-cooler-current');
+      if (cur) cur.textContent = (data.current_c || 0).toFixed(1) + '°C';
+      const pwr = document.getElementById('cam-cooler-power');
+      if (pwr) pwr.textContent = (data.power_percent || 0).toFixed(0) + '%';
+    }).catch(() => { /* cooler status is best-effort */ });
   }
 
   function refreshInfo() {
@@ -115,7 +126,8 @@ const CameraComponent = (() => {
       document.getElementById('cam-sensor').textContent = data.sensor_name || '--';
       document.getElementById('cam-chip').textContent = (data.width || '--') + '×' + (data.height || '--');
       document.getElementById('cam-cooler').textContent = data.has_cooler ? '✅ Yes' : 'No';
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-camera', 'Camera service'));
+    refreshCooler();
   }
 
   return { render, startExposure, abort, setCooler, refreshInfo };

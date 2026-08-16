@@ -48,18 +48,11 @@ public:
 
 private:
     void populateWeatherStatus(astro_mount::WeatherStatus* status) const;
-    void alertBroadcastLoop();
     bool configureFromJson(const std::string& config_path);
 
     std::unique_ptr<astro_mount::weather::WeatherMonitor> monitor_;
     std::string config_path_;
     bool initialized_{false};
-
-    std::atomic<bool> watching_{false};
-    std::unique_ptr<std::thread> watch_thread_;
-    mutable std::mutex watch_mutex_;
-    astro_mount::WeatherAlert last_alert_;
-    bool alert_changed_{false};
 
     mutable std::mutex monitor_mutex_;
 };

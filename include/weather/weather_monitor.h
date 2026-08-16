@@ -201,6 +201,12 @@ private:
     std::atomic<bool> running_{false};
     int poll_interval_{10};
     mutable std::mutex mutex_;
+
+    // API polling throttle — the WeatherApiSource is polled at most once per
+    // its configured update interval (minutes) instead of every monitoring
+    // cycle (guarded by mutex_).
+    std::chrono::steady_clock::time_point last_api_fetch_{};
+    std::chrono::minutes api_fetch_interval_{10};
 };
 
 } // namespace weather

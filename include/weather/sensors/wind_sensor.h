@@ -77,6 +77,7 @@ private:
     int gpio_pin_;
     double pulses_per_ms_;
     int fd_{-1};
+    double current_speed_{0.0};
 };
 
 } // namespace weather

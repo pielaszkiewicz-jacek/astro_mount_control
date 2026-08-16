@@ -109,6 +109,7 @@ grpc::Status PowerServiceImpl::GetPowerStatus(
     astro_mount::PowerStatus* response) {
     std::lock_guard<std::mutex> lock(mutex_);
     populatePowerStatus(response);
+    recordHistory();
     return grpc::Status::OK;
 }
 
@@ -119,9 +120,14 @@ grpc::Status PowerServiceImpl::SetPowerOutput(
     std::lock_guard<std::mutex> lock(mutex_);
     if (!initialized_ || !manager_)
         return grpc::Status(grpc::StatusCode::UNAVAILABLE, "Power manager not initialised");
-    (void)request;
-    return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
-                        "Output switching not yet implemented");
+
+    if (!manager_->setOutputEnabled(request->output_id(), request->enabled())) {
+        return grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                            "Failed to set power output " +
+                            std::to_string(request->output_id()));
+    }
+    recordHistory();
+    return grpc::Status::OK;
 }
 
 grpc::Status PowerServiceImpl::GetPowerHistory(
@@ -129,9 +135,23 @@ grpc::Status PowerServiceImpl::GetPowerHistory(
     const astro_mount::PowerHistoryRequest* request,
     astro_mount::PowerHistoryResponse* response) {
     std::lock_guard<std::mutex> lock(mutex_);
-    (void)request;
-    response->set_total_points(0);
+    int max_points = request->max_points() > 0 ? request->max_points() : 100;
+    int count = static_cast<int>(history_.size());
+    int start = std::max(0, count - max_points);
+    for (int i = start; i < count; ++i) {
+        *response->add_readings() = history_[static_cast<size_t>(i)];
+    }
+    response->set_total_points(static_cast<int32_t>(history_.size()));
     return grpc::Status::OK;
+}
+
+void PowerServiceImpl::recordHistory() {
+    astro_mount::PowerStatus status;
+    populatePowerStatus(&status);
+    history_.push_back(status);
+    if (history_.size() > kHistoryMax) {
+        history_.erase(history_.begin());
+    }
 }
 
 } // namespace astro_power

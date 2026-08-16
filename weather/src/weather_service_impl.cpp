@@ -39,7 +39,8 @@ WeatherServiceImpl::WeatherServiceImpl(const std::string& config_path)
 }
 
 WeatherServiceImpl::~WeatherServiceImpl() {
-    if (watching_) { watching_ = false; if (watch_thread_ && watch_thread_->joinable()) watch_thread_->join(); }
+    // N7: subscription streams are per-client and self-terminating — no shared
+    // watcher thread to join. Only the monitor lifecycle needs stopping here.
     if (monitor_) monitor_->stop();
 }
 
@@ -237,12 +238,14 @@ grpc::Status WeatherServiceImpl::SubscribeWeatherAlerts(
     grpc::ServerContext* context,
     const google::protobuf::Empty* request,
     grpc::ServerWriter<astro_mount::WeatherAlert>* writer) {
-    watching_ = true;
-    while (watching_ && !context->IsCancelled()) {
+    // N7: per-client loop — only the client's own cancellation terminates this
+    // stream. The previous implementation used the shared `watching_` flag, so
+    // one client disconnecting killed every subscriber's stream (the same class
+    // of bug P13 fixed for the derotator).
+    while (!context->IsCancelled()) {
         {
             std::lock_guard<std::mutex> lock(monitor_mutex_);
             if (!initialized_ || !monitor_) {
-                watching_ = false;
                 return grpc::Status(grpc::StatusCode::UNAVAILABLE, "Not initialised");
             }
             auto data = monitor_->getCurrentWeather();
@@ -273,7 +276,6 @@ grpc::Status WeatherServiceImpl::SubscribeWeatherAlerts(
         }
         std::this_thread::sleep_for(std::chrono::seconds(10));
     }
-    watching_ = false;
     return grpc::Status::OK;
 }
 

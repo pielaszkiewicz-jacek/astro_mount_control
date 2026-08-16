@@ -63,9 +63,15 @@ public:
 
     /**
      * @brief Get the current configuration
-     * @return Reference to current configuration
+     * @return Copy of the current configuration
+     *
+     * FIX (N9): returns a copy instead of a reference. The previous
+     * implementation returned a reference to the internal config_ after
+     * releasing config_mutex_, so a concurrent reloadConfiguration() could
+     * swap the underlying unique_ptr and leave the caller with a dangling /
+     * mutated object (data race). Returning by value copies under the lock.
      */
-    const Configuration& getConfiguration() const;
+    Configuration getConfiguration() const;
 
     /**
      * @brief Manually trigger configuration reload
@@ -215,9 +221,9 @@ public:
 
     /**
      * @brief Get the current configuration
-     * @return Reference to current configuration
+     * @return Copy of the current configuration (see ConfigMonitor::getConfiguration)
      */
-    const Configuration& getConfiguration() const;
+    Configuration getConfiguration() const;
 
     /**
      * @brief Manually reload configuration

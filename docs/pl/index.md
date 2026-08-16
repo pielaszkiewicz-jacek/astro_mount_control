@@ -208,10 +208,12 @@ Aplikacja jednostronicowa (vanilla JS) z zakładkami:
 - **Śledzenie** — śledzenie efemeryd obiektów ruchomych
 - Zakładki rozszerzone (gdy usługi włączone): kopuła, derotator, pogoda, zasilanie, sekwencer, focuser, kamera, PEC, guider, pulley
 
-#### 11. **GUI Qt** ([`gui/`](gui/))
+#### 11. **GUI Qt** ([`gui/`](gui/)) — ⚠️ **NIEDOSTĘPNE (2026-08-11)**
 Natywna aplikacja desktopowa Qt (`astro_mount_gui`) używająca gRPC:
 - Panele: montaż, status, kreator kalibracji, sekwencer, kopuła, focuser, kamera, pogoda, derotator, PEC, zasilanie, powiadomienia, ustawienia
 - Widżety: mapa nieba, wykres gwiazd, wykres ostrości, wykres pogody
+
+> ⚠️ **Uwaga:** źródła GUI Qt zostały **usunięte z repozytorium** — katalog `gui/` zawiera tylko artefakty build. Dokumentacja tej sekcji jest historyczna. Zalecane jest korzystanie z interfejsu **Web SPA** ([`web/public/`](web/public/)), który zapewnia równoważne sterowanie montażem z przeglądarki.
 
 #### 12. **Object Database Service** ([`db/`](db/))
 Katalog obiektów astronomicznych oparty na SQLite:

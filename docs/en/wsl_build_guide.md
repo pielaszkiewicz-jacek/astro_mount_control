@@ -279,7 +279,12 @@ Key test files:
 
 ## 7. Building the Qt GUI
 
-> **Note:** Qt GUI requires Qt5 installed (see Step 3).
+> ⚠️ **Not available (2026-08-11):** the Qt GUI sources have been removed from
+> this repository (see [`qt_gui.md`](qt_gui.md)). Use the web SPA
+> ([`../web/README.md`](../web/README.md)) instead.
+
+> **Note:** Qt GUI requires Qt5 installed (see Step 3). The steps below are
+> historical and require the sources to be restored from git history.
 
 ```bash
 cd /mnt/c/Users/jacek/OneDrive/Documents/astro_mount_control

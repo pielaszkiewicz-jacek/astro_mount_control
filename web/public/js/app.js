@@ -113,7 +113,15 @@ const App = (() => {
     dome:      { tab: 'tab-dome',      panel: 'panel-dome',      btn: '.tab-btn[data-tab="dome"]' },
     derotator: { tab: 'tab-derotator', panel: 'panel-derotator', btn: '.tab-btn[data-tab="derotator"]' },
     focuser:   { tab: 'tab-focuser',   panel: 'panel-focuser',   btn: '.tab-btn[data-tab="focuser"]' },
+    guider:    { tab: 'tab-guider',    panel: 'panel-guider',    btn: '.tab-btn[data-tab="guider"]' },
+    pec:       { tab: 'tab-pec',       panel: 'panel-pec',       btn: '.tab-btn[data-tab="pec"]' },
+    camera:    { tab: 'tab-camera',    panel: 'panel-camera',    btn: '.tab-btn[data-tab="camera"]' },
+    pulley:    { tab: 'tab-pulley',    panel: 'panel-pulley',    btn: '.tab-btn[data-tab="pulley"]' },
+    notifications: { tab: 'tab-notifications', panel: 'panel-notifications', btn: '.tab-btn[data-tab="notifications"]' },
   };
+
+  // No deferred services remain — camera and pulley are hosted in-process (R3).
+  const DEFERRED_TABS = [];
 
   /**
    * Fetch external services config and hide tabs for disabled services.
@@ -133,9 +141,39 @@ const App = (() => {
         if (panel) panel.style.display = enabled ? '' : 'none';
         console.log('[App] external service', key, enabled ? 'enabled' : 'disabled');
       });
+      // Deferred services are never shown until their backend is hosted.
+      DEFERRED_TABS.forEach(({ panel, btn }) => {
+        const b = document.querySelector(btn);
+        if (b) b.style.display = 'none';
+        const p = document.getElementById(panel);
+        if (p) p.style.display = 'none';
+      });
     } catch (err) {
       console.warn('[App] Failed to load external services config:', err.message);
     }
+  }
+
+  /**
+   * Show a visible "service unavailable" banner inside a panel.
+   * Components call this when the proxy returns 503 so the user sees an
+   * explicit message instead of silent "--" placeholders or fake data.
+   * @param {string} panelId - e.g. 'panel-weather'
+   * @param {string} serviceName - e.g. 'Weather service'
+   */
+  function showServiceUnavailable(panelId, serviceName) {
+    const panel = document.getElementById(panelId);
+    if (!panel) return;
+    let banner = document.getElementById(`${panelId}-unavailable`);
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = `${panelId}-unavailable`;
+      banner.style.cssText =
+        'padding:12px 16px;margin:12px 0;border-radius:8px;' +
+        'background:var(--color-danger-bg, rgba(244,67,54,0.12));' +
+        'color:var(--color-danger, #ef5350);font-weight:600;text-align:center;';
+      panel.insertBefore(banner, panel.firstChild);
+    }
+    banner.textContent = `⚠️ ${serviceName} unavailable — backend service is not reachable.`;
   }
 
   /**
@@ -155,6 +193,7 @@ const App = (() => {
       { id: 'weather-component-mount',  render: WeatherComponent.render },
       { id: 'pulley-component-mount',   render: PulleyComponent.render },
       { id: 'lx200-component-mount',    render: Lx200Component.render },
+      { id: 'notifications-component-mount', render: NotificationsComponent.render },
     ];
 
     mounts.forEach(m => {
@@ -580,6 +619,7 @@ const App = (() => {
   return {
     init,
     showToast,
+    showServiceUnavailable,
     getLastState,
   };
 })();

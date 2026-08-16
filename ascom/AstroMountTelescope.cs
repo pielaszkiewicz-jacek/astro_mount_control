@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
 using Google.Protobuf.WellKnownTypes;
 
 //
@@ -43,11 +44,12 @@ namespace AstroMount
         // Internal state
         // ============================================
 
-        private readonly GrpcClient _grpc;
-        private readonly StateCache _cache;
+        private GrpcClient _grpc;
+        private StateCache _cache;
         private readonly ConversionHelper _conv;
         private string _host = "localhost";
         private int _port = 50051;
+        private bool _useSsl;
         private MountType _mountType = MountType.Equatorial;
         private bool _disposed;
 
@@ -67,6 +69,81 @@ namespace AstroMount
             _grpc = new GrpcClient(_host, _port);
             _cache = new StateCache(_grpc, pollIntervalMs: 1000);
             _conv = new ConversionHelper();
+        }
+
+        /// <summary>
+        /// ASCOM setup model — a dedicated setup dialog (ActionSetup) is
+        /// available; the connection string is also supported by the chooser.
+        /// </summary>
+        public int SetupDialogType => 2; // SetupDialogType.Setup
+
+        /// <summary>
+        /// Connection string: "host=192.168.1.100;port=50051" (port optional,
+        /// "ssl=1"/"tls=1" optional). Parsed on set; the gRPC client is
+        /// recreated for the new endpoint.
+        /// </summary>
+        public string ConnectionString
+        {
+            get => $"host={_host};port={_port}{( _useSsl ? ";ssl=1" : "" )}";
+            set
+            {
+                ApplyConnectionString(value);
+                RecreateClient();
+            }
+        }
+
+        /// <summary>
+        /// Chooser action (ASCOM) — returns false because no chooser dialog is
+        /// implemented; the connection string is applied on set.
+        /// </summary>
+        public bool ActionChoose(string dialogId) => false;
+
+        /// <summary>
+        /// Setup dialog action (ASCOM) — shows a Windows Forms dialog where the
+        /// user configures the gRPC host/port/TLS and can test the connection.
+        /// </summary>
+        public void ActionSetup()
+        {
+            using (var dialog = new SetupDialog(_host, _port, _useSsl))
+            {
+                if (dialog.ShowDialog() == DialogResult.OK)
+                {
+                    _host = dialog.Host;
+                    _port = dialog.Port;
+                    _useSsl = dialog.UseSsl;
+                    RecreateClient();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Recreate the gRPC client and state cache for the current endpoint.
+        /// </summary>
+        private void RecreateClient()
+        {
+            _cache.Dispose();
+            _grpc.Dispose();
+            _grpc = new GrpcClient(_host, _port, _useSsl);
+            _cache = new StateCache(_grpc, pollIntervalMs: 1000);
+        }
+
+        /// <summary>
+        /// Parse a connection string of the form "host=...;port=..." into the
+        /// internal host/port/ssl fields. Missing keys keep current values.
+        /// </summary>
+        private void ApplyConnectionString(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            foreach (var part in value.Split(';'))
+            {
+                var kv = part.Split(new[] { '=' }, 2);
+                if (kv.Length != 2) continue;
+                var key = kv[0].Trim().ToLowerInvariant();
+                var val = kv[1].Trim();
+                if (key == "host" && val.Length > 0) _host = val;
+                else if (key == "port" && int.TryParse(val, out var p)) _port = p;
+                else if ((key == "ssl" || key == "tls")) _useSsl = val == "1" || val.ToLowerInvariant() == "true";
+            }
         }
 
         // ============================================

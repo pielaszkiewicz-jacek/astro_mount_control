@@ -54,6 +54,10 @@ private:
     // Build JSON payload from event
     std::string buildPayload(const NotificationEvent& event) const;
 
+    // MQTT 3.1.1 publish over a fresh connection. Handles QoS 0/1/2 and the
+    // retain flag; TLS is negotiated when config_.use_tls is set (N5).
+    bool publishOnce(const std::string& topic, const std::string& payload);
+
     Config config_;
     bool initialized_{false};
     void* mqtt_client_{nullptr};  // Opaque pointer to MQTT client (implementation-specific)

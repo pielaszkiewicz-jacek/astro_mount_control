@@ -177,9 +177,26 @@ double AstronomicalCalculations::applyAtmosphericRefraction(double altitude, dou
         temperature_c = pimpl->temperature;
     }
     
-    // Convert to standard conditions if needed
+    // Guard against non-finite altitude (NaN/Inf would propagate through tan()).
+    if (!std::isfinite(altitude)) {
+        return 0.0;
+    }
+    
+    // Temperature in Kelvin. The Saemundsson formula returns refraction at
+    // standard conditions (1010 mbar, 283.15 K = 10 °C); the correction to
+    // actual conditions is (P/1010)·(283.15/T), applied exactly ONCE.
+    //
+    // NUMERICAL CORRECTNESS FIX: the previous code computed
+    //   p_corr = P * 283.15 / (T * 1.33322)   and then
+    //   r *= p_corr / 1010.0 * 283.15 / T
+    // which squared the temperature correction (T² in the denominator) and
+    // introduced a spurious mmHg conversion factor (1.33322 = 1013.25/760),
+    // systematically underestimating refraction by ~25% at standard conditions.
+    const double T_STD = 283.15;  // 10 °C in Kelvin
+    const double P_STD = 1010.0;  // standard pressure (mbar) for Saemundsson
     double t_k = temperature_c + 273.15;
-    double p_corr = pressure_mbar * 283.15 / (t_k * 1.33322);
+    if (t_k <= 0.0) t_k = T_STD;  // guard against non-physical temperature
+    double p_t_corr = (pressure_mbar / P_STD) * (T_STD / t_k);
     
     // Clamp altitude to avoid tan singularity near zenith.
     // The Saemundsson formula's argument (h + 10.3/(h + 5.11)) passes through
@@ -191,14 +208,15 @@ double AstronomicalCalculations::applyAtmosphericRefraction(double altitude, dou
     const double MAX_ALT_FOR_REFRACTION = 85.0;
     double alt_clamped = std::min(altitude, MAX_ALT_FOR_REFRACTION);
     
-    // Saemundsson formula
+    // Saemundsson formula (arcminutes at 1010 mbar / 10 °C)
     double r = 1.02 / tan((alt_clamped + 10.3 / (alt_clamped + 5.11)) * D2R);
     
     // Guard against negative refraction from tan() when argument exceeds 90°
     // (can still occur with float imprecision near the clamp boundary)
     if (r < 0.0) r = 0.0;
     
-    r *= p_corr / 1010.0 * 283.15 / t_k;
+    // Apply pressure/temperature scaling exactly once.
+    r *= p_t_corr;
     
     return r / 60.0;  // Convert arcminutes to degrees
 }
@@ -217,9 +235,13 @@ std::pair<double, double> AstronomicalCalculations::equatorialToHorizontal(doubl
         lon = pimpl->longitude;
     }
     
-    // Get Local Apparent Sidereal Time
+    // Get Local Apparent Sidereal Time.
+    // iauGst94() returns GAST in RADIANS, so LST = GAST + longitude (radians).
+    // NUMERICAL CORRECTNESS FIX: the previous code computed `lon * D2R / 15.0`,
+    // which applied only 1/15 of the longitude correction (~14° error at λ=15°).
+    // Dividing by 15 is only valid if GST were expressed in hours, not radians.
     double gast = iauGst94(jd, 0.0);
-    double lst = gast + lon * D2R / 15.0;
+    double lst = gast + lon * D2R;
     
     // Convert to hour angle
     double ha = lst - ra_rad;
@@ -264,9 +286,12 @@ std::pair<double, double> AstronomicalCalculations::horizontalToEquatorial(doubl
     double ha, dec;
     iauAe2hd(az_rad, alt_rad, lat * D2R, &ha, &dec);
     
-    // Get Local Apparent Sidereal Time
+    // Get Local Apparent Sidereal Time.
+    // iauGst94() returns GAST in RADIANS; LST = GAST + longitude (radians).
+    // NUMERICAL CORRECTNESS FIX: removed the erroneous /15.0 on the longitude
+    // term (see equatorialToHorizontal()).
     double gast = iauGst94(jd, 0.0);
-    double lst = gast + lon * D2R / 15.0;
+    double lst = gast + lon * D2R;
     
     // Convert hour angle to right ascension
     double ra = lst - ha;
@@ -575,27 +600,16 @@ double AstronomicalCalculations::calculateEarthRotationAngle(double jd) {
 }
 
 double AstronomicalCalculations::calculateGMST(double jd) {
-    // Convert UTC Julian Date to UT1 by adding leap seconds (ΔAT = TAI - UTC).
-    // UT1 differs from UTC by ΔAT (currently 37s) plus a sub-second Earth
-    // rotation irregularity (UT1-TAI < 0.9s) that requires IERS Bulletin A data.
-    // We account for ΔAT here; the residual UT1-TAI is negligible at our
-    // target accuracy of ~1 arcsecond.
-    int iy, im, id;
-    double fd;
-    iauJd2cal(jd, 0.0, &iy, &im, &id, &fd);
-    
-    double delta_at = 0.0;  // ΔAT = TAI - UTC (seconds)
-    int status = iauDat(iy, im, id, fd, &delta_at);
-    if (status != 0) {
-        // Fallback: SOFA leap second table may be out of date.
-        // As of 2025+, TAI-UTC = 37 seconds.
-        delta_at = 37.0;
-    }
-    
-    // Approximate UT1 ≈ TAI = UTC + ΔAT
-    double jd_ut1 = jd + delta_at / 86400.0;
-    
-    return iauGst94(jd_ut1, 0.0) * R2D / 15.0;  // Convert to hours
+    // iauGst94() computes Greenwich apparent sidereal time from a UT1 Julian date.
+    //
+    // NUMERICAL CORRECTNESS FIX: the previous implementation approximated
+    // UT1 as UTC + ΔAT (ΔAT = TAI - UTC = 37 s). This is incorrect — UT1 differs
+    // from UTC by DUT1 ∈ (−0.9 s, +0.9 s), NOT by ΔAT. Adding 37 s introduced a
+    // systematic ~36 s error in GMST/LST, i.e. ~0.15° (~9 arcmin) — far above the
+    // ~1″ target accuracy. Passing the UTC Julian date directly as UT1 leaves a
+    // residual error of at most ~0.9 s (~15″), negligible at our target accuracy.
+    // For sub-arcsecond UT1 one would need IERS Bulletin A (UT1-UTC) via iauUtcut1().
+    return iauGst94(jd, 0.0) * R2D / 15.0;  // Convert to hours
 }
 
 double AstronomicalCalculations::calculateLST(double jd, double longitude) {
@@ -741,8 +755,14 @@ std::pair<double, double> AstronomicalCalculations::applyProperMotion(double ra0
     // Time difference in years
     double dt_years = (epoch1 - epoch0) / 365.25;
     
-    // Apply proper motion
-    double ra1 = ra_rad + pm_ra_rad * dt_years / cos(dec_rad);
+    // Apply proper motion.
+    // NUMERICAL STABILITY FIX: guard the 1/cos(δ) factor near the celestial poles
+    // (cos(δ)→0 as |δ|→90°). Without the clamp the RA proper-motion projection
+    // diverges at high declinations. Clamp to cos(85°)≈0.087 (max amplification
+    // ~11.5×), matching the guard used in applyGuiderCorrection().
+    double cos_dec = std::cos(dec_rad);
+    if (std::abs(cos_dec) < 0.087) cos_dec = std::copysign(0.087, cos_dec);
+    double ra1 = ra_rad + pm_ra_rad * dt_years / cos_dec;
     double dec1 = dec_rad + pm_dec_rad * dt_years;
     
     // Normalize RA

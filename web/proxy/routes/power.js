@@ -1,14 +1,16 @@
 /**
  * Power Management Routes
  *
- * Proxies power operations to the backend Power gRPC service.
- * Falls back to simulated data when the service is unavailable.
+ * Proxies power operations to the PowerService gRPC service
+ * (astro_power_server, default port 50056) via a dedicated client.
+ * No silent simulated fallback — an unreachable service returns an explicit
+ * 503 so the UI never shows fake data (P1 fix).
  */
 'use strict';
 
 const express = require('express');
 const router = express.Router();
-const { grpcCall } = require('../grpc/client');
+const { powerGrpcCall } = require('../grpc/client');
 const { errorResponse } = require('../grpc/converters');
 
 /**
@@ -17,7 +19,7 @@ const { errorResponse } = require('../grpc/converters');
  */
 router.get('/status', async (req, res) => {
   try {
-    const status = await grpcCall('GetPowerStatus', {});
+    const status = await powerGrpcCall('GetPowerStatus', {});
     res.json({
       voltage_v: status.voltage_v || 0,
       current_a: status.current_a || 0,
@@ -40,25 +42,7 @@ router.get('/status', async (req, res) => {
       })),
     });
   } catch (err) {
-    // Simulated power status when gRPC unavailable
-    res.json({
-      voltage_v: 12.5,
-      current_a: 1.2,
-      power_w: 15.0,
-      capacity_ah: 50,
-      charge_percent: 85,
-      charging: false,
-      on_battery: true,
-      temperature_c: 22.5,
-      estimated_runtime_min: 240,
-      input_voltage_v: 13.8,
-      output_voltage_v: 12.0,
-      outputs: [
-        { id: 0, name: 'Mount', enabled: true, voltage_v: 12.0, current_a: 0.8, overload: false },
-        { id: 1, name: 'Camera', enabled: true, voltage_v: 12.0, current_a: 0.3, overload: false },
-        { id: 2, name: 'Focuser', enabled: false, voltage_v: 12.0, current_a: 0.0, overload: false },
-      ],
-    });
+    errorResponse(res, 503, 'Power service unavailable', err.message);
   }
 });
 
@@ -70,10 +54,10 @@ router.get('/status', async (req, res) => {
 router.post('/output', async (req, res) => {
   try {
     const { output_id, enabled } = req.body;
-    await grpcCall('SetPowerOutput', { output_id, enabled: !!enabled });
+    await powerGrpcCall('SetPowerOutput', { output_id, enabled: !!enabled });
     res.json({ success: true });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to set power output', err.message);
+    errorResponse(res, 503, 'Power service unavailable', err.message);
   }
 });
 
@@ -84,7 +68,7 @@ router.post('/output', async (req, res) => {
 router.get('/history', async (req, res) => {
   try {
     const { start_time, end_time, max_points } = req.query;
-    const history = await grpcCall('GetPowerHistory', {
+    const history = await powerGrpcCall('GetPowerHistory', {
       start_time: start_time || null,
       end_time: end_time || null,
       max_points: parseInt(max_points) || 100,
@@ -100,7 +84,7 @@ router.get('/history', async (req, res) => {
       total_points: history.total_points || 0,
     });
   } catch (err) {
-    res.json({ readings: [], total_points: 0 });
+    errorResponse(res, 503, 'Power service unavailable', err.message);
   }
 });
 

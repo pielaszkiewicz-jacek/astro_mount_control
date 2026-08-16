@@ -1,4 +1,5 @@
 #include "models/tpoint_model.h"
+#include "logging/logger.h"
 #include <Eigen/Dense>
 #include <fstream>
 #include <nlohmann/json.hpp>
@@ -47,13 +48,29 @@ public:
             return false;
         }
         
+        // NUMERICAL STABILITY: warn about collinear RA columns. WORM_ERROR uses
+        // sin(1·HA) as its base term and POLAR_AZ uses sin(HA) — these are the same
+        // basis function. If both are enabled the RA design matrix is rank-deficient
+        // and the two parameters become unidentifiable/unstable (ColPivHouseholderQR
+        // still yields a solution, but the coefficients can be large and meaningless).
+        if ((enabled_terms_ & TPointTerms::WORM_ERROR) &&
+            (enabled_terms_ & TPointTerms::POLAR_AZ)) {
+            API_LOG_WARN("TPointModel: WORM_ERROR (base sin(1*HA)) and POLAR_AZ (sin(HA)) "
+                         "produce collinear RA columns; the worm base harmonic is "
+                         "unidentifiable. Disable one of these terms for a stable fit.");
+        }
+        
         // Prepare design matrix and observation vector
         int n = measurements_.size();
         int p_ra = getRAParameterCount();
         int p_dec = getDecParameterCount();
         
-        MatrixXd A_ra(n, p_ra);
-        MatrixXd A_dec(n, p_dec);
+        // Zero-initialise the design matrices. When only one parameter block is
+        // enabled (e.g. REFRACTION-only, no RA terms) the other block's columns
+        // are never written by fillDesignMatrixRow() — leaving them uninitialised
+        // would feed garbage into the QR solver (UB / NaNs).
+        MatrixXd A_ra = MatrixXd::Zero(n, p_ra);
+        MatrixXd A_dec = MatrixXd::Zero(n, p_dec);
         VectorXd b_ra(n);
         VectorXd b_dec(n);
         
@@ -302,17 +319,29 @@ public:
             J_inv(1, 1) = J(0, 0) / det;
             
             // Calculate update: Δx = -J⁻¹·f
+            // f is in arcseconds. The Jacobian entries are:
+            //   J(0,0) = ∂f_ra/∂ha    [arcsec/hour]
+            //   J(0,1) = ∂f_ra/∂dec   [arcsec/degree]
+            //   J(1,0) = ∂f_dec/∂ha   [arcsec/hour]
+            //   J(1,1) = ∂f_dec/∂dec  [arcsec/degree]
+            // Therefore delta = -J⁻¹·f is already expressed in HOURS (component 0)
+            // and DEGREES (component 1).
+            //
+            // NUMERICAL CORRECTNESS FIX: the previous code divided delta(0) by
+            // 15·3600 and delta(1) by 3600, shrinking every Newton step by ~54000×/
+            // ~3600× — the iteration was effectively frozen and predictMountPosition()
+            // silently returned an almost-uncorrected mount position.
             Vector2d f(ra_error, dec_error);
             Vector2d delta = -J_inv * f;
             
-            // Apply update with damping factor
+            // Apply update with damping factor (delta is in hours/degrees).
             double damping = 1.0;
-            if (delta.norm() > 10.0) { // Large step
-                damping = 10.0 / delta.norm();
+            if (delta.norm() > 5.0) { // Large step (hours or degrees)
+                damping = 5.0 / delta.norm();
             }
             
-            ha_guess += damping * delta(0) / (15.0 * 3600.0); // Convert to hours
-            dec_guess += damping * delta(1) / 3600.0; // Convert to degrees
+            ha_guess  += damping * delta(0);   // already in hours
+            dec_guess += damping * delta(1);   // already in degrees
             
             // Clamp dec to valid range
             if (dec_guess < -90.0) dec_guess = -90.0;
@@ -369,6 +398,19 @@ public:
         aperture_ = aperture;
         tube_length_ = tube_length;
     }
+
+    void setMountParameters(double mount_height, double pier_west, double pier_east) {
+        mount_params_.mount_height = mount_height;
+        mount_params_.pier_west = pier_west;
+        mount_params_.pier_east = pier_east;
+        // Expose the effective physical parameters through the TPOINT parameters
+        // so getParameters() / persistence reflect the configured mount geometry.
+        parameters_.mount_params = mount_params_;
+    }
+
+    MountPhysicalParameters getMountParameters() const {
+        return mount_params_;
+    }
     
     void setEnabledTerms(uint32_t term_mask) {
         enabled_terms_ = term_mask;
@@ -399,6 +441,12 @@ public:
             {"focal_length", focal_length_},
             {"aperture", aperture_},
             {"tube_length", tube_length_}
+        };
+
+        data["mount_parameters"] = {
+            {"mount_height", mount_params_.mount_height},
+            {"pier_west", mount_params_.pier_west},
+            {"pier_east", mount_params_.pier_east}
         };
         
         data["enabled_terms"] = enabled_terms_;
@@ -440,12 +488,20 @@ public:
             parameters_.rms_error = params.value("rms_error", 0.0);
             parameters_.degrees_of_freedom = params.value("degrees_of_freedom", 0);
             
-            // Load mount parameters
             // Load telescope parameters
             auto telescope_params = data["telescope_parameters"];
             focal_length_ = telescope_params.value("focal_length", 2000.0);
             aperture_ = telescope_params.value("aperture", 200.0);
             tube_length_ = telescope_params.value("tube_length", 1800.0);
+            
+            // Load mount physical parameters (R5)
+            if (data.contains("mount_parameters")) {
+                auto mount_params = data["mount_parameters"];
+                mount_params_.mount_height = mount_params.value("mount_height", 0.0);
+                mount_params_.pier_west = mount_params.value("pier_west", 0.0);
+                mount_params_.pier_east = mount_params.value("pier_east", 0.0);
+                parameters_.mount_params = mount_params_;
+            }
             
             enabled_terms_ = data.value("enabled_terms", TPointTerms::DEFAULT_TERMS);
             is_fitted_ = data.value("is_fitted", false);
@@ -687,6 +743,9 @@ private:
         
         // Worm period error (affects RA)
         // Terms: sin(1*ha) base + sin(2*ha)/cos(2*ha) ... sin(6*ha)/cos(6*ha)
+        // NOTE: the base term sin(1*HA) is collinear with POLAR_AZ's sin(HA) column.
+        // fitModel() warns when both are enabled; the QR solver handles the resulting
+        // rank deficiency without crashing but the two parameters are unidentifiable.
         if (enabled_terms_ & TPointTerms::WORM_ERROR) {
             row_ra(col_ra++) = std::sin(1.0 * ha_rad);  // 1st harmonic (base)
             // Higher harmonics: sin/cos pairs for i=2..6
@@ -925,9 +984,16 @@ private:
         double ha_rad = ha * M_PI / 12.0;
         double dec_rad = dec * M_PI / 180.0;
         
-        // Axis non-perpendicularity Dec component: cos(ha)
+        // Axis non-perpendicularity Dec component: cos(ha).
+        // R5: when a pier side is configured (pier_west/pier_east), the sign of
+        // the AN term flips with the active pier — standard TPOINT behaviour for
+        // a dual-pier / meridian-flip setup.
         if (enabled_terms_ & TPointTerms::AXIS_NONPERP) {
-            correction += parameters_.axis_nonperp * std::cos(ha_rad);
+            double pier_sign = 1.0;
+            if (mount_params_.pier_west > 0.0 && mount_params_.pier_east > 0.0) {
+                pier_sign = (mount_params_.pier_west >= mount_params_.pier_east) ? 1.0 : -1.0;
+            }
+            correction += pier_sign * parameters_.axis_nonperp * std::cos(ha_rad);
         }
         
         // Polar altitude: constant
@@ -966,15 +1032,21 @@ private:
             }
         }
         
-        // Refraction: A*tan(z) + B*tan³(z) + C*tan⁵(z)
+        // Refraction: A*tan(z) + B*tan³(z) + C*tan⁵(z).
+        // R5: scale the fitted coefficients by the barometric altitude factor
+        // for the configured pier/mount height — refraction is lower at higher
+        // elevation because the air column above the instrument is thinner.
+        // With the default mount_height of 0 the factor is 1.0 (no change).
         if (enabled_terms_ & TPointTerms::REFRACTION) {
+            constexpr double PRESSURE_SCALE_HEIGHT_M = 8435.0;
+            double altitude_factor = std::exp(-mount_params_.mount_height / PRESSURE_SCALE_HEIGHT_M);
             double z = M_PI / 2.0 - dec_rad;
             constexpr double MAX_ZENITH_DIST = 87.0 * D2R;
             z = std::min(z, MAX_ZENITH_DIST);
             double tz = std::tan(z);
-            correction += parameters_.refraction_coeff * tz;
-            correction += parameters_.refraction_temp_coeff * tz * tz * tz;
-            correction += parameters_.refraction_pressure_coeff * tz * tz * tz * tz * tz;
+            correction += altitude_factor * parameters_.refraction_coeff * tz;
+            correction += altitude_factor * parameters_.refraction_temp_coeff * tz * tz * tz;
+            correction += altitude_factor * parameters_.refraction_pressure_coeff * tz * tz * tz * tz * tz;
         }
         
         return correction;
@@ -1101,6 +1173,7 @@ private:
     double focal_length_;
     double aperture_;
     double tube_length_;
+    MountPhysicalParameters mount_params_;
     bool is_fitted_;
 };
 
@@ -1152,6 +1225,14 @@ size_t TPointModel::getMeasurementCount() const {
 
 void TPointModel::setTelescopeParameters(double focal_length, double aperture, double tube_length) {
     pimpl->setTelescopeParameters(focal_length, aperture, tube_length);
+}
+
+void TPointModel::setMountParameters(double mount_height, double pier_west, double pier_east) {
+    pimpl->setMountParameters(mount_height, pier_west, pier_east);
+}
+
+TPointModel::MountPhysicalParameters TPointModel::getMountParameters() const {
+    return pimpl->getMountParameters();
 }
 
 void TPointModel::setEnabledTerms(uint32_t term_mask) {

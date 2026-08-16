@@ -98,7 +98,7 @@ const FocuserComponent = (() => {
       document.getElementById('foc-temp').textContent = data.temperature_c ? data.temperature_c.toFixed(1) + '°C' : '--°C';
       document.getElementById('foc-hfd').textContent = data.hfd ? data.hfd.toFixed(2) : '--';
       document.getElementById('foc-moving').textContent = data.moving ? 'Yes' : 'No';
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-focuser', 'Focuser service'));
   }
 
   return { render, move, halt, autoFocus, refreshStatus };

@@ -1,14 +1,17 @@
 /**
  * Pulley Controller Routes
  *
- * Proxies pulley operations to the backend PulleyService gRPC service.
- * Falls back to simulated data when the service is unavailable.
+ * Proxies pulley operations to the PulleyService gRPC service, which is hosted
+ * IN-PROCESS inside the mount controller (unified gRPC port 50051) — R3.
+ * The service is a clearly-labelled SIMULATED linear actuator ("Simulated
+ * Pulley") — the UI shows it as such via GET /status. No silent simulated
+ * fallback here: an unreachable service returns an explicit 503.
  */
 'use strict';
 
 const express = require('express');
 const router = express.Router();
-const { grpcCall } = require('../grpc/client');
+const { getPulleyGrpcClient, pulleyGrpcCall } = require('../grpc/client');
 const { errorResponse } = require('../grpc/converters');
 
 /**
@@ -18,14 +21,15 @@ const { errorResponse } = require('../grpc/converters');
  */
 router.post('/deploy', async (req, res) => {
   try {
-    const { position_percent, speed_percent } = req.body;
-    await grpcCall('DeployPulley', {
-      position_percent: parseInt(position_percent) || 100,
-      speed_percent: parseInt(speed_percent) || 50,
+    const body = req.body || {};
+    await pulleyGrpcCall('DeployPulley', {
+      position_percent: parseInt(body.position_percent, 10) || 100,
+      speed_percent: parseInt(body.speed_percent, 10) || 50,
+      synchronous: !!body.synchronous,
     });
-    res.json({ success: true, message: `Pulley deploying to ${position_percent}%` });
+    res.json({ success: true, message: 'Pulley deploying' });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to deploy pulley', err.message);
+    errorResponse(res, 503, 'Pulley service unavailable', err.message);
   }
 });
 
@@ -35,10 +39,10 @@ router.post('/deploy', async (req, res) => {
  */
 router.post('/retract', async (req, res) => {
   try {
-    await grpcCall('RetractPulley', {});
+    await pulleyGrpcCall('RetractPulley', {});
     res.json({ success: true, message: 'Pulley retracting' });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to retract pulley', err.message);
+    errorResponse(res, 503, 'Pulley service unavailable', err.message);
   }
 });
 
@@ -48,10 +52,10 @@ router.post('/retract', async (req, res) => {
  */
 router.post('/stop', async (req, res) => {
   try {
-    await grpcCall('StopPulley', {});
+    await pulleyGrpcCall('StopPulley', {});
     res.json({ success: true, message: 'Pulley stopped' });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to stop pulley', err.message);
+    errorResponse(res, 503, 'Pulley service unavailable', err.message);
   }
 });
 
@@ -62,42 +66,67 @@ router.post('/stop', async (req, res) => {
  */
 router.post('/position', async (req, res) => {
   try {
-    const { position_percent, speed_percent } = req.body;
-    await grpcCall('SetPulleyPosition', {
-      position_percent: parseInt(position_percent) || 0,
-      speed_percent: parseInt(speed_percent) || 50,
+    const body = req.body || {};
+    await pulleyGrpcCall('SetPulleyPosition', {
+      position_percent: parseInt(body.position_percent, 10) || 0,
+      speed_percent: parseInt(body.speed_percent, 10) || 50,
     });
-    res.json({ success: true, message: `Pulley moving to ${position_percent}%` });
+    res.json({ success: true, message: 'Pulley position set' });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to set pulley position', err.message);
+    errorResponse(res, 503, 'Pulley service unavailable', err.message);
   }
 });
 
 /**
  * POST /api/pulley/home
- * Home/calibrate the pulley.
+ * Calibrate / home the pulley. HomePulley is a SERVER-STREAMING RPC: the
+ * service streams progress and finishes with a "complete" message. The proxy
+ * collects the stream and responds once it finishes.
  */
 router.post('/home', async (req, res) => {
+  const progress = [];
   try {
-    await grpcCall('HomePulley', {});
-    res.json({ success: true, message: 'Pulley homing started' });
+    const client = getPulleyGrpcClient();
+    const stream = client.homePulley({}, {
+      deadline: new Date(Date.now() + 60000), // 1 minute
+    });
+    let last = null;
+    await new Promise((resolve, reject) => {
+      stream.on('data', (msg) => {
+        last = msg;
+        progress.push({
+          homing: msg.homing || false,
+          phase: msg.phase || '',
+          progress_percent: msg.progress_percent || 0,
+          complete: msg.complete || false,
+          error_message: msg.error_message || '',
+        });
+      });
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+    res.json({
+      success: last ? !!last.complete : false,
+      message: last && last.complete ? 'Pulley homed' : 'Pulley home finished',
+      progress,
+    });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to home pulley', err.message);
+    errorResponse(res, 503, 'Pulley service unavailable', err.message);
   }
 });
 
 /**
  * POST /api/pulley/speed
  * Set pulley speed limit.
- * Body: { speed_percent: number }
+ * Body: { speed_percent }
  */
 router.post('/speed', async (req, res) => {
   try {
-    const { speed_percent } = req.body;
-    await grpcCall('SetPulleySpeed', { speed_percent: parseInt(speed_percent) || 50 });
-    res.json({ success: true, message: `Pulley speed set to ${speed_percent}%` });
+    const speed = parseInt((req.body || {}).speed_percent, 10) || 50;
+    await pulleyGrpcCall('SetPulleySpeed', { speed_percent: speed });
+    res.json({ success: true, message: `Pulley speed set to ${speed}%` });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to set pulley speed', err.message);
+    errorResponse(res, 503, 'Pulley service unavailable', err.message);
   }
 });
 
@@ -107,14 +136,14 @@ router.post('/speed', async (req, res) => {
  */
 router.get('/status', async (req, res) => {
   try {
-    const status = await grpcCall('GetPulleyStatus', {});
+    const status = await pulleyGrpcCall('GetPulleyStatus', {});
     res.json({
       position_percent: status.position_percent || 0,
       target_position_percent: status.target_position_percent || 0,
       moving: status.moving || false,
       deployed: status.deployed || false,
       homed: status.homed || false,
-      speed_percent: status.speed_percent || 50,
+      speed_percent: status.speed_percent || 0,
       at_upper_limit: status.at_upper_limit || false,
       at_lower_limit: status.at_lower_limit || false,
       overload: status.overload || false,
@@ -126,30 +155,10 @@ router.get('/status', async (req, res) => {
       error_message: status.error_message || '',
       max_position_steps: status.max_position_steps || 0,
       travel_time_s: status.travel_time_s || 0,
-      deployment_type: status.deployment_type || 'generic',
+      deployment_type: status.deployment_type || '',
     });
   } catch (err) {
-    // Simulated pulley status when gRPC unavailable
-    res.json({
-      position_percent: 0,
-      target_position_percent: 0,
-      moving: false,
-      deployed: false,
-      homed: false,
-      speed_percent: 50,
-      at_upper_limit: false,
-      at_lower_limit: true,
-      overload: false,
-      connected: false,
-      model_name: 'Simulated Pulley',
-      motor_current_a: 0,
-      temperature_c: 22,
-      error: false,
-      error_message: '',
-      max_position_steps: 10000,
-      travel_time_s: 15,
-      deployment_type: 'generic',
-    });
+    errorResponse(res, 503, 'Pulley service unavailable', err.message);
   }
 });
 

@@ -1,4 +1,5 @@
 #include "notifications/channels/email_channel.h"
+#include "http_client.h"
 #include <sstream>
 #include <chrono>
 #include <iomanip>
@@ -35,13 +36,12 @@ bool EmailChannel::send(const NotificationEvent& event) {
     std::string subject = buildSubject(event);
     std::string body = buildBody(event);
 
-    // TODO: Implement actual SMTP sending via libcurl
-    // For now, log the email that would be sent
-    // curl_easy_setopt(curl, CURLOPT_URL, "smtp://" + config_.smtp_host + ":" + std::to_string(config_.smtp_port));
-    // curl_easy_setopt(curl, CURLOPT_MAIL_FROM, config_.from_address.c_str());
-    // curl_easy_setopt(curl, CURLOPT_MAIL_RCPT, recipients);
-
-    return true;  // Stub — actual SMTP implementation requires libcurl integration
+    // P9: real SMTP send via libcurl (STARTTLS + auth supported).
+    return astro_mount::http::smtpSend(
+        config_.smtp_host, config_.smtp_port, config_.use_tls,
+        config_.username, config_.password,
+        config_.from_address, config_.to_addresses,
+        subject, body, 30);
 }
 
 void EmailChannel::shutdown() {

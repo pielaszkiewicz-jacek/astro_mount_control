@@ -6,6 +6,7 @@
 #include <mutex>
 #include <thread>
 #include <string>
+#include <vector>
 #include <grpcpp/grpcpp.h>
 #include "proto/power.grpc.pb.h"
 
@@ -37,11 +38,16 @@ public:
 private:
     void populatePowerStatus(astro_mount::PowerStatus* status) const;
     bool configureFromJson(const std::string& config_path);
+    void recordHistory();
 
     std::unique_ptr<astro_mount::controllers::PowerManager> manager_;
     std::string config_path_;
     bool initialized_{false};
     mutable std::mutex mutex_;
+
+    // In-memory history ring buffer of power snapshots (guarded by mutex_).
+    std::vector<astro_mount::PowerStatus> history_;
+    static constexpr size_t kHistoryMax{600};
 };
 
 } // namespace astro_power

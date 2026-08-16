@@ -1,8 +1,10 @@
 /**
  * Derotator Control Routes
  *
- * Proxies derotator operations to the standalone DerotatorService gRPC process.
- * Falls back to simulated data when the service is unavailable.
+ * Proxies derotator operations to the DerotatorService gRPC service (hosted
+ * IN-PROCESS on the mount controller's unified port 50051).
+ * No silent simulated fallback — an unreachable service returns an explicit
+ * 503 so the UI never shows fake data (P1 fix).
  */
 'use strict';
 
@@ -88,11 +90,7 @@ router.get('/status', async (req, res) => {
       connected: status.connected || false,
     });
   } catch (err) {
-    res.json({
-      mode: 0, homed: false, current_position_deg: 0, target_position_deg: 0,
-      current_rate_deg_s: 0, moving: false, error: false, error_message: '',
-      connected: false,
-    });
+    errorResponse(res, 503, 'Derotator service unavailable', err.message);
   }
 });
 
@@ -110,10 +108,7 @@ router.get('/field-rotation', async (req, res) => {
       mount_type: info.mount_type || '',
     });
   } catch (err) {
-    res.json({
-      current_angle_deg: 0, current_rate_arcsec_s: 0, predicted_angle_10min: 0,
-      mount_type: '',
-    });
+    errorResponse(res, 503, 'Derotator service unavailable', err.message);
   }
 });
 

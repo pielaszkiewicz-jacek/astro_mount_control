@@ -251,6 +251,9 @@ public:
         config.latitude = mount.value("latitude", 52.0);
         config.longitude = mount.value("longitude", 21.0);
         config.altitude = mount.value("altitude", 100.0);
+        config.mount_height = mount.value("mount_height", 0.0);
+        config.pier_west = mount.value("pier_west", 0.0);
+        config.pier_east = mount.value("pier_east", 0.0);
         config.max_slew_rate = mount.value("max_slew_rate", 5.0);
         config.max_tracking_rate = mount.value("max_tracking_rate", 1.504);
         config.slew_acceleration = mount.value("slew_acceleration", 1.0);
@@ -464,6 +467,9 @@ public:
         mount["latitude"] = config.latitude;
         mount["longitude"] = config.longitude;
         mount["altitude"] = config.altitude;
+        mount["mount_height"] = config.mount_height;
+        mount["pier_west"] = config.pier_west;
+        mount["pier_east"] = config.pier_east;
         mount["max_slew_rate"] = config.max_slew_rate;
         mount["max_tracking_rate"] = config.max_tracking_rate;
         mount["slew_acceleration"] = config.slew_acceleration;
@@ -676,6 +682,12 @@ public:
         config.focuser_enabled = focuser_cfg.value("enabled", false);
         config.focuser_poll_interval_ms = focuser_cfg.value("poll_interval_ms", 5000);
 
+        auto st4_guider_cfg = ext.value("st4_guider", json::object());
+        config.st4_guider_enabled = st4_guider_cfg.value("enabled", false);
+
+        auto pec_cfg = ext.value("pec", json::object());
+        config.pec_enabled = pec_cfg.value("enabled", false);
+
         return config;
     }
 
@@ -813,6 +825,9 @@ private:
         mount_default.latitude = 52.0;
         mount_default.longitude = 21.0;
         mount_default.altitude = 100.0;
+        mount_default.mount_height = 0.0;
+        mount_default.pier_west = 0.0;
+        mount_default.pier_east = 0.0;
         mount_default.max_slew_rate = 5.0;
         mount_default.max_tracking_rate = 1.504;
         mount_default.slew_acceleration = 1.0;

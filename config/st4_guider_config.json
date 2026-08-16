@@ -1,0 +1,14 @@
+{
+    "comment": "ST4 guider service configuration. Hosted in-process on the unified gRPC port (50051).",
+    "enabled": true,
+    "interface_type": "simulated",
+    "pin_ra_plus": 17,
+    "pin_ra_minus": 18,
+    "pin_dec_plus": 22,
+    "pin_dec_minus": 23,
+    "aggression": 0.5,
+    "min_pulse_ms": 10,
+    "max_pulse_ms": 3000,
+    "phd2_host": "localhost",
+    "phd2_port": 4400
+}

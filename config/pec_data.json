@@ -1,0 +1,11 @@
+{
+    "enabled": true,
+    "error_samples": [],
+    "harmonic_amplitudes": [],
+    "harmonic_phases": [],
+    "peak_error_arcsec": 0.0,
+    "rms_error_arcsec": 0.0,
+    "sample_rate_hz": 10.0,
+    "trained": false,
+    "worm_cycle_seconds": 638.0
+}

@@ -76,6 +76,24 @@ const GuiderComponent = (() => {
               <input type="number" id="guider-max-pulse" class="form-input" value="3000" min="10" style="width:120px;">
             </div>
           </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label"><input type="checkbox" id="guider-invert-ra" style="margin-right:4px;">Invert RA</label>
+            </div>
+            <div class="form-group">
+              <label class="form-label"><input type="checkbox" id="guider-invert-dec" style="margin-right:4px;">Invert Dec</label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="guider-phd2-host" class="form-label">PHD2 Host</label>
+              <input type="text" id="guider-phd2-host" class="form-input" value="localhost" placeholder="localhost">
+            </div>
+            <div class="form-group">
+              <label for="guider-phd2-port" class="form-label">PHD2 Port</label>
+              <input type="number" id="guider-phd2-port" class="form-input" value="4400" min="1" style="width:110px;">
+            </div>
+          </div>
           <button class="btn btn-secondary" onclick="GuiderComponent.applyConfig()">Apply Configuration</button>
         </div>
 
@@ -85,13 +103,30 @@ const GuiderComponent = (() => {
       </div>`;
   }
 
-  function start() { Api.post('/api/guider/start', {}); }
+  // Collect the guide-loop parameters from the form into a St4GuiderConfig
+  // payload (used both by Start Guiding and Apply Configuration).
+  function guideConfigPayload() {
+    return {
+      interface_type: document.getElementById('guider-type').value,
+      device_path: document.getElementById('guider-device').value,
+      aggression: parseFloat(document.getElementById('guider-aggression').value) || 1.0,
+      min_pulse_ms: parseInt(document.getElementById('guider-min-pulse').value, 10) || 10,
+      max_pulse_ms: parseInt(document.getElementById('guider-max-pulse').value, 10) || 3000,
+      invert_ra: !!document.getElementById('guider-invert-ra').checked,
+      invert_dec: !!document.getElementById('guider-invert-dec').checked,
+      phd2_host: document.getElementById('guider-phd2-host').value || 'localhost',
+      phd2_port: parseInt(document.getElementById('guider-phd2-port').value, 10) || 4400,
+    };
+  }
+
+  function start() {
+    Api.post('/api/guider/start', guideConfigPayload())
+      .catch(err => App.showToast(`Failed to start guiding: ${err.message}`, 'error'));
+  }
   function stop() { Api.post('/api/guider/stop', {}); }
   function calibrate() { Api.post('/api/guider/calibrate', {}); }
   function applyConfig() {
-    const type = document.getElementById('guider-type').value;
-    const device = document.getElementById('guider-device').value;
-    Api.post('/api/guider/config', { interface_type: type, device_path: device });
+    Api.post('/api/guider/config', guideConfigPayload());
   }
 
   function refreshStatus() {
@@ -102,7 +137,7 @@ const GuiderComponent = (() => {
       document.getElementById('guider-rms-ra').textContent = data.rms_ra ? data.rms_ra.toFixed(2) + '"' : '--"';
       document.getElementById('guider-rms-dec').textContent = data.rms_dec ? data.rms_dec.toFixed(2) + '"' : '--"';
       document.getElementById('guider-calibrated').textContent = data.calibrated ? 'Yes' : 'No';
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-guider', 'Guider service'));
   }
 
   return { render, start, stop, calibrate, applyConfig, refreshStatus };

@@ -15,18 +15,17 @@ DerotatorServiceImpl::DerotatorServiceImpl(const std::string& config_path)
         controller_ = std::make_unique<astro_mount::controllers::DerotatorController>(
             std::move(hal));
         initialized_ = true;
+        // P15: install the position callback ONCE here instead of re-creating
+        // it on every UpdateMountPosition/setMountPosition call.
+        controller_->setPositionCallback([this](double ax1, double ax2) {
+            onMountPositionUpdate(ax1, ax2);
+        });
     } catch (const std::exception& e) {
         std::cerr << "[DerotatorServiceImpl] Init error: " << e.what() << "\n";
     }
 }
 
-DerotatorServiceImpl::~DerotatorServiceImpl() {
-    if (watching_) {
-        watching_ = false;
-        if (watch_thread_ && watch_thread_->joinable())
-            watch_thread_->join();
-    }
-}
+DerotatorServiceImpl::~DerotatorServiceImpl() = default;
 
 // ─── Status helpers ──────────────────────────────────────────────────────────
 
@@ -69,12 +68,20 @@ void DerotatorServiceImpl::populateFieldRotation(FieldRotationResult* result) co
         result->set_current_angle_deg(0);
         result->set_current_rate_arcsec_s(0);
         result->set_predicted_angle_10min(0);
+        result->set_mount_type("EQUATORIAL");
         return;
     }
     auto fr = controller_->getFieldRotation();
     result->set_current_angle_deg(fr.angle_deg);
     result->set_current_rate_arcsec_s(fr.rate_arcsec_s);
     result->set_predicted_angle_10min(fr.predicted_angle_10min);
+    // P5: report which field-rotation model was selected.
+    switch (mount_type_) {
+        case 2: result->set_mount_type("CASUAL"); break;
+        case 1: result->set_mount_type("ALT_AZ"); break;
+        case 0:
+        default: result->set_mount_type("EQUATORIAL"); break;
+    }
 }
 
 // ─── gRPC methods ────────────────────────────────────────────────────────────
@@ -143,8 +150,11 @@ grpc::Status DerotatorServiceImpl::GetStatus(grpc::ServerContext*,
 grpc::Status DerotatorServiceImpl::WatchStatus(grpc::ServerContext* context,
                                                 const google::protobuf::Empty*,
                                                 grpc::ServerWriter<DerotatorStatus>* writer) {
-    watching_ = true;
-    while (watching_ && !context->IsCancelled()) {
+    // P13: per-client stream — each gRPC call runs on its own thread and uses
+    // only the local context (no shared `watching_`/thread member), so multiple
+    // clients can stream concurrently and one disconnecting does not stop the
+    // others. gRPC cancels the context when the client disconnects.
+    while (!context->IsCancelled()) {
         DerotatorStatus status;
         {
             std::lock_guard<std::mutex> lock(mtx_);
@@ -153,7 +163,6 @@ grpc::Status DerotatorServiceImpl::WatchStatus(grpc::ServerContext* context,
         if (!writer->Write(status)) break;
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    watching_ = false;
     return grpc::Status::OK;
 }
 
@@ -182,18 +191,26 @@ grpc::Status DerotatorServiceImpl::UpdateMountPosition(grpc::ServerContext*,
     ha_hours_ = req->ha_hours();
     dec_deg_ = req->dec_deg();
     mount_latitude_ = req->latitude_deg();
+    mount_type_ = static_cast<int>(req->mount_type());
+    if (mount_type_ < 0 || mount_type_ > 2) mount_type_ = 0;
 
-    // Forward to controller so position_callback_ gets called
-    controller_->setPositionCallback([this](double ax1, double ax2) {
-        onMountPositionUpdate(ax1, ax2);
-    });
+    // Feed the pointing into the controller so getFieldRotation() can compute
+    // the field-rotation angle/rate the derotator must counter (P5: mount type
+    // selects the model; the RPC carries no quaternion so the last in-process
+    // orientation is reused).
+    controller_->setMountPosition(
+        req->axis1_deg(), req->axis2_deg(), req->latitude_deg(),
+        req->ha_hours(), req->dec_deg(),
+        static_cast<astro_mount::controllers::MountKind>(mount_type_),
+        mount_orientation_);
 
     return grpc::Status::OK;
 }
 
 void DerotatorServiceImpl::setMountPosition(double axis1_deg, double axis2_deg,
                                             double latitude_deg, double ha_hours,
-                                            double dec_deg) {
+                                            double dec_deg, int mount_type,
+                                            const std::array<double,4>& orientation_q) {
     std::lock_guard<std::mutex> lock(mtx_);
     if (!initialized_ || !controller_)
         return;
@@ -203,11 +220,15 @@ void DerotatorServiceImpl::setMountPosition(double axis1_deg, double axis2_deg,
     ha_hours_ = ha_hours;
     dec_deg_ = dec_deg;
     mount_latitude_ = latitude_deg;
+    mount_type_ = (mount_type >= 0 && mount_type <= 2) ? mount_type : 0;
+    mount_orientation_ = orientation_q;
 
-    // Forward to controller so position_callback_ gets called
-    controller_->setPositionCallback([this](double ax1, double ax2) {
-        onMountPositionUpdate(ax1, ax2);
-    });
+    // Feed the pointing into the controller so getFieldRotation() can compute
+    // the field-rotation angle/rate the derotator must counter (P5).
+    controller_->setMountPosition(
+        axis1_deg, axis2_deg, latitude_deg, ha_hours, dec_deg,
+        static_cast<astro_mount::controllers::MountKind>(mount_type_),
+        orientation_q);
 }
 
 grpc::Status DerotatorServiceImpl::CheckHealth(grpc::ServerContext*,

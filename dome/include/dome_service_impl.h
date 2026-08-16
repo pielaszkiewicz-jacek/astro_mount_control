@@ -108,22 +108,12 @@ private:
     /// Populate a DomeStatus proto message from the current controller state
     void populateDomeStatus(DomeStatus* status) const;
 
-    /// Background status broadcast loop for WatchStatus
-    void statusBroadcastLoop();
-
     /// Initialise the mount azimuth callback on the controller
     void initMountAzimuthCallback();
 
     std::unique_ptr<astro_mount::controllers::DomeController> controller_;
     std::string config_path_;
     bool initialized_{false};
-
-    // WatchStatus support
-    std::atomic<bool> watching_{false};
-    std::unique_ptr<std::thread> watch_thread_;
-    mutable std::mutex watch_mutex_;
-    DomeStatus last_status_;
-    bool status_changed_{false};
 
     // Thread safety for controller access
     mutable std::mutex controller_mutex_;

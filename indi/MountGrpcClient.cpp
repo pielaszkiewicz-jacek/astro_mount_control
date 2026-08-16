@@ -20,9 +20,10 @@ void MountGrpcClient::connect()
     if (isConnected())
         return;
 
-    // Create channel with optional SSL/TLS
+    // Create channel with optional SSL/TLS. Use SslCredentials (the modern API;
+    // SslChannelCredentials was removed in newer gRPC releases).
     auto creds = use_ssl_
-        ? grpc::SslChannelCredentials()
+        ? grpc::SslCredentials(grpc::SslCredentialsOptions())
         : grpc::InsecureChannelCredentials();
 
     channel_ = grpc::CreateChannel(

@@ -184,8 +184,12 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             state.set_status(convertStatus(static_cast<int>(status.state)));
             state.set_encoders_enabled(status.encoders_active);
             state.set_guider_active(status.guider_active);
-            state.set_tracking_rate_ra(status.tracking_error_ra);
-            state.set_tracking_rate_dec(status.tracking_error_dec);
+            // FIX (N1): use the actual commanded tracking rates (deg/s → arcsec/s),
+            // matching GetState(). Previously tracking_error_ra/dec (arcsec) were
+            // written into the tracking-rate fields, so stream consumers saw the
+            // tracking error as the tracking rate.
+            state.set_tracking_rate_ra(status.axis1_rate * 3600.0);
+            state.set_tracking_rate_dec(status.axis2_rate * 3600.0);
             
             // current_position = servo/motor degrees (raw, before gear_ratio division)
             auto* pos = state.mutable_current_position();
@@ -196,11 +200,30 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             state.set_telescope_axis1(status.telescope_axis1_position);
             state.set_telescope_axis2(status.telescope_axis2_position);
 
+            // Actual motor velocity (from CANopen hardware, deg/s)
+            state.set_actual_rate_axis1(status.actual_axis1_rate);
+            state.set_actual_rate_axis2(status.actual_axis2_rate);
+
+            // Meridian flip / pier info (FIX N8: align field set with GetState)
+            state.set_pier_side(status.pier_side);
+            state.set_meridian_flipped(status.meridian_flip_in_progress);
+            state.set_time_to_meridian(status.time_to_meridian);
+
             // Environmental conditions
             state.set_temperature(status.env_temperature);
             state.set_pressure(status.env_pressure);
             state.set_humidity(status.env_humidity);
-            
+
+            // Tracking target info (FIX N8: expose target + tracking error like GetState)
+            if (status.tracking_active) {
+                auto* tracked = state.mutable_tracked_object();
+                auto* coords = tracked->mutable_coordinates();
+                coords->set_ra(status.tracking_target_ra);
+                coords->set_dec(status.tracking_target_dec);
+                tracked->set_tracking_error_ra(status.tracking_error_ra);
+                tracked->set_tracking_error_dec(status.tracking_error_dec);
+            }
+
             *state.mutable_state_time() = TimeUtil::GetCurrentTime();
             
             if (!writer->Write(state)) {

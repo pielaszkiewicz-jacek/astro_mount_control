@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>AstroMount</RootNamespace>
+    <AssemblyName>AstroMountTelescope</AssemblyName>
+    <LangVersion>8.0</LangVersion>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <Platforms>AnyCPU</Platforms>
+  </PropertyGroup>
+
+  <!--
+    ASCOM Telescope driver for AstroMountController (gRPC).
+    Build (Windows with .NET SDK, or Mono):
+      cd ascom
+      dotnet build -c Release
+    Register with ASCOM (admin):
+      regasm /codebase ascom/bin/Release/AstroMountTelescope.dll
+
+    The gRPC/protobuf sources (MountController.cs, MountControllerGrpc.cs) are
+    generated once and checked in — they are compiled directly, no protoc
+    regeneration at build time is required.
+  -->
+
+  <ItemGroup>
+    <PackageReference Include="ASCOM.Tools" Version="2.0.0" />
+    <PackageReference Include="Grpc.Core" Version="2.46.6" />
+    <PackageReference Include="Google.Protobuf" Version="3.21.12" />
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="AstroMountTelescope.cs" />
+    <Compile Include="ConversionHelper.cs" />
+    <Compile Include="GrpcClient.cs" />
+    <Compile Include="StateCache.cs" />
+    <Compile Include="SetupDialog.cs" />
+    <Compile Include="MountController.cs" />
+    <Compile Include="MountControllerGrpc.cs" />
+  </ItemGroup>
+
+</Project>

@@ -43,6 +43,11 @@ void WeatherMonitor::setWeatherApiSource(std::unique_ptr<WeatherApiSource> api_s
     std::lock_guard<std::mutex> lock(mutex_);
     if (api_source) {
         api_source->initialize();
+        // Capture the configured poll interval (minutes) so the monitor polls
+        // the API on its own schedule instead of every monitoring cycle.
+        auto cfg = api_source->getConfig();
+        api_fetch_interval_ = std::chrono::minutes(
+            cfg.update_interval_minutes > 0 ? cfg.update_interval_minutes : 10);
     }
     api_source_ = std::move(api_source);
 }
@@ -184,6 +189,32 @@ void WeatherMonitor::monitoringLoop() {
 
 void WeatherMonitor::readAllSensors() {
     std::lock_guard<std::mutex> lock(mutex_);
+
+    // Poll the external API source first (throttled to its update interval).
+    // It fills fields that have no physical sensor (humidity, pressure,
+    // temperature, wind, cloud, rain); physical sensors below then override.
+    if (api_source_ && api_source_->isOperational()) {
+        auto now = std::chrono::steady_clock::now();
+        if (now - last_api_fetch_ >= api_fetch_interval_) {
+            last_api_fetch_ = now;
+            WeatherData api;
+            if (api_source_->fetchCurrent(api)) {
+                // Apply API fields that physical sensors do not cover.
+                if (api.humidity_percent > 0.0)   current_.humidity_percent = api.humidity_percent;
+                if (api.pressure_hpa > 0.0)       current_.pressure_hpa = api.pressure_hpa;
+                if (std::isfinite(api.temperature_c) && api.temperature_c != 0.0)
+                    current_.temperature_c = api.temperature_c;
+                if (api.wind_speed_ms > 0.0)      current_.wind_speed_ms = api.wind_speed_ms;
+                if (api.wind_gust_ms > 0.0)       current_.wind_gust_ms = api.wind_gust_ms;
+                if (api.wind_direction_deg > 0.0) current_.wind_direction_deg = api.wind_direction_deg;
+                if (api.cloud_cover_percent > 0.0) current_.cloud_cover_percent = api.cloud_cover_percent;
+                if (api.rain_detected) {
+                    current_.rain_detected = true;
+                    if (api.rain_rate_mmh > 0.0) current_.rain_rate_mmh = api.rain_rate_mmh;
+                }
+            }
+        }
+    }
 
     // Read rain sensor
     if (rain_sensor_ && rain_sensor_->isOperational()) {

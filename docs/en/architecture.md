@@ -26,7 +26,7 @@ flowchart TB
 
     subgraph CLIENTS["Application / Client Layer"]
         WEB["Web SPA + Proxy (HTTP/JSON :8080)"]
-        QT["Qt GUI"]
+        QT["Qt GUI (⚠️ removed — historical)"]
         PY["Python / C++ Clients"]
         DRV["ASCOM + INDI Drivers"]
     end
@@ -354,7 +354,9 @@ Browser (SPA) → HTTP/JSON :8080 → Proxy Server → gRPC → Mount Controller
 
 Single-page application (vanilla JS) with components for status, mount control, calibration, tracking, database, settings, and (when enabled) dome, derotator, weather, power, sequencer, focuser, camera, PEC, guider, pulley, notifications.
 
-### 13. Qt GUI ([`gui/`](gui/))
+### 13. Qt GUI ([`gui/`](gui/)) — ⚠️ **NOT AVAILABLE (2026-08-11)**
+
+> ⚠️ The Qt GUI source code has been **removed from this repository** (the `gui/` directory now contains only stale build artifacts). This section is kept for historical reference — the application cannot be built from the current tree. Use the **Web SPA** instead.
 
 Native Qt (Widgets/Network/Svg/Charts) desktop application, `astro_mount_gui`, using a gRPC client ([`gui/src/grpc_client.cpp`](gui/src/grpc_client.cpp)) with panels for mount, status, calibration wizard, sequencer, dome, focuser, camera, weather, derotator, PEC, power, notifications, and settings, plus widgets (sky map, star chart, focus graph, weather plot).
 

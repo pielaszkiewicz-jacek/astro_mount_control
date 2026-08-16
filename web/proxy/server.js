@@ -18,7 +18,21 @@ const cors = require('cors');
 const morgan = require('morgan');
 const path = require('path');
 const config = require('./config');
-const { createGrpcClient, createDbGrpcClient, createDomeGrpcClient, createDerotatorGrpcClient } = require('./grpc/client');
+const {
+  createGrpcClient,
+  createDbGrpcClient,
+  createDomeGrpcClient,
+  createDerotatorGrpcClient,
+  createWeatherGrpcClient,
+  createPowerGrpcClient,
+  createSequencerGrpcClient,
+  createFocuserGrpcClient,
+  createGuiderGrpcClient,
+  createPecGrpcClient,
+  createCameraGrpcClient,
+  createPulleyGrpcClient,
+  createNotificationsGrpcClient,
+} = require('./grpc/client');
 const errorHandler = require('./middleware/errorHandler');
 
 // ─── Express App Setup ───────────────────────────────────────────────────────
@@ -33,7 +47,10 @@ app.use(cors({
 }));
 
 app.use(express.json());
-app.use(morgan(config.proxy.host === '0.0.0.0' ? 'dev' : 'combined'));
+// Keep the request log out of the integration-test output.
+if (process.env.NODE_ENV !== 'test') {
+  app.use(morgan(config.proxy.host === '0.0.0.0' ? 'dev' : 'combined'));
+}
 
 // Serve static frontend files with no-cache headers for development
 app.use(express.static(path.join(__dirname, '../public'), {
@@ -99,20 +116,34 @@ app.use('/api/dome', require('./routes/dome'));
 app.use('/api/weather', require('./routes/weather'));
 app.use('/api/pulley', require('./routes/pulley'));
 app.use('/api/lx200', require('./routes/lx200'));
+app.use('/api/notifications', require('./routes/notifications'));
 
 // ─── Error Handling ──────────────────────────────────────────────────────────
 
 app.use(errorHandler);
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
+// Only bind the HTTP listener (and create the gRPC clients) when this module
+// is executed directly (`node server.js`). When imported by an integration
+// test the Express `app` is exported without opening a port, so supertest can
+// drive it in-process.
+if (require.main === module) {
+  createGrpcClient();
+  createDbGrpcClient();
+  createDomeGrpcClient();
+  createDerotatorGrpcClient();
+  createWeatherGrpcClient();
+  createPowerGrpcClient();
+  createSequencerGrpcClient();
+  createFocuserGrpcClient();
+  createGuiderGrpcClient();
+  createPecGrpcClient();
+  createCameraGrpcClient();
+  createPulleyGrpcClient();
+  createNotificationsGrpcClient();
 
-createGrpcClient();
-createDbGrpcClient();
-createDomeGrpcClient();
-createDerotatorGrpcClient();
-
-app.listen(config.proxy.port, config.proxy.host, () => {
-  console.log(`
+  app.listen(config.proxy.port, config.proxy.host, () => {
+    console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║   Astro Mount Controller - Web Proxy Server            ║
 ║   Listening on http://${config.proxy.host}:${config.proxy.port}             ║
@@ -120,9 +151,21 @@ app.listen(config.proxy.port, config.proxy.host, () => {
 ║   Database gRPC:   ${config.db.host}:${config.db.port}                      ║
 ║   Dome gRPC:       ${config.dome.host}:${config.dome.port}                  ║
 ║   Derotator gRPC:  ${config.derotator.host}:${config.derotator.port}        ║
+║   Weather gRPC:    ${config.weather.host}:${config.weather.port}            ║
+║   Power gRPC:      ${config.power.host}:${config.power.port}                ║
+║   Sequencer gRPC:  ${config.sequencer.host}:${config.sequencer.port}        ║
+║   Focuser gRPC:    ${config.focuser.host}:${config.focuser.port}            ║
+║   Guider gRPC:     ${config.guider.host}:${config.guider.port}              ║
+║   PEC gRPC:        ${config.pec.host}:${config.pec.port}                    ║
+║   Camera gRPC:     ${config.camera.host}:${config.camera.port}              ║
+║   Pulley gRPC:     ${config.pulley.host}:${config.pulley.port}              ║
+║   Notifications:   ${config.notifications.host}:${config.notifications.port}║
 ╚══════════════════════════════════════════════════════════╝
   `);
-});
+  });
+}
+
+module.exports = app;
 
 // Graceful shutdown
 process.on('SIGINT', () => {
@@ -133,6 +176,15 @@ process.on('SIGINT', () => {
     try { gClient.getDbGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getDomeGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getDerotatorGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getWeatherGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPowerGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getSequencerGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getFocuserGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getGuiderGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPecGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getCameraGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPulleyGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getNotificationsGrpcClient().close(); } catch (e) { /* not initialized */ }
   } catch (e) {
     // Ignore module loading errors during shutdown
   }
@@ -147,6 +199,15 @@ process.on('SIGTERM', () => {
     try { gClient.getDbGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getDomeGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getDerotatorGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getWeatherGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPowerGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getSequencerGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getFocuserGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getGuiderGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPecGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getCameraGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPulleyGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getNotificationsGrpcClient().close(); } catch (e) { /* not initialized */ }
   } catch (e) {
     // Ignore module loading errors during shutdown
   }

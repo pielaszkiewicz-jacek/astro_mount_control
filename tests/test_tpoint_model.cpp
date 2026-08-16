@@ -77,6 +77,64 @@ TEST_F(TPointModelTest, SetEnabledTerms) {
     SUCCEED();
 }
 
+TEST_F(TPointModelTest, SetMountParameters) {
+    // R5: mount physical parameters must round-trip through getMountParameters()
+    // and getParameters().
+    model->setMountParameters(3.5, 1.0, 0.0);
+    auto mount_params = model->getMountParameters();
+    EXPECT_DOUBLE_EQ(mount_params.mount_height, 3.5);
+    EXPECT_DOUBLE_EQ(mount_params.pier_west, 1.0);
+    EXPECT_DOUBLE_EQ(mount_params.pier_east, 0.0);
+
+    auto params = model->getParameters();
+    EXPECT_DOUBLE_EQ(params.mount_params.mount_height, 3.5);
+    EXPECT_DOUBLE_EQ(params.mount_params.pier_west, 1.0);
+    EXPECT_DOUBLE_EQ(params.mount_params.pier_east, 0.0);
+}
+
+TEST_F(TPointModelTest, DefaultMountParametersAreZero) {
+    // R5: defaults must be zero so behaviour is unchanged when not configured.
+    auto mount_params = model->getMountParameters();
+    EXPECT_DOUBLE_EQ(mount_params.mount_height, 0.0);
+    EXPECT_DOUBLE_EQ(mount_params.pier_west, 0.0);
+    EXPECT_DOUBLE_EQ(mount_params.pier_east, 0.0);
+}
+
+TEST_F(TPointModelTest, MountHeightScalesRefraction) {
+    // R5: a taller pier reduces the applied refraction correction. Fit with
+    // REFRACTION enabled, then compare the Dec correction at two mount heights.
+    // REFRACTION contributes 3 Dec params (+ the minimum 1 RA placeholder) =
+    // 4 params → getMinMeasurements() = max(8, 10) = 10, so 12 measurements
+    // are needed for a valid fit.
+    model->setEnabledTerms(TPointTerms::REFRACTION);
+    for (int i = 0; i < 12; ++i) {
+        TPointModel::Measurement m;
+        double dec = 20.0 + i * 5.0;
+        m.observed_ra = 10.0 + i * 0.5;
+        m.observed_dec = dec;
+        m.expected_ra = m.observed_ra;
+        m.expected_dec = m.observed_dec + 0.01;  // small fixed Dec offset
+        m.mount_ha = 2.0 + i * 0.3;
+        m.mount_dec = dec;
+        m.temperature = 15.0;
+        m.pressure = 1013.25;
+        m.humidity = 0.5;
+        model->addMeasurement(m);
+    }
+    EXPECT_TRUE(model->fitModel());
+
+    auto ref_low = model->applyCorrections(10.0, 45.0, 2.0, 45.0);
+    model->setMountParameters(3000.0, 0.0, 0.0);  // 3 km pier
+    auto ref_high = model->applyCorrections(10.0, 45.0, 2.0, 45.0);
+
+    // At 3 km the refraction scale factor is exp(-3000/8435) ≈ 0.70, so the
+    // absolute Dec correction must be strictly smaller at the higher mount.
+    double dec_corr_low = std::abs(ref_low.second - 45.0);
+    double dec_corr_high = std::abs(ref_high.second - 45.0);
+    EXPECT_GT(dec_corr_low, 0.0);
+    EXPECT_LT(dec_corr_high, dec_corr_low);
+}
+
 TEST_F(TPointModelTest, CalculateResidualWithoutFit) {
     TPointModel::Measurement m;
     m.observed_ra = 10.5;
@@ -261,8 +319,9 @@ TEST_F(TPointModelTest, SaveAndLoadFile) {
     // Create a temporary file path
     std::string filename = "test_tpoint_config.json";
     
-    // Set some parameters
+    // Set some parameters (including R5 mount physical parameters)
     model->setTelescopeParameters(2500.0, 250.0, 2000.0);
+    model->setMountParameters(4.2, 1.0, 0.0);
     
     // Save to file
     bool save_result = model->saveToFile(filename);
@@ -272,6 +331,12 @@ TEST_F(TPointModelTest, SaveAndLoadFile) {
     auto loaded_model = std::make_unique<TPointModel>();
     bool load_result = loaded_model->loadFromFile(filename);
     EXPECT_TRUE(load_result);
+
+    // R5: mount physical parameters must survive a save/load round-trip
+    auto loaded_mount = loaded_model->getMountParameters();
+    EXPECT_DOUBLE_EQ(loaded_mount.mount_height, 4.2);
+    EXPECT_DOUBLE_EQ(loaded_mount.pier_west, 1.0);
+    EXPECT_DOUBLE_EQ(loaded_mount.pier_east, 0.0);
     
     // Clean up
     std::remove(filename.c_str());

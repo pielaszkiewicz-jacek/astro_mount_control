@@ -49,7 +49,9 @@ private:
     std::string buildPayload(const NotificationEvent& event) const;
 
     // Perform HTTP request with retry logic
-    bool httpPost(const std::string& url, const std::string& payload, int retries);
+    bool httpPost(const std::string& url, const std::string& payload,
+                  const std::map<std::string, std::string>& headers,
+                  const std::string& method, int retries, int timeout_seconds);
 
     Config config_;
     bool initialized_{false};

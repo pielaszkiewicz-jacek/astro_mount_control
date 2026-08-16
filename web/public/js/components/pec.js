@@ -106,7 +106,7 @@ const PECComponent = (() => {
       document.getElementById('pec-phase').textContent = (data.current_phase_deg || 0).toFixed(1) + '°';
       const toggle = document.getElementById('pec-toggle');
       if (toggle) toggle.checked = data.enabled;
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-pec', 'PEC service'));
   }
 
   return { render, toggle, startTraining, stopTraining, save, load, refreshStatus };

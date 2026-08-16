@@ -96,7 +96,7 @@ const WeatherComponent = (() => {
           safety.style.color = 'var(--color-danger)';
         }
       }
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-weather', 'Weather service'));
   }
 
   return { render, refresh };

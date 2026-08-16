@@ -82,6 +82,7 @@ private:
     int gpio_pin_;
     bool invert_;
     int fd_{-1};
+    double total_rainfall_{0.0};
 };
 
 } // namespace weather

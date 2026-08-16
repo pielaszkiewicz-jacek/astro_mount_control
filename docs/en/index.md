@@ -207,10 +207,15 @@ Single-page application (vanilla JS) with tabs:
 - **Tracking** — ephemeris tracking for moving objects
 - Extended tabs (when services enabled): dome, derotator, weather, power, sequencer, focuser, camera, PEC, guider, pulley
 
-#### 11. **Qt GUI** ([`gui/`](gui/))
+#### 11. **Qt GUI** ([`gui/`](gui/)) — ⚠️ **NOT AVAILABLE (2026-08-11)**
 Native Qt desktop application (`astro_mount_gui`) using gRPC:
 - Panels: mount, status, calibration wizard, sequencer, dome, focuser, camera, weather, derotator, PEC, power, notifications, settings
 - Widgets: sky map, star chart, focus graph, weather plot
+
+> ⚠️ **Note:** The Qt GUI sources have been **removed from this repository** —
+> the `gui/` directory contains only build artifacts. This section is kept for
+> historical reference. Use the **Web SPA** ([`web/public/`](web/public/))
+> instead for equivalent browser-based control.
 
 #### 12. **Object Database Service** ([`db/`](db/))
 SQLite-backed astronomical object catalog:

@@ -29,12 +29,22 @@
         },
         "cloud": {
             "enabled": false,
+            "driver": "simulated",
             "device": "/dev/i2c-1",
-            "address": 90
+            "address": 90,
+            "baud_rate": 9600,
+            "clear_delta_c": 20.0,
+            "cloudy_delta_c": 5.0
         }
     },
     "gps": {
-        "enabled": false
+        "enabled": false,
+        "driver": "simulated",
+        "device": "/dev/ttyUSB0",
+        "baud_rate": 9600,
+        "latitude": 52.0,
+        "longitude": 21.0,
+        "altitude_m": 100.0
     },
     "api_source": {
         "provider": "",

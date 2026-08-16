@@ -1,14 +1,16 @@
 /**
  * PEC (Periodic Error Correction) Routes
  *
- * Proxies PEC operations to the backend PEC gRPC service.
- * Falls back to simulated data when the service is unavailable.
+ * Proxies PEC operations to the PECService gRPC service, which is hosted
+ * IN-PROCESS inside the mount controller (unified gRPC port 50051) — Phase 2
+ * (P2). No silent simulated fallback — an unreachable service returns an
+ * explicit 503 so the UI never shows fake data.
  */
 'use strict';
 
 const express = require('express');
 const router = express.Router();
-const { grpcCall } = require('../grpc/client');
+const { getPecGrpcClient, pecGrpcCall } = require('../grpc/client');
 const { errorResponse } = require('../grpc/converters');
 
 /**
@@ -17,7 +19,7 @@ const { errorResponse } = require('../grpc/converters');
  */
 router.get('/status', async (req, res) => {
   try {
-    const status = await grpcCall('GetPECStatus', {});
+    const status = await pecGrpcCall('GetPECStatus', {});
     res.json({
       enabled: status.enabled || false,
       trained: status.trained || false,
@@ -30,18 +32,7 @@ router.get('/status', async (req, res) => {
       last_training: status.last_training || null,
     });
   } catch (err) {
-    // Return simulated/empty status when gRPC unavailable
-    res.json({
-      enabled: false,
-      trained: false,
-      peak_error_arcsec: 0,
-      rms_error_arcsec: 0,
-      num_harmonics: 0,
-      worm_cycle_seconds: 638,
-      correction_arcsec: 0,
-      current_phase_deg: 0,
-      last_training: null,
-    });
+    errorResponse(res, 503, 'PEC service unavailable', err.message);
   }
 });
 
@@ -53,29 +44,59 @@ router.get('/status', async (req, res) => {
 router.post('/enable', async (req, res) => {
   try {
     const { enabled } = req.body;
-    await grpcCall('SetPECEnabled', { enabled: !!enabled });
+    await pecGrpcCall('SetPECEnabled', { enabled: !!enabled });
     res.json({ success: true });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to set PEC', err.message);
+    errorResponse(res, 503, 'PEC service unavailable', err.message);
   }
 });
 
 /**
  * POST /api/pec/train/start
  * Start PEC training.
+ *
+ * StartTraining is a SERVER-STREAMING RPC: the service streams progress and
+ * ends with a "complete" message. The proxy collects the stream and responds
+ * once it finishes.
  * Body: { worm_cycle_seconds, num_harmonics, duration_cycles }
  */
 router.post('/train/start', async (req, res) => {
+  const { worm_cycle_seconds, num_harmonics } = req.body;
+  const request = {
+    worm_cycle_seconds: worm_cycle_seconds || 638,
+    num_harmonics: num_harmonics || 8,
+    duration_cycles: 3,
+  };
+
+  const progress = [];
   try {
-    const { worm_cycle_seconds, num_harmonics, duration_cycles } = req.body;
-    await grpcCall('StartTraining', {
-      worm_cycle_seconds: worm_cycle_seconds || 638,
-      num_harmonics: num_harmonics || 8,
-      duration_cycles: duration_cycles || 3,
+    const client = getPecGrpcClient();
+    const stream = client.startTraining(request, {
+      deadline: new Date(Date.now() + 300000), // 5 minutes
     });
-    res.json({ success: true, message: 'PEC training started' });
+    await new Promise((resolve, reject) => {
+      stream.on('data', (msg) => {
+        progress.push({
+          progress_percent: msg.progress_percent,
+          elapsed_seconds: msg.elapsed_seconds,
+          remaining_seconds: msg.remaining_seconds,
+          current_error_arcsec: msg.current_error_arcsec,
+          peak_error_arcsec: msg.peak_error_arcsec,
+          rms_error_arcsec: msg.rms_error_arcsec,
+          status: msg.status,
+        });
+      });
+      stream.on('end', resolve);
+      stream.on('error', reject);
+    });
+    const last = progress[progress.length - 1] || {};
+    res.json({
+      success: last.status === 'complete',
+      message: last.status === 'complete' ? 'PEC training complete' : 'PEC training finished',
+      progress,
+    });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to start PEC training', err.message);
+    errorResponse(res, 503, 'PEC service unavailable', err.message);
   }
 });
 
@@ -85,10 +106,10 @@ router.post('/train/start', async (req, res) => {
  */
 router.post('/train/stop', async (req, res) => {
   try {
-    await grpcCall('StopTraining', {});
+    await pecGrpcCall('StopTraining', {});
     res.json({ success: true, message: 'PEC training stopped' });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to stop PEC training', err.message);
+    errorResponse(res, 503, 'PEC service unavailable', err.message);
   }
 });
 
@@ -98,10 +119,10 @@ router.post('/train/stop', async (req, res) => {
  */
 router.post('/save', async (req, res) => {
   try {
-    await grpcCall('SavePECData', {});
+    await pecGrpcCall('SavePECData', {});
     res.json({ success: true, message: 'PEC data saved' });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to save PEC data', err.message);
+    errorResponse(res, 503, 'PEC service unavailable', err.message);
   }
 });
 
@@ -111,10 +132,10 @@ router.post('/save', async (req, res) => {
  */
 router.post('/load', async (req, res) => {
   try {
-    await grpcCall('LoadPECData', {});
+    await pecGrpcCall('LoadPECData', {});
     res.json({ success: true, message: 'PEC data loaded' });
   } catch (err) {
-    errorResponse(res, 502, 'Failed to load PEC data', err.message);
+    errorResponse(res, 503, 'PEC service unavailable', err.message);
   }
 });
 

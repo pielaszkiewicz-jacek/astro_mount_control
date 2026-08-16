@@ -113,7 +113,7 @@ Tracking loop next iteration:
 | HAL | Status | Opis | Słabe punkty |
 |-----|--------|------|-------------|
 | [`SimulatedHAL`](src/hal/simulated_hal/simulated_hal.cpp) | ✅ **10/10** | W pełni funkcjonalny, szum Gaussa, symulacja ruchu | — |
-| [`CanOpenHAL`](src/hal/canopen_hal/canopen_hal.cpp) | ✅ **9/10** | CiA 402, PDO, NMT heartbeat, position rewind | Zależny od SocketCAN (Linux) |
+| CanOpenHAL | ❌ **NIEDOSTĘPNY** | `HALType::CANOPEN` rzuca „CANopen HAL implementation not yet available” w [`hal_factory.cpp:22`](src/hal/hal_factory.cpp:22). Brak katalogu `src/hal/canopen_hal/` — CAN jest obsługiwany wyłącznie przez HAL MF7025V2 (SocketCAN, protokół własny) | Nie zaimplementowany pomimo opisów w dokumentacji |
 | [`Mf7025v2Hal`](src/hal/mf7025v2_hal/mf7025v2_hal.cpp) | ✅ **9.5/10** | **Po naprawach**: mutex w updateStatus, dead-node detection (5 failures→ESTOP), logging CAN errors | Pole `last_status_` nieużywane ([header:252](include/hal/mf7025v2_hal/mf7025v2_hal.h:252)) |
 | [`SerialHAL`](src/hal/serial_hal/serial_hal.cpp) | ✅ **8/10** | Modbus RTU, CRC16, monitorowanie połączenia | Zwraca `DEROTATOR_SUPPORT` który nie istnieje ([serial_hal.cpp:809](src/hal/serial_hal/serial_hal.cpp:809)) |
 | [`EthernetHAL`](src/hal/ethernet_hal/ethernet_hal.cpp) | ✅ **8/10** | Modbus TCP z retry | Brak watchdog'a połączenia |

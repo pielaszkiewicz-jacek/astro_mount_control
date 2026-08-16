@@ -53,9 +53,9 @@ public:
         }
     }
     
-    const Configuration& getConfiguration() const {
+    Configuration getConfiguration() const {
         std::lock_guard<std::mutex> lock(config_mutex_);
-        return *config_;
+        return *config_;  // copy under lock (FIX N9: no dangling reference)
     }
     
     bool reloadConfiguration() {
@@ -87,10 +87,13 @@ public:
         
         API_LOG_INFO("Configuration reloaded successfully from {}", config_file_);
         
-        // Notify callbacks
+        // Notify callbacks with a snapshot taken under the lock (FIX N9:
+        // reading *config_ after unlock() could race with another reload that
+        // swaps config_ between the unlock and the callback invocation).
+        Configuration snapshot = *config_;
         lock.unlock();
         if (change_callback_) {
-            change_callback_(*config_);
+            change_callback_(snapshot);
         }
         
         return true;
@@ -189,7 +192,7 @@ void ConfigMonitor::stop() {
     monitoring_ = false;
 }
 
-const Configuration& ConfigMonitor::getConfiguration() const {
+Configuration ConfigMonitor::getConfiguration() const {
     return impl_->getConfiguration();
 }
 
@@ -306,7 +309,7 @@ public:
         API_LOG_INFO("Configuration manager shutdown");
     }
     
-    const Configuration& getConfiguration() const {
+    Configuration getConfiguration() const {
         return monitor_.getConfiguration();
     }
     
@@ -400,7 +403,7 @@ void ConfigManager::shutdown() {
     impl_->shutdown();
 }
 
-const Configuration& ConfigManager::getConfiguration() const {
+Configuration ConfigManager::getConfiguration() const {
     return impl_->getConfiguration();
 }
 

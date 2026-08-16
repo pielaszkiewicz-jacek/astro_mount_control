@@ -1,4 +1,5 @@
 #include "notifications/channels/webhook_channel.h"
+#include "http_client.h"
 #include <sstream>
 #include <chrono>
 #include <thread>
@@ -36,7 +37,8 @@ bool WebhookChannel::send(const NotificationEvent& event) {
     }
     headers["Content-Type"] = "application/json";
 
-    return httpPost(config_.url, payload, config_.retry_count);
+    return httpPost(config_.url, payload, headers,
+                    config_.method, config_.retry_count, config_.timeout_seconds);
 }
 
 void WebhookChannel::shutdown() {
@@ -72,30 +74,19 @@ std::string WebhookChannel::buildPayload(const NotificationEvent& event) const {
     return ss.str();
 }
 
-bool WebhookChannel::httpPost(const std::string& url, const std::string& payload, int retries) {
-    // TODO: Implement actual HTTP POST via libcurl
-    // For now, log the webhook that would be sent
-    //
-    // curl_slist* headers = nullptr;
-    // for (const auto& [key, value] : headers_) {
-    //     headers = curl_slist_append(headers, (key + ": " + value).c_str());
-    // }
-    // curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    // curl_easy_setopt(curl, CURLOPT_POSTFIELDS, payload.c_str());
-    // curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    // curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_seconds_);
-    //
-    // CURLcode res = curl_easy_perform(curl);
-
+bool WebhookChannel::httpPost(const std::string& url, const std::string& payload,
+                              const std::map<std::string, std::string>& headers,
+                              const std::string& method, int retries, int timeout_seconds) {
+    // P9: real HTTP POST/PUT via libcurl, with retry/backoff.
     for (int attempt = 0; attempt <= retries; ++attempt) {
-        // Simulate attempt
         if (attempt > 0) {
             std::this_thread::sleep_for(std::chrono::seconds(1 * attempt));
         }
-        // In real implementation: perform curl_easy_perform and check result
-        return true;  // Stub
+        if (astro_mount::http::post(url, payload, headers, timeout_seconds,
+                                    "astro-mount-controller/1.0", method)) {
+            return true;
+        }
     }
-
     return false;
 }
 

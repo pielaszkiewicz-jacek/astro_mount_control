@@ -1,11 +1,38 @@
 #include "weather/sources/imgw_source.h"
+#include "http_client.h"
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <limits>
 
 namespace astro_mount {
 namespace weather {
+
+namespace {
+// Haversine distance [km] between two lat/lon points.
+double haversineKm(double lat1, double lon1, double lat2, double lon2) {
+    const double R = 6371.0;
+    const double d2r = M_PI / 180.0;
+    double dlat = (lat2 - lat1) * d2r;
+    double dlon = (lon2 - lon1) * d2r;
+    double a = std::sin(dlat / 2.0) * std::sin(dlat / 2.0) +
+               std::cos(lat1 * d2r) * std::cos(lat2 * d2r) *
+               std::sin(dlon / 2.0) * std::sin(dlon / 2.0);
+    return 2.0 * R * std::asin(std::min(1.0, std::sqrt(a)));
+}
+
+// Safe parse of a (possibly string-typed) JSON value into double.
+double jsonToDouble(const nlohmann::json& v, double fallback = 0.0) {
+    if (v.is_number()) return v.get<double>();
+    if (v.is_string()) {
+        try { return std::stod(v.get<std::string>()); }
+        catch (...) { return fallback; }
+    }
+    return fallback;
+}
+} // anonymous namespace
 
 ImgwSource::ImgwSource(WeatherApiConfig config)
     : config_(std::move(config)) {
@@ -49,21 +76,22 @@ void ImgwSource::shutdown() {
 }
 
 ImgwSource::Station ImgwSource::findNearestStation() const {
-    // TODO: Load station list and find nearest by Haversine distance
-    // For now, return a default station
-    Station s;
-    s.id = "12570";
-    s.name = "Warszawa";
-    s.latitude = 52.1667;
-    s.longitude = 20.9667;
-    return s;
+    // P8: find the station nearest to the configured coordinates.
+    Station best;
+    double best_dist = std::numeric_limits<double>::max();
+    for (const auto& s : getStations()) {
+        double d = haversineKm(config_.latitude, config_.longitude,
+                               s.latitude, s.longitude);
+        if (d < best_dist) { best_dist = d; best = s; }
+    }
+    return best;
 }
 
 std::vector<ImgwSource::Station> ImgwSource::getStations() const {
     if (cached_stations_.empty()) {
-        // TODO: Fetch and parse station list from IMGW API
-        // The synop endpoint returns all stations with their data
-        // Station name is in "stacja" field, ID in "id_stacji"
+        // Built-in station table (IMGW synop stations). The full list is
+        // fetched from the API; this table covers the major stations and is
+        // used for nearest-station selection by coordinates.
         cached_stations_.push_back({"12570", "Warszawa", 52.1667, 20.9667});
         cached_stations_.push_back({"12560", "Kraków", 50.0667, 19.9333});
         cached_stations_.push_back({"12424", "Wrocław", 51.1000, 16.8833});
@@ -81,64 +109,64 @@ std::vector<ImgwSource::Station> ImgwSource::getStations() const {
 bool ImgwSource::fetchSynopticData(std::string& response) {
     // IMGW synoptic data API:
     // GET https://danepubliczne.imgw.pl/api/data/synop
-    // Returns JSON array of all stations with current readings
-    //
-    // Example response:
-    // [{
-    //   "id_stacji": "12570",
-    //   "stacja": "Warszawa",
-    //   "data_pomiaru": "2024-01-15",
-    //   "godzina_pomiaru": "13",
-    //   "temperatura": "3.5",
-    //   "predkosc_wiatru": "4",
-    //   "kierunek_wiatru": "270",
-    //   "wilgotnosc_wzgledna": "78.5",
-    //   "suma_opadu": "0.2",
-    //   "cisnienie": "1015.2",
-    //   "zachmurzenie": "60"
-    // }]
-
     return httpGet(synop_url_, response);
 }
 
 bool ImgwSource::parseSynopticResponse(const std::string& json, WeatherData& data) {
-    // TODO: Parse JSON array to find the nearest station
-    // using json = nlohmann::json;
-    // auto stations = json::parse(json);
-    // double min_dist = std::numeric_limits<double>::max();
-    // json best;
-    // for (const auto& st : stations) {
-    //     double lat = std::stod(st["stacja"].get<std::string>()); // would need coords mapping
-    //     ...
-    // }
+    // P8: parse the JSON array and pick the station nearest to the configured
+    // coordinates (fields are strings in the IMGW API).
+    try {
+        auto stations = nlohmann::json::parse(json);
+        if (!stations.is_array()) return false;
 
-    // Placeholder parsing for known station
-    // data.temperature_c = std::stod(station["temperatura"].get<std::string>());
-    // data.humidity_percent = std::stod(station["wilgotnosc_wzgledna"].get<std::string>());
-    // data.pressure_hpa = std::stod(station["cisnienie"].get<std::string>());
-    // data.wind_speed_ms = std::stod(station["predkosc_wiatru"].get<std::string>()) / 3.6;
-    // data.wind_direction_deg = std::stod(station["kierunek_wiatru"].get<std::string>());
-    // data.rain_total_mm = std::stod(station["suma_opadu"].get<std::string>());
-    // data.rain_detected = data.rain_total_mm > 0.0;
-    // data.cloud_cover_percent = std::stod(station["zachmurzenie"].get<std::string>());
+        Station nearest = findNearestStation();
+        nlohmann::json best;
+        bool found = false;
+        for (const auto& st : stations) {
+            std::string id = st.value("id_stacji", "");
+            std::string name = st.value("stacja", "");
+            if ((!nearest.id.empty() && id == nearest.id) ||
+                (!nearest.name.empty() && name == nearest.name)) {
+                best = st; found = true; break;
+            }
+        }
+        // Fall back to the first entry if no name/id match.
+        if (!found && !stations.empty()) { best = stations[0]; found = true; }
+        if (!found) return false;
 
-    return true;  // Stub — requires nlohmann/json integration
+        data.temperature_c = jsonToDouble(best.value("temperatura", nlohmann::json()), 0.0);
+        data.humidity_percent = jsonToDouble(best.value("wilgotnosc_wzgledna", nlohmann::json()), 0.0);
+        data.pressure_hpa = jsonToDouble(best.value("cisnienie", nlohmann::json()), 1013.25);
+        // IMGW wind speed is in km/h → convert to m/s.
+        data.wind_speed_ms = jsonToDouble(best.value("predkosc_wiatru", nlohmann::json()), 0.0) / 3.6;
+        data.wind_direction_deg = jsonToDouble(best.value("kierunek_wiatru", nlohmann::json()), 0.0);
+        data.rain_total_mm = jsonToDouble(best.value("suma_opadu", nlohmann::json()), 0.0);
+        data.rain_detected = data.rain_total_mm > 0.0;
+        data.cloud_cover_percent = jsonToDouble(best.value("zachmurzenie", nlohmann::json()), 0.0);
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
 }
 
 bool ImgwSource::findStationData(const std::string& json, Station& station, std::string& station_json) {
-    // Find station data in JSON array matching nearest station
-    return true;  // Stub
+    try {
+        auto stations = nlohmann::json::parse(json);
+        if (!stations.is_array()) return false;
+        for (const auto& st : stations) {
+            if (st.value("id_stacji", "") == station.id ||
+                st.value("stacja", "") == station.name) {
+                station_json = st.dump();
+                return true;
+            }
+        }
+    } catch (...) {}
+    return false;
 }
 
 bool ImgwSource::httpGet(const std::string& url, std::string& response) {
-    // TODO: Implement HTTP GET via libcurl
-    // CURL* curl = curl_easy_init();
-    // curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    // curl_easy_setopt(curl, CURLOPT_TIMEOUT, config_.timeout_seconds);
-    // CURLcode res = curl_easy_perform(curl);
-    // curl_easy_cleanup(curl);
-    // return res == CURLE_OK;
-    return true;  // Stub — requires libcurl integration
+    // P8: real HTTP GET via libcurl.
+    return astro_mount::http::get(url, response, config_.timeout_seconds);
 }
 
 } // namespace weather

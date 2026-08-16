@@ -144,7 +144,12 @@ Then open `http://localhost:8080` in your Windows browser.
 
 ### Step 6: (Optional) Qt GUI
 
-If Qt5 was installed, build and run the native GUI:
+> ⚠️ **Not available (2026-08-11):** the Qt GUI sources have been removed from
+> this repository (see [`qt_gui.md`](qt_gui.md)). The web SPA
+> ([`web/public/`](../web/public/)) provides equivalent browser-based control.
+
+If Qt5 was installed, build and run the native GUI (historical, requires the
+sources restored from git history):
 
 ```bash
 mkdir -p build-gui && cd build-gui

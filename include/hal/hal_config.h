@@ -388,7 +388,50 @@ struct HALConfig {
         config.safety.min_voltage = safety_json.value("min_voltage", 20.0);
         config.safety.max_voltage = safety_json.value("max_voltage", 30.0);
         config.safety.monitoring_rate = safety_json.value("monitoring_rate", 10);
-        
+
+        // Parse notifications configuration (N2) — feeds NotificationEngine
+        // channel creation at startup (email/webhook/mqtt) and global filters.
+        auto notifications_json = json.value("notifications", nlohmann::json::object());
+        config.notifications.min_severity = notifications_json.value("min_severity", 1);
+        config.notifications.notify_on_error = notifications_json.value("notify_on_error", true);
+        config.notifications.notify_on_weather_alert = notifications_json.value("notify_on_weather_alert", true);
+        config.notifications.aggregate_messages = notifications_json.value("aggregate_messages", false);
+        config.notifications.aggregation_interval_minutes =
+            notifications_json.value("aggregation_interval_minutes", 5);
+
+        // Email channel
+        auto email_json = notifications_json.value("email", nlohmann::json::object());
+        config.notifications.email.enabled = email_json.value("enabled", false);
+        config.notifications.email.smtp_host = email_json.value("smtp_host", "localhost");
+        config.notifications.email.smtp_port = email_json.value("smtp_port", 587);
+        config.notifications.email.use_tls = email_json.value("use_tls", true);
+        config.notifications.email.username = email_json.value("username", "");
+        config.notifications.email.password = email_json.value("password", "");
+        config.notifications.email.from_address = email_json.value("from_address", "astro-mount@localhost");
+        config.notifications.email.to_addresses = email_json.value("to_addresses", "");
+        config.notifications.email.subject_prefix = email_json.value("subject_prefix", "[AstroMount]");
+
+        // Webhook channel
+        auto webhook_json = notifications_json.value("webhook", nlohmann::json::object());
+        config.notifications.webhook.enabled = webhook_json.value("enabled", false);
+        config.notifications.webhook.url = webhook_json.value("url", "");
+        config.notifications.webhook.method = webhook_json.value("method", "POST");
+        config.notifications.webhook.auth_token = webhook_json.value("auth_token", "");
+        config.notifications.webhook.timeout_seconds = webhook_json.value("timeout_seconds", 10);
+        config.notifications.webhook.retry_count = webhook_json.value("retry_count", 3);
+
+        // MQTT channel
+        auto mqtt_json = notifications_json.value("mqtt", nlohmann::json::object());
+        config.notifications.mqtt.enabled = mqtt_json.value("enabled", false);
+        config.notifications.mqtt.broker_url = mqtt_json.value("broker_url", "localhost");
+        config.notifications.mqtt.broker_port = mqtt_json.value("broker_port", 1883);
+        config.notifications.mqtt.client_id = mqtt_json.value("client_id", "astro-mount");
+        config.notifications.mqtt.topic_prefix = mqtt_json.value("topic_prefix", "astro-mount/notifications");
+        config.notifications.mqtt.use_tls = mqtt_json.value("use_tls", false);
+        config.notifications.mqtt.username = mqtt_json.value("username", "");
+        config.notifications.mqtt.password = mqtt_json.value("password", "");
+        config.notifications.mqtt.qos = mqtt_json.value("qos", 1);
+
         return config;
     }
     
@@ -622,7 +665,53 @@ struct HALConfig {
         safety_json["max_voltage"] = safety.max_voltage;
         safety_json["monitoring_rate"] = safety.monitoring_rate;
         hal["safety"] = safety_json;
-        
+
+        // Save notifications configuration (N2)
+        nlohmann::json notifications_json;
+        notifications_json["min_severity"] = notifications.min_severity;
+        notifications_json["notify_on_error"] = notifications.notify_on_error;
+        notifications_json["notify_on_weather_alert"] = notifications.notify_on_weather_alert;
+        notifications_json["aggregate_messages"] = notifications.aggregate_messages;
+        notifications_json["aggregation_interval_minutes"] = notifications.aggregation_interval_minutes;
+
+        // Email channel
+        nlohmann::json email_json;
+        email_json["enabled"] = notifications.email.enabled;
+        email_json["smtp_host"] = notifications.email.smtp_host;
+        email_json["smtp_port"] = notifications.email.smtp_port;
+        email_json["use_tls"] = notifications.email.use_tls;
+        email_json["username"] = notifications.email.username;
+        email_json["password"] = notifications.email.password;
+        email_json["from_address"] = notifications.email.from_address;
+        email_json["to_addresses"] = notifications.email.to_addresses;
+        email_json["subject_prefix"] = notifications.email.subject_prefix;
+        notifications_json["email"] = email_json;
+
+        // Webhook channel
+        nlohmann::json webhook_json;
+        webhook_json["enabled"] = notifications.webhook.enabled;
+        webhook_json["url"] = notifications.webhook.url;
+        webhook_json["method"] = notifications.webhook.method;
+        webhook_json["auth_token"] = notifications.webhook.auth_token;
+        webhook_json["timeout_seconds"] = notifications.webhook.timeout_seconds;
+        webhook_json["retry_count"] = notifications.webhook.retry_count;
+        notifications_json["webhook"] = webhook_json;
+
+        // MQTT channel
+        nlohmann::json mqtt_json;
+        mqtt_json["enabled"] = notifications.mqtt.enabled;
+        mqtt_json["broker_url"] = notifications.mqtt.broker_url;
+        mqtt_json["broker_port"] = notifications.mqtt.broker_port;
+        mqtt_json["client_id"] = notifications.mqtt.client_id;
+        mqtt_json["topic_prefix"] = notifications.mqtt.topic_prefix;
+        mqtt_json["use_tls"] = notifications.mqtt.use_tls;
+        mqtt_json["username"] = notifications.mqtt.username;
+        mqtt_json["password"] = notifications.mqtt.password;
+        mqtt_json["qos"] = notifications.mqtt.qos;
+        notifications_json["mqtt"] = mqtt_json;
+
+        hal["notifications"] = notifications_json;
+
         return hal;
     }
     

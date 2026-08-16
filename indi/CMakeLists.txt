@@ -9,9 +9,61 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # Dependencies
 # ============================================
 
-find_package(INDI REQUIRED)
-find_package(protobuf REQUIRED)
+find_package(PkgConfig REQUIRED)
+
+# INDI is discovered via pkg-config (libindi.pc) — this is how Debian/Ubuntu
+# (INDI 1.x/2.x) ship it. The CMake package config (INDIConfig.cmake) is only
+# provided by newer builds, so we prefer pkg-config and fall back to
+# find_package(INDI) for those.
+pkg_check_modules(INDI_PKG QUIET libindi)
+
+if(INDI_PKG_FOUND)
+    set(INDI_INCLUDE_DIRS ${INDI_PKG_INCLUDE_DIRS})
+    set(INDI_LIBRARIES ${INDI_PKG_LIBRARIES})
+    set(INDI_LIBRARY_DIRS ${INDI_PKG_LIBRARY_DIRS})
+    # The drivers directory is not exposed by pkg-config; default to the
+    # standard location and allow override with -DINDI_DATA_DIR=...
+    set(INDI_DATA_DIR "/usr/share/indi" CACHE PATH "INDI drivers directory")
+    message(STATUS "INDI found via pkg-config (${INDI_PKG_VERSION})")
+else()
+    find_package(INDI QUIET)
+    if(NOT INDI_FOUND)
+        message(FATAL_ERROR
+            "INDI library not found.\n"
+            "Install it, e.g.:  sudo apt install libindi-dev\n"
+            "or point CMAKE_PREFIX_PATH at an INDI installation "
+            "that provides libindi.pc / INDIConfig.cmake.")
+    endif()
+    # find_package(INDI) sets INDI_INCLUDE_DIRS/INDI_LIBRARIES/INDI_DATA_DIR;
+    # INDI_LIBRARY_DIRS may be unset — leave it empty (system lib dirs are used).
+    if(NOT DEFINED INDI_DATA_DIR)
+        set(INDI_DATA_DIR "/usr/share/indi")
+    endif()
+endif()
+
 find_package(gRPC REQUIRED)
+find_package(Protobuf REQUIRED)
+
+# libnova — runtime library (libnova-0.16) is usually already installed as a
+# dependency of libindi; the dev headers may be missing on minimal systems.
+# We look for the headers via pkg-config or a provided directory.
+pkg_check_modules(LIBNOVA QUIET libnova)
+if(NOT LIBNOVA_FOUND AND NOT DEFINED LIBNOVA_INCLUDE_DIR)
+    set(LIBNOVA_INCLUDE_DIR "" CACHE PATH "libnova include directory (e.g. /usr/include)")
+endif()
+if(LIBNOVA_FOUND)
+    set(LIBNOVA_INCLUDE_DIRS ${LIBNOVA_INCLUDE_DIRS})
+endif()
+if(LIBNOVA_INCLUDE_DIR)
+    set(LIBNOVA_INCLUDE_DIRS ${LIBNOVA_INCLUDE_DIR})
+endif()
+
+# The gRPC C++ plugin path — the imported target is the reliable way to locate
+# it (some gRPC builds do not set the GRPC_CPP_PLUGIN variable).
+get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
+if(NOT GRPC_CPP_PLUGIN)
+    set(GRPC_CPP_PLUGIN "")
+endif()
 
 # ============================================
 # Proto generation
@@ -72,16 +124,20 @@ add_executable(astro_mount_indi_driver
     IndiPropertyMapper.cpp
 )
 
+target_link_directories(astro_mount_indi_driver PRIVATE
+    ${INDI_LIBRARY_DIRS}
+)
+
 target_link_libraries(astro_mount_indi_driver
     mount_grpc_client
     ${INDI_LIBRARIES}
-    ${INDI_DATA_DIR}
     pthread
 )
 
 target_include_directories(astro_mount_indi_driver PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${INDI_INCLUDE_DIRS}
+    ${LIBNOVA_INCLUDE_DIRS}
 )
 
 # ============================================

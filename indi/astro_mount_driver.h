@@ -35,6 +35,8 @@ public:
     // INDI::Telescope overrides
     // ============================================
 
+    // Pure virtual in INDI::DefaultDevice — must be provided.
+    const char *getDefaultName() override;
     bool initProperties() override;
     bool updateProperties() override;
     bool ISNewNumber(const char* dev, const char* name,
@@ -44,6 +46,12 @@ public:
     bool ISNewText(const char* dev, const char* name,
                    char* texts[], char* names[], int n) override;
     void TimerHit() override;
+
+    // The base INDI::Telescope::Connect() does not know about the gRPC link to
+    // the mount controller — override it so toggling CONNECT in the INDI client
+    // actually establishes/tears down the gRPC channel.
+    bool Connect() override;
+    bool Disconnect() override;
 
     // ============================================
     // INDI::Telescope movement methods
@@ -93,6 +101,22 @@ protected:
     INumberVectorProperty EnvironmentNP;
     INumber EnvironmentN[3]; // TEMPERATURE, PRESSURE, HUMIDITY
 
+    // ============================================
+    // Connection configuration (UI) — GRPC host/port + TLS
+    // ============================================
+
+    // Text: GRPC_HOST / GRPC_PORT (configured from the INDI client)
+    ITextVectorProperty ConnectionTP;
+    IText ConnectionT[2]; // HOST, PORT
+
+    // Switch: TLS ENABLE / DISABLE
+    ISwitchVectorProperty ConnectionSslSP;
+    ISwitch ConnectionSslS[2]; // ENABLE, DISABLE
+
+    // Read-only connection status
+    ITextVectorProperty ConnectionStatusTP;
+    IText ConnectionStatusT[1]; // STATUS
+
 private:
     // ============================================
     // Internal state
@@ -105,6 +129,11 @@ private:
     bool m_isParked;
     double m_targetRA;
     double m_targetDec;
+
+    // gRPC endpoint, configurable from the INDI UI (ConnectionTP/ConnectionSslSP).
+    std::string m_grpcHost{"localhost"};
+    int m_grpcPort{50051};
+    bool m_grpcUseSsl{false};
 
     // Cache for polled state
     std::mutex m_stateMutex;
@@ -124,6 +153,13 @@ private:
 
     /// @brief Convert RA/Dec to mount position and slew.
     bool performGoto(double ra, double dec);
+
+    /// @brief (Re)create the gRPC client from the configured host/port/ssl
+    /// (called on Connect and after the UI config is changed).
+    void applyConnectionConfig();
+
+    /// @brief Push the current connection state into the read-only status text.
+    void updateConnectionStatus();
 };
 
 #endif // ASTRO_MOUNT_DRIVER_H

@@ -33,7 +33,7 @@ flowchart TB
         end
 
         subgraph IMPL["HAL Implementations"]
-            CAN_IMPL["✅ CANopen (CiA 402)<br/>PDO/SDO/NMT communication<br/>Node: HA, Dec"]:::done
+            CAN_IMPL["⚠️ CANopen (CiA 402)<br/>NOT IMPLEMENTED — factory throws<br/>Use MF7025v2 for CAN"]:::planned
             MF_IMPL["✅ MF7025v2 (LingKong BLDC)<br/>Proprietary CAN V2.36<br/>CAN ID 0x140+node_id · SocketCAN<br/>Stabilized: thread-safe, dead-node detection, error logging"]:::done
             SIM_IMPL["✅ Simulated<br/>Test/development<br/>Configurable noise & faults"]:::done
             GAM_IMPL["✅ Gamepad<br/>Manual control via joystick<br/>Evdev API"]:::done
@@ -81,7 +81,7 @@ flowchart TB
 | Type | Enum | Description | Status |
 |------|------|-------------|--------|
 | Simulated | `HALType::SIMULATED` | Simulated hardware for testing/development | ✅ Implemented |
-| CANopen | `HALType::CANOPEN` | CANopen/CiA 402 motor drives | ✅ Implemented |
+| CANopen | `HALType::CANOPEN` | CANopen/CiA 402 motor drives | ❌ **Not implemented** — factory throws ([`hal_factory.cpp:22`](../src/hal/hal_factory.cpp:22)); use MF7025v2 for CAN |
 | **MF7025v2** | `HALType::MF7025V2` | LingKong BLDC, proprietary CAN V2.36 | ✅ **Stabilized** |
 | Gamepad | `HALType::GAMEPAD` | Manual control via gamepad/joystick | ✅ Implemented |
 | Serial | `HALType::SERIAL` | RS-232/485 serial communication (Modbus) | ✅ Implemented |
@@ -588,6 +588,13 @@ public:
 ---
 
 ## CANopen HAL Implementation
+
+> ⚠️ **STATUS: NOT IMPLEMENTED (2026-08-11).**
+> The `src/hal/canopen_hal/` directory does **not** exist in the current tree and
+> `HALFactory::create(HALType::CANOPEN)` throws “CANopen HAL implementation not yet
+> available” ([`hal_factory.cpp:22`](../src/hal/hal_factory.cpp:22)). The sections
+> below describe the intended/legacy design and are kept for reference only. For
+> real CAN hardware use the **MF7025v2 HAL** (`src/hal/mf7025v2_hal/`, SocketCAN).
 
 The CANopen HAL (`src/hal/canopen_hal/`) provides CiA 402-compliant drive control:
 

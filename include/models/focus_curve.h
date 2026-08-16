@@ -27,10 +27,13 @@ struct FocusCurveData {
     std::vector<int32_t> positions;     // Focuser positions [steps]
     std::vector<double> hfd_values;     // Measured HFD [pixels]
 
-    // Fitted parameters (parabolic model: HFD = A*(p-B)² + C)
+    // Fitted parameters
+    //  - parabolic:  HFD = A*(p-B)² + C
+    //  - hyperbolic: HFD = A*sqrt((p-B)² + C²) + D  (D is the asymptotic floor)
     double vcurve_a{0.0};               // A coefficient (steepness)
     double vcurve_b{0.0};               // B coefficient (focus position)
-    double vcurve_c{0.0};               // C coefficient (minimum HFD)
+    double vcurve_c{0.0};               // C coefficient (minimum HFD / hyperbola knee)
+    double vcurve_d{0.0};               // D coefficient (hyperbolic floor, 0 for parabolic)
 
     // Results
     int32_t focus_position{0};          // Best focus position [steps]

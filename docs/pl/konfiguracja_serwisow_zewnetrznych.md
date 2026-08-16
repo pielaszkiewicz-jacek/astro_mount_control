@@ -4,24 +4,27 @@
 
 Kontroler montażu obsługuje podsystemy pomocnicze włączane przez sekcję `external_services`:
 
-- **Kopuła, derotator i focuser** są hostowane **w procesie** wewnątrz `astro_mount_controller` — nie wymagają osobnego procesu. Pole `address` to adres nasłuchu gRPC wystawiony klientom.
-- **Pogoda i zasilanie** działają jako samodzielne procesy (`astro_weather_server`, `astro_power_server`) komunikujące się przez gRPC.
+- **Kopuła, derotator, focuser, ST4 guider i PEC** są hostowane **w procesie** wewnątrz `astro_mount_controller` — nie wymagają osobnego procesu. Pole `address` to adres nasłuchu gRPC wystawiony klientom.
+- **Pogoda, zasilanie i sekwencer** działają jako samodzielne procesy (`astro_weather_server`, `astro_power_server`, `astro_sequencer_server`) komunikujące się przez gRPC.
 
 | Serwis | Hosting | Domyślny port | Przeznaczenie |
 |--------|---------|--------------|---------------|
 | **Kopuła** | w procesie (`astro_mount_controller`) | 50051 (wspólny) | Sterowanie obrotem i przesłoną kopuły, auto-synchronizacja z montażem |
 | **Derotator** | w procesie (`astro_mount_controller`) | 50051 (wspólny) | Kompensacja pola rotacji |
 | **Focuser** | w procesie (`astro_mount_controller`) | 50051 (wspólny) | Sterowanie focuserem i autofokus |
+| **ST4 guider** | w procesie (`astro_mount_controller`) | 50051 (wspólny) | Kalibracja i impulsy ST4 |
+| **PEC** | w procesie (`astro_mount_controller`) | 50051 (wspólny) | Korekcja błędu okresowego |
 | **Pogoda** | samodzielny (`astro_weather_server`) | 50055 | Monitoring pogody, alerty, automatyczne parkowanie |
 | **Zasilanie** | samodzielny (`astro_power_server`) | 50056 | Monitoring baterii/zasilania, parkowanie przy niskim napięciu |
+| **Sekwencer** | samodzielny (`astro_sequencer_server`) | 50057 | Plan obserwacji i sekwencjonowanie |
 
-Wszystkie integracje są **domyślnie wyłączone**. Każda musi być jawnie włączona w pliku konfiguracyjnym kontrolera montażu (`config/default.json`) w sekcji `external_services`.
+Domyślne włączenia są zsynchronizowane z web proxy: **derotator, focuser, ST4 guider i PEC — włączone** (w procesie); **kopuła, pogoda, zasilanie i sekwencer — wyłączone**. Włączanie/wyłączanie w pliku konfiguracyjnym kontrolera montażu (`config/default.json`) w sekcji `external_services`.
 
 ---
 
 ## 1. Integracja z Kontrolerem Montażu
 
-Integrację konfiguruje się w pliku JSON kontrolera montażu pod kluczem `external_services`. Podsystemy **kopuły, derotatora i focusera** są serwowane w procesie na **wspólnym porcie gRPC 50051** (nie potrzebują osobnego adresu). Dla **pogody i zasilania** (procesy samodzielne) `address` to adres, z którym łączy się kontroler montażu:
+Integrację konfiguruje się w pliku JSON kontrolera montażu pod kluczem `external_services`. Podsystemy **kopuły, derotatora, focusera, ST4 guidera i PEC** są serwowane w procesie na **wspólnym porcie gRPC 50051** (nie potrzebują osobnego adresu). Dla **pogody, zasilania i sekwencera** (procesy samodzielne) `address` to adres, z którym łączy się kontroler montażu:
 
 ```json
 {
@@ -31,12 +34,18 @@ Integrację konfiguruje się w pliku JSON kontrolera montażu pod kluczem `exter
       "update_interval_ms": 1000
     },
     "derotator": {
-      "enabled": false,
+      "enabled": true,
       "update_interval_ms": 1000
     },
     "focuser": {
-      "enabled": false,
+      "enabled": true,
       "poll_interval_ms": 5000
+    },
+    "st4_guider": {
+      "enabled": true
+    },
+    "pec": {
+      "enabled": true
     },
     "weather": {
       "enabled": false,
@@ -47,6 +56,11 @@ Integrację konfiguruje się w pliku JSON kontrolera montażu pod kluczem `exter
       "enabled": false,
       "address": "127.0.0.1:50056",
       "poll_interval_ms": 10000
+    },
+    "sequencer": {
+      "enabled": false,
+      "address": "127.0.0.1:50057",
+      "poll_interval_ms": 5000
     }
   }
 }
@@ -57,9 +71,9 @@ Integrację konfiguruje się w pliku JSON kontrolera montażu pod kluczem `exter
 | Parametr | Typ | Domyślnie | Opis |
 |-----------|------|---------|-------------|
 | `enabled` | bool | `false` | Włącza tę integrację (podsystem w procesie lub klient zewnętrzny) |
-| `address` | string | `127.0.0.1:500xx` | Kopuła/derotator/focuser: adres nasłuchu gRPC wystawiony klientom. Pogoda/zasilanie: adres gRPC zewnętrznego procesu |
+| `address` | string | `127.0.0.1:500xx` | Serwisy w procesie: adres nasłuchu gRPC wystawiony klientom. Pogoda/zasilanie/sekwencer: adres gRPC zewnętrznego procesu |
 | `update_interval_ms` | int | `1000` | Jak często przekazywać pozycję montażu do kopuły/derotatora (w procesie) |
-| `poll_interval_ms` | int | `10000` | Jak często odpytować status (pogoda, zasilanie, focuser) |
+| `poll_interval_ms` | int | `10000` | Jak często odpytować status (pogoda, zasilanie, focuser, sekwencer) |
 
 ---
 

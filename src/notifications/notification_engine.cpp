@@ -1,4 +1,7 @@
 #include "notifications/notification_engine.h"
+#include "notifications/channels/email_channel.h"
+#include "notifications/channels/webhook_channel.h"
+#include "notifications/channels/mqtt_channel.h"
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -100,19 +103,83 @@ void NotificationEngine::configure(const astro_mount::NotificationConfig& config
 
     // Update category filters
     for (const auto& entry : config.enabled_events()) {
-        auto category = static_cast<Category>(std::stoi(entry.first));
-        config_.enabled_categories[category] = entry.second;
+        try {
+            auto category = static_cast<Category>(std::stoi(entry.first));
+            config_.enabled_categories[category] = entry.second;
+        } catch (...) {
+            // ignore non-numeric event keys
+        }
     }
 
     // Update aggregation settings
     config_.aggregate_messages = config.aggregate_messages();
-    config_.aggregation_interval_minutes = config.aggregation_interval_minutes();
+    config_.aggregation_interval_minutes = std::max(1, config.aggregation_interval_minutes());
 
-    // Configure channels
-    for (const auto& channel_config : config.channels()) {
-        // Channel configuration would be applied to matching registered channels
-        // Implementation depends on channel type mapping
+    // N2: build channels from the proto config. Remove any previously-managed
+    // email/webhook/mqtt channels first, then re-create from config. The
+    // always-on "log" channel (and any channels registered outside configure)
+    // are left untouched.
+    clearManagedChannels();
+    for (const auto& cc : config.channels()) {
+        if (!cc.enabled()) continue;
+
+        std::unique_ptr<NotificationChannel> channel;
+        switch (cc.type()) {
+            case astro_mount::CHANNEL_EMAIL: {
+                EmailChannel::Config cfg;
+                cfg.smtp_host = cc.email().smtp_host();
+                cfg.smtp_port = cc.email().smtp_port() > 0 ? cc.email().smtp_port() : 587;
+                cfg.use_tls = cc.email().use_tls();
+                cfg.username = cc.email().username();
+                cfg.password = cc.email().password();
+                cfg.from_address = cc.email().from_address();
+                for (const auto& to : cc.email().to_addresses()) cfg.to_addresses.push_back(to);
+                cfg.subject_prefix = cc.email().subject_prefix();
+                channel = std::make_unique<EmailChannel>(cfg);
+                break;
+            }
+            case astro_mount::CHANNEL_WEBHOOK: {
+                WebhookChannel::Config cfg;
+                cfg.url = cc.webhook().url();
+                cfg.method = cc.webhook().method().empty() ? "POST" : cc.webhook().method();
+                for (const auto& [k, v] : cc.webhook().headers()) cfg.headers[k] = v;
+                cfg.auth_token = cc.webhook().auth_token();
+                cfg.timeout_seconds = cc.webhook().timeout_seconds() > 0 ? cc.webhook().timeout_seconds() : 10;
+                cfg.retry_count = cc.webhook().retry_count();
+                channel = std::make_unique<WebhookChannel>(cfg);
+                break;
+            }
+            case astro_mount::CHANNEL_MQTT: {
+                MqttChannel::Config cfg;
+                cfg.broker_url = cc.mqtt().broker_url();
+                cfg.broker_port = cc.mqtt().broker_port() > 0 ? cc.mqtt().broker_port() : 1883;
+                cfg.client_id = cc.mqtt().client_id();
+                cfg.topic_prefix = cc.mqtt().topic_prefix();
+                cfg.use_tls = cc.mqtt().use_tls();
+                cfg.username = cc.mqtt().username();
+                cfg.password = cc.mqtt().password();
+                cfg.qos = std::clamp(cc.mqtt().qos(), 0, 2);
+                cfg.retain = cc.mqtt().retain();
+                channel = std::make_unique<MqttChannel>(cfg);
+                break;
+            }
+            default:
+                continue;
+        }
+
+        if (channel && channel->initialize()) {
+            channels_.push_back(std::move(channel));
+        }
     }
+}
+
+void NotificationEngine::clearManagedChannels() {
+    // Called with mutex_ held. Remove channels created by configure() so a
+    // re-configure does not accumulate duplicates.
+    channels_.erase(std::remove_if(channels_.begin(), channels_.end(),
+        [](const auto& ch) {
+            return ch->name() == "email" || ch->name() == "webhook" || ch->name() == "mqtt";
+        }), channels_.end());
 }
 
 astro_mount::NotificationStatus NotificationEngine::getStatus() const {
@@ -122,7 +189,16 @@ astro_mount::NotificationStatus NotificationEngine::getStatus() const {
     status.set_configured(!channels_.empty());
     status.set_active_channels(static_cast<int32_t>(channels_.size()));
     status.set_events_sent_total(events_sent_total_);
-    status.set_events_sent_last_hour(0);  // Would need rolling counter
+
+    // N4: rolling 1-hour counter — count send timestamps still within the
+    // last hour (deliver() prunes the deque, so this is just a count).
+    auto now = std::chrono::system_clock::now();
+    int last_hour = 0;
+    for (const auto& t : sent_timestamps_) {
+        if (now - t <= std::chrono::hours(1)) ++last_hour;
+    }
+    status.set_events_sent_last_hour(last_hour);
+
     status.set_events_queued(static_cast<int32_t>(event_queue_.size()));
     status.set_events_failed(events_failed_);
     status.set_last_error(last_error_);
@@ -191,6 +267,8 @@ void NotificationEngine::unsubscribe(int subscription_id) {
 void NotificationEngine::workerLoop() {
     while (running_) {
         NotificationEvent event;
+        bool have_event = false;
+        bool flush_pending = false;
         {
             std::unique_lock<std::mutex> lock(mutex_);
             cv_.wait_for(lock, std::chrono::milliseconds(500), [this] {
@@ -198,37 +276,94 @@ void NotificationEngine::workerLoop() {
             });
 
             if (!running_) break;
-            if (event_queue_.empty()) continue;
 
-            event = std::move(event_queue_.front());
-            event_queue_.pop();
-        }
-
-        // Apply aggregation if enabled
-        if (config_.aggregate_messages) {
-            event = aggregate(event);
-        }
-
-        // Deliver to all active channels
-        bool any_success = false;
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            for (auto& channel : channels_) {
-                if (channel->send(event)) {
-                    any_success = true;
-                } else {
-                    events_failed_++;
+            // N4: flush the current aggregation window once it expires.
+            if (config_.aggregate_messages && pending_aggregate_) {
+                auto deadline = pending_aggregate_time_ +
+                    std::chrono::minutes(config_.aggregation_interval_minutes);
+                if (std::chrono::system_clock::now() >= deadline) {
+                    flush_pending = true;
                 }
+            }
+
+            if (!event_queue_.empty()) {
+                event = std::move(event_queue_.front());
+                event_queue_.pop();
+                have_event = true;
+            }
+        }
+
+        // N4: windowed aggregation — matching events are merged into the
+        // pending digest and delivered only when the window expires or a
+        // non-matching event arrives.
+        if (config_.aggregate_messages) {
+            if (flush_pending && pending_aggregate_) {
+                deliver(*pending_aggregate_);
+                pending_aggregate_.reset();
+                pending_aggregate_count_ = 0;
+            }
+            if (have_event) {
+                if (pending_aggregate_ && matchesAggregate(*pending_aggregate_, event)) {
+                    // Merge into the pending digest — do not deliver yet.
+                    std::ostringstream merged;
+                    merged << pending_aggregate_->message << "\n  • " << event.message;
+                    pending_aggregate_->message = merged.str();
+                    pending_aggregate_->metadata["aggregated_count"] =
+                        std::to_string(++pending_aggregate_count_);
+                } else {
+                    if (pending_aggregate_) {
+                        deliver(*pending_aggregate_);
+                        pending_aggregate_.reset();
+                        pending_aggregate_count_ = 0;
+                    }
+                    pending_aggregate_ = event;
+                    pending_aggregate_time_ = std::chrono::system_clock::now();
+                    pending_aggregate_count_ = 1;
+                    pending_aggregate_->metadata["aggregated_count"] = "1";
+                }
+            }
+            continue;  // aggregated events are delivered only via deliver()
+        }
+
+        // No aggregation — deliver directly.
+        if (have_event) {
+            deliver(event);
+        }
+    }
+
+    // Flush any remaining aggregated digest on shutdown.
+    if (config_.aggregate_messages && pending_aggregate_) {
+        deliver(*pending_aggregate_);
+        pending_aggregate_.reset();
+        pending_aggregate_count_ = 0;
+    }
+}
+
+void NotificationEngine::deliver(const NotificationEvent& event) {
+    bool any_success = false;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        for (auto& channel : channels_) {
+            if (channel->send(event)) {
+                any_success = true;
+            } else {
+                events_failed_++;
             }
         }
 
         if (any_success) {
             events_sent_total_++;
             last_event_time_ = std::chrono::system_clock::now();
+            // N4: record send time for the rolling 1-hour counter and prune
+            // timestamps older than an hour.
+            auto now = last_event_time_;
+            sent_timestamps_.push_back(now);
+            while (!sent_timestamps_.empty() && now - sent_timestamps_.front() > std::chrono::hours(1)) {
+                sent_timestamps_.pop_front();
+            }
         }
 
         // Notify subscribers
-        std::lock_guard<std::mutex> lock(mutex_);
         for (auto& [id, callback] : subscribers_) {
             try {
                 callback(event);
@@ -254,9 +389,27 @@ bool NotificationEngine::shouldDeliver(const NotificationEvent& event) const {
     return true;
 }
 
+bool NotificationEngine::matchesAggregate(const NotificationEvent& base,
+                                          const NotificationEvent& event) const {
+    return base.category == event.category &&
+           base.source == event.source &&
+           base.title == event.title &&
+           base.severity == event.severity;
+}
+
 NotificationEvent NotificationEngine::aggregate(const NotificationEvent& event) {
-    // TODO: Implement event aggregation
-    // For now, pass through without aggregation
+    // Kept for API compatibility — the windowed logic lives in workerLoop().
+    // Called with a matching pending window this merges the event into the
+    // pending digest; otherwise it is a pass-through for the current event.
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (pending_aggregate_ && matchesAggregate(*pending_aggregate_, event)) {
+        std::ostringstream merged;
+        merged << pending_aggregate_->message << "\n  • " << event.message;
+        pending_aggregate_->message = merged.str();
+        pending_aggregate_->metadata["aggregated_count"] =
+            std::to_string(++pending_aggregate_count_);
+        return *pending_aggregate_;
+    }
     return event;
 }
 

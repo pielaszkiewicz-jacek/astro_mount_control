@@ -34,6 +34,12 @@ service CameraService {
 
     /** Stop video preview mode */
     rpc StopVideoPreview(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    /** Set target cooler temperature / toggle the cooler (R3) */
+    rpc SetCooler(SetCoolerRequest) returns (CoolerStatus);
+
+    /** Get current cooler status (R3) */
+    rpc GetCoolerStatus(google.protobuf.Empty) returns (CoolerStatus);
 }
 
 // ─── Messages ───────────────────────────────────────────────────────────────
@@ -117,6 +123,20 @@ message FilterPosition {
     string current_filter = 2;
     int32 num_filters = 3;
     repeated string filter_names = 4;
+}
+
+message SetCoolerRequest {
+    double target_c = 1;          // Target sensor temperature [°C]
+    bool enabled = 2;             // Master cooler on/off
+}
+
+message CoolerStatus {
+    bool enabled = 1;             // Cooler is powered on
+    double target_c = 2;          // Target sensor temperature [°C]
+    double current_c = 3;         // Current sensor temperature [°C]
+    double power_percent = 4;     // Cooling power 0-100%
+    bool reached_target = 5;      // Sensor at/near target
+    double ambient_c = 6;         // Ambient temperature [°C]
 }
 
 message VideoPreviewRequest {

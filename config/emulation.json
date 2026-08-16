@@ -537,5 +537,17 @@
     "enabled": false,
     "comment": "Servo init SDO sequence disabled in emulation mode — no real drives to configure.",
     "sequence": []
+  },
+
+  "external_services": {
+    "_comment": "In-process subsystem services hosted on the unified gRPC port 50051. Defaults aligned with the web proxy (config.js).",
+    "dome": { "enabled": false },
+    "derotator": { "enabled": true },
+    "weather": { "enabled": false, "address": "127.0.0.1:50055" },
+    "power": { "enabled": false, "address": "127.0.0.1:50056" },
+    "sequencer": { "enabled": false, "address": "127.0.0.1:50057" },
+    "focuser": { "enabled": true },
+    "st4_guider": { "enabled": true },
+    "pec": { "enabled": true }
   }
 }

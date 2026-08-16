@@ -167,7 +167,7 @@ const PulleyComponent = (() => {
           if (opt.value === data.deployment_type) { opt.selected = true; break; }
         }
       }
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-pulley', 'Pulley service'));
   }
 
   return { render, deploy, retract, stop, goToPosition, home, refreshStatus };

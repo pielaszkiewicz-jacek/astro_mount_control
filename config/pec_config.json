@@ -1,0 +1,7 @@
+{
+    "comment": "PEC service configuration. Hosted in-process on the unified gRPC port (50051). Trained PEC data is persisted separately to config/pec_data.json.",
+    "enabled": true,
+    "worm_cycle_seconds": 638,
+    "num_harmonics": 8,
+    "sample_rate_hz": 10
+}

@@ -50,6 +50,12 @@ public:
         double proper_motion_dec;// Proper motion in Dec (mas/yr)
     };
 
+    struct MountPhysicalParameters {
+        double mount_height{0.0};  // Pier/tripod height above ground [m]
+        double pier_west{0.0};     // West pier indicator/height (0 = inactive)
+        double pier_east{0.0};     // East pier indicator/height (0 = inactive)
+    };
+
     struct AxisPhysicalParameters {
         // CANopen scaling factors (per-axis)
         double position_counts_per_degree;
@@ -128,6 +134,9 @@ public:
         // Physical axis parameters
         AxisPhysicalParameters ha_axis_params;  // Hour angle axis parameters
         AxisPhysicalParameters dec_axis_params; // Declination axis parameters
+
+        // Mount physical parameters (R5) — pier height and pier side selection
+        MountPhysicalParameters mount_params;
         
         // Statistical measures with uncertainty estimates
         double chi_squared;          // Chi-squared of fit
@@ -224,6 +233,24 @@ public:
      * @param tube_length Tube length in mm
      */
     void setTelescopeParameters(double focal_length, double aperture, double tube_length);
+
+    /**
+     * @brief Set mount physical parameters (R5)
+     *
+     * @param mount_height Pier/tripod height above ground [m] — used to scale
+     *        the atmospheric refraction correction (barometric altitude factor).
+     * @param pier_west West pier indicator/height (0 = inactive)
+     * @param pier_east East pier indicator/height (0 = inactive) — the larger of
+     *        the two selects the active pier, which flips the sign of the axis
+     *        non-perpendicularity (AN) Dec term.
+     */
+    void setMountParameters(double mount_height, double pier_west, double pier_east);
+
+    /**
+     * @brief Get the currently configured mount physical parameters
+     * @return Mount physical parameters
+     */
+    MountPhysicalParameters getMountParameters() const;
 
     /**
      * @brief Enable/disable specific error terms

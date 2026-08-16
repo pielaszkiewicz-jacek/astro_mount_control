@@ -145,6 +145,18 @@ find_package(Eigen3 REQUIRED)
 # Find SQLite3
 find_package(SQLite3 REQUIRED)
 
+# Find libcurl for HTTP/SMTP (weather API sources + notification channels)
+find_package(CURL REQUIRED)
+
+# Find OpenSSL for TLS (MQTT notification channel — N5)
+find_package(OpenSSL)
+if(OpenSSL_FOUND)
+    message(STATUS "OpenSSL found (${OPENSSL_VERSION}) — MQTT TLS support enabled")
+    add_compile_definitions(MQTT_TLS_ENABLED)
+else()
+    message(STATUS "OpenSSL NOT found — MQTT TLS will be unavailable (use_tls ignored)")
+endif()
+
 # CMake's FindSQLite3 module (>= 3.14) creates the imported target
 # SQLite::SQLite3.  Create a compatibility alias SQLite3::SQLite3 so the
 # canonical name used throughout this project always resolves, regardless
@@ -169,6 +181,7 @@ endif()
 # Source files
 set(CORE_SOURCES
     src/core/astronomical_calculations.cpp
+    src/http_client.cpp
     src/hal/hal_factory.cpp
     src/hal/simulated_hal/simulated_hal.cpp
     src/hal/serial_hal/serial_hal.cpp
@@ -204,9 +217,6 @@ set(CAMERA_SOURCES
 
 set(FOCUSER_SOURCES
     src/hal/focuser_hal/focuser_hal.cpp
-    src/hal/focuser_hal/focuser_zwo.cpp
-    src/hal/focuser_hal/focuser_moonlite.cpp
-    src/hal/focuser_hal/focuser_pegasus.cpp
     src/hal/focuser_hal/focuser_simulated.cpp
 )
 
@@ -218,7 +228,6 @@ set(SEQUENCER_SOURCES
 set(POWER_SOURCES
     src/hal/power_hal/power_hal.cpp
     src/hal/power_hal/power_simulated.cpp
-    src/hal/power_hal/power_i2c.cpp
     src/controllers/power_manager.cpp
 )
 
@@ -238,10 +247,6 @@ set(ST4_SOURCES
     src/hal/st4_hal/st4_hal.cpp
     src/hal/st4_hal/st4_simulated.cpp
     src/hal/st4_hal/st4_gpio_sysfs.cpp
-    src/hal/st4_hal/st4_gpio_libgpiod.cpp
-    src/hal/st4_hal/st4_ftdi.cpp
-    src/hal/st4_hal/st4_mcp2221.cpp
-    src/hal/st4_hal/st4_arduino.cpp
     src/controllers/st4_guider.cpp
     src/controllers/st4_calibration.cpp
 )
@@ -326,6 +331,9 @@ target_link_libraries(astro_mount_core
     $<$<BOOL:${fmt_FOUND}>:fmt::fmt>
     Eigen3::Eigen
     SQLite3::SQLite3
+    CURL::libcurl
+    $<$<BOOL:${OpenSSL_FOUND}>:OpenSSL::SSL>
+    $<$<BOOL:${OpenSSL_FOUND}>:OpenSSL::Crypto>
 )
 
 # Add include directories
@@ -336,14 +344,19 @@ target_include_directories(astro_mount_core PUBLIC
     ${EIGEN3_INCLUDE_DIR}
 )
 
-# In-process subsystem service sources (dome, derotator, focuser) that are
-# hosted inside the mount controller process instead of separate executables.
+# In-process subsystem service sources (dome, derotator, focuser, st4_guider,
+# pec, camera, pulley) that are hosted inside the mount controller process
+# instead of separate executables.
 set(MERGED_SERVICE_SOURCES
     dome/src/dome_service_impl.cpp
     dome/src/dome_factory.cpp
     derotator/src/derotator_service_impl.cpp
     derotator/src/derotator_factory.cpp
     focuser/src/focuser_service_impl.cpp
+    st4guider/src/st4_guider_service_impl.cpp
+    pec/src/pec_service_impl.cpp
+    camera/src/camera_service_impl.cpp
+    pulley/src/pulley_service_impl.cpp
 )
 
 # Create executable — hosts the mount controller gRPC service plus the
@@ -529,6 +542,18 @@ if(GTest_FOUND)
     add_test(NAME TPOINTModelTest
         COMMAND test_tpoint_model)
 
+    add_executable(test_focus_curve
+        tests/test_focus_curve.cpp
+    )
+
+    target_link_libraries(test_focus_curve
+        astro_mount_core
+        GTest::gtest_main
+    )
+
+    add_test(NAME FocusCurveTest
+        COMMAND test_focus_curve)
+
     add_executable(test_kalman_filter
         tests/test_kalman_filter.cpp
     )
@@ -696,6 +721,47 @@ if(GTest_FOUND)
 
     add_test(NAME EthernetHALTest
         COMMAND test_ethernet_hal)
+
+    add_executable(test_field_rotation_st4
+        tests/test_field_rotation_st4.cpp
+    )
+
+    target_link_libraries(test_field_rotation_st4
+        astro_mount_core
+        GTest::gtest_main
+    )
+
+    add_test(NAME FieldRotationSt4Test
+        COMMAND test_field_rotation_st4)
+
+    add_executable(test_derotator
+        tests/test_derotator.cpp
+    )
+
+    target_link_libraries(test_derotator
+        astro_mount_core
+        GTest::gtest_main
+    )
+
+    add_test(NAME DerotatorTest
+        COMMAND test_derotator)
+
+    add_executable(test_weather
+        tests/test_weather.cpp
+        ${PROTO_SRCS}
+    )
+
+    target_link_libraries(test_weather
+        astro_mount_core
+        GTest::gtest_main
+        gRPC::grpc++
+        protobuf::libprotobuf
+    )
+
+    add_dependencies(test_weather generate_proto)
+
+    add_test(NAME WeatherTest
+        COMMAND test_weather)
 
 endif()
 

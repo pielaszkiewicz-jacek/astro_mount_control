@@ -167,11 +167,23 @@ public:
         last_innovation_cov_ = HPHt + R_;
 
         // Solve for Kalman gain: K = P * H^T * S^{-1}
-        // Using LDLT decomposition instead of explicit inverse
-        Eigen::LDLT<MatrixXd> ldlt_S(last_innovation_cov_);
-        if (ldlt_S.info() != Eigen::Success) {
-            // Fallback: use regular inverse if LDLT fails
-            MatrixXd S_inv = last_innovation_cov_.inverse();
+        // Using LDLT decomposition instead of explicit inverse.
+        //
+        // NUMERICAL STABILITY: LDLT does not reliably flag a (near-)singular matrix —
+        // info() may report Success even with a zero pivot, and solve() then yields
+        // Inf/NaN. Check the D (pivot) diagonal explicitly and regularize before solving.
+        MatrixXd S_work = last_innovation_cov_;
+        Eigen::LDLT<MatrixXd> ldlt_S(S_work);
+        bool s_pd = (ldlt_S.info() == Eigen::Success) && (ldlt_S.vectorD().minCoeff() > 0.0);
+        if (!s_pd) {
+            // Regularize the innovation covariance to restore positive definiteness.
+            S_work += MatrixXd::Identity(measurement_dim_, measurement_dim_) * 1e-9;
+            ldlt_S.compute(S_work);
+            s_pd = (ldlt_S.info() == Eigen::Success) && (ldlt_S.vectorD().minCoeff() > 0.0);
+        }
+        if (!s_pd) {
+            // Fallback: use regularized inverse if LDLT still fails
+            MatrixXd S_inv = S_work.inverse();
             MatrixXd K = P_ * H_.transpose() * S_inv;
             applyKalmanUpdate(y, K);
             return;
@@ -258,18 +270,28 @@ public:
         }
 
         if (adaptive_q_enabled_) {
-            // Adapt process noise Q based on state update magnitude
+            // Adapt process noise Q based on state update magnitude.
+            // NUMERICAL STABILITY FIX: only the diagonal entries are scaled. The
+            // previous code scaled the whole matrix (Q_ *= factor), letting the
+            // off-diagonal elements grow without bound while only the diagonal was
+            // clamped. Off-diagonal entries are additionally clamped to keep Q bounded.
             double state_update_norm = (K * innovation).norm();
             if (state_update_norm > 0.1) {
                 double scale_factor = 1.0 + 0.1 * state_update_norm;
-                Q_ *= scale_factor;
+                for (int i = 0; i < Q_.rows(); ++i) {
+                    Q_(i, i) = std::min(Q_(i, i) * scale_factor, 100.0);
+                }
             } else if (state_update_norm < 0.01) {
-                Q_ *= 0.99;
+                Q_ *= 0.99;  // global decay preserves any intended correlation structure
             }
 
-            // Clamp Q to reasonable bounds
+            // Clamp Q to reasonable bounds (diagonal and off-diagonal)
             for (int i = 0; i < Q_.rows(); ++i) {
                 Q_(i, i) = std::max(1e-6, std::min(Q_(i, i), 100.0));
+                for (int j = i + 1; j < Q_.cols(); ++j) {
+                    Q_(i, j) = std::max(-100.0, std::min(Q_(i, j), 100.0));
+                    Q_(j, i) = Q_(i, j);
+                }
             }
         }
     }
@@ -688,11 +710,21 @@ public:
         double error_bound = 3.0 * std::sqrt(std::abs(P_.diagonal().maxCoeff()));
         metrics["estimation_error_bound_3sigma"] = error_bound;
 
-        // Compute filter stability metric
-        MatrixXd F_plus_Ft = F_ + F_.transpose();
-        Eigen::SelfAdjointEigenSolver<MatrixXd> eigensolver(F_plus_Ft);
-        double max_eigenvalue = eigensolver.eigenvalues().maxCoeff();
-        metrics["filter_stability"] = (max_eigenvalue < 0) ? 1.0 : 0.0;
+        // Compute filter stability metric.
+        // NUMERICAL CORRECTNESS FIX: the previous metric used eigenvalues of F + F^T.
+        // For a discrete-time system, stability requires the SPECTRAL RADIUS of the
+        // state-transition matrix F to be ≤ 1 (ρ(F) ≤ 1). F + F^T has eigenvalues ≈ 2
+        // for the identity F, so the old metric always reported "unstable" (0.0).
+        // Use an EigenSolver on F directly and check the largest |λ|.
+        Eigen::EigenSolver<MatrixXd> eig_F(F_);
+        double max_abs_eig = 0.0;
+        if (eig_F.info() == Eigen::Success) {
+            for (int i = 0; i < F_.rows(); ++i) {
+                max_abs_eig = std::max(max_abs_eig, std::abs(eig_F.eigenvalues()[i]));
+            }
+        }
+        const double STABILITY_MARGIN = 1e-6;
+        metrics["filter_stability"] = (max_abs_eig <= 1.0 + STABILITY_MARGIN) ? 1.0 : 0.0;
 
         // Compute information gain
         double det_P_before_metric = P_before_.determinant();

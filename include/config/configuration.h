@@ -80,6 +80,10 @@ public:
         double longitude;
         double altitude;
         double max_slew_rate;
+        // Mount physical parameters (TPOINT model — R5)
+        double mount_height{0.0};   // Pier/tripod height above ground [m]
+        double pier_west{0.0};      // West pier indicator/height (0 = inactive)
+        double pier_east{0.0};      // East pier indicator/height (0 = inactive)
         double max_tracking_rate;
         double slew_acceleration;
         double tracking_acceleration;
@@ -131,8 +135,10 @@ public:
         int controller_poll_ms{50};
         int tracking_update_ms{20};
         
-        // Mount orientation quaternion (for CASUAL mount type)
-        std::array<double, 4> orientation_quaternion{1.0, 0.0, 0.0, 0.0};  // [qx, qy, qz, qw]
+        // Mount orientation quaternion (for CASUAL mount type).
+        // R4: identity default [qx,qy,qz,qw] = [0,0,0,1] — consistent with
+        // MountConfig::MountOrientation (previously 1,0,0,0 = 180° about x).
+        std::array<double, 4> orientation_quaternion{0.0, 0.0, 0.0, 1.0};  // [qx, qy, qz, qw]
         
         // Axis physical parameters
         AxisPhysicalParameters ha_axis_params;
@@ -219,6 +225,10 @@ public:
 
         bool focuser_enabled{false};
         int focuser_poll_interval_ms{5000};
+
+        // In-process subsystem services added in Phase 2 (P2).
+        bool st4_guider_enabled{false};
+        bool pec_enabled{false};
     };
 
     // Forward declaration for HAL configuration (defined in hal/hal_config.h)

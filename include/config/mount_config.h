@@ -102,6 +102,15 @@ struct MountConfig {
     double longitude{0.0};
     double altitude{0.0};
     
+    // Mount physical parameters (TPOINT model — R5). mount_height is the pier /
+    // tripod height above ground [m] (used for refraction scaling); pier_west and
+    // pier_east are the pier-side indicators/heights — the larger of the two
+    // selects the active pier, which flips the sign of the axis non-perpendicularity
+    // (AN) Dec term.
+    double mount_height{0.0};
+    double pier_west{0.0};
+    double pier_east{0.0};
+    
     // Mount parameters
     double max_slew_rate{5.0};
     double max_tracking_rate{1.0};

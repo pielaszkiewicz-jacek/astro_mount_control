@@ -19,6 +19,11 @@ public:
     void stop();
     hal::PowerData getStatus() const;
 
+    /// @brief Enable/disable a power output channel. Delegates to the HAL.
+    bool setOutputEnabled(int id, bool enabled);
+    bool isOutputEnabled(int id) const;
+    int outputCount() const;
+
 private:
     void monitorLoop();
     std::unique_ptr<hal::PowerControl> hal_;

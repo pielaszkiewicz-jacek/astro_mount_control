@@ -30,12 +30,8 @@ DomeServiceImpl::DomeServiceImpl(const std::string& config_path)
 }
 
 DomeServiceImpl::~DomeServiceImpl() {
-    if (watching_) {
-        watching_ = false;
-        if (watch_thread_ && watch_thread_->joinable()) {
-            watch_thread_->join();
-        }
-    }
+    // WatchStatus streams are per-client and self-terminating — there is no
+    // shared watcher thread to join here.
 }
 
 void DomeServiceImpl::initMountAzimuthCallback() {
@@ -235,8 +231,11 @@ grpc::Status DomeServiceImpl::GetStatus(grpc::ServerContext* context,
 grpc::Status DomeServiceImpl::WatchStatus(grpc::ServerContext* context,
                                            const google::protobuf::Empty* request,
                                            grpc::ServerWriter<DomeStatus>* writer) {
-    watching_ = true;
-    while (watching_ && !context->IsCancelled()) {
+    // Per-client loop — only this client's cancellation ends the stream. The
+    // previous implementation used the shared `watching_` flag, so one client
+    // disconnecting terminated every subscriber's stream (same class of bug as
+    // N7 for weather alerts / P13 for the derotator).
+    while (!context->IsCancelled()) {
         {
             std::lock_guard<std::mutex> lock(controller_mutex_);
             DomeStatus status;
@@ -247,7 +246,6 @@ grpc::Status DomeServiceImpl::WatchStatus(grpc::ServerContext* context,
         }
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-    watching_ = false;
     return grpc::Status::OK;
 }
 

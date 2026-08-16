@@ -23,6 +23,10 @@ message St4GuiderConfig {
     uint32 max_pulse_ms = 9;
     bool invert_ra = 10;
     bool invert_dec = 11;
+    // PHD2 connection endpoint — allows PHD2 to run on a different host.
+    // Empty phd2_host / phd2_port==0 fall back to localhost:4400.
+    string phd2_host = 12;
+    int32 phd2_port = 13;
 }
 
 message St4Pulse {

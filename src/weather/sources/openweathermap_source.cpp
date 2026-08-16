@@ -1,7 +1,10 @@
 #include "weather/sources/openweathermap_source.h"
+#include "http_client.h"
+#include <nlohmann/json.hpp>
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <ctime>
 
 namespace astro_mount {
 namespace weather {
@@ -64,57 +67,43 @@ std::string OpenWeatherMapSource::buildUrl() const {
 }
 
 bool OpenWeatherMapSource::parseResponse(const std::string& json, WeatherData& data) {
-    // TODO: Implement JSON parsing using nlohmann/json
-    // The OpenWeatherMap One Call API 3.0 response looks like:
-    // {
-    //   "current": {
-    //     "dt": 1680000000,
-    //     "temp": 15.5,
-    //     "feels_like": 14.2,
-    //     "pressure": 1013,
-    //     "humidity": 72,
-    //     "dew_point": 10.3,
-    //     "uvi": 0.5,
-    //     "clouds": 40,
-    //     "visibility": 10000,
-    //     "wind_speed": 3.6,
-    //     "wind_deg": 250,
-    //     "wind_gust": 5.2,
-    //     "rain": { "1h": 0.5 }
-    //   }
-    // }
+    // P8: real JSON parsing (nlohmann/json) — OpenWeatherMap One Call API 3.0.
+    try {
+        auto j = nlohmann::json::parse(json);
+        if (!j.contains("current")) return false;
+        const auto& current = j["current"];
 
-    // Placeholder — actual parsing requires nlohmann/json
-    // auto json_data = nlohmann::json::parse(json);
-    // auto& current = json_data["current"];
-    // data.temperature_c = current["temp"].get<double>();
-    // data.humidity_percent = current["humidity"].get<double>();
-    // data.pressure_hpa = current["pressure"].get<double>();
-    // data.wind_speed_ms = current["wind_speed"].get<double>();
-    // data.wind_gust_ms = current.value("wind_gust", 0.0);
-    // data.wind_direction_deg = current["wind_deg"].get<double>();
-    // data.cloud_cover_percent = current["clouds"].get<double>();
-    // data.dew_point_c = current["dew_point"].get<double>();
-    // if (current.contains("rain") && current["rain"].contains("1h")) {
-    //     data.rain_rate_mmh = current["rain"]["1h"].get<double>();
-    //     data.rain_detected = data.rain_rate_mmh > 0.0;
-    // }
-    // data.timestamp = std::chrono::system_clock::from_time_t(current["dt"].get<time_t>());
+        data.temperature_c = current.value("temp", 0.0);
+        data.wind_chill_c = current.value("feels_like", data.temperature_c);
+        data.pressure_hpa = current.value("pressure", 1013.25);
+        data.humidity_percent = current.value("humidity", 0.0);
+        data.dew_point_c = current.value("dew_point", 0.0);
+        data.wind_speed_ms = current.value("wind_speed", 0.0);
+        data.wind_gust_ms = current.value("wind_gust", 0.0);
+        data.wind_direction_deg = current.value("wind_deg", 0.0);
+        data.cloud_cover_percent = current.value("clouds", 0.0);
 
-    return true;  // Stub — requires nlohmann/json integration
+        if (current.contains("rain") && current["rain"].is_object()) {
+            data.rain_rate_mmh = current["rain"].value("1h", 0.0);
+            data.rain_detected = data.rain_rate_mmh > 0.0;
+        }
+
+        if (current.contains("dt") && current["dt"].is_number()) {
+            data.timestamp = std::chrono::system_clock::from_time_t(
+                current["dt"].get<std::time_t>());
+        }
+
+        // UV index / visibility stored in metadata-like fields (not part of
+        // the normalized struct) — kept for completeness in a comment.
+        return true;
+    } catch (const std::exception&) {
+        return false;
+    }
 }
 
 bool OpenWeatherMapSource::httpGet(const std::string& url, std::string& response) {
-    // TODO: Implement HTTP GET via libcurl
-    // CURL* curl = curl_easy_init();
-    // curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-    // curl_easy_setopt(curl, CURLOPT_TIMEOUT, config_.timeout_seconds);
-    // curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
-    // curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-    // CURLcode res = curl_easy_perform(curl);
-    // curl_easy_cleanup(curl);
-    // return res == CURLE_OK;
-    return true;  // Stub — requires libcurl integration
+    // P8: real HTTP GET via libcurl.
+    return astro_mount::http::get(url, response, config_.timeout_seconds);
 }
 
 } // namespace weather

@@ -109,7 +109,7 @@ const SequencerComponent = (() => {
       document.getElementById('seq-progress-pct').textContent = pct.toFixed(1) + '%';
       const bar = document.getElementById('seq-progress');
       if (bar) bar.style.width = pct + '%';
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-sequencer', 'Sequencer service'));
   }
 
   return { render, start, stop, pause, resume, addTarget, loadPlan, refreshStatus };

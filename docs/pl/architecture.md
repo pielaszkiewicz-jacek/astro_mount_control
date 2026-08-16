@@ -270,7 +270,7 @@ HAL oddziela logikę biznesową od sprzętu. [`HALInterface`](include/hal/hal_in
 
 | Implementacja HAL | Transport / protokół | Źródło |
 |--------------------|----------------------|--------|
-| **CANopen** | CiA 301 / CiA 402 (SocketCAN + CANopenNode) | [`src/hal/canopen_hal/`](src/hal/canopen_hal/) |
+| **CANopen** | CiA 301 / CiA 402 (SocketCAN + CANopenNode) | ⚠️ **Niezaimplementowany** — brak katalogu [`src/hal/canopen_hal/`](src/hal/canopen_hal/); fabryka rzuca wyjątek. Do CAN używaj MF7025v2 |
 | **MF7025v2** | Własny protokół CAN V2.36 (LingKong BLDC) | [`src/hal/mf7025v2_hal/`](src/hal/mf7025v2_hal/) |
 | **Szeregowe** | RS-232/485 Modbus RTU z CRC16 | [`src/hal/serial_hal/`](src/hal/serial_hal/) |
 | **Ethernet** | Modbus TCP z ponawianiem | [`src/hal/ethernet_hal/`](src/hal/ethernet_hal/) |

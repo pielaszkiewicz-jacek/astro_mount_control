@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "node --watch server.js",
+    "test": "NODE_ENV=test node --test test/"
   },
   "dependencies": {
     "express": "^4.21.0",
@@ -14,6 +15,9 @@
     "@grpc/grpc-js": "^1.12.0",
     "@grpc/proto-loader": "^0.7.13",
     "morgan": "^1.10.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
   },
   "engines": {
     "node": ">=18.0.0"

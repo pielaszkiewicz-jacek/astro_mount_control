@@ -4,6 +4,7 @@
 #include <thread>
 #include <signal.h>
 #include <atomic>
+#include <cmath>
 
 #include "config/configuration.h"
 #include "config/mount_config.h"
@@ -13,7 +14,11 @@
 #include "logging/logger.h"
 #include "controllers/mount_controller.h"
 #include "api/grpc_server.h"
+#include "core/astronomical_calculations.h"
+#include "config/config_monitor.h"
 #include "proto/mount_controller.pb.h"
+#include <fstream>
+#include <sstream>
 
 // External service gRPC stubs (weather, power remain external processes).
 // Dome, derotator and focuser are hosted in-process inside the mount controller.
@@ -21,6 +26,13 @@
 #include "dome/include/dome_service_impl.h"
 #include "derotator/include/derotator_service_impl.h"
 #include "focuser/include/focuser_service_impl.h"
+#include "st4guider/include/st4_guider_service_impl.h"
+#include "pec/include/pec_service_impl.h"
+#include "camera/include/camera_service_impl.h"
+#include "pulley/include/pulley_service_impl.h"
+#include "notifications/notification_service.h"
+#include "notifications/notification_engine.h"
+#include "notifications/channels/log_channel.h"
 #include "proto/weather.grpc.pb.h"
 #include "proto/power.grpc.pb.h"
 #include "controllers/weather_client.h"
@@ -38,6 +50,10 @@ std::atomic<bool> running{true};
 std::unique_ptr<astro_dome::DomeServiceImpl> dome_service_impl;
 std::unique_ptr<astro_derotator::DerotatorServiceImpl> derotator_service_impl;
 std::unique_ptr<astro_focuser::FocuserServiceImpl> focuser_service_impl;
+std::unique_ptr<astro_st4guider::St4GuiderServiceImpl> st4_guider_service_impl;
+std::unique_ptr<astro_pec::PecServiceImpl> pec_service_impl;
+std::unique_ptr<astro_camera::CameraServiceImpl> camera_service_impl;
+std::unique_ptr<astro_pulley::PulleyServiceImpl> pulley_service_impl;
 
 // External service gRPC stubs (weather, power remain external processes)
 std::unique_ptr<controllers::WeatherClient> weather_client;
@@ -45,6 +61,14 @@ std::unique_ptr<PowerService::Stub> power_stub;
 
 // Integration config
 config::Configuration::ExternalIntegrationConfig ext_config;
+
+// Config hot-reload monitor (P10) — watches the config file and logs that a
+// restart is required to apply changes.
+std::unique_ptr<config::ConfigMonitor> config_monitor;
+
+// Notification engine + gRPC service (R1) — hosted in-process on 50051.
+std::shared_ptr<astro_mount::notifications::NotificationEngine> notification_engine;
+std::unique_ptr<astro_mount::notifications::NotificationServiceImpl> notification_service_impl;
 
 void signal_handler(int /*signal*/) {
     // Only set the atomic flag — calling non-async-signal-safe functions
@@ -78,6 +102,77 @@ static config::AxisPhysicalParameters convertAxisParams(
     dst.calibration_table = src.calibration_table;
     dst.calibration_temp = src.calibration_temp;
     return dst;
+}
+
+/// Build an astro_mount::NotificationConfig from the HAL notifications config
+/// (N2) so email/webhook/mqtt channels configured in the JSON config file are
+/// created and registered in the NotificationEngine at startup (not only when
+/// the web UI re-configures them).
+static astro_mount::NotificationConfig buildNotificationConfig(
+    const astro_mount::hal::HALConfig& hal_cfg) {
+    astro_mount::NotificationConfig cfg;
+    const auto& n = hal_cfg.notifications;
+
+    cfg.set_min_severity(n.min_severity);
+    cfg.set_notify_on_error(n.notify_on_error);
+    cfg.set_notify_on_weather_alert(n.notify_on_weather_alert);
+    cfg.set_aggregate_messages(n.aggregate_messages);
+    cfg.set_aggregation_interval_minutes(n.aggregation_interval_minutes);
+
+    // Email channel — to_addresses is a comma/semicolon separated string in
+    // the config file; the proto + EmailChannel use a repeated/vector list.
+    if (n.email.enabled) {
+        auto* ch = cfg.add_channels();
+        ch->set_type(astro_mount::CHANNEL_EMAIL);
+        ch->set_enabled(true);
+        auto* email = ch->mutable_email();
+        email->set_smtp_host(n.email.smtp_host);
+        email->set_smtp_port(n.email.smtp_port);
+        email->set_use_tls(n.email.use_tls);
+        email->set_username(n.email.username);
+        email->set_password(n.email.password);
+        email->set_from_address(n.email.from_address);
+        std::string to = n.email.to_addresses;
+        size_t pos = 0;
+        while ((pos = to.find_first_of(",;")) != std::string::npos) {
+            std::string addr = to.substr(0, pos);
+            if (!addr.empty()) email->add_to_addresses(addr);
+            to.erase(0, pos + 1);
+        }
+        if (!to.empty()) email->add_to_addresses(to);
+        email->set_subject_prefix(n.email.subject_prefix);
+    }
+
+    // Webhook channel
+    if (n.webhook.enabled) {
+        auto* ch = cfg.add_channels();
+        ch->set_type(astro_mount::CHANNEL_WEBHOOK);
+        ch->set_enabled(true);
+        auto* webhook = ch->mutable_webhook();
+        webhook->set_url(n.webhook.url);
+        webhook->set_method(n.webhook.method.empty() ? "POST" : n.webhook.method);
+        webhook->set_auth_token(n.webhook.auth_token);
+        webhook->set_timeout_seconds(n.webhook.timeout_seconds);
+        webhook->set_retry_count(n.webhook.retry_count);
+    }
+
+    // MQTT channel
+    if (n.mqtt.enabled) {
+        auto* ch = cfg.add_channels();
+        ch->set_type(astro_mount::CHANNEL_MQTT);
+        ch->set_enabled(true);
+        auto* mqtt = ch->mutable_mqtt();
+        mqtt->set_broker_url(n.mqtt.broker_url);
+        mqtt->set_broker_port(n.mqtt.broker_port);
+        mqtt->set_client_id(n.mqtt.client_id);
+        mqtt->set_topic_prefix(n.mqtt.topic_prefix);
+        mqtt->set_use_tls(n.mqtt.use_tls);
+        mqtt->set_username(n.mqtt.username);
+        mqtt->set_password(n.mqtt.password);
+        mqtt->set_qos(n.mqtt.qos);
+    }
+
+    return cfg;
 }
 
 int main(int argc, char* argv[]) {
@@ -119,7 +214,21 @@ int main(int argc, char* argv[]) {
         
         // Read external service integration config
         ext_config = config.getExternalIntegrationConfig();
-        
+
+        // P10: monitor the config file. The controller does not apply changes
+        // live (no hot-reload of controllers/services), so on a change we log
+        // clearly that a restart is required — edits from the web UI are no
+        // longer silently ignored.
+        config_monitor = std::make_unique<config::ConfigMonitor>(config_file, 2000);
+        config_monitor->setConfigChangeCallback([logger](const config::Configuration&) {
+            logger->warn("Configuration file changed — restart the controller to apply changes.");
+        });
+        if (config_monitor->start()) {
+            logger->info("Config monitor active on {}", config_file);
+        } else {
+            logger->warn("Config monitor failed to start on {}", config_file);
+        }
+
         // Create mount controller
         mount_controller = std::make_unique<controllers::MountController>();
         
@@ -142,6 +251,9 @@ int main(int argc, char* argv[]) {
         mount_cfg.latitude = cfg_mount.latitude;
         mount_cfg.longitude = cfg_mount.longitude;
         mount_cfg.altitude = cfg_mount.altitude;
+        mount_cfg.mount_height = cfg_mount.mount_height;
+        mount_cfg.pier_west = cfg_mount.pier_west;
+        mount_cfg.pier_east = cfg_mount.pier_east;
         mount_cfg.max_slew_rate = cfg_mount.max_slew_rate;
         mount_cfg.max_tracking_rate = cfg_mount.max_tracking_rate;
         mount_cfg.slew_acceleration = cfg_mount.slew_acceleration;
@@ -294,6 +406,64 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // ST4 Guider service (in-process) — Phase 2 (P2)
+        if (ext_config.st4_guider_enabled) {
+            try {
+                st4_guider_service_impl = std::make_unique<astro_st4guider::St4GuiderServiceImpl>(
+                    "config/st4_guider_config.json");
+                logger->info("ST4 guider subsystem hosted in-process (served on unified gRPC port)");
+            } catch (const std::exception& e) {
+                logger->warn("Failed to initialise in-process ST4 guider service: {}", e.what());
+            }
+        }
+
+        // PEC service (in-process) — Phase 2 (P2)
+        if (ext_config.pec_enabled) {
+            try {
+                pec_service_impl = std::make_unique<astro_pec::PecServiceImpl>(
+                    "config/pec_config.json");
+                logger->info("PEC subsystem hosted in-process (served on unified gRPC port)");
+            } catch (const std::exception& e) {
+                logger->warn("Failed to initialise in-process PEC service: {}", e.what());
+            }
+        }
+
+        // Notification service (in-process) — R1. Always hosted so the web UI
+        // can configure channels, send test notifications and view status.
+        notification_engine = std::make_shared<astro_mount::notifications::NotificationEngine>();
+        notification_engine->registerChannel(
+            std::make_unique<astro_mount::notifications::LogChannel>());
+
+        // N2: create and register real channels (email/webhook/mqtt) from the
+        // loaded config file so they are active from startup — previously only
+        // the log channel existed and the other channels were dead code.
+        {
+            auto notif_cfg = buildNotificationConfig(hal_cfg);
+            int enabled_channels = notif_cfg.channels_size();
+            notification_engine->configure(notif_cfg);
+            if (enabled_channels > 0) {
+                logger->info("Notification channels configured from file: {} channel(s) enabled",
+                             enabled_channels);
+            } else {
+                logger->info("No external notification channels enabled in config — log channel active");
+            }
+        }
+
+        notification_engine->start();
+        notification_service_impl = std::make_unique<astro_mount::notifications::NotificationServiceImpl>(
+            notification_engine);
+        logger->info("Notification service hosted in-process (served on unified gRPC port)");
+
+        // Camera service (in-process) — R3. Simulated camera, always hosted so
+        // the web UI exposure/filter/cooler controls have a real backend.
+        camera_service_impl = std::make_unique<astro_camera::CameraServiceImpl>();
+        logger->info("Camera subsystem hosted in-process (simulated, served on unified gRPC port)");
+
+        // Pulley service (in-process) — R3. Simulated linear actuator, always
+        // hosted so the web UI deploy/retract/home controls have a real backend.
+        pulley_service_impl = std::make_unique<astro_pulley::PulleyServiceImpl>();
+        logger->info("Pulley subsystem hosted in-process (simulated, served on unified gRPC port)");
+
         // Create and start gRPC server
         grpc_server_instance = std::make_unique<api::GrpcServer>(
             network_config.grpc_address,
@@ -315,6 +485,21 @@ int main(int argc, char* argv[]) {
         }
         if (focuser_service_impl) {
             grpc_server_instance->registerService(focuser_service_impl.get());
+        }
+        if (st4_guider_service_impl) {
+            grpc_server_instance->registerService(st4_guider_service_impl.get());
+        }
+        if (pec_service_impl) {
+            grpc_server_instance->registerService(pec_service_impl.get());
+        }
+        if (notification_service_impl) {
+            grpc_server_instance->registerService(notification_service_impl.get());
+        }
+        if (camera_service_impl) {
+            grpc_server_instance->registerService(camera_service_impl.get());
+        }
+        if (pulley_service_impl) {
+            grpc_server_instance->registerService(pulley_service_impl.get());
         }
 
         if (!grpc_server_instance->start()) {
@@ -350,8 +535,23 @@ int main(int argc, char* argv[]) {
         // Power service integration
         if (ext_config.power_enabled) {
             try {
-                auto channel = grpc::CreateChannel(
-                    ext_config.power_address, grpc::InsecureChannelCredentials());
+                // P12: use the same TLS policy as the rest of the system —
+                // SSL when network SSL is enabled, insecure otherwise (previously
+                // the power client always used insecure credentials).
+                std::shared_ptr<grpc::ChannelCredentials> power_creds;
+                if (network_config.enable_ssl) {
+                    grpc::SslCredentialsOptions ssl_opts;
+                    if (!network_config.ssl_cert_path.empty()) {
+                        std::ifstream cert_file(network_config.ssl_cert_path);
+                        std::stringstream cert_ss;
+                        cert_ss << cert_file.rdbuf();
+                        ssl_opts.pem_root_certs = cert_ss.str();
+                    }
+                    power_creds = grpc::SslCredentials(ssl_opts);
+                } else {
+                    power_creds = grpc::InsecureChannelCredentials();
+                }
+                auto channel = grpc::CreateChannel(ext_config.power_address, power_creds);
                 power_stub = PowerService::NewStub(channel);
                 logger->info("Power integration enabled — connected to {}", ext_config.power_address);
 
@@ -382,6 +582,12 @@ int main(int argc, char* argv[]) {
         auto last_dome_update = std::chrono::steady_clock::now();
         auto last_derotator_update = std::chrono::steady_clock::now();
         auto last_power_update = std::chrono::steady_clock::now();
+
+        // Local astronomical-calculations instance for the dome/derotator feeds.
+        // setObserverLocation() is required before equatorialToHorizontal() can
+        // convert the tracked target into a real azimuth / hour-angle.
+        core::AstronomicalCalculations astro_calc;
+        astro_calc.setObserverLocation(mount_cfg.latitude, mount_cfg.longitude, mount_cfg.altitude);
         
         while (running) {
             // Refresh live axis positions from CANopen drives before
@@ -411,27 +617,86 @@ int main(int argc, char* argv[]) {
             
             // ── In-process subsystem updates (config-gated) ─────────────────
             
-            // Dome: feed mount azimuth directly (no gRPC round-trip)
+            // Dome: feed the TRUE telescope azimuth (no gRPC round-trip).
+            // FIX (N4): previously the raw axis1 position (hour angle for an
+            // equatorial mount) was fed as "azimuth", so a dome synchronised on
+            // the wrong value. Convert the current pointing to horizontal now.
             if (dome_service_impl && ext_config.dome_enabled) {
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     now - last_dome_update).count();
                 if (elapsed >= ext_config.dome_update_interval_ms) {
-                    dome_service_impl->setMountAzimuth(status.telescope_axis1_position);
+                    double dome_azimuth = status.telescope_axis1_position;  // fallback
+                    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                    if (status.tracking_active &&
+                        std::isfinite(status.tracking_target_ra) &&
+                        std::isfinite(status.tracking_target_dec)) {
+                        // While tracking, the target RA/Dec is the best estimate
+                        // of the current pointing.
+                        auto [alt, az] = astro_calc.equatorialToHorizontal(
+                            status.tracking_target_ra, status.tracking_target_dec, jd, false);
+                        if (std::isfinite(az)) dome_azimuth = az;
+                    } else if (mount_cfg.mount_type == config::MountType::EQUATORIAL) {
+                        // Idle/slewing: derive RA/Dec from telescope axis positions.
+                        // For an equatorial mount axis1 = hour angle (telescope deg),
+                        // axis2 = declination. HA[hours] = axis1/15, RA = LST - HA.
+                        double lst = core::AstronomicalCalculations::calculateLST(jd, mount_cfg.longitude);
+                        double ha_h = status.telescope_axis1_position / 15.0;
+                        double ra_h = lst - ha_h;
+                        ra_h = std::fmod(ra_h, 24.0);
+                        if (ra_h < 0.0) ra_h += 24.0;
+                        auto [alt, az] = astro_calc.equatorialToHorizontal(
+                            ra_h, status.telescope_axis2_position, jd, false);
+                        if (std::isfinite(az)) dome_azimuth = az;
+                    }
+                    dome_service_impl->setMountAzimuth(dome_azimuth);
                     last_dome_update = now;
                 }
             }
             
-            // Derotator: feed mount position directly (no gRPC round-trip)
+            // Derotator: feed mount position directly (no gRPC round-trip).
+            // FIX (N3): ha_hours/dec_deg were hardcoded to 0.0, so the
+            // derotator's field-rotation logic received meaningless data.
+            // Compute the actual hour angle and declination now.
             if (derotator_service_impl && ext_config.derotator_enabled) {
                 auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                     now - last_derotator_update).count();
                 if (elapsed >= ext_config.derotator_update_interval_ms) {
+                    double ha_hours = 0.0, dec_deg = 0.0;
+                    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+                    if (status.tracking_active &&
+                        std::isfinite(status.tracking_target_ra) &&
+                        std::isfinite(status.tracking_target_dec)) {
+                        // While tracking: HA = LST - RA (normalised to [-12, 12]h).
+                        double lst = core::AstronomicalCalculations::calculateLST(jd, mount_cfg.longitude);
+                        ha_hours = lst - status.tracking_target_ra;
+                        ha_hours = std::fmod(ha_hours + 12.0, 24.0);
+                        if (ha_hours < 0.0) ha_hours += 24.0;
+                        ha_hours -= 12.0;
+                        dec_deg = status.tracking_target_dec;
+                    } else if (mount_cfg.mount_type == config::MountType::EQUATORIAL) {
+                        // Idle/slewing: axis1 = hour angle (telescope deg) → hours,
+                        // axis2 = declination (telescope deg).
+                        ha_hours = status.telescope_axis1_position / 15.0;
+                        dec_deg  = status.telescope_axis2_position;
+                    }
+                    // P5: pass the mount type (selects the field-rotation model)
+                    // and the mount orientation quaternion (for CASUAL).
+                    int derotator_mount_type = 0;  // EQUATORIAL
+                    switch (mount_cfg.mount_type) {
+                        case config::MountType::ALT_AZ: derotator_mount_type = 1; break;
+                        case config::MountType::CASUAL: derotator_mount_type = 2; break;
+                        case config::MountType::EQUATORIAL:
+                        case config::MountType::UNKNOWN:
+                        default: derotator_mount_type = 0; break;
+                    }
                     derotator_service_impl->setMountPosition(
                         status.telescope_axis1_position,
                         status.telescope_axis2_position,
                         mount_cfg.latitude,
-                        0.0, // ha_hours — would need LST - RA
-                        0.0  // dec_deg
+                        ha_hours,
+                        dec_deg,
+                        derotator_mount_type,
+                        mount_cfg.mount_orientation.quaternion
                     );
                     last_derotator_update = now;
                 }
@@ -488,7 +753,18 @@ int main(int argc, char* argv[]) {
         dome_service_impl.reset();
         derotator_service_impl.reset();
         focuser_service_impl.reset();
-        
+        st4_guider_service_impl.reset();
+        pec_service_impl.reset();
+        camera_service_impl.reset();
+        pulley_service_impl.reset();
+
+        // Stop the notification engine and release its gRPC service.
+        notification_service_impl.reset();
+        if (notification_engine) { notification_engine->stop(); notification_engine.reset(); }
+
+        // Stop the config monitor (joins its polling thread).
+        if (config_monitor) { config_monitor->stop(); config_monitor.reset(); }
+
         mount_controller->shutdown();
         mount_controller.reset();
         
@@ -513,8 +789,15 @@ int main(int argc, char* argv[]) {
         dome_service_impl.reset();
         derotator_service_impl.reset();
         focuser_service_impl.reset();
+        st4_guider_service_impl.reset();
+        pec_service_impl.reset();
+        camera_service_impl.reset();
+        pulley_service_impl.reset();
         weather_client.reset();
         power_stub.reset();
+        notification_service_impl.reset();
+        if (notification_engine) { notification_engine->stop(); notification_engine.reset(); }
+        if (config_monitor) { config_monitor->stop(); config_monitor.reset(); }
 
         // Shut down spdlog (joins its periodic flush thread) while we are
         // still inside main, avoiding teardown-order issues at process exit.

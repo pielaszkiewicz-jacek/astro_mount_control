@@ -53,24 +53,35 @@ double ExposurePlanner::calculateExposureTime(double sky_brightness_mpsas,
                                                double aperture_mm,
                                                double f_ratio,
                                                double read_noise_e) {
-    // Simple model: calculate exposure to achieve SNR > 100 for a magnitude 18 star
-    // This is a simplified estimation — real calculation depends on many factors
+    // Simple model: calculate exposure to achieve a target SNR for a magnitude 18 star.
+    //
+    // NUMERICAL CORRECTNESS FIX: the previous formula
+    //   exposure = SNR² · N_r² / R_s²
+    // was dimensionally wrong (it produced units of s²). The exact SNR equation
+    //   SNR = R_s·t / sqrt(R_s·t + R_sky·t + N_r²)         (dark current ignored)
+    // rearranges to the quadratic  R_s²·t² − SNR²·(R_s + R_sky)·t − SNR²·N_r² = 0,
+    // whose positive root is used below (includes sky background and read noise).
 
-    double aperture_cm2 = M_PI * std::pow(aperture_mm / 20.0, 2);  // cm² (accounting for obstruction)
+    double aperture_cm2 = M_PI * std::pow(aperture_mm / 20.0, 2);  // cm²
     double sky_flux = std::pow(10, (sky_brightness_mpsas - 21.0) / 2.5);  // Normalized sky brightness
 
-    // Photon rate for a mag 18 star through the aperture [photons/s]
+    // Photon rate for a mag 18 star through the aperture [e-/s]
     double star_photon_rate = 1000.0 * aperture_cm2 / (f_ratio * f_ratio);
 
     // Sky background photon rate [e-/pixel/s]
     double sky_photon_rate = sky_flux * 10.0 * aperture_cm2 / (f_ratio * f_ratio);
 
-    // Required exposure for SNR = 100 (ignoring dark current)
-    // SNR = star_photons / sqrt(star_photons + sky_photons + read_noise²)
-    // For bright targets, sky noise dominates
     double target_snr = 100.0;
-    double exposure = (target_snr * target_snr * read_noise_e * read_noise_e) /
-                      (star_photon_rate * star_photon_rate);
+    if (star_photon_rate <= 0.0 || !std::isfinite(star_photon_rate)) {
+        return 1.0;  // degenerate aperture — cannot integrate signal
+    }
+
+    double snr2 = target_snr * target_snr;
+    // R_s²·t² − snr2·(R_s + R_sky)·t − snr2·N_r² = 0
+    double b = snr2 * (star_photon_rate + sky_photon_rate);
+    double c = snr2 * read_noise_e * read_noise_e;
+    double disc = b * b + 4.0 * star_photon_rate * star_photon_rate * c;
+    double exposure = (b + std::sqrt(disc)) / (2.0 * star_photon_rate * star_photon_rate);
 
     return std::clamp(exposure, 1.0, 600.0);  // Between 1s and 10min
 }

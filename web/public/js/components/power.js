@@ -88,7 +88,7 @@ const PowerComponent = (() => {
           </label>`
         ).join('');
       }
-    }).catch(() => {});
+    }).catch(() => App.showServiceUnavailable('panel-power', 'Power service'));
   }
 
   return { render, refresh };

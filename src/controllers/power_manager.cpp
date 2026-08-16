@@ -27,4 +27,19 @@ void PowerManager::start(int poll_interval_s) {
 void PowerManager::stop() { running_ = false; if (monitor_thread_ && monitor_thread_->joinable()) monitor_thread_->join(); }
 hal::PowerData PowerManager::getStatus() const { return hal_->read(); }
 
+bool PowerManager::setOutputEnabled(int id, bool enabled) {
+    if (!hal_) return false;
+    return hal_->setOutputEnabled(id, enabled);
+}
+
+bool PowerManager::isOutputEnabled(int id) const {
+    if (!hal_) return false;
+    return hal_->isOutputEnabled(id);
+}
+
+int PowerManager::outputCount() const {
+    if (!hal_) return 0;
+    return hal_->outputCount();
+}
+
 }} // namespace

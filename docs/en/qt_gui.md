@@ -1,5 +1,17 @@
 # Qt Native GUI — User Guide
 
+> ⚠️ **STATUS: NOT AVAILABLE (2026-08-11)**
+>
+> The Qt Native GUI source code has been **removed from this repository**
+> (the `gui/` directory now contains only stale build artifacts; the sources
+> were deleted in a later commit). The documentation below is kept for
+> reference only — **it cannot be built from the current tree**.
+>
+> Use the [Web Interface (SPA)](../web/README.md) instead, which provides
+> equivalent control over the mount from a browser. If a native desktop GUI
+> is required, the sources are recoverable from git history
+> (commit `603efbc` “Natywne API QT”).
+
 ## Overview
 
 The Qt Native GUI provides a desktop application for controlling the astronomical mount. It connects to the mount controller via gRPC and provides real-time access to all system functions.

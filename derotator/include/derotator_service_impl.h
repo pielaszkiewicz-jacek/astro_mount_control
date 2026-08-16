@@ -3,6 +3,7 @@
 
 #include <memory>
 #include <atomic>
+#include <array>
 #include <mutex>
 #include <thread>
 #include <grpcpp/grpcpp.h>
@@ -72,9 +73,12 @@ public:
      * @param latitude_deg Site latitude [degrees]
      * @param ha_hours Hour angle [hours]
      * @param dec_deg Declination [degrees]
+     * @param mount_type 0=equatorial, 1=alt_az, 2=casual (P5)
+     * @param orientation_q Mount orientation quaternion [x,y,z,w] (CASUAL)
      */
     void setMountPosition(double axis1_deg, double axis2_deg,
-                          double latitude_deg, double ha_hours, double dec_deg);
+                          double latitude_deg, double ha_hours, double dec_deg,
+                          int mount_type, const std::array<double,4>& orientation_q);
 
 private:
     void populateStatus(DerotatorStatus* status) const;
@@ -87,10 +91,6 @@ private:
     std::string config_path_;
     bool initialized_{false};
 
-    // WatchStatus
-    std::atomic<bool> watching_{false};
-    std::unique_ptr<std::thread> watch_thread_;
-
     // Thread safety
     mutable std::mutex mtx_;
 
@@ -100,6 +100,11 @@ private:
     double mount_latitude_{52.0};
     double ha_hours_{0.0};
     double dec_deg_{0.0};
+
+    // Mount kind for field-rotation model selection (P5):
+    // 0=equatorial, 1=alt_az, 2=casual.
+    int mount_type_{0};
+    std::array<double,4> mount_orientation_{0.0, 0.0, 0.0, 1.0};  // [x,y,z,w]
 };
 
 } // namespace astro_derotator

@@ -461,11 +461,13 @@ public:
         }
         
         // Configure TPointModel with mount and telescope physical parameters.
-        // FIXME: setMountParameters() and mount_height/pier_west/pier_east fields
-        // are not yet implemented in TPointModel and ControllerConfig.
-        // tpoint_model_->setMountParameters(config.mount_height,
-        //                                   config.pier_west,
-        //                                   config.pier_east);
+        // R5: setMountParameters() now implemented — mount_height scales the
+        // refraction correction (barometric altitude factor) and pier_west/east
+        // select the active pier, flipping the AN (axis non-perpendicularity)
+        // Dec term sign.
+        tpoint_model_->setMountParameters(config_.mount_config.mount_height,
+                                          config_.mount_config.pier_west,
+                                          config_.mount_config.pier_east);
         tpoint_model_->setTelescopeParameters(config.focal_length,
                                               config.aperture,
                                               config.tube_length);
@@ -1812,6 +1814,19 @@ public:
                 // the KF's own lagging rate estimates from position changes alone).
                 // Then predict forward using kinematic model (pos += rate * dt),
                 // and finally update with measured position for optimal state estimation.
+                //
+                // DESIGN NOTE (deliberate — do not "fix" blindly):
+                // The measurement fed to update() is the position AFTER the kinematic
+                // advance above (axis1_position_ already includes rate*dt + guider).
+                // The KF's own predict() also advances by rate*dt, so the innovation is
+                // ~0 and the KF acts as a near-passthrough smoother — there is NO
+                // double-counting of the rate in the output (the final position contains
+                // exactly one rate*dt). Feeding a raw pre-advance measurement instead
+                // would make the strong measurement cancel the predict() advance and
+                // stall the mount, unless the KF is retuned to trust the injected rate
+                // (larger R relative to Q). A proper future improvement would read the
+                // raw encoder position each iteration and make the KF the authoritative
+                // integrator with appropriate noise tuning.
                 if (position_kf_ && position_kf_->initialized) {
                     // Use the tracking rates computed above (astronomical for EQUATORIAL,
                     // position-dependent for ALT-AZ/CASUAL) as the KF's velocity estimate.
@@ -5209,10 +5224,10 @@ public:
                 m["altitude"] = config_.mount_config.altitude;
 
             // Physical / rate params — only update if non-zero
-            // FIXME: mount_height/pier_west/pier_east not yet in ControllerConfig
-            // if (config_.mount_height != 0.0) m["mount_height"] = config_.mount_height;
-            // if (config_.pier_west != 0.0) m["pier_west"] = config_.pier_west;
-            // if (config_.pier_east != 0.0) m["pier_east"] = config_.pier_east;
+            // R5: mount_height/pier_west/pier_east now live in config_.mount_config
+            if (config_.mount_config.mount_height != 0.0) m["mount_height"] = config_.mount_config.mount_height;
+            if (config_.mount_config.pier_west != 0.0) m["pier_west"] = config_.mount_config.pier_west;
+            if (config_.mount_config.pier_east != 0.0) m["pier_east"] = config_.mount_config.pier_east;
             if (config_.mount_config.default_temperature != 0.0) m["default_temperature"] = config_.mount_config.default_temperature;
             if (config_.mount_config.default_pressure != 0.0) m["default_pressure"] = config_.mount_config.default_pressure;
             if (config_.mount_config.default_humidity != 0.0) m["default_humidity"] = config_.mount_config.default_humidity;
@@ -6666,17 +6681,15 @@ public:
         // Normalize to [-180°, 180°] for the soft limit check so wrap-around
         // positions are evaluated correctly.
         if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
-            // Normalize telescope HA to [-180°, 180°] using a while loop.
-            // An if/else only handles ±540°; after hours of tracking at
-            // 1.5 °/s servo (≡ 5400 °/h servo), axis1_pos can exceed
-            // thousands of servo degrees.  The while loop is bounded
-            // because each iteration subtracts a constant 360°.
-            while (telescope_axis1 > 180.0) {
-                telescope_axis1 -= 360.0;
-            }
-            while (telescope_axis1 < -180.0) {
-                telescope_axis1 += 360.0;
-            }
+            // Normalize telescope HA to [-180°, 180°].
+            // NUMERICAL STABILITY / PERFORMANCE FIX: replaced the bounded while-loops
+            // with std::fmod, which is O(1) regardless of accumulated servo position.
+            // After days of tracking the servo position can reach millions of degrees,
+            // making the while-loops iterate thousands of times per call. std::fmod
+            // returns a value in (-360, 360); a single correction maps it to [-180, 180].
+            telescope_axis1 = std::fmod(telescope_axis1, 360.0);
+            if (telescope_axis1 < -180.0) telescope_axis1 += 360.0;
+            else if (telescope_axis1 > 180.0) telescope_axis1 -= 360.0;
 
             // Normalize telescope Dec to [-90°, 90°] for post-meridian-flip
             // positions. After a flip, Dec = 180° - original_Dec, which can

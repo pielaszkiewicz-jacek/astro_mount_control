@@ -203,6 +203,43 @@
             "simulation_update_rate": 100.0,
             "velocity_noise_stddev": 0.0001
         },
+        "notifications": {
+            "min_severity": 1,
+            "notify_on_error": true,
+            "notify_on_weather_alert": true,
+            "aggregate_messages": false,
+            "aggregation_interval_minutes": 5,
+            "email": {
+                "enabled": false,
+                "smtp_host": "localhost",
+                "smtp_port": 587,
+                "use_tls": true,
+                "username": "",
+                "password": "",
+                "from_address": "astro-mount@localhost",
+                "to_addresses": "",
+                "subject_prefix": "[AstroMount]"
+            },
+            "webhook": {
+                "enabled": false,
+                "url": "",
+                "method": "POST",
+                "auth_token": "",
+                "timeout_seconds": 10,
+                "retry_count": 3
+            },
+            "mqtt": {
+                "enabled": false,
+                "broker_url": "localhost",
+                "broker_port": 1883,
+                "client_id": "astro-mount",
+                "topic_prefix": "astro-mount/notifications",
+                "use_tls": false,
+                "username": "",
+                "password": "",
+                "qos": 1
+            }
+        },
         "type": "mf7025v2"
     },
     "kalman": {
@@ -429,18 +466,39 @@
         "min_measurements": 10
     },
     "external_services": {
-        "_comment": "Dome, derotator and focuser are hosted IN-PROCESS inside the mount controller and served on the unified gRPC port 50051. Weather and power remain separate processes.",
+        "_comment": "Dome, derotator and focuser are hosted IN-PROCESS inside the mount controller and served on the unified gRPC port 50051. Weather, power and sequencer remain separate processes (defaults 50055/50056/50057). Defaults are aligned with the web proxy (config.js): derotator and focuser enabled, dome/weather/power/sequencer disabled.",
         "dome": {
             "enabled": false,
             "update_interval_ms": 1000
         },
         "derotator": {
-            "enabled": false,
+            "enabled": true,
             "update_interval_ms": 1000
         },
-        "focuser": {
+        "weather": {
             "enabled": false,
+            "address": "127.0.0.1:50055",
+            "poll_interval_ms": 10000
+        },
+        "power": {
+            "enabled": false,
+            "address": "127.0.0.1:50056",
+            "poll_interval_ms": 10000
+        },
+        "sequencer": {
+            "enabled": false,
+            "address": "127.0.0.1:50057",
             "poll_interval_ms": 5000
+        },
+        "focuser": {
+            "enabled": true,
+            "poll_interval_ms": 5000
+        },
+        "st4_guider": {
+            "enabled": true
+        },
+        "pec": {
+            "enabled": true
         }
     }
 }

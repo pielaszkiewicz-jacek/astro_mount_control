@@ -1,6 +1,7 @@
 #include "astro_mount_driver.h"
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <algorithm>
 
 // We declare the driver loader function expected by indiserver
@@ -63,14 +64,65 @@ AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
     , m_isParked(false)
     , m_targetRA(0)
     , m_targetDec(0)
+    , m_grpcHost(grpcHost ? grpcHost : "localhost")
+    , m_grpcPort(grpcPort > 0 ? grpcPort : 50051)
 {
     setVersion(2, 0);
     setTelescopeType(TELESCOPE_TYPE_EQUATORIAL);
 
-    m_grpc = std::make_unique<MountGrpcClient>(grpcHost, grpcPort);
+    m_grpc = std::make_unique<MountGrpcClient>(m_grpcHost, m_grpcPort, m_grpcUseSsl);
     m_mapper = std::make_unique<IndiPropertyMapper>();
 
     m_lastPoll = std::chrono::steady_clock::now();
+}
+
+bool AstroMountINDI::Connect()
+{
+    // Establish the gRPC channel to the mount controller. The base
+    // INDI::Telescope::Connect() only flips the connection state and defines
+    // properties — it knows nothing about the gRPC link, so without this the
+    // "Connect" switch in the INDI client never reached the controller.
+    // Recreate the client from the UI-configured host/port/TLS first, so any
+    // GRPC_CONNECTION / GRPC_TLS changes are applied on every connect.
+    applyConnectionConfig();
+    try
+    {
+        m_grpc->connect();
+    }
+    catch (const std::exception& e)
+    {
+        LOGF_ERROR("Failed to connect to mount controller: %s", e.what());
+        return false;
+    }
+
+    if (!INDI::Telescope::Connect())
+        return false;
+
+    LOGF_INFO("Connected to mount controller (gRPC)");
+    updateConnectionStatus();
+    return true;
+}
+
+bool AstroMountINDI::Disconnect()
+{
+    bool ok = INDI::Telescope::Disconnect();
+    try
+    {
+        m_grpc->disconnect();
+    }
+    catch (const std::exception& e)
+    {
+        LOGF_ERROR("Failed to disconnect gRPC: %s", e.what());
+        ok = false;
+    }
+    LOGF_INFO("Disconnected from mount controller (gRPC)");
+    updateConnectionStatus();
+    return ok;
+}
+
+const char *AstroMountINDI::getDefaultName()
+{
+    return "AstroMount";
 }
 
 bool AstroMountINDI::initProperties()
@@ -126,8 +178,34 @@ bool AstroMountINDI::initProperties()
                        getDeviceName(), "ENVIRONMENT",
                        "Environment", MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
 
-    // Set default park position (will be updated from config)
-    SetParkData(0.0, 90.0); // Default: HA=0, Dec=90 (pointing at NCP)
+    // ============================================
+    // Connection configuration (UI) — gRPC endpoint
+    // ============================================
+    // Seed the UI fields with the actual configured endpoint (from GRPC_HOST /
+    // GRPC_PORT env or constructor defaults).
+    char portBuf[16];
+    snprintf(portBuf, sizeof(portBuf), "%d", m_grpcPort);
+    IUFillText(&ConnectionT[0], "HOST", "gRPC Host", m_grpcHost.c_str());
+    IUFillText(&ConnectionT[1], "PORT", "gRPC Port", portBuf);
+    IUFillTextVector(&ConnectionTP, ConnectionT, 2,
+                     getDeviceName(), "GRPC_CONNECTION",
+                     "Controller Connection", "Connection", IP_RW, 60, IPS_IDLE);
+
+    IUFillSwitch(&ConnectionSslS[0], "ENABLE", "Enabled", ISS_OFF);
+    IUFillSwitch(&ConnectionSslS[1], "DISABLE", "Disabled", ISS_ON);
+    IUFillSwitchVector(&ConnectionSslSP, ConnectionSslS, 2,
+                       getDeviceName(), "GRPC_TLS", "gRPC TLS",
+                       "Connection", IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+
+    IUFillText(&ConnectionStatusT[0], "STATUS", "Status", "Not connected");
+    IUFillTextVector(&ConnectionStatusTP, ConnectionStatusT, 1,
+                     getDeviceName(), "GRPC_CONNECTION_STATUS",
+                     "Connection Status", "Connection", IP_RO, 60, IPS_IDLE);
+
+    // Set default park position (will be updated from config).
+    // Equatorial mount parks in HA/Dec at NCP (HA=0, Dec=90).
+    SetParkDataType(INDI::Telescope::PARK_HA_DEC);
+    SetParkPosition(0.0, 90.0);
 
     return true;
 }
@@ -135,6 +213,13 @@ bool AstroMountINDI::initProperties()
 bool AstroMountINDI::updateProperties()
 {
     INDI::Telescope::updateProperties();
+
+    // Connection configuration (GRPC_CONNECTION / GRPC_TLS / GRPC_CONNECTION_STATUS)
+    // is always defined so the endpoint can be configured before connecting.
+    defineText(&ConnectionTP);
+    defineSwitch(&ConnectionSslSP);
+    defineText(&ConnectionStatusTP);
+    updateConnectionStatus();
 
     if (isConnected())
     {
@@ -186,6 +271,17 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
 {
     if (dev && !strcmp(dev, getDeviceName()))
     {
+        // gRPC TLS toggle (Enabled/Disabled)
+        if (!strcmp(name, ConnectionSslSP.name))
+        {
+            IUUpdateSwitch(&ConnectionSslSP, states, names, n);
+            m_grpcUseSsl = (ConnectionSslS[0].s == ISS_ON);
+            ConnectionSslSP.s = IPS_OK;
+            IDSetSwitch(&ConnectionSslSP, nullptr);
+            LOGF_INFO("gRPC TLS %s", m_grpcUseSsl ? "enabled" : "disabled");
+            return true;
+        }
+
         // Bootstrap Calibration switch
         if (!strcmp(name, BootstrapCalibrationSP.name))
         {
@@ -224,14 +320,14 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
 
                     if (result.success())
                     {
-                        LOG_INFO("Bootstrap calibration successful. "
+                        LOGF_INFO("Bootstrap calibration successful. "
                                  "Error: %.2f arcsec",
                                  result.alignment_error_arcsec());
                         BootstrapCalibrationSP.s = IPS_OK;
                     }
                     else
                     {
-                        LOG_ERROR("Bootstrap calibration failed: %s",
+                        LOGF_ERROR("Bootstrap calibration failed: %s",
                                   result.error_message().c_str());
                         BootstrapCalibrationSP.s = IPS_ALERT;
                     }
@@ -247,7 +343,7 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
                 }
                 catch (const std::exception& e)
                 {
-                    LOG_ERROR("Bootstrap calibration error: %s", e.what());
+                    LOGF_ERROR("Bootstrap calibration error: %s", e.what());
                     BootstrapCalibrationSP.s = IPS_ALERT;
                 }
             }
@@ -263,7 +359,7 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
                 }
                 catch (const std::exception& e)
                 {
-                    LOG_ERROR("Failed to clear measurements: %s", e.what());
+                    LOGF_ERROR("Failed to clear measurements: %s", e.what());
                     BootstrapCalibrationSP.s = IPS_ALERT;
                 }
             }
@@ -282,7 +378,7 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
                 }
                 catch (const std::exception& e)
                 {
-                    LOG_ERROR("Failed to get status: %s", e.what());
+                    LOGF_ERROR("Failed to get status: %s", e.what());
                     BootstrapCalibrationSP.s = IPS_ALERT;
                 }
             }
@@ -298,6 +394,22 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
 bool AstroMountINDI::ISNewText(const char* dev, const char* name,
                                 char* texts[], char* names[], int n)
 {
+    if (dev && !strcmp(dev, getDeviceName()))
+    {
+        // gRPC endpoint configuration (host/port) — editable from the client
+        // even while connected; takes effect on the next Connect.
+        if (!strcmp(name, ConnectionTP.name))
+        {
+            IUUpdateText(&ConnectionTP, texts, names, n);
+            m_grpcHost = ConnectionT[0].text;
+            m_grpcPort = atoi(ConnectionT[1].text);
+            if (m_grpcPort <= 0) m_grpcPort = 50051;
+            IDSetText(&ConnectionTP, nullptr);
+            LOGF_INFO("gRPC connection configured: %s:%d", m_grpcHost.c_str(), m_grpcPort);
+            return true;
+        }
+    }
+
     return INDI::Telescope::ISNewText(dev, name, texts, names, n);
 }
 
@@ -339,7 +451,7 @@ bool AstroMountINDI::Goto(double ra, double dec)
 
 bool AstroMountINDI::GotoRaDec(double ra, double dec)
 {
-    LOG_DEBUG("GotoRaDec(RA=%.6f, Dec=%.6f)", ra, dec);
+    LOGF_DEBUG("GotoRaDec(RA=%.6f, Dec=%.6f)", ra, dec);
 
     try
     {
@@ -354,12 +466,12 @@ bool AstroMountINDI::GotoRaDec(double ra, double dec)
         targetDEC = dec;
         TrackState = SCOPE_SLEWING;
 
-        LOG_INFO("Slewing to RA=%.4f, Dec=%.4f", ra, dec);
+        LOGF_INFO("Slewing to RA=%.4f, Dec=%.4f", ra, dec);
         return true;
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("GotoRaDec failed: %s", e.what());
+        LOGF_ERROR("GotoRaDec failed: %s", e.what());
         TrackState = SCOPE_IDLE;
         return false;
     }
@@ -367,7 +479,7 @@ bool AstroMountINDI::GotoRaDec(double ra, double dec)
 
 bool AstroMountINDI::Sync(double ra, double dec)
 {
-    LOG_DEBUG("Sync(RA=%.6f, Dec=%.6f)", ra, dec);
+    LOGF_DEBUG("Sync(RA=%.6f, Dec=%.6f)", ra, dec);
 
     try
     {
@@ -387,26 +499,26 @@ bool AstroMountINDI::Sync(double ra, double dec)
 
         if (result.success())
         {
-            LOG_INFO("Sync successful. Error: %.2f arcsec",
+            LOGF_INFO("Sync successful. Error: %.2f arcsec",
                      result.alignment_error_arcsec());
             return true;
         }
         else
         {
-            LOG_ERROR("Sync failed: %s", result.error_message().c_str());
+            LOGF_ERROR("Sync failed: %s", result.error_message().c_str());
             return false;
         }
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("Sync exception: %s", e.what());
+        LOGF_ERROR("Sync exception: %s", e.what());
         return false;
     }
 }
 
 bool AstroMountINDI::MoveNS(INDI_DIR_NS dir, TelescopeMotionCommand command)
 {
-    LOG_DEBUG("MoveNS(%s, %s)", dir == DIRECTION_NORTH ? "North" : "South",
+    LOGF_DEBUG("MoveNS(%s, %s)", dir == DIRECTION_NORTH ? "North" : "South",
               command == MOTION_START ? "Start" : "Stop");
 
     try
@@ -432,14 +544,14 @@ bool AstroMountINDI::MoveNS(INDI_DIR_NS dir, TelescopeMotionCommand command)
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("MoveNS failed: %s", e.what());
+        LOGF_ERROR("MoveNS failed: %s", e.what());
         return false;
     }
 }
 
 bool AstroMountINDI::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
 {
-    LOG_DEBUG("MoveWE(%s, %s)", dir == DIRECTION_WEST ? "West" : "East",
+    LOGF_DEBUG("MoveWE(%s, %s)", dir == DIRECTION_WEST ? "West" : "East",
               command == MOTION_START ? "Start" : "Stop");
 
     try
@@ -465,14 +577,14 @@ bool AstroMountINDI::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("MoveWE failed: %s", e.what());
+        LOGF_ERROR("MoveWE failed: %s", e.what());
         return false;
     }
 }
 
 bool AstroMountINDI::Abort()
 {
-    LOG_DEBUG("Abort()");
+    LOGF_DEBUG("Abort()");
 
     try
     {
@@ -482,60 +594,60 @@ bool AstroMountINDI::Abort()
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("Abort failed: %s", e.what());
+        LOGF_ERROR("Abort failed: %s", e.what());
         return false;
     }
 }
 
 bool AstroMountINDI::Park()
 {
-    LOG_DEBUG("Park()");
+    LOGF_DEBUG("Park()");
 
     try
     {
         m_grpc->park();
         m_isParked = true;
         TrackState = SCOPE_PARKED;
-        LOG_INFO("Mount parked");
+        LOGF_INFO("Mount parked");
         return true;
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("Park failed: %s", e.what());
+        LOGF_ERROR("Park failed: %s", e.what());
         return false;
     }
 }
 
 bool AstroMountINDI::Unpark()
 {
-    LOG_DEBUG("Unpark()");
+    LOGF_DEBUG("Unpark()");
 
     try
     {
         m_grpc->unpark();
         m_isParked = false;
         TrackState = SCOPE_IDLE;
-        LOG_INFO("Mount unparked");
+        LOGF_INFO("Mount unparked");
         return true;
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("Unpark failed: %s", e.what());
+        LOGF_ERROR("Unpark failed: %s", e.what());
         return false;
     }
 }
 
 bool AstroMountINDI::SetCurrentPark()
 {
-    LOG_DEBUG("SetCurrentPark()");
+    LOGF_DEBUG("SetCurrentPark()");
 
     try
     {
         auto state = m_grpc->getState();
         auto pos = state.current_position();
 
-        // Save current mount position as park position
-        SetParkData(pos.axis1(), pos.axis2());
+        // Save current mount position as park position (HA/Dec for equatorial)
+        SetParkPosition(pos.axis1(), pos.axis2());
 
         // Also update configuration on controller
         auto config = m_grpc->getConfiguration();
@@ -543,12 +655,12 @@ bool AstroMountINDI::SetCurrentPark()
         config.set_park_position_axis2(pos.axis2());
         m_grpc->updateConfiguration(config);
 
-        LOG_INFO("Current park set: axis1=%.2f, axis2=%.2f", pos.axis1(), pos.axis2());
+        LOGF_INFO("Current park set: axis1=%.2f, axis2=%.2f", pos.axis1(), pos.axis2());
         return true;
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("SetCurrentPark failed: %s", e.what());
+        LOGF_ERROR("SetCurrentPark failed: %s", e.what());
         return false;
     }
 }
@@ -556,13 +668,13 @@ bool AstroMountINDI::SetCurrentPark()
 bool AstroMountINDI::SetDefaultPark()
 {
     // Set default park: HA=0, Dec=90 (NCP)
-    SetParkData(0.0, 90.0);
+    SetParkPosition(0.0, 90.0);
     return true;
 }
 
 bool AstroMountINDI::UpdateLocation(double latitude, double longitude, double elevation)
 {
-    LOG_DEBUG("UpdateLocation(lat=%.4f, lon=%.4f, elev=%.1f)",
+    LOGF_DEBUG("UpdateLocation(lat=%.4f, lon=%.4f, elev=%.1f)",
               latitude, longitude, elevation);
 
     try
@@ -578,7 +690,7 @@ bool AstroMountINDI::UpdateLocation(double latitude, double longitude, double el
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("UpdateLocation failed: %s", e.what());
+        LOGF_ERROR("UpdateLocation failed: %s", e.what());
         return false;
     }
 }
@@ -617,7 +729,7 @@ bool AstroMountINDI::pollController()
     }
     catch (const std::exception& e)
     {
-        LOG_ERROR("Controller poll failed: %s", e.what());
+        LOGF_ERROR("Controller poll failed: %s", e.what());
 
         // If connection is lost, try to reconnect
         if (!m_grpc->isConnected())
@@ -625,11 +737,11 @@ bool AstroMountINDI::pollController()
             try
             {
                 m_grpc->reconnect();
-                LOG_INFO("Reconnected to controller");
+                LOGF_INFO("Reconnected to controller");
             }
             catch (const std::exception& re)
             {
-                LOG_ERROR("Reconnection failed: %s", re.what());
+                LOGF_ERROR("Reconnection failed: %s", re.what());
             }
         }
 
@@ -659,10 +771,12 @@ void AstroMountINDI::updateIndiProperties()
     setEquatorialCoords(raHours, decDegrees);
 
     // Update track state
-    TrackState = m_mapper->toIndiTrackState(state.status());
+    TrackState = static_cast<INDI::Telescope::TelescopeStatus>(
+        m_mapper->toIndiTrackState(state.status()));
 
     // Update pier side
-    setPierSide(m_mapper->toIndiPierSide(state.pier_side()));
+    setPierSide(static_cast<INDI::Telescope::TelescopePierSide>(
+        m_mapper->toIndiPierSide(state.pier_side())));
 
     // Update time to meridian
     if (state.time_to_meridian() != 0)
@@ -699,9 +813,8 @@ void AstroMountINDI::updateIndiProperties()
 
 void AstroMountINDI::setEquatorialCoords(double raHours, double decDegrees)
 {
-    // Update EOD coordinates (JNow) — INDI standard
-    NewRa(raHours);
-    NewDec(decDegrees);
+    // Update EOD coordinates (JNow) — INDI 2.x standard is a single NewRaDec.
+    NewRaDec(raHours, decDegrees);
 
     // Update J2000 coordinates
     EquatorialCoordsJ2000N[0].value = raHours;
@@ -712,4 +825,21 @@ void AstroMountINDI::setEquatorialCoords(double raHours, double decDegrees)
 bool AstroMountINDI::performGoto(double ra, double dec)
 {
     return GotoRaDec(ra, dec);
+}
+
+void AstroMountINDI::applyConnectionConfig()
+{
+    // Recreate the gRPC client from the UI-configured endpoint. Used at
+    // Connect() so GRPC_CONNECTION / GRPC_TLS changes take effect.
+    m_grpc = std::make_unique<MountGrpcClient>(m_grpcHost, m_grpcPort, m_grpcUseSsl);
+}
+
+void AstroMountINDI::updateConnectionStatus()
+{
+    // Reflect the current endpoint + link state in the read-only status text.
+    std::string status = isConnected()
+        ? "Connected to " + m_grpcHost + ":" + std::to_string(m_grpcPort)
+        : "Not connected (" + m_grpcHost + ":" + std::to_string(m_grpcPort) + ")";
+    IUSaveText(&ConnectionStatusT[0], status.c_str());
+    IDSetText(&ConnectionStatusTP, nullptr);
 }
