@@ -74,6 +74,18 @@ public:
                            std::vector<uint8_t>& data) = 0;   // 0xC0
     virtual bool writeParam(uint8_t node_id, uint8_t param_id,
                             const std::vector<uint8_t>& data) = 0; // 0xC1
+
+    // Combined PID write to RAM (0x31).  One frame overwrites all three loops
+    // (current, speed, position) at once:
+    //   DATA[1] = 0x00 (reserved)
+    //   DATA[2..3] = current Kp/Ki
+    //   DATA[4..5] = speed Kp/Ki
+    //   DATA[6..7] = position Kp/Ki
+    // All values are single bytes (0..255).  Kd is not part of this command.
+    virtual bool writePidRam(uint8_t node_id,
+                             uint8_t cur_kp, uint8_t cur_ki,
+                             uint8_t spd_kp, uint8_t spd_ki,
+                             uint8_t pos_kp, uint8_t pos_ki) = 0; // 0x31
 };
 
 // Factory function — creates the Linux SocketCAN implementation.

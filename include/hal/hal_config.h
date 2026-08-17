@@ -26,7 +26,7 @@ enum class HALType {
  * Each row maps a motor-shaft rotational speed [RPM] to the PID gains that
  * should be applied to the drive's current, speed and position loops at that
  * speed.  Gains are written to the drive RAM only (volatile, lost on power
- * cycle) via the proprietary control-parameter write command (0xC1).
+ * cycle) via the proprietary combined PID write command (0x31).
  *
  * The schedule is applied in real time while the mount moves: whenever the
  * commanded/actual speed crosses into a new RPM band, the corresponding PID
@@ -83,7 +83,7 @@ struct HALConfig {
         // ── Speed-dependent PID gain scheduling ─────────────────────────
         // Enables live PID retuning based on motor-shaft speed (RPM).
         // When enabled, the drive's current/speed/position loop gains are
-        // rewritten in RAM (via control-parameter write 0xC1, volatile) each
+        // rewritten in RAM (via combined PID write 0x31, volatile) each
         // time the motor speed crosses into a new band defined by the
         // schedule.  Gains already matching the current band are NOT resent.
         bool speed_pid_adaptation_enabled{false};   // Master switch
@@ -92,7 +92,7 @@ struct HALConfig {
 
         // ── Which PID loop gains are actually sent to the drive ─────────
         // Independent per-loop switches for the speed-based PID schedule
-        // (0xC1 RAM writes).  Speed-loop gains are always sent by default,
+        // (0x31 combined RAM write).  Speed-loop gains are always sent by default,
         // current-loop gains are NOT sent by default (avoids altering the
         // factory-tuned current loop unless explicitly requested), and
         // position-loop gains are sent by default.

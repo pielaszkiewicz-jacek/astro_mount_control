@@ -173,6 +173,26 @@ const MountStatusComponent = (() => {
   }
 
   /**
+   * Compute mean and sample standard deviation of a velocity series.
+   * @param {Array<{time: number, value: number}>} data
+   * @returns {{mean: number, std: number}}
+   */
+  function computeStats(data) {
+    if (!data || data.length === 0) return { mean: 0, std: 0 };
+    const n = data.length;
+    let sum = 0;
+    for (const pt of data) sum += pt.value;
+    const mean = sum / n;
+    if (n < 2) return { mean, std: 0 };
+    let varSum = 0;
+    for (const pt of data) {
+      const d = pt.value - mean;
+      varSum += d * d;
+    }
+    return { mean, std: Math.sqrt(varSum / (n - 1)) };
+  }
+
+  /**
    * Draw the velocity time-series chart on the canvas.
    * @param {HTMLCanvasElement} canvas
    */
@@ -368,6 +388,35 @@ const MountStatusComponent = (() => {
       }
       ctx.stroke();
     }
+
+    // ── Standard deviation lines (one band per axis) ──
+    const drawStdBand = (stats, color, label) => {
+      if (!stats || stats.std <= 0) return;
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.font = '9px monospace';
+      ctx.textAlign = 'right';
+      ctx.setLineDash([4, 4]);
+      for (const offset of [-stats.std, stats.std]) {
+        const v = stats.mean + offset;
+        if (v < yMin || v > yMax) continue;
+        const y = yPixel(v);
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(margin.left, y);
+        ctx.lineTo(margin.left + plotW, y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      const labelV = Math.min(Math.max(stats.mean + stats.std, yMin), yMax);
+      ctx.fillStyle = color;
+      ctx.fillText(`${label} ±${stats.std.toFixed(3)} °/s`,
+                   margin.left + plotW - 4, yPixel(labelV) - 3);
+      ctx.restore();
+    };
+
+    drawStdBand(computeStats(smoothAxis1), '#4fc3f7', 'σ1');
+    drawStdBand(computeStats(smoothAxis2), '#81c784', 'σ2');
 
     // ── Axis border ──
     ctx.strokeStyle = 'rgba(255,255,255,0.15)';

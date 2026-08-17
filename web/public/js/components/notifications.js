@@ -19,30 +19,59 @@ const NotificationsComponent = (() => {
           Loading status…
         </div>
 
-        <div class="notification-config">
-          <h3>Email Channel</h3>
-          <label>SMTP Host: <input type="text" id="notif-smtp-host" value="localhost"></label>
-          <label>Port: <input type="number" id="notif-smtp-port" value="587"></label>
-          <label>Use TLS: <input type="checkbox" id="notif-smtp-tls" checked></label>
-          <label>From: <input type="email" id="notif-from" value="astro-mount@localhost"></label>
-          <label>To: <input type="text" id="notif-to" placeholder="user@example.com"></label>
+        <div class="control-form">
+          <h3 style="margin:16px 0 8px; font-size:0.9rem; color:var(--color-text-secondary);">Email Channel</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="notif-smtp-host" class="form-label">SMTP Host</label>
+              <input type="text" id="notif-smtp-host" class="form-input" value="localhost">
+            </div>
+            <div class="form-group">
+              <label for="notif-smtp-port" class="form-label">Port</label>
+              <input type="number" id="notif-smtp-port" class="form-input" value="587">
+            </div>
+            <div class="form-group">
+              <label for="notif-smtp-tls" class="form-label"><input type="checkbox" id="notif-smtp-tls" checked style="margin-right:4px;">Use TLS</label>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="notif-from" class="form-label">From</label>
+              <input type="email" id="notif-from" class="form-input" value="astro-mount@localhost">
+            </div>
+            <div class="form-group">
+              <label for="notif-to" class="form-label">To</label>
+              <input type="text" id="notif-to" class="form-input" placeholder="user@example.com">
+            </div>
+          </div>
 
-          <h3>Webhook Channel</h3>
-          <label>URL: <input type="url" id="notif-webhook-url"></label>
-          <label>Auth Token: <input type="password" id="notif-webhook-token"></label>
+          <h3 style="margin:16px 0 8px; font-size:0.9rem; color:var(--color-text-secondary);">Webhook Channel</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="notif-webhook-url" class="form-label">URL</label>
+              <input type="url" id="notif-webhook-url" class="form-input">
+            </div>
+            <div class="form-group">
+              <label for="notif-webhook-token" class="form-label">Auth Token</label>
+              <input type="password" id="notif-webhook-token" class="form-input">
+            </div>
+          </div>
 
-          <h3>Event Filters</h3>
-          <label>Min Severity:
-            <select id="notif-severity">
-              <option value="0">DEBUG</option>
-              <option value="1" selected>INFO</option>
-              <option value="2">WARNING</option>
-              <option value="3">ERROR</option>
-              <option value="4">CRITICAL</option>
-            </select>
-          </label>
+          <h3 style="margin:16px 0 8px; font-size:0.9rem; color:var(--color-text-secondary);">Event Filters</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="notif-severity" class="form-label">Min Severity</label>
+              <select id="notif-severity" class="form-input form-select">
+                <option value="0">DEBUG</option>
+                <option value="1" selected>INFO</option>
+                <option value="2">WARNING</option>
+                <option value="3">ERROR</option>
+                <option value="4">CRITICAL</option>
+              </select>
+            </div>
+          </div>
 
-          <div class="control-form" style="margin-top:12px;">
+          <div class="action-grid" style="margin-top:12px;">
             <button class="btn btn-primary" onclick="NotificationsComponent.saveConfig()">💾 Save Configuration</button>
             <button class="btn btn-secondary" onclick="NotificationsComponent.sendTest()">✉️ Send Test Notification</button>
             <button class="btn btn-secondary" onclick="NotificationsComponent.refreshStatus()">⟳ Refresh</button>

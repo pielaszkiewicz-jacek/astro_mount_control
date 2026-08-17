@@ -107,8 +107,16 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         response->set_status(convertStatus(static_cast<int>(status.state)));
         response->set_encoders_enabled(status.encoders_active);
         response->set_guider_active(status.guider_active);
-        response->set_tracking_rate_ra(status.axis1_rate * 3600.0);   // deg/s → arcsec/s
-        response->set_tracking_rate_dec(status.axis2_rate * 3600.0);  // deg/s → arcsec/s
+        // axis1_rate_/axis2_rate_ are SERVO deg/s (already multiplied by the gear
+        // ratio).  Divide by gear_ratio to obtain the true telescope rate before
+        // converting deg/s → arcsec/s.
+        auto config = controller_.getConfiguration();
+        const double ha_gear = config.mount_config.ha_axis_params.gear_ratio > 0.0
+            ? config.mount_config.ha_axis_params.gear_ratio : 360.0;
+        const double dec_gear = config.mount_config.dec_axis_params.gear_ratio > 0.0
+            ? config.mount_config.dec_axis_params.gear_ratio : 360.0;
+        response->set_tracking_rate_ra(status.axis1_rate / ha_gear * 3600.0);   // servo deg/s → telescope arcsec/s
+        response->set_tracking_rate_dec(status.axis2_rate / dec_gear * 3600.0);  // servo deg/s → telescope arcsec/s
         response->set_actual_rate_axis1(status.actual_axis1_rate);       // deg/s (CANopen)
         response->set_actual_rate_axis2(status.actual_axis2_rate);       // deg/s (CANopen)
         
@@ -188,8 +196,16 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             // matching GetState(). Previously tracking_error_ra/dec (arcsec) were
             // written into the tracking-rate fields, so stream consumers saw the
             // tracking error as the tracking rate.
-            state.set_tracking_rate_ra(status.axis1_rate * 3600.0);
-            state.set_tracking_rate_dec(status.axis2_rate * 3600.0);
+            // axis1_rate_/axis2_rate_ are SERVO deg/s (already multiplied by the gear
+            // ratio).  Divide by gear_ratio to obtain the true telescope rate before
+            // converting deg/s → arcsec/s.
+            auto config = controller_.getConfiguration();
+            const double ha_gear = config.mount_config.ha_axis_params.gear_ratio > 0.0
+                ? config.mount_config.ha_axis_params.gear_ratio : 360.0;
+            const double dec_gear = config.mount_config.dec_axis_params.gear_ratio > 0.0
+                ? config.mount_config.dec_axis_params.gear_ratio : 360.0;
+            state.set_tracking_rate_ra(status.axis1_rate / ha_gear * 3600.0);
+            state.set_tracking_rate_dec(status.axis2_rate / dec_gear * 3600.0);
             
             // current_position = servo/motor degrees (raw, before gear_ratio division)
             auto* pos = state.mutable_current_position();

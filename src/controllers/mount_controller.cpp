@@ -655,8 +655,12 @@ public:
                 if (config_.safety_config.soft_limits_enabled) {
                     const double ha_gear_lim = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                     const double dec_gear_lim = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
-                    double telescope_axis1 = axis1_target_ / ha_gear_lim;
-                    double telescope_axis2 = axis2_target_ / dec_gear_lim;
+                    // axisN_target_ is stored in RAW servo degrees (home offset already
+                    // subtracted: target = telescope*gear - home_offset).  Add the home
+                    // offset back before dividing by gear_ratio so the soft-limit check
+                    // compares against the actual telescope coordinate.
+                    double telescope_axis1 = (axis1_target_ + home_offset_axis1_) / ha_gear_lim;
+                    double telescope_axis2 = (axis2_target_ + home_offset_axis2_) / dec_gear_lim;
                     bool limit_violation = false;
                     if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
                         config_.mount_config.mount_type != config::MountType::CASUAL) {
@@ -1059,8 +1063,12 @@ public:
                 if (config_.safety_config.soft_limits_enabled) {
                     const double ha_gear_lim2 = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                     const double dec_gear_lim2 = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
+                    // axis1_target_ is telescope-referenced (computed relative to the
+                    // current position), so no home offset correction is needed for it.
+                    // axis2_target_ is in RAW servo degrees (altitude*gear - home_offset),
+                    // so add the home offset back before the limit comparison.
                     double telescope_axis1 = axis1_target_ / ha_gear_lim2;
-                    double telescope_axis2 = axis2_target_ / dec_gear_lim2;
+                    double telescope_axis2 = (axis2_target_ + home_offset_axis2_) / dec_gear_lim2;
                     bool limit_violation = false;
                     if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
                         config_.mount_config.mount_type != config::MountType::CASUAL) {
@@ -1441,8 +1449,12 @@ public:
             if (config_.safety_config.soft_limits_enabled) {
                 const double ha_gear_lim3 = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                 const double dec_gear_lim3 = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
-                double telescope_axis1 = axis1_target_ / ha_gear_lim3;
-                double telescope_axis2 = axis2_target_ / dec_gear_lim3;
+                // axisN_target_ is stored in RAW servo degrees (home offset already
+                // subtracted: target = telescope*gear - home_offset).  Add the home
+                // offset back before dividing by gear_ratio so the soft-limit check
+                // compares against the actual telescope coordinate.
+                double telescope_axis1 = (axis1_target_ + home_offset_axis1_) / ha_gear_lim3;
+                double telescope_axis2 = (axis2_target_ + home_offset_axis2_) / dec_gear_lim3;
                 bool limit_violation = (telescope_axis1 < config_.safety_config.soft_limit_axis1_min ||
                                         telescope_axis1 > config_.safety_config.soft_limit_axis1_max);
                 if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
@@ -1530,6 +1542,13 @@ public:
                 // equatorial_tracking_velocity_mode.  The tracking loop will
                 // periodically send updated setVelocity() calls (rate changes
                 // are detected via last_sent_rate_* thresholds).
+                // Reset drift-correction state for the new tracking session.
+                drift_correction_initialized_ = false;
+                drift_expected_axis1_ = 0.0;
+                drift_expected_axis2_ = 0.0;
+                drift_trim_axis1_ = 0.0;
+                drift_trim_axis2_ = 0.0;
+                last_drift_correction_time_ = std::chrono::steady_clock::time_point{};
                 bool velocity_set_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
                     bool ok1 = hal_axis1_motor_->setVelocity(axis1_tracking_rate, config_.mount_config.tracking_acceleration);
@@ -2843,8 +2862,13 @@ public:
                             
                             const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                             const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
-                            double new_axis1_target = ha_hours * 15.0 * ha_gear;
-                            double new_axis2_target = snap_target_dec * dec_gear;
+                            // Targets are RAW servo degrees, matching startTracking():
+                            // raw = telescope_deg * gear - home_offset.  Without the
+                            // home_offset subtraction the drive is commanded to a
+                            // wrong absolute position (e.g. Dec offset by the park
+                            // offset), causing the Dec axis to keep rotating.
+                            double new_axis1_target = ha_hours * 15.0 * ha_gear - home_offset_axis1_;
+                            double new_axis2_target = snap_target_dec * dec_gear - home_offset_axis2_;
                             
                             // Use profile velocity 1.5× the sidereal servo rate so the
                             // drive smoothly catches up to the lead target without
@@ -2919,20 +2943,87 @@ public:
                         constexpr double EQUAT_VEL_THRESHOLD = 1e-6;
                         double eq_vel_rate_1 = snap_rate_1;
                         double eq_vel_rate_2 = snap_rate_2;
+
+                        // ── Drift correction (velocity feed-forward + slow trim) ──
+                        // Pure velocity steering is an open position loop: any
+                        // velocity error (drive PID inaccuracy, backlash, slip)
+                        // integrates into unbounded position drift.  Integrate a
+                        // reference trajectory from the commanded velocity and
+                        // periodically measure the real drive position, then trim
+                        // the velocity command:
+                        //     v_cmd = v_nominal + Kp * (expected - actual)
+                        // The correction is low-bandwidth (once per second) so it
+                        // does not fight the drive's internal velocity loop.
+                        if (!drift_correction_initialized_) {
+                            double init1 = 0.0, init2 = 0.0;
+                            if (readActualAxisPositions(init1, init2)) {
+                                drift_expected_axis1_ = init1;
+                                drift_expected_axis2_ = init2;
+                                drift_correction_initialized_ = true;
+                                last_drift_correction_time_ = now;
+                            }
+                        } else {
+                            // Advance the reference trajectory by the velocity
+                            // actually commanded to the drive (nominal + trim).
+                            drift_expected_axis1_ += (eq_vel_rate_1 + drift_trim_axis1_) * dt;
+                            drift_expected_axis2_ += (eq_vel_rate_2 + drift_trim_axis2_) * dt;
+                        }
+
+                        if (drift_correction_initialized_) {
+                            constexpr double DRIFT_CORRECTION_INTERVAL_S = 1.0;
+                            constexpr double DRIFT_KP = 0.5;              // 1/s
+                            constexpr double DRIFT_DEADBAND_DEG = 0.005;  // servo deg
+                            constexpr double DRIFT_MAX_TRIM_DPS = 1.0;    // servo deg/s
+                            double since_corr = std::chrono::duration<double>(now - last_drift_correction_time_).count();
+                            if (since_corr >= DRIFT_CORRECTION_INTERVAL_S) {
+                                double act1 = 0.0, act2 = 0.0;
+                                if (readActualAxisPositions(act1, act2)) {
+                                    last_drift_correction_time_ = now;
+                                    double err1 = drift_expected_axis1_ - act1;
+                                    double err2 = drift_expected_axis2_ - act2;
+
+                                    drift_trim_axis1_ = (std::abs(err1) > DRIFT_DEADBAND_DEG)
+                                        ? DRIFT_KP * err1 : 0.0;
+                                    drift_trim_axis2_ = (std::abs(err2) > DRIFT_DEADBAND_DEG)
+                                        ? DRIFT_KP * err2 : 0.0;
+
+                                    // Clamp the trim so a single bad position read
+                                    // cannot command an excessive velocity jump.
+                                    if (drift_trim_axis1_ > DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis1_ = DRIFT_MAX_TRIM_DPS;
+                                    else if (drift_trim_axis1_ < -DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis1_ = -DRIFT_MAX_TRIM_DPS;
+                                    if (drift_trim_axis2_ > DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis2_ = DRIFT_MAX_TRIM_DPS;
+                                    else if (drift_trim_axis2_ < -DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis2_ = -DRIFT_MAX_TRIM_DPS;
+
+                                    static size_t drift_diag_counter = 0;
+                                    if (++drift_diag_counter % 10 == 0) {
+                                        MOUNT_LOG_INFO("Drift correction: err1={:.4f}° err2={:.4f}° "
+                                                       "trim1={:.4f}°/s trim2={:.4f}°/s",
+                                                       err1, err2, drift_trim_axis1_, drift_trim_axis2_);
+                                    }
+                                }
+                            }
+                        }
+
+                        double cmd_rate_1 = eq_vel_rate_1 + drift_trim_axis1_;
+                        double cmd_rate_2 = eq_vel_rate_2 + drift_trim_axis2_;
                         
                         // Also send on first iteration (last_sent_rate_* are NaN initially)
                         bool rate_changed = !std::isfinite(last_sent_rate_1_) ||
                                            !std::isfinite(last_sent_rate_2_) ||
-                                           (std::abs(eq_vel_rate_1 - last_sent_rate_1_) > EQUAT_VEL_THRESHOLD) ||
-                                           (std::abs(eq_vel_rate_2 - last_sent_rate_2_) > EQUAT_VEL_THRESHOLD);
+                                           (std::abs(cmd_rate_1 - last_sent_rate_1_) > EQUAT_VEL_THRESHOLD) ||
+                                           (std::abs(cmd_rate_2 - last_sent_rate_2_) > EQUAT_VEL_THRESHOLD);
                         if (rate_changed) {
                             try {
                                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                    hal_axis1_motor_->setVelocity(eq_vel_rate_1, config_.mount_config.tracking_acceleration);
-                                    hal_axis2_motor_->setVelocity(eq_vel_rate_2, config_.mount_config.tracking_acceleration);
+                                    hal_axis1_motor_->setVelocity(cmd_rate_1, config_.mount_config.tracking_acceleration);
+                                    hal_axis2_motor_->setVelocity(cmd_rate_2, config_.mount_config.tracking_acceleration);
                                 }
-                                last_sent_rate_1_ = eq_vel_rate_1;
-                                last_sent_rate_2_ = eq_vel_rate_2;
+                                last_sent_rate_1_ = cmd_rate_1;
+                                last_sent_rate_2_ = cmd_rate_2;
                             } catch (const std::exception& e) {
                                 MOUNT_LOG_WARN("Velocity update error during tracking: {}", e.what());
                             }
@@ -3112,11 +3203,13 @@ public:
                 
                 // Park targets – move to configurable park position.
                 // Park positions are configured in telescope/mount degrees;
-                // convert to servo degrees by multiplying by gear_ratio.
+                // convert to RAW servo degrees: raw = telescope*gear - home_offset.
+                // Without the home_offset subtraction the drive parks at a wrong
+                // absolute position (offset by the homing reference).
                 const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
                 const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
-                axis1_target_ = config_.safety_config.park_position_axis1 * ha_gear;
-                axis2_target_ = config_.safety_config.park_position_axis2 * dec_gear;
+                axis1_target_ = config_.safety_config.park_position_axis1 * ha_gear - home_offset_axis1_;
+                axis2_target_ = config_.safety_config.park_position_axis2 * dec_gear - home_offset_axis2_;
                 tracking_active_ = false;
             }
             
@@ -3136,8 +3229,8 @@ public:
                 hal_axis1_motor_->enable();
                 hal_axis2_motor_->enable();
                 
-                motion_started = hal_axis1_motor_->setPosition(config_.safety_config.park_position_axis1, PARK_VELOCITY, PARK_ACCELERATION);
-                motion_started = hal_axis2_motor_->setPosition(config_.safety_config.park_position_axis2, PARK_VELOCITY, PARK_ACCELERATION) && motion_started;
+                motion_started = hal_axis1_motor_->setPosition(axis1_target_, PARK_VELOCITY, PARK_ACCELERATION);
+                motion_started = hal_axis2_motor_->setPosition(axis2_target_, PARK_VELOCITY, PARK_ACCELERATION) && motion_started;
             } else {
                 motion_started = true;
             }
@@ -6769,6 +6862,41 @@ public:
     }
     
 private:
+    // Reads the actual home-offset-adjusted servo positions of both axes from
+    // the HAL motors.  Must be called OUTSIDE state_mutex_ — the underlying
+    // CANopen reads can block for up to ~1 s per axis on an unresponsive drive.
+    // Returns false (with outputs set to 0.0) when a read is unavailable.
+    bool readActualAxisPositions(double& out1, double& out2) {
+        out1 = 0.0;
+        out2 = 0.0;
+        if (!hal_axis1_motor_ || !hal_axis2_motor_) return false;
+        if (!hal_axis1_motor_->isEnabled() || !hal_axis2_motor_->isEnabled()) return false;
+
+        // Perform the blocking CANopen reads OUTSIDE state_mutex_.
+        double p1 = 0.0, p2 = 0.0;
+        try {
+            p1 = hal_axis1_motor_->getActualPosition();
+            p2 = hal_axis2_motor_->getActualPosition();
+        } catch (const std::exception& e) {
+            MOUNT_LOG_DEBUG("readActualAxisPositions: {}", e.what());
+            return false;
+        }
+        if (!std::isfinite(p1) || !std::isfinite(p2)) return false;
+
+        // home_offset_* is written by Home() under state_mutex_; snapshot it
+        // under the same lock to avoid a data race, then release before the
+        // caller continues with other I/O work.
+        double ho1 = 0.0, ho2 = 0.0;
+        {
+            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+            ho1 = home_offset_axis1_;
+            ho2 = home_offset_axis2_;
+        }
+        out1 = p1 + ho1;
+        out2 = p2 + ho2;
+        return true;
+    }
+
     struct Measurement {
         double observed_ra;
         double observed_dec;
@@ -6836,6 +6964,22 @@ private:
     // Initialized to NaN so the first iteration always triggers a write.
     double last_sent_rate_1_{std::numeric_limits<double>::quiet_NaN()};
     double last_sent_rate_2_{std::numeric_limits<double>::quiet_NaN()};
+    
+    // ── Velocity-mode drift correction ─────────────────────────────────
+    // In equatorial velocity mode the drive is steered purely by velocity
+    // commands (an open position loop), so any velocity error integrates
+    // into unbounded position drift.  These members implement a slow,
+    // low-bandwidth trim on top of the velocity feed-forward:
+    //   v_cmd = v_nominal + drift_trim
+    // drift_expected_* is the reference trajectory (integrated from the
+    // commanded velocity); drift_trim_* is recomputed every correction
+    // interval from the position error measured against the real drive.
+    bool drift_correction_initialized_{false};
+    std::chrono::steady_clock::time_point last_drift_correction_time_{};
+    double drift_expected_axis1_{0.0};   // [servo deg] integrated reference
+    double drift_expected_axis2_{0.0};   // [servo deg] integrated reference
+    double drift_trim_axis1_{0.0};       // [servo deg/s] persistent velocity trim
+    double drift_trim_axis2_{0.0};       // [servo deg/s] persistent velocity trim
     
     // Position-mode tracking: iteration counter for periodic position-target
     // updates.  Every N iterations the tracking loop recomputes the celestial
@@ -7116,11 +7260,13 @@ private:
                 if (state_ == MountStatus::State::IDLE && hal_axis1_motor_ && hal_axis2_motor_) {
                     double ha_g = config_.mount_config.ha_axis_params.gear_ratio;
                     double dec_g = config_.mount_config.dec_axis_params.gear_ratio;
+                    // Convert telescope degrees → RAW servo degrees (subtract
+                    // home offset so the drive reaches the correct reference).
                     hal_axis1_motor_->setPosition(
-                        config_.safety_config.park_position_axis1 * ha_g,
+                        config_.safety_config.park_position_axis1 * ha_g - home_offset_axis1_,
                         gamepad_max_velocity_, config_.mount_config.slew_acceleration);
                     hal_axis2_motor_->setPosition(
-                        config_.safety_config.park_position_axis2 * dec_g,
+                        config_.safety_config.park_position_axis2 * dec_g - home_offset_axis2_,
                         gamepad_max_velocity_, config_.mount_config.slew_acceleration);
                 }
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));

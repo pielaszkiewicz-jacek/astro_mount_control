@@ -23,7 +23,10 @@ const DebugTestComponent = (() => {
   // ─── State ────────────────────────────────────────────────────────────
 
   /** Current mount type: 0=EQUATORIAL, 1=ALT_AZ, 3=CASUAL */
-  let mountType = 3;
+  // Default to EQUATORIAL — matches the backend MountConfig default. The Tests
+  // tab previously defaulted to CASUAL and testTracking() persisted that value
+  // to the controller, which made equatorial mounts track on both axes.
+  let mountType = 0;
 
   /** Cached observer latitude/longitude for predefined Euler angles */
   let observerLatitude = 52.0;

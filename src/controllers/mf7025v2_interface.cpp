@@ -284,6 +284,18 @@ public:
         return executeCommand(node_id, cmd, sizeof(cmd), resp);
     }
 
+    bool writePidRam(uint8_t node_id,
+                     uint8_t cur_kp, uint8_t cur_ki,
+                     uint8_t spd_kp, uint8_t spd_ki,
+                     uint8_t pos_kp, uint8_t pos_ki) override {
+        // 0x31: combined PID write to RAM.  Overwrites all three loops in one
+        // frame: DATA[1]=0x00, DATA[2..3]=current Kp/Ki, DATA[4..5]=speed Kp/Ki,
+        // DATA[6..7]=position Kp/Ki (single bytes).
+        uint8_t cmd[8] = { 0x31, 0x00, cur_kp, cur_ki, spd_kp, spd_ki, pos_kp, pos_ki };
+        std::vector<uint8_t> resp;
+        return executeCommand(node_id, cmd, sizeof(cmd), resp);
+    }
+
 public:
     void setCanTrace(bool enabled) override { can_trace_enabled_ = enabled; }
     void setCanTraceReadState(bool enabled) override { can_trace_read_state_enabled_ = enabled; }
@@ -411,6 +423,9 @@ private:
             }
             case 0xC0: return {"ReadControlParam",   "controlParamID"};
             case 0xC1: return {"WriteControlParam",  "→RAM"};
+            case 0x30: return {"ReadPidRam",         ""};
+            case 0x31: return {"WritePidRam",        "cur+spd+pos Kp/Ki →RAM"};
+            case 0x32: return {"WritePidRom",        ""};
             case 0x40: return {"ReadSettingParam",   ""};
             case 0x42: return {"WriteSettingParam",  ""};
             case 0x44: return {"SaveSettings",       "→ROM"};

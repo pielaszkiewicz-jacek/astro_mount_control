@@ -59,11 +59,11 @@ private:
 
         // Speed-dependent PID gain scheduling (MF7025v2 BLDC).
         // Installs the per-speed PID table from config.  While enabled, the
-        // drive's current/speed/position loop gains are rewritten in RAM
-        // (control-parameter write 0xC1, volatile) whenever the commanded
-        // speed crosses into a new RPM band.
-        // send_speed_pid / send_current_pid / send_position_pid select which
-        // per-loop gains from the schedule are actually written to the drive.
+        // drive's current/speed/position loop gains are rewritten in RAM via a
+        // single combined PID write (0x31, volatile) whenever the commanded
+        // speed crosses into a new RPM band.  0x31 always overwrites all three
+        // loops together; the per-loop send switches are kept for API
+        // compatibility but do not split the combined frame.
         void setSpeedPidSchedule(const std::vector<hal::SpeedPidEntry>& schedule,
                                  bool enabled, double update_interval_ms,
                                  bool send_speed_pid = true,
@@ -116,8 +116,14 @@ private:
             double position_ki{-1.0};
         } last_sent_pid_;
         std::chrono::steady_clock::time_point last_pid_update_{};
+        // Timestamp of the last failed PID write.  Used to back off retries so
+        // a drive that does not acknowledge 0x31 does not flood the log / CAN
+        // bus with repeated failed writes.
+        std::chrono::steady_clock::time_point last_pid_failure_{};
+        static constexpr double PID_RETRY_BACKOFF_MS = 5000.0;
         // Apply the PID gains matching the given commanded speed (deg/s).
-        // Sends 0xC1 RAM writes only when the gains differ from last_sent_pid_.
+        // Sends the combined 0x31 PID write only when the gains differ from
+        // last_sent_pid_.
         void applySpeedBasedPid(double speed_deg_s);
 
         std::atomic<bool> enabled_{false};

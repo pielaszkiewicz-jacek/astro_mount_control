@@ -358,123 +358,75 @@ void Mf7025v2Hal::Mf7025v2Motor::applySpeedBasedPid(double speed_deg_s) {
     }
 
     // Skip the write if the gains already match what was last sent.
-    // Only the loops enabled for sending participate in this check.
+    // 0x31 overwrites all three loops in one frame, so every gain carried in
+    // that frame participates in the change detection.
     bool changed = false;
-    if (send_speed_pid_) {
-        changed |= (selected->speed_kp        != last_sent_pid_.speed_kp ||
-                    selected->speed_ki        != last_sent_pid_.speed_ki ||
-                    selected->speed_filter_hz != last_sent_pid_.speed_filter_hz);
-    }
-    if (send_current_pid_) {
-        changed |= (selected->current_kp      != last_sent_pid_.current_kp ||
-                    selected->current_ki      != last_sent_pid_.current_ki);
-    }
-    if (send_position_pid_) {
-        changed |= (selected->position_kp     != last_sent_pid_.position_kp ||
-                    selected->position_ki     != last_sent_pid_.position_ki);
-    }
+    changed |= (selected->current_kp  != last_sent_pid_.current_kp ||
+                selected->current_ki  != last_sent_pid_.current_ki);
+    changed |= (selected->speed_kp    != last_sent_pid_.speed_kp ||
+                selected->speed_ki    != last_sent_pid_.speed_ki);
+    changed |= (selected->position_kp != last_sent_pid_.position_kp ||
+                selected->position_ki != last_sent_pid_.position_ki);
     if (!changed) return;
+
+    // Back off after a failed write: if the last PID write failed within the
+    // backoff window, skip this attempt (and its warning).  The cache is not
+    // updated on failure, so without this the drive is hammered every
+    // speed_pid_update_interval_ms and the log is flooded with warnings.
+    if (last_pid_failure_.time_since_epoch().count() != 0) {
+        auto since_failure = std::chrono::duration<double, std::milli>(now - last_pid_failure_).count();
+        if (since_failure < PID_RETRY_BACKOFF_MS) return;
+    }
 
     auto* can = parent_->getCanInterface();
     if (!can || !can->isOpen()) return;
 
-    // Clamp gains to the documented uint16 range [0, 2000] for all PID loops.
-    auto clamp16 = [](double v) -> uint16_t {
+    // ── Combined PID write to RAM (0x31) ───────────────────────────────
+    // The MF7025v2 protocol has no per-loop speed command: 0x31 overwrites the
+    // current, speed and position loop gains together in a single frame.  Each
+    // gain is a single byte (0..255):
+    //   DATA[2..3] = current Kp/Ki
+    //   DATA[4..5] = speed Kp/Ki
+    //   DATA[6..7] = position Kp/Ki
+    // Kd is not carried by 0x31 (the schedule kd values are informational).
+    auto clamp8 = [](double v) -> uint8_t {
         if (v < 0.0) return 0;
-        if (v > 2000.0) return 2000;
-        return static_cast<uint16_t>(std::lround(v));
+        if (v > 255.0) return 255;
+        return static_cast<uint8_t>(std::lround(v));
     };
 
-    bool all_ok = true;
+    uint8_t cur_kp = clamp8(selected->current_kp);
+    uint8_t cur_ki = clamp8(selected->current_ki);
+    uint8_t spd_kp = clamp8(selected->speed_kp);
+    uint8_t spd_ki = clamp8(selected->speed_ki);
+    uint8_t pos_kp = clamp8(selected->position_kp);
+    uint8_t pos_ki = clamp8(selected->position_ki);
 
-    // ── Current Loop PID (controlParamID 0x0C) ──────────────────────────
-    if (send_current_pid_) {
-        uint16_t kp = clamp16(selected->current_kp);
-        uint16_t ki = clamp16(selected->current_ki);
-        std::vector<uint8_t> data = {
-            static_cast<uint8_t>(kp & 0xFF), static_cast<uint8_t>((kp >> 8) & 0xFF),
-            static_cast<uint8_t>(ki & 0xFF), static_cast<uint8_t>((ki >> 8) & 0xFF),
-            0, 0  // Kd = 0 (not used by LingKong MF drives)
-        };
-        if (!can->writeParam(can_node_id_, 0x0C, data)) {
-            MF7025V2_LOGGER()->warn("Motor {} (node {}) current PID write (0x0C) failed @ {:.0f} RPM",
-                       axis_id_, can_node_id_, rpm);
-            all_ok = false;
-        }
-    }
-
-    // ── Speed Loop PID (controlParamID 0x0B) ────────────────────────────
-    if (send_speed_pid_) {
-        uint16_t kp = clamp16(selected->speed_kp);
-        uint16_t ki = clamp16(selected->speed_ki);
-        std::vector<uint8_t> data = {
-            static_cast<uint8_t>(kp & 0xFF), static_cast<uint8_t>((kp >> 8) & 0xFF),
-            static_cast<uint8_t>(ki & 0xFF), static_cast<uint8_t>((ki >> 8) & 0xFF),
-            0, 0  // Kd = 0
-        };
-        if (!can->writeParam(can_node_id_, 0x0B, data)) {
-            MF7025V2_LOGGER()->warn("Motor {} (node {}) speed PID write (0x0B) failed @ {:.0f} RPM",
-                       axis_id_, can_node_id_, rpm);
-            all_ok = false;
-        }
-    }
-
-    // ── Position Loop PID (controlParamID 0x0A) ─────────────────────────
-    if (send_position_pid_) {
-        uint16_t kp = clamp16(selected->position_kp);
-        uint16_t ki = clamp16(selected->position_ki);
-        std::vector<uint8_t> data = {
-            static_cast<uint8_t>(kp & 0xFF), static_cast<uint8_t>((kp >> 8) & 0xFF),
-            static_cast<uint8_t>(ki & 0xFF), static_cast<uint8_t>((ki >> 8) & 0xFF),
-            0, 0  // Kd = 0
-        };
-        if (!can->writeParam(can_node_id_, 0x0A, data)) {
-            MF7025V2_LOGGER()->warn("Motor {} (node {}) position PID write (0x0A) failed @ {:.0f} RPM",
-                       axis_id_, can_node_id_, rpm);
-            all_ok = false;
-        }
-    }
-
-    // ── Speed filter cutoff ─────────────────────────────────────────────
-    // The speed loop filter frequency (speed_filter_hz) is intentionally NOT
-    // written to the drive: the LingKong V2.36 protocol does not document a
-    // RAM-writable control-parameter ID for the speed loop filter, so there is
-    // no safe 0xC1 write for it.  The value is preserved in the schedule for
-    // reference / future firmware support, and a matching speed-filter gain
-    // change is treated as "changed" in the cache check above so a later
-    // documented firmware could pick it up.
-
-    if (!all_ok) {
-        // Do NOT update the cache on partial failure — the next command will
-        // retry the failed writes.
+    if (!can->writePidRam(can_node_id_, cur_kp, cur_ki, spd_kp, spd_ki, pos_kp, pos_ki)) {
+        MF7025V2_LOGGER()->warn("Motor {} (node {}) combined PID write (0x31) failed @ {:.0f} RPM",
+                   axis_id_, can_node_id_, rpm);
+        last_pid_failure_ = now;
         return;
     }
 
+    // Writes succeeded — clear the backoff timestamp so the next speed change
+    // is applied immediately.
+    last_pid_failure_ = std::chrono::steady_clock::time_point{};
+
     // Record the gains now resident in the drive so we don't resend them.
-    // Disabled loops keep their previous cache value, so they never trigger
-    // the "changed" check above.
-    if (send_speed_pid_) {
-        last_sent_pid_.speed_kp       = selected->speed_kp;
-        last_sent_pid_.speed_ki       = selected->speed_ki;
-        last_sent_pid_.speed_filter_hz = selected->speed_filter_hz;
-    }
-    if (send_current_pid_) {
-        last_sent_pid_.current_kp     = selected->current_kp;
-        last_sent_pid_.current_ki     = selected->current_ki;
-    }
-    if (send_position_pid_) {
-        last_sent_pid_.position_kp    = selected->position_kp;
-        last_sent_pid_.position_ki    = selected->position_ki;
-    }
+    last_sent_pid_.current_kp  = selected->current_kp;
+    last_sent_pid_.current_ki  = selected->current_ki;
+    last_sent_pid_.speed_kp    = selected->speed_kp;
+    last_sent_pid_.speed_ki    = selected->speed_ki;
+    last_sent_pid_.position_kp = selected->position_kp;
+    last_sent_pid_.position_ki = selected->position_ki;
     last_pid_update_ = now;
 
     MF7025V2_LOGGER()->debug("Motor {} (node {}) speed-PID applied @ {:.0f} RPM: "
-               "cur Kp={:.0f}/Ki={:.0f}, spd Kp={:.0f}/Ki={:.0f}, filter={:.0f}Hz, "
-               "pos Kp={:.0f}/Ki={:.0f}",
+               "cur Kp={:.0f}/Ki={:.0f}, spd Kp={:.0f}/Ki={:.0f}, pos Kp={:.0f}/Ki={:.0f}",
                axis_id_, can_node_id_, rpm,
                selected->current_kp, selected->current_ki,
                selected->speed_kp, selected->speed_ki,
-               selected->speed_filter_hz,
                selected->position_kp, selected->position_ki);
 }
 
@@ -863,8 +815,6 @@ void Mf7025v2Hal::monitorLoop() {
                 bool abs_ok = false;
                 if (can_iface_->readMultiTurnAngle(node_id, angle_001deg)) {
                     double abs_pos_deg = static_cast<double>(angle_001deg) * 0.01;
-                    MF7025V2_LOGGER()->debug("axis{} 0x92 raw={} → {:.4f}°",
-                        i, angle_001deg, abs_pos_deg);
                     if (std::abs(abs_pos_deg) < 10000000.0) {
                         motors_[i]->updateAbsolutePosition(abs_pos_deg);
                         // Sync encoder to motor absolute position so the
