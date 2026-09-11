@@ -17,7 +17,8 @@ WeatherClient::~WeatherClient() {
 }
 
 bool WeatherClient::start(int interval_ms,
-                          std::function<void(const std::string&)> on_danger) {
+                          std::function<void(const std::string&)> on_danger,
+                          std::function<void(const astro_mount::WeatherStatus&)> on_status) {
     if (running_) return true;
 
     try {
@@ -31,6 +32,7 @@ bool WeatherClient::start(int interval_ms,
 
     poll_interval_ms_ = interval_ms;
     on_danger_callback_ = std::move(on_danger);
+    on_status_callback_ = std::move(on_status);
     running_ = true;
     connected_ = false;
     safe_to_observe_ = true;
@@ -97,6 +99,13 @@ void WeatherClient::pollLoop() {
         if (getWeatherStatus(&status)) {
             safe_to_observe_ = status.safe_to_observe();
             alert_level_ = status.alert_level();
+
+            // Forward live environmental conditions to the mount controller
+            // (temperature/pressure/humidity) so refraction and status reporting
+            // use real weather data instead of static defaults.
+            if (on_status_callback_) {
+                on_status_callback_(status);
+            }
 
             if (!status.safe_to_observe()) {
                 std::string msg = status.safety_message();

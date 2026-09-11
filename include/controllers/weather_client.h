@@ -44,10 +44,15 @@ public:
      * @param interval_ms Polling interval in milliseconds
      * @param on_danger Callback invoked when dangerous weather is detected
      *                  (e.g. to trigger auto-park). Called with the alert message.
+     * @param on_status Optional callback invoked after every successful poll
+     *                  with the full WeatherStatus. Used to forward live
+     *                  environmental conditions (temperature, pressure,
+     *                  humidity) to the mount controller.
      * @return True if connection established
      */
     bool start(int interval_ms = 10000,
-               std::function<void(const std::string&)> on_danger = nullptr);
+               std::function<void(const std::string&)> on_danger = nullptr,
+               std::function<void(const astro_mount::WeatherStatus&)> on_status = nullptr);
 
     /// Stop polling
     void stop();
@@ -92,6 +97,7 @@ public:
     int poll_interval_ms_{10000};
     std::unique_ptr<std::thread> poll_thread_;
     std::function<void(const std::string&)> on_danger_callback_;
+    std::function<void(const astro_mount::WeatherStatus&)> on_status_callback_;
     mutable std::mutex mutex_;
 };
 

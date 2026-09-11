@@ -816,12 +816,17 @@ const DatabaseComponent = (() => {
       return;
     }
 
-    // Fill slew form in Control tab and switch to it
+    // Fill slew form in Control tab and switch to it.
+    // Use setAngleDecimal() when available — assigning .value directly
+    // would leave the enhanced input's data-angle-decimal attribute stale,
+    // so a subsequent "Slew & Track" would reuse the old coordinates.
     const raInput = $('#slew-ra');
     const decInput = $('#slew-dec');
     if (raInput && decInput) {
-      raInput.value = ra;
-      decInput.value = dec;
+      if (raInput.setAngleDecimal) raInput.setAngleDecimal(ra);
+      else raInput.value = ra;
+      if (decInput.setAngleDecimal) decInput.setAngleDecimal(dec);
+      else decInput.value = dec;
     }
 
     // Switch to Control tab

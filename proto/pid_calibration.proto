@@ -1,0 +1,161 @@
+/**
+ * PID Controller Calibration Service Protobuf Definition
+ *
+ * Provides automated PID gain calibration for the motor drive loops
+ * (current, speed, position).  For every candidate combination of the
+ * selected coefficient the engine spins the axis at a commanded speed,
+ * samples the actual velocity, and computes the arithmetic mean and the
+ * standard deviation.  The winning combination is the one whose mean speed
+ * is closest to the commanded speed AND whose standard deviation is the
+ * smallest.
+ *
+ * Gain writes are performed to the drive RAM only (volatile, lost on power
+ * cycle) using the MF7025v2 "write control parameter" command (0xC1) with
+ * parameter IDs 0x0A (position), 0x0B (speed) and 0x0C (current).
+ */
+syntax = "proto3";
+
+package astro_mount;
+
+import "google/protobuf/empty.proto";
+
+// ─── Service Definition ──────────────────────────────────────────────────────
+
+service PidCalibrationService {
+    /** Start an asynchronous calibration session */
+    rpc StartCalibration(PidCalibrationRequest) returns (PidCalibrationStartResponse);
+
+    /** Stop a running calibration session */
+    rpc StopCalibration(google.protobuf.Empty) returns (google.protobuf.Empty);
+
+    /** Poll the current calibration session status/progress */
+    rpc GetCalibrationStatus(google.protobuf.Empty) returns (PidCalibrationStatus);
+
+    /** Save the last calibration session results to a JSON file */
+    rpc SaveCalibrationResults(PidCalibrationSaveRequest) returns (PidCalibrationSaveResponse);
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+/** Which motor drive loop is being calibrated */
+enum PidCalibrationLoop {
+    PID_LOOP_UNKNOWN = 0;
+    PID_LOOP_CURRENT = 1;    // Current loop (0x0C)
+    PID_LOOP_SPEED = 2;      // Speed loop (0x0B)
+    PID_LOOP_POSITION = 3;   // Position loop (0x0A)
+}
+
+/** Which PID coefficient is being swept during calibration */
+enum PidCalibrationCoefficient {
+    PID_COEFF_UNKNOWN = 0;
+    PID_COEFF_KP = 1;
+    PID_COEFF_KI = 2;
+    PID_COEFF_KD = 3;
+    /** Sweep all three coefficients (Kp, Ki, Kd) together to find the best
+     *  combination.  base_* fields are ignored in this mode. */
+    PID_COEFF_ALL = 4;
+}
+
+// ─── Messages ─────────────────────────────────────────────────────────────────
+
+/**
+ * Calibration session request.
+ *
+ * The engine sweeps the selected `coefficient` over
+ * [min_<coeff> .. max_<coeff>] in steps of <coeff>_step, for every speed
+ * point from min_speed_dps to max_speed_dps in steps of speed_step_dps.
+ * The non-selected coefficients are held at their base_* values.
+ */
+message PidCalibrationRequest {
+    int32 axis_id = 1;                          // 0 = axis 1, 1 = axis 2
+    PidCalibrationLoop loop = 2;                // Which loop to calibrate
+    PidCalibrationCoefficient coefficient = 3;  // Which coefficient to sweep
+
+    // Speed sweep (degrees/second of the telescope axis)
+    double min_speed_dps = 4;
+    double max_speed_dps = 5;
+    double speed_step_dps = 6;
+
+    // Coefficient ranges and steps
+    double min_kp = 7;
+    double max_kp = 8;
+    double kp_step = 9;
+    double min_ki = 10;
+    double max_ki = 11;
+    double ki_step = 12;
+    double min_kd = 13;
+    double max_kd = 14;
+    double kd_step = 15;
+
+    // Fixed/base values for the coefficients that are NOT being swept
+    double base_kp = 16;
+    double base_ki = 17;
+    double base_kd = 18;
+
+    // Duration of the velocity measurement for each combination [s]
+    double measurement_time_s = 19;
+
+    // Optional settle time after commanding a speed, before sampling [s]
+    double settle_time_s = 20;
+
+    // Fixed current-loop gains to send when calibrating the SPEED or POSITION
+    // loop.  The current loop is left untouched by the sweep; these values are
+    // passed verbatim in the 0x31 frame so the current loop is not modified.
+    double current_kp = 21;
+    double current_ki = 22;
+}
+
+message PidCalibrationStartResponse {
+    bool started = 1;
+    string message = 2;
+}
+
+/** A single tested coefficient/speed combination */
+message PidCalibrationPoint {
+    double kp = 1;
+    double ki = 2;
+    double kd = 3;
+    double target_speed_dps = 4;     // Commanded speed
+    double mean_speed_dps = 5;       // Arithmetic mean of sampled velocity
+    double stddev_speed_dps = 6;     // Sample standard deviation
+    double score = 7;                // Lower is better
+    int32 sample_count = 8;
+}
+
+message PidCalibrationResult {
+    int32 axis_id = 1;
+    PidCalibrationLoop loop = 2;
+    PidCalibrationCoefficient coefficient = 3;
+
+    repeated PidCalibrationPoint points = 4;   // All tested combinations
+    repeated PidCalibrationPoint winners = 5;  // Best combination per speed point
+    PidCalibrationPoint overall_winner = 6;    // Best combination of the session
+
+    int64 started_at_unix_ms = 7;
+    int64 finished_at_unix_ms = 8;
+    string error_message = 9;
+}
+
+message PidCalibrationStatus {
+    bool running = 1;
+    string state = 2;                  // IDLE | RUNNING | COMPLETED | STOPPED | ERROR
+    double progress_percent = 3;
+    int32 tested_combinations = 4;
+    int32 total_combinations = 5;
+    double current_speed_dps = 6;
+    double current_coefficient_value = 7;
+    string message = 8;
+    PidCalibrationResult last_result = 9;
+    // Best combination found so far for the speed point currently being tested.
+    PidCalibrationPoint current_speed_best = 10;
+}
+
+message PidCalibrationSaveRequest {
+    string file_path = 1;   // Absolute or workspace-relative path; empty = default
+}
+
+message PidCalibrationSaveResponse {
+    bool saved = 1;
+    string file_path = 2;
+    string message = 3;
+}

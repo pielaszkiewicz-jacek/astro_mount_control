@@ -30,6 +30,7 @@
 #include "pec/include/pec_service_impl.h"
 #include "camera/include/camera_service_impl.h"
 #include "pulley/include/pulley_service_impl.h"
+#include "pidcal/include/pid_calibration_service_impl.h"
 #include "notifications/notification_service.h"
 #include "notifications/notification_engine.h"
 #include "notifications/channels/log_channel.h"
@@ -54,6 +55,7 @@ std::unique_ptr<astro_st4guider::St4GuiderServiceImpl> st4_guider_service_impl;
 std::unique_ptr<astro_pec::PecServiceImpl> pec_service_impl;
 std::unique_ptr<astro_camera::CameraServiceImpl> camera_service_impl;
 std::unique_ptr<astro_pulley::PulleyServiceImpl> pulley_service_impl;
+std::unique_ptr<astro_pidcal::PidCalibrationServiceImpl> pid_calibration_service_impl;
 
 // External service gRPC stubs (weather, power remain external processes)
 std::unique_ptr<controllers::WeatherClient> weather_client;
@@ -464,6 +466,12 @@ int main(int argc, char* argv[]) {
         pulley_service_impl = std::make_unique<astro_pulley::PulleyServiceImpl>();
         logger->info("Pulley subsystem hosted in-process (simulated, served on unified gRPC port)");
 
+        // PID calibration service (in-process) — drives real motor loops via
+        // the mount controller and writes gains to the drive RAM (volatile).
+        pid_calibration_service_impl =
+            std::make_unique<astro_pidcal::PidCalibrationServiceImpl>(*mount_controller);
+        logger->info("PID calibration service hosted in-process (served on unified gRPC port)");
+
         // Create and start gRPC server
         grpc_server_instance = std::make_unique<api::GrpcServer>(
             network_config.grpc_address,
@@ -501,6 +509,9 @@ int main(int argc, char* argv[]) {
         if (pulley_service_impl) {
             grpc_server_instance->registerService(pulley_service_impl.get());
         }
+        if (pid_calibration_service_impl) {
+            grpc_server_instance->registerService(pid_calibration_service_impl.get());
+        }
 
         if (!grpc_server_instance->start()) {
             logger->error("Failed to start gRPC server");
@@ -517,12 +528,26 @@ int main(int argc, char* argv[]) {
         if (ext_config.weather_enabled) {
             try {
                 weather_client = std::make_unique<controllers::WeatherClient>(
-                    ext_config.weather_address);
+                    ext_config.weather_address, notification_engine);
                 weather_client->start(ext_config.weather_poll_interval_ms,
                     [logger](const std::string& msg) {
                         logger->warn("Weather DANGER: {} — auto-parking mount", msg);
                         if (mount_controller) {
                             mount_controller->park();
+                        }
+                    },
+                    [logger](const astro_mount::WeatherStatus& status) {
+                        // Forward live environmental conditions from the weather
+                        // service to the mount controller so atmospheric refraction
+                        // and status reporting use real weather data.
+                        const double temperature = status.temperature_c();
+                        const double pressure = status.pressure_hpa();
+                        const double humidity = status.humidity_percent() / 100.0;
+                        if (mount_controller && temperature != 0.0 && pressure != 0.0) {
+                            mount_controller->setEnvironmentalParams(
+                                temperature, pressure, humidity);
+                        } else if (!mount_controller) {
+                            logger->warn("Weather: received data but mount controller not ready");
                         }
                     });
                 logger->info("Weather integration enabled — connected to {}",
@@ -757,6 +782,7 @@ int main(int argc, char* argv[]) {
         pec_service_impl.reset();
         camera_service_impl.reset();
         pulley_service_impl.reset();
+        pid_calibration_service_impl.reset();
 
         // Stop the notification engine and release its gRPC service.
         notification_service_impl.reset();
@@ -793,6 +819,7 @@ int main(int argc, char* argv[]) {
         pec_service_impl.reset();
         camera_service_impl.reset();
         pulley_service_impl.reset();
+        pid_calibration_service_impl.reset();
         weather_client.reset();
         power_stub.reset();
         notification_service_impl.reset();

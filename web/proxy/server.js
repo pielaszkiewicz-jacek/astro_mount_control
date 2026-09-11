@@ -31,6 +31,7 @@ const {
   createPecGrpcClient,
   createCameraGrpcClient,
   createPulleyGrpcClient,
+  createPidCalibrationGrpcClient,
   createNotificationsGrpcClient,
 } = require('./grpc/client');
 const errorHandler = require('./middleware/errorHandler');
@@ -115,6 +116,7 @@ app.use('/api/focuser', require('./routes/focuser'));
 app.use('/api/dome', require('./routes/dome'));
 app.use('/api/weather', require('./routes/weather'));
 app.use('/api/pulley', require('./routes/pulley'));
+app.use('/api/pidcal', require('./routes/pidCalibration'));
 app.use('/api/lx200', require('./routes/lx200'));
 app.use('/api/notifications', require('./routes/notifications'));
 
@@ -140,6 +142,7 @@ if (require.main === module) {
   createPecGrpcClient();
   createCameraGrpcClient();
   createPulleyGrpcClient();
+  createPidCalibrationGrpcClient();
   createNotificationsGrpcClient();
 
   app.listen(config.proxy.port, config.proxy.host, () => {
@@ -184,6 +187,7 @@ process.on('SIGINT', () => {
     try { gClient.getPecGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getCameraGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getPulleyGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPidCalibrationGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getNotificationsGrpcClient().close(); } catch (e) { /* not initialized */ }
   } catch (e) {
     // Ignore module loading errors during shutdown
@@ -207,6 +211,7 @@ process.on('SIGTERM', () => {
     try { gClient.getPecGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getCameraGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getPulleyGrpcClient().close(); } catch (e) { /* not initialized */ }
+    try { gClient.getPidCalibrationGrpcClient().close(); } catch (e) { /* not initialized */ }
     try { gClient.getNotificationsGrpcClient().close(); } catch (e) { /* not initialized */ }
   } catch (e) {
     // Ignore module loading errors during shutdown

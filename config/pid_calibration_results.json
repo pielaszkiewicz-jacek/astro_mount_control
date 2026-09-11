@@ -1,0 +1,141 @@
+{
+  "axis_id": 0,
+  "coefficient": 1,
+  "error_message": "",
+  "finished_at_unix_ms": 0,
+  "loop": 2,
+  "points": [
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 1.0,
+      "mean_speed_dps": -0.1566265060240964,
+      "sample_count": 747,
+      "score": 2.6715806707419,
+      "stddev_speed_dps": 2.4149541647178037,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 11.0,
+      "mean_speed_dps": -0.08155080213903744,
+      "sample_count": 748,
+      "score": 1.68568406382221,
+      "stddev_speed_dps": 1.5041332616831724,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 21.0,
+      "mean_speed_dps": -0.06283422459893048,
+      "sample_count": 748,
+      "score": 0.8666646238063948,
+      "stddev_speed_dps": 0.7038303992074643,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 31.0,
+      "mean_speed_dps": -0.07219251336898395,
+      "sample_count": 748,
+      "score": 1.0130036251375407,
+      "stddev_speed_dps": 0.8408111117685568,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 41.0,
+      "mean_speed_dps": 0.0,
+      "sample_count": 748,
+      "score": 0.1,
+      "stddev_speed_dps": 0.0,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 51.0,
+      "mean_speed_dps": -0.09090909090909091,
+      "sample_count": 748,
+      "score": 1.2625204848744236,
+      "stddev_speed_dps": 1.0716113939653327,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 61.0,
+      "mean_speed_dps": -0.0481283422459893,
+      "sample_count": 748,
+      "score": 0.8170676209601351,
+      "stddev_speed_dps": 0.6689392787141458,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 71.0,
+      "mean_speed_dps": 0.0,
+      "sample_count": 748,
+      "score": 0.7056405992626603,
+      "stddev_speed_dps": 0.6056405992626603,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 81.0,
+      "mean_speed_dps": -0.06684491978609626,
+      "sample_count": 748,
+      "score": 0.8750467776629899,
+      "stddev_speed_dps": 0.7082018578768936,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 91.0,
+      "mean_speed_dps": -0.01606425702811245,
+      "sample_count": 747,
+      "score": 0.4263163142800264,
+      "stddev_speed_dps": 0.31025205725191396,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 100.0,
+      "mean_speed_dps": 0.0,
+      "sample_count": 747,
+      "score": 0.1,
+      "stddev_speed_dps": 0.0,
+      "target_speed_dps": 0.1
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 1.0,
+      "mean_speed_dps": 0.0,
+      "sample_count": 747,
+      "score": 0.30000000000000004,
+      "stddev_speed_dps": 0.0,
+      "target_speed_dps": 0.30000000000000004
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 11.0,
+      "mean_speed_dps": -0.1927710843373494,
+      "sample_count": 747,
+      "score": 3.4245789345525885,
+      "stddev_speed_dps": 2.931807850215239,
+      "target_speed_dps": 0.30000000000000004
+    }
+  ],
+  "started_at_unix_ms": 1788989165048,
+  "winners": []
+}

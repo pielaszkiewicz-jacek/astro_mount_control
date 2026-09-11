@@ -81,6 +81,12 @@ const config = {
     host: process.env.PULLEY_GRPC_HOST || '127.0.0.1',
     port: parseInt(process.env.PULLEY_GRPC_PORT, 10) || 50051,
   },
+  pidcal: {
+    // PID calibration is hosted IN-PROCESS on the mount controller's unified
+    // gRPC port (50051).
+    host: process.env.PIDCAL_GRPC_HOST || '127.0.0.1',
+    port: parseInt(process.env.PIDCAL_GRPC_PORT, 10) || 50051,
+  },
   notifications: {
     // Notification service is hosted IN-PROCESS on the mount controller's
     // unified gRPC port (50051) — R1.
@@ -110,7 +116,7 @@ const config = {
 config.external_services = {
   dome:       process.env.EXT_SERVICE_DOME === 'true',
   derotator:  process.env.EXT_SERVICE_DEROTATOR !== 'false',   // in-process, enabled by default
-  weather:    process.env.EXT_SERVICE_WEATHER === 'true',
+  weather:    process.env.EXT_SERVICE_WEATHER !== 'false',      // enabled by default
   power:      process.env.EXT_SERVICE_POWER === 'true',
   sequencer:  process.env.EXT_SERVICE_SEQUENCER === 'true',
   focuser:    process.env.EXT_SERVICE_FOCUSER !== 'false',     // in-process, enabled by default
@@ -118,6 +124,7 @@ config.external_services = {
   pec:        process.env.EXT_SERVICE_PEC !== 'false',         // in-process, enabled by default
   camera:     process.env.EXT_SERVICE_CAMERA !== 'false',      // in-process, enabled by default (R3)
   pulley:     process.env.EXT_SERVICE_PULLEY !== 'false',      // in-process, enabled by default (R3)
+  pidcal:     process.env.EXT_SERVICE_PIDCAL !== 'false',      // in-process, enabled by default
   notifications: process.env.EXT_SERVICE_NOTIFICATIONS !== 'false',  // in-process, enabled by default
 };
 

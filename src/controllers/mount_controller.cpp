@@ -1574,7 +1574,13 @@ public:
                 // ── EQUATORIAL position-mode tracking (default) ────────────
                 // Robust position mode — we update the target position
                 // periodically in the tracking loop via setPosition().
-                const double TRACK_POS_VEL = std::max(axis1_tracking_rate * 2.0, 2.0);  // °/s servo
+                // Initial slew to the target must use the configured slew velocity,
+                // not the sidereal tracking rate. Using ~2× the sidereal servo rate
+                // (≈3°/s) made "Slew & Track" move the mount imperceptibly slowly
+                // toward a distant object, so the mount appeared not to move at all.
+                const double TRACK_POS_VEL = config_.mount_config.max_slew_rate > 0.0
+                    ? config_.mount_config.max_slew_rate
+                    : std::max(axis1_tracking_rate * 2.0, 2.0);  // °/s servo
                 bool pos_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
                     bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
@@ -2874,7 +2880,36 @@ public:
                             // drive smoothly catches up to the lead target without
                             // overshooting.  0.004178 °/s (telescope) × gear_ratio.
                             const double sidereal_servo_rate = 0.004178074 * ha_gear;
-                            const double pos_vel = sidereal_servo_rate * 1.5;
+                            double pos_vel = sidereal_servo_rate * 1.5;
+                            // During the initial "Slew & Track" slew the drive may
+                            // still be far from the target. Keep the configured slew
+                            // velocity until it is close; switching to the slow tracking
+                            // profile too early would decelerate a long in-progress
+                            // slew to ~1.5× sidereal speed and make the mount appear
+                            // not to move toward a distant object.
+                            if (config_.mount_config.max_slew_rate > 0.0) {
+                                double act1 = 0.0, act2 = 0.0;
+                                bool have_act = false;
+                                try {
+                                    if (hal_axis1_motor_ && hal_axis2_motor_ &&
+                                        hal_axis1_motor_->isEnabled() &&
+                                        hal_axis2_motor_->isEnabled()) {
+                                        act1 = hal_axis1_motor_->getActualPosition();
+                                        act2 = hal_axis2_motor_->getActualPosition();
+                                        have_act = std::isfinite(act1) && std::isfinite(act2);
+                                    }
+                                } catch (const std::exception& e) {
+                                    MOUNT_LOG_DEBUG("Tracking pos-vel distance read: {}", e.what());
+                                }
+                                if (have_act) {
+                                    const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(ha_gear, 1.0) * 4.0;
+                                    const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(dec_gear, 1.0) * 4.0;
+                                    if (std::abs(new_axis1_target - act1) > close1 ||
+                                        std::abs(new_axis2_target - act2) > close2) {
+                                        pos_vel = config_.mount_config.max_slew_rate;
+                                    }
+                                }
+                            }
                             
                             // Diagnostic: log tracking target vs actual drive position
                             // every ~10 position updates (~10 s) to detect drive lag.
@@ -5170,6 +5205,48 @@ public:
         }
         return false;
     }
+
+    bool enableAxis(int axis_id) {
+        if (axis_id < 0 || axis_id > 1) return false;
+        try {
+            auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+            if (!motor) return false;
+            return motor->enable();
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("enableAxis({}) failed: {}", axis_id, e.what());
+            return false;
+        }
+    }
+
+    double getAxisVelocity(int axis_id) const {
+        if (axis_id < 0 || axis_id > 1) return 0.0;
+        try {
+            auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+            if (!motor) return 0.0;
+            return motor->getActualVelocity();
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("getAxisVelocity({}) failed: {}", axis_id, e.what());
+            return 0.0;
+        }
+    }
+
+    bool setAxisPid(int axis_id, int loop, double kp, double ki, double kd) {
+        if (axis_id < 0 || axis_id > 1) return false;
+        try {
+            auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+            if (!motor) {
+                MOUNT_LOG_WARN("setAxisPid(axis={}, loop={}): no motor available", axis_id, loop);
+                return false;
+            }
+            bool ok = motor->writePidLoopRam(loop, kp, ki, kd);
+            MOUNT_LOG_INFO("setAxisPid(axis={}, loop={}, Kp={}, Ki={}, Kd={}) -> {}",
+                           axis_id, loop, kp, ki, kd, ok ? "OK" : "FAILED");
+            return ok;
+        } catch (const std::exception& e) {
+            MOUNT_LOG_ERROR("setAxisPid({}) failed: {}", axis_id, e.what());
+            return false;
+        }
+    }
     
     bool setMountOrientation(const config::MountOrientation& orientation) {
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
@@ -6791,6 +6868,19 @@ public:
             // on the opposite pier side and must be mapped back for limit
             // comparison. Example: original Dec=45° → flipped Dec=135° →
             // normalized to 180°-135°=45°.
+            //
+            // Fold into [-180°, 180°] first (O(1) std::fmod) before the
+            // reflection. The previous single-pass reflection was only valid
+            // for |Dec| ≤ 270°; an unreferenced multi-turn encoder reporting
+            // more than 270 telescope degrees (many motor revolutions) folded
+            // outside [-90°, 90°] and spuriously tripped the hard-limit stop
+            // ("Soft limit reached during tracking").
+            telescope_axis2 = std::fmod(telescope_axis2, 360.0);
+            if (telescope_axis2 < -180.0) {
+                telescope_axis2 += 360.0;
+            } else if (telescope_axis2 > 180.0) {
+                telescope_axis2 -= 360.0;
+            }
             if (telescope_axis2 > 90.0) {
                 telescope_axis2 = 180.0 - telescope_axis2;
             } else if (telescope_axis2 < -90.0) {
@@ -7828,6 +7918,18 @@ bool MountController::emergencyStop(int axis_id, bool reset_after) {
 
 bool MountController::getAxisStatus(::astro_mount::AxisStatus& status) const {
     return pimpl->getAxisStatus(status);
+}
+
+bool MountController::enableAxis(int axis_id) {
+    return pimpl->enableAxis(axis_id);
+}
+
+double MountController::getAxisVelocity(int axis_id) const {
+    return pimpl->getAxisVelocity(axis_id);
+}
+
+bool MountController::setAxisPid(int axis_id, int loop, double kp, double ki, double kd) {
+    return pimpl->setAxisPid(axis_id, loop, kp, ki, kd);
 }
 
 bool MountController::updateConfiguration(const ControllerConfig& config) {

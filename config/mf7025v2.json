@@ -934,7 +934,7 @@
         "soft_limit_warning_degrees": 10.0,
         "soft_limits_enabled": true,
         "tracking_acceleration": 0.001,
-        "tracking_update_ms": 2,
+        "tracking_update_ms": 20,
         "type": "equatorial",
         "use_encoders": false
     },
@@ -964,5 +964,13 @@
         "enabled_terms": 65535,
         "max_residual": 30.0,
         "min_measurements": 10
+    },
+    "external_services": {
+        "_comment": "Weather integration enabled so the mount controller receives live environmental conditions (temperature/pressure/humidity) and auto-park alerts from astro_weather_server on 50055.",
+        "weather": {
+            "enabled": true,
+            "address": "127.0.0.1:50055",
+            "poll_interval_ms": 10000
+        }
     }
 }

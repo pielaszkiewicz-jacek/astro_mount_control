@@ -628,6 +628,37 @@ public:
     bool getAxisStatus(::astro_mount::AxisStatus& status) const;
 
     /**
+     * @brief Enable the motor of a single axis (power the drive on).
+     *
+     * @param axis_id Axis index (0 or 1)
+     * @return True if the drive was enabled successfully
+     */
+    bool enableAxis(int axis_id);
+
+    /**
+     * @brief Read the actual (measured) velocity of a single axis.
+     *
+     * @param axis_id Axis index (0 or 1)
+     * @return Actual velocity in deg/s (0.0 on error)
+     */
+    double getAxisVelocity(int axis_id) const;
+
+    /**
+     * @brief Write one PID loop's gains (Kp, Ki, Kd) to the drive RAM.
+     *
+     * The write is volatile (lost on power cycle).  loop: 1 = current,
+     * 2 = speed, 3 = position (matches the PidCalibrationLoop proto enum).
+     *
+     * @param axis_id Axis index (0 or 1)
+     * @param loop Loop selector (1/2/3)
+     * @param kp Proportional gain
+     * @param ki Integral gain
+     * @param kd Derivative gain
+     * @return True if the drive accepted the write
+     */
+    bool setAxisPid(int axis_id, int loop, double kp, double ki, double kd);
+
+    /**
      * @brief Update controller configuration
      * @param config New configuration
      * @return True if update successful

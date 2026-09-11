@@ -307,6 +307,53 @@ MotorConfig Mf7025v2Hal::Mf7025v2Motor::getConfiguration() const {
     return config_;
 }
 
+bool Mf7025v2Hal::Mf7025v2Motor::writePidLoopRam(int loop, double kp, double ki, double kd) {
+    // The MF7025v2 writes PID gains to RAM with the combined 0x31 command.
+    // One frame overwrites all three loops (Kp/Ki only — no Kd), so the
+    // per-loop selection is realised by updating only the selected loop in the
+    // cached gains and resending the whole cached set.
+    (void)kd;
+    switch (loop) {
+        case 1: pid_ram_cache_.current_kp  = kp; pid_ram_cache_.current_ki  = ki; break;
+        case 2: pid_ram_cache_.speed_kp    = kp; pid_ram_cache_.speed_ki    = ki; break;
+        case 3: pid_ram_cache_.position_kp = kp; pid_ram_cache_.position_ki = ki; break;
+        default: return false;
+    }
+
+    auto* can = parent_->getCanInterface();
+    if (!can || !can->isOpen()) {
+        MF7025V2_LOGGER()->warn("Motor {} (node {}) PID loop {} RAM write skipped: CAN interface {}",
+                   axis_id_, can_node_id_, loop,
+                   (!can ? "missing" : "not open"));
+        return false;
+    }
+
+    auto clamp8 = [](double v) -> uint8_t {
+        if (v < 0.0) return 0;
+        if (v > 255.0) return 255;
+        return static_cast<uint8_t>(std::lround(v));
+    };
+
+    uint8_t cur_kp = clamp8(pid_ram_cache_.current_kp);
+    uint8_t cur_ki = clamp8(pid_ram_cache_.current_ki);
+    uint8_t spd_kp = clamp8(pid_ram_cache_.speed_kp);
+    uint8_t spd_ki = clamp8(pid_ram_cache_.speed_ki);
+    uint8_t pos_kp = clamp8(pid_ram_cache_.position_kp);
+    uint8_t pos_ki = clamp8(pid_ram_cache_.position_ki);
+
+    if (!can->writePidRam(can_node_id_, cur_kp, cur_ki, spd_kp, spd_ki, pos_kp, pos_ki)) {
+        MF7025V2_LOGGER()->warn("Motor {} (node {}) PID loop {} RAM write (0x31) failed",
+                   axis_id_, can_node_id_, loop);
+        return false;
+    }
+
+    MF7025V2_LOGGER()->debug("Motor {} (node {}) PID loop {} RAM write (0x31): "
+               "cur Kp={}/Ki={}, spd Kp={}/Ki={}, pos Kp={}/Ki={}",
+               axis_id_, can_node_id_, loop,
+               cur_kp, cur_ki, spd_kp, spd_ki, pos_kp, pos_ki);
+    return true;
+}
+
 void Mf7025v2Hal::Mf7025v2Motor::setSpeedPidSchedule(
         const std::vector<hal::SpeedPidEntry>& schedule,
         bool enabled, double update_interval_ms,
@@ -315,6 +362,17 @@ void Mf7025v2Hal::Mf7025v2Motor::setSpeedPidSchedule(
     speed_pid_schedule_ = schedule;
     speed_pid_enabled_ = enabled && !schedule.empty();
     speed_pid_update_interval_ms_ = update_interval_ms > 0.0 ? update_interval_ms : 50.0;
+    // Seed the per-loop RAM cache from the configured schedule so calibration
+    // writes do not start from arbitrary defaults when a schedule is present.
+    if (!speed_pid_schedule_.empty()) {
+        const auto& e = speed_pid_schedule_.front();
+        pid_ram_cache_.current_kp  = e.current_kp;
+        pid_ram_cache_.current_ki  = e.current_ki;
+        pid_ram_cache_.speed_kp    = e.speed_kp;
+        pid_ram_cache_.speed_ki    = e.speed_ki;
+        pid_ram_cache_.position_kp = e.position_kp;
+        pid_ram_cache_.position_ki = e.position_ki;
+    }
     send_speed_pid_ = send_speed_pid;
     send_current_pid_ = send_current_pid;
     send_position_pid_ = send_position_pid;

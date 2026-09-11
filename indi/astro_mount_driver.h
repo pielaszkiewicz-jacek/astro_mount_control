@@ -37,10 +37,11 @@ public:
 
     // Pure virtual in INDI::DefaultDevice — must be provided.
     const char *getDefaultName() override;
+    void ISGetProperties(const char* dev) override;
     bool initProperties() override;
     bool updateProperties() override;
     bool ISNewNumber(const char* dev, const char* name,
-                     double values[], const char* names[], int n) override;
+                     double values[], char* names[], int n) override;
     bool ISNewSwitch(const char* dev, const char* name,
                      ISState* states, char* names[], int n) override;
     bool ISNewText(const char* dev, const char* name,
@@ -58,16 +59,16 @@ public:
     // ============================================
 
     bool Goto(double ra, double dec) override;
-    bool GotoRaDec(double ra, double dec) override;
+    bool GotoRaDec(double ra, double dec);
     bool Sync(double ra, double dec) override;
     bool MoveNS(INDI_DIR_NS dir, TelescopeMotionCommand command) override;
     bool MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command) override;
     bool Abort() override;
     bool Park() override;
-    bool Unpark() override;
+    bool UnPark() override;
     bool SetCurrentPark() override;
     bool SetDefaultPark() override;
-    bool UpdateLocation(double latitude, double longitude, double elevation) override;
+    bool updateLocation(double latitude, double longitude, double elevation) override;
     bool ReadScopeStatus() override;
 
 protected:
@@ -76,46 +77,46 @@ protected:
     // ============================================
 
     // Bootstrap calibration switch
-    ISwitchVectorProperty BootstrapCalibrationSP;
-    ISwitch BootstrapCalibrationS[3]; // RUN, CLEAR, STATUS
+    ISwitchVectorProperty BootstrapCalibrationSP{};
+    ISwitch BootstrapCalibrationS[3]{}; // RUN, CLEAR, STATUS
 
     // Bootstrap status text
-    ITextVectorProperty BootstrapStatusTP;
-    IText BootstrapStatusT[2]; // STATUS, MEASUREMENTS
+    ITextVectorProperty BootstrapStatusTP{};
+    IText BootstrapStatusT[2]{}; // STATUS, MEASUREMENTS
 
     // J2000 equatorial coordinates (custom)
-    INumberVectorProperty EquatorialCoordsJ2000NP;
-    INumber EquatorialCoordsJ2000N[2]; // RA_J2000, DEC_J2000
+    INumberVectorProperty EquatorialCoordsJ2000NP{};
+    INumber EquatorialCoordsJ2000N[2]{}; // RA_J2000, DEC_J2000
 
     // ============================================
     // Faza 3: TPOINT status (read-only text)
     // ============================================
 
-    ITextVectorProperty TPointStatusTP;
-    IText TPointStatusT[3]; // COEFFICIENTS, CHI2, CALIBRATED
+    ITextVectorProperty TPointStatusTP{};
+    IText TPointStatusT[3]{}; // COEFFICIENTS, CHI2, CALIBRATED
 
     // ============================================
     // Faza 3: Environmental conditions
     // ============================================
 
-    INumberVectorProperty EnvironmentNP;
-    INumber EnvironmentN[3]; // TEMPERATURE, PRESSURE, HUMIDITY
+    INumberVectorProperty EnvironmentNP{};
+    INumber EnvironmentN[3]{}; // TEMPERATURE, PRESSURE, HUMIDITY
 
     // ============================================
     // Connection configuration (UI) — GRPC host/port + TLS
     // ============================================
 
     // Text: GRPC_HOST / GRPC_PORT (configured from the INDI client)
-    ITextVectorProperty ConnectionTP;
-    IText ConnectionT[2]; // HOST, PORT
+    ITextVectorProperty ConnectionTP{};
+    IText ConnectionT[2]{}; // HOST, PORT
 
     // Switch: TLS ENABLE / DISABLE
-    ISwitchVectorProperty ConnectionSslSP;
-    ISwitch ConnectionSslS[2]; // ENABLE, DISABLE
+    ISwitchVectorProperty ConnectionSslSP{};
+    ISwitch ConnectionSslS[2]{}; // ENABLE, DISABLE
 
     // Read-only connection status
-    ITextVectorProperty ConnectionStatusTP;
-    IText ConnectionStatusT[1]; // STATUS
+    ITextVectorProperty ConnectionStatusTP{};
+    IText ConnectionStatusT[1]{}; // STATUS
 
 private:
     // ============================================

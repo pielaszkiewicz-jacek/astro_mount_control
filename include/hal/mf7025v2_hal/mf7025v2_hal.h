@@ -82,6 +82,11 @@ private:
             return true;
         }
 
+        // Direct per-loop PID write to drive RAM (volatile) using the 0xC1
+        // "write control parameter" command.  loop: 1=current, 2=speed,
+        // 3=position.  Each gain is a 16-bit value in the range 0..2000.
+        bool writePidLoopRam(int loop, double kp, double ki, double kd) override;
+
         // Called by Mf7025v2Hal monitor thread
         void updateStatus(const controllers::Mf7025v2Status& st);
         // Called by monitor thread to sync absolute position from drive (0x92)
@@ -115,6 +120,19 @@ private:
             double position_kp{-1.0};
             double position_ki{-1.0};
         } last_sent_pid_;
+
+        // Cache of per-loop gains used by writePidLoopRam().  The 0x31 command
+        // overwrites all three loops (Kp/Ki only, no Kd) in a single frame, so
+        // each calibration write updates the selected loop and resends the whole
+        // cached set.
+        struct PidRamCache {
+            double current_kp{50.0};
+            double current_ki{50.0};
+            double speed_kp{50.0};
+            double speed_ki{50.0};
+            double position_kp{50.0};
+            double position_ki{50.0};
+        } pid_ram_cache_;
         std::chrono::steady_clock::time_point last_pid_update_{};
         // Timestamp of the last failed PID write.  Used to back off retries so
         // a drive that does not acknowledge 0x31 does not flood the log / CAN
@@ -288,6 +306,9 @@ public:
         return target_->applySpeedPidSchedule(s, enabled, update_ms,
                                               send_speed_pid, send_current_pid,
                                               send_position_pid);
+    }
+    bool writePidLoopRam(int loop, double kp, double ki, double kd) override {
+        return target_->writePidLoopRam(loop, kp, ki, kd);
     }
     bool configure(const MotorConfig& c) override { return target_->configure(c); }
     MotorConfig getConfiguration() const override { return target_->getConfiguration(); }

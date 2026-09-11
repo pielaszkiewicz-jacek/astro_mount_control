@@ -117,6 +117,7 @@ const App = (() => {
     pec:       { tab: 'tab-pec',       panel: 'panel-pec',       btn: '.tab-btn[data-tab="pec"]' },
     camera:    { tab: 'tab-camera',    panel: 'panel-camera',    btn: '.tab-btn[data-tab="camera"]' },
     pulley:    { tab: 'tab-pulley',    panel: 'panel-pulley',    btn: '.tab-btn[data-tab="pulley"]' },
+    pidcal:    { tab: 'tab-pidcal',    panel: 'panel-pidcal',    btn: '.tab-btn[data-tab="pidcal"]' },
     notifications: { tab: 'tab-notifications', panel: 'panel-notifications', btn: '.tab-btn[data-tab="notifications"]' },
   };
 
@@ -192,6 +193,7 @@ const App = (() => {
       { id: 'dome-component-mount',     render: DomeComponent.render },
       { id: 'weather-component-mount',  render: WeatherComponent.render },
       { id: 'pulley-component-mount',   render: PulleyComponent.render },
+      { id: 'pidcal-component-mount',   render: PidCalibrationComponent.render },
       { id: 'lx200-component-mount',    render: Lx200Component.render },
       { id: 'notifications-component-mount', render: NotificationsComponent.render },
     ];

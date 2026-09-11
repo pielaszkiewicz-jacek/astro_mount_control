@@ -106,6 +106,19 @@ public:
         return false;
     }
 
+    // Write one PID loop's gains (Kp, Ki, Kd) directly to the drive RAM
+    // (volatile, lost on power cycle).  This is the primitive used by the
+    // PID calibration engine to evaluate individual gain combinations.
+    //
+    // loop: 1 = current, 2 = speed, 3 = position (matches the
+    //       PidCalibrationLoop proto enum values).
+    // Returns false when the drive does not support per-loop RAM PID writes
+    // (e.g. a simulated motor that has no physical RAM, or CANopen CiA 402).
+    virtual bool writePidLoopRam(int loop, double kp, double ki, double kd) {
+        (void)loop; (void)kp; (void)ki; (void)kd;
+        return false;
+    }
+
     // Konfiguracja
     virtual bool configure(const MotorConfig& config) = 0;
     virtual MotorConfig getConfiguration() const = 0;

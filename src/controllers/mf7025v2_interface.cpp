@@ -67,11 +67,19 @@ public:
             return false;
         }
 
-        // Set reception timeout
+        // Set reception timeout — bounds receiveFrame()'s ::read() so a drive
+        // that never answers cannot block the CAN caller indefinitely.
         struct timeval tv;
         tv.tv_sec = 0;
         tv.tv_usec = static_cast<__suseconds_t>(timeout_us_);
         ::setsockopt(sock_fd_, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+        // Set send timeout — bounds sendFrame()'s ::write().  A blocking
+        // SocketCAN write (bus-off, no ACK from a powered-down drive, or a full
+        // TX queue) would otherwise hang forever while holding can_mutex_,
+        // stalling every other CAN caller (tracking loop, monitor thread, gRPC)
+        // and tripping the 5 s tracking-loop watchdog.
+        ::setsockopt(sock_fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
         iface_name_ = can_iface;
         std::cout << "[MF7025v2] SocketCAN opened on " << can_iface << std::endl;

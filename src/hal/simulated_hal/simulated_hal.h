@@ -33,6 +33,9 @@ public:
         double getActualPosition() const override { return target_->getActualPosition(); }
         double getActualVelocity() const override { return target_->getActualVelocity(); }
         double getActualTorque() const override { return target_->getActualTorque(); }
+        bool writePidLoopRam(int loop, double kp, double ki, double kd) override {
+            return target_->writePidLoopRam(loop, kp, ki, kd);
+        }
         bool isMoving() const override { return target_->isMoving(); }
         bool targetReached() const override { return target_->targetReached(); }
         bool inErrorState() const override { return target_->inErrorState(); }
@@ -115,6 +118,11 @@ private:
         double getCurrent() const override;
         double getVoltage() const override;
         uint32_t getOperationTime() const override;
+
+        // Accept per-loop PID RAM writes so the PID calibration engine can be
+        // exercised end-to-end against the simulated HAL.  The gains are stored
+        // but do not alter the simulated plant dynamics.
+        bool writePidLoopRam(int loop, double kp, double ki, double kd) override;
         
         // Simulated motor thread
         void simulationThread();

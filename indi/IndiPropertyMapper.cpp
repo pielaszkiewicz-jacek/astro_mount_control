@@ -66,16 +66,18 @@ int IndiPropertyMapper::toIndiTrackState(
     switch (status)
     {
     case MountStatus::ControllerState_MountStatus_SLEWING:
-        return SCOPE_SLEWING;
+        return INDI::Telescope::SCOPE_SLEWING;
     case MountStatus::ControllerState_MountStatus_TRACKING:
-        return SCOPE_TRACKING;
+        return INDI::Telescope::SCOPE_TRACKING;
     case MountStatus::ControllerState_MountStatus_PARKED:
-        return SCOPE_PARKED;
+        return INDI::Telescope::SCOPE_PARKED;
     case MountStatus::ControllerState_MountStatus_ERROR:
-        return SCOPE_ERROR;
+        // INDI 2.x has no SCOPE_ERROR; report an error state as idle so the
+        // client still polls and the operator sees the raw controller state.
+        return INDI::Telescope::SCOPE_IDLE;
     case MountStatus::ControllerState_MountStatus_IDLE:
     default:
-        return SCOPE_IDLE;
+        return INDI::Telescope::SCOPE_IDLE;
     }
 }
 
@@ -83,11 +85,11 @@ int IndiPropertyMapper::toIndiPierSide(double pierSide) const
 {
     // gRPC: 1 = East, -1 = West (or 0 = unknown)
     if (pierSide > 0)
-        return PIER_EAST;
+        return INDI::Telescope::PIER_EAST;
     else if (pierSide < 0)
-        return PIER_WEST;
+        return INDI::Telescope::PIER_WEST;
     else
-        return PIER_UNKNOWN;
+        return INDI::Telescope::PIER_UNKNOWN;
 }
 
 double IndiPropertyMapper::computeLst(double longitudeDeg)

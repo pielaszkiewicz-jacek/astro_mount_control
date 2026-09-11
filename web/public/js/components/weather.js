@@ -75,14 +75,16 @@ const WeatherComponent = (() => {
 
   function refresh() {
     Api.get('/api/weather/status').then(data => {
-      document.getElementById('weather-temp').textContent = (data.temperature_c || '--') + '°C';
-      document.getElementById('weather-humidity').textContent = (data.humidity_percent || '--') + '%';
-      document.getElementById('weather-pressure').textContent = (data.pressure_hpa || '--') + ' hPa';
-      document.getElementById('weather-wind').textContent = (data.wind_speed_ms || '--') + ' m/s';
-      document.getElementById('weather-rain').textContent = (data.rain_rate_mmh || '--') + ' mm/h';
-      document.getElementById('weather-clouds').textContent = (data.cloud_cover_percent || '--') + '%';
-      document.getElementById('weather-dew').textContent = (data.dew_point_c || '--') + '°C';
-      document.getElementById('weather-sky').textContent = (data.sky_brightness_mpsas || '--') + ' mpsas';
+      // Format numeric values with two decimal places; keep '--' for missing values.
+      const fmt = (v) => (v ? Number(v).toFixed(2) : '--');
+      document.getElementById('weather-temp').textContent = fmt(data.temperature_c) + '°C';
+      document.getElementById('weather-humidity').textContent = fmt(data.humidity_percent) + '%';
+      document.getElementById('weather-pressure').textContent = fmt(data.pressure_hpa) + ' hPa';
+      document.getElementById('weather-wind').textContent = fmt(data.wind_speed_ms) + ' m/s';
+      document.getElementById('weather-rain').textContent = fmt(data.rain_rate_mmh) + ' mm/h';
+      document.getElementById('weather-clouds').textContent = fmt(data.cloud_cover_percent) + '%';
+      document.getElementById('weather-dew').textContent = fmt(data.dew_point_c) + '°C';
+      document.getElementById('weather-sky').textContent = fmt(data.sky_brightness_mpsas) + ' mpsas';
 
       const safety = document.getElementById('weather-safety');
       if (safety) {

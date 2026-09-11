@@ -253,6 +253,13 @@ uint32_t SimulatedHAL::SimulatedMotor::getOperationTime() const {
     return static_cast<uint32_t>(duration.count());
 }
 
+bool SimulatedHAL::SimulatedMotor::writePidLoopRam(int loop, double kp, double ki, double kd) {
+    // The simulated plant has no RAM, but accepting the write lets the PID
+    // calibration engine run end-to-end against SimulatedHAL for testing.
+    (void)loop; (void)kp; (void)ki; (void)kd;
+    return true;
+}
+
 void SimulatedHAL::SimulatedMotor::simulationThread() {
     const double update_rate = 100.0; // Hz
     const auto update_interval = std::chrono::milliseconds(1000 / static_cast<int>(update_rate));

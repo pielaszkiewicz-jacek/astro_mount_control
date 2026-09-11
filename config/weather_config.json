@@ -1,6 +1,6 @@
 {
     "comment": "Weather monitoring service configuration. Disabled by default — enable via mount controller's ExternalIntegrationConfig::weather_enabled.",
-    "enabled": false,
+    "enabled": true,
     "rules": {
         "min_temperature_c": -20.0,
         "max_temperature_c": 50.0,
@@ -47,10 +47,10 @@
         "altitude_m": 100.0
     },
     "api_source": {
-        "provider": "",
-        "api_key": "",
-        "latitude": 0.0,
-        "longitude": 0.0,
-        "station_id": ""
+        "provider": "imgw",
+        "api_key": "5fe7efe70a34041c9749b5d1c430a208",
+        "latitude": 52.2297,
+        "longitude": 21.0122,
+        "station_id": "1"
     }
 }

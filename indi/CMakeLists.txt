@@ -44,6 +44,12 @@ endif()
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
 
+# Resolve the full gRPC C++ link line (grpc++ pulls in grpc, gpr, upb, absl,
+# re2, cares, z, ssl, crypto). The generated .grpc.pb.cc references symbols
+# from libgrpc/libgpr directly, and modern linkers require those DSOs on the
+# command line when the symbols come from a static archive.
+pkg_check_modules(GRPCXX_PKG QUIET grpc++)
+
 # libnova — runtime library (libnova-0.16) is usually already installed as a
 # dependency of libindi; the dev headers may be missing on minimal systems.
 # We look for the headers via pkg-config or a provided directory.
@@ -130,7 +136,9 @@ target_link_directories(astro_mount_indi_driver PRIVATE
 
 target_link_libraries(astro_mount_indi_driver
     mount_grpc_client
+    indidriver
     ${INDI_LIBRARIES}
+    ${GRPCXX_PKG_LIBRARIES}
     pthread
 )
 

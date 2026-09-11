@@ -68,7 +68,14 @@ AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
     , m_grpcPort(grpcPort > 0 ? grpcPort : 50051)
 {
     setVersion(2, 0);
-    setTelescopeType(TELESCOPE_TYPE_EQUATORIAL);
+    // INDI 2.x: telescope type is expressed through capability flags.
+    SetTelescopeCapability(INDI::Telescope::TELESCOPE_CAN_GOTO |
+                               INDI::Telescope::TELESCOPE_CAN_SYNC |
+                               INDI::Telescope::TELESCOPE_CAN_PARK |
+                               INDI::Telescope::TELESCOPE_CAN_ABORT |
+                               INDI::Telescope::TELESCOPE_HAS_TRACK_MODE |
+                               INDI::Telescope::TELESCOPE_CAN_CONTROL_TRACK,
+                           4); // GUIDE / CENTERING / FIND / MAX slew rates
 
     m_grpc = std::make_unique<MountGrpcClient>(m_grpcHost, m_grpcPort, m_grpcUseSsl);
     m_mapper = std::make_unique<IndiPropertyMapper>();
@@ -98,7 +105,7 @@ bool AstroMountINDI::Connect()
     if (!INDI::Telescope::Connect())
         return false;
 
-    LOGF_INFO("Connected to mount controller (gRPC)");
+    LOG_INFO("Connected to mount controller (gRPC)");
     updateConnectionStatus();
     return true;
 }
@@ -115,7 +122,7 @@ bool AstroMountINDI::Disconnect()
         LOGF_ERROR("Failed to disconnect gRPC: %s", e.what());
         ok = false;
     }
-    LOGF_INFO("Disconnected from mount controller (gRPC)");
+    LOG_INFO("Disconnected from mount controller (gRPC)");
     updateConnectionStatus();
     return ok;
 }
@@ -123,6 +130,20 @@ bool AstroMountINDI::Disconnect()
 const char *AstroMountINDI::getDefaultName()
 {
     return "AstroMount";
+}
+
+void AstroMountINDI::ISGetProperties(const char* dev)
+{
+    INDI::Telescope::ISGetProperties(dev);
+
+    // INDI 2.x defines only a minimum connection set in ISGetProperties();
+    // updateProperties() runs on connect/disconnect. The gRPC endpoint config
+    // (host/port/TLS) must be visible BEFORE connecting, so define it here as
+    // well. Re-defining it later is harmless.
+    defineText(&ConnectionTP);
+    defineSwitch(&ConnectionSslSP);
+    defineText(&ConnectionStatusTP);
+    updateConnectionStatus();
 }
 
 bool AstroMountINDI::initProperties()
@@ -250,7 +271,7 @@ bool AstroMountINDI::updateProperties()
 // ============================================
 
 bool AstroMountINDI::ISNewNumber(const char* dev, const char* name,
-                                  double values[], const char* names[], int n)
+                                  double values[], char* names[], int n)
 {
     if (dev && !strcmp(dev, getDeviceName()))
     {
@@ -303,8 +324,8 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
                     if (ra == 0 && dec == 0)
                     {
                         // Use from EQUATORIAL_EOD_COORD instead
-                        ra = EquatorialCoordsN[0].value;
-                        dec = EquatorialCoordsN[1].value;
+                        ra = EquatorialCoordsJ2000N[0].value;
+                        dec = EquatorialCoordsJ2000N[1].value;
                     }
 
                     auto coords = m_mapper->toGrpcCoordinates(ra, dec);
@@ -461,9 +482,6 @@ bool AstroMountINDI::GotoRaDec(double ra, double dec)
         auto coords = m_mapper->toGrpcCoordinates(ra, dec);
         m_grpc->slewToCoordinates(coords);
 
-        // Update INDI target properties
-        targetRA = ra;
-        targetDEC = dec;
         TrackState = SCOPE_SLEWING;
 
         LOGF_INFO("Slewing to RA=%.4f, Dec=%.4f", ra, dec);
@@ -584,7 +602,7 @@ bool AstroMountINDI::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
 
 bool AstroMountINDI::Abort()
 {
-    LOGF_DEBUG("Abort()");
+    LOG_DEBUG("Abort()");
 
     try
     {
@@ -601,14 +619,14 @@ bool AstroMountINDI::Abort()
 
 bool AstroMountINDI::Park()
 {
-    LOGF_DEBUG("Park()");
+    LOG_DEBUG("Park()");
 
     try
     {
         m_grpc->park();
         m_isParked = true;
         TrackState = SCOPE_PARKED;
-        LOGF_INFO("Mount parked");
+        LOG_INFO("Mount parked");
         return true;
     }
     catch (const std::exception& e)
@@ -618,16 +636,16 @@ bool AstroMountINDI::Park()
     }
 }
 
-bool AstroMountINDI::Unpark()
+bool AstroMountINDI::UnPark()
 {
-    LOGF_DEBUG("Unpark()");
+    LOG_DEBUG("Unpark()");
 
     try
     {
         m_grpc->unpark();
         m_isParked = false;
         TrackState = SCOPE_IDLE;
-        LOGF_INFO("Mount unparked");
+        LOG_INFO("Mount unparked");
         return true;
     }
     catch (const std::exception& e)
@@ -639,7 +657,7 @@ bool AstroMountINDI::Unpark()
 
 bool AstroMountINDI::SetCurrentPark()
 {
-    LOGF_DEBUG("SetCurrentPark()");
+    LOG_DEBUG("SetCurrentPark()");
 
     try
     {
@@ -672,7 +690,7 @@ bool AstroMountINDI::SetDefaultPark()
     return true;
 }
 
-bool AstroMountINDI::UpdateLocation(double latitude, double longitude, double elevation)
+bool AstroMountINDI::updateLocation(double latitude, double longitude, double elevation)
 {
     LOGF_DEBUG("UpdateLocation(lat=%.4f, lon=%.4f, elev=%.1f)",
               latitude, longitude, elevation);
@@ -737,7 +755,7 @@ bool AstroMountINDI::pollController()
             try
             {
                 m_grpc->reconnect();
-                LOGF_INFO("Reconnected to controller");
+                LOG_INFO("Reconnected to controller");
             }
             catch (const std::exception& re)
             {

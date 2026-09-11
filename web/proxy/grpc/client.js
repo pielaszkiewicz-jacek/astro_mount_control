@@ -287,6 +287,7 @@ const EXT_PROTO_PATH = {
   pec:          path.join(__dirname, '../../../proto/pec.proto'),
   camera:       path.join(__dirname, '../../../proto/camera.proto'),
   pulley:       path.join(__dirname, '../../../proto/pulley.proto'),
+  pidcal:       path.join(__dirname, '../../../proto/pid_calibration.proto'),
   notifications: path.join(__dirname, '../../../proto/notification.proto'),
 };
 
@@ -375,6 +376,10 @@ const pulleyClient = makeServiceClient(
   'Pulley', EXT_PROTO_PATH.pulley, 'PulleyService',
   `${config.pulley.host}:${config.pulley.port}`);
 
+const pidCalibrationClient = makeServiceClient(
+  'PidCalibration', EXT_PROTO_PATH.pidcal, 'PidCalibrationService',
+  `${config.pidcal.host}:${config.pidcal.port}`);
+
 const notificationsClient = makeServiceClient(
   'Notifications', EXT_PROTO_PATH.notifications, 'NotificationService',
   `${config.notifications.host}:${config.notifications.port}`);
@@ -416,6 +421,9 @@ module.exports = {
   createPulleyGrpcClient: pulleyClient.create,
   getPulleyGrpcClient: pulleyClient.get,
   pulleyGrpcCall: pulleyClient.call,
+  createPidCalibrationGrpcClient: pidCalibrationClient.create,
+  getPidCalibrationGrpcClient: pidCalibrationClient.get,
+  pidCalibrationGrpcCall: pidCalibrationClient.call,
   createNotificationsGrpcClient: notificationsClient.create,
   getNotificationsGrpcClient: notificationsClient.get,
   notificationsGrpcCall: notificationsClient.call,

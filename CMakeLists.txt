@@ -357,6 +357,7 @@ set(MERGED_SERVICE_SOURCES
     pec/src/pec_service_impl.cpp
     camera/src/camera_service_impl.cpp
     pulley/src/pulley_service_impl.cpp
+    pidcal/src/pid_calibration_service_impl.cpp
 )
 
 # Create executable — hosts the mount controller gRPC service plus the

@@ -68,6 +68,38 @@ const Api = (() => {
   }
 
   /**
+   * Normalise an endpoint path so it can be passed to request() without
+   * double-prefixing `/api`.  Extended-service components pass either
+   * `/api/pidcal/start` or `/notifications/status`; both must resolve to
+   * `/api/...` on the proxy.
+   */
+  function stripApiPrefix(path) {
+    if (typeof path === 'string' && path.startsWith('/api')) {
+      return path.slice('/api'.length);
+    }
+    return path;
+  }
+
+  /**
+   * Generic POST helper for extended-service components.
+   * @param {string} path - e.g. '/api/pidcal/start' or '/notifications/status'
+   * @param {object} [body]
+   * @param {object} [options]
+   */
+  async function post(path, body = {}, options = {}) {
+    return request(stripApiPrefix(path), { method: 'POST', body, ...options });
+  }
+
+  /**
+   * Generic GET helper for extended-service components.
+   * @param {string} path - e.g. '/api/pidcal/status' or '/notifications/status'
+   * @param {object} [options]
+   */
+  async function get(path, options = {}) {
+    return request(stripApiPrefix(path), { method: 'GET', ...options });
+  }
+
+  /**
    * Get the current mount controller state.
    * GET /api/status
    * @returns {Promise<object>}
@@ -960,6 +992,8 @@ const Api = (() => {
 
   // Public API
   return {
+    post,
+    get,
     getStatus,
     slewToCoordinates,
     trackObject,
