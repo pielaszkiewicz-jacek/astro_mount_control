@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<driversList>
+    <devGroup group="Telescopes">
+        <device label="AstroMount" manufacturer="AstroMountController">
+            <driver name="AstroMount">astro_mount_indi_driver</driver>
+            <version>2.0</version>
+        </device>
+    </devGroup>
+</driversList>

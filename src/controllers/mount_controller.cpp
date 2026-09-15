@@ -1321,7 +1321,9 @@ public:
         return true;
     }
     
-    bool startTracking(double ra, double dec, config::TrackingMode mode) {
+    bool startTracking(double ra, double dec, config::TrackingMode mode,
+                       double customRateRaArcsecPerSec = 0.0,
+                       double customRateDecArcsecPerSec = 0.0) {
         // Reject non-finite coordinates to prevent infinite loops in HA normalization
         if (!std::isfinite(ra) || !std::isfinite(dec)) {
             return false;
@@ -1503,9 +1505,17 @@ public:
                         axis2_tracking_rate = 0.0;
                         break;
                     case config::TrackingMode::CUSTOM:
-                        // max_tracking_rate is now in servo °/s (unified)
-                        axis1_tracking_rate = config_.mount_config.max_tracking_rate;
-                        axis2_tracking_rate = 0.0;
+                        // Custom rates arrive in telescope arcsec/s (INDI
+                        // SetTrackRate). Convert to servo deg/s:
+                        // deg/s = arcsec/s / 3600, then × gear ratio.
+                        if (customRateRaArcsecPerSec != 0.0)
+                            axis1_tracking_rate = customRateRaArcsecPerSec / 3600.0 * ha_gear;
+                        else
+                            axis1_tracking_rate = config_.mount_config.max_tracking_rate;
+                        if (customRateDecArcsecPerSec != 0.0)
+                            axis2_tracking_rate = customRateDecArcsecPerSec / 3600.0 * dec_gear;
+                        else
+                            axis2_tracking_rate = 0.0;
                         break;
                     case config::TrackingMode::OFF:
                         axis1_tracking_rate = 0.0;
@@ -3584,6 +3594,52 @@ public:
         status.tracking_active = (state_ == MountStatus::State::TRACKING);
         status.tracking_target_ra = tracking_target_ra_hours_;
         status.tracking_target_dec = tracking_target_dec_deg_;
+
+        // Corrected on-sky position — applies the same correction pipeline as
+        // the tracking loop (mount orientation quaternion for ALT_AZ/CASUAL and
+        // TPOINT fine correction when available). This is the position the mount
+        // actually points at, unlike the raw telescope axes reported above.
+        {
+            const double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+            double ra_hours = 0.0, dec_deg = 0.0;
+            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
+                // axis1 = HA (telescope degrees, normalized to [0°,360°))
+                double ha_deg = raw_tel_axis1;
+                if (ha_deg > 180.0) ha_deg -= 360.0;
+                const double ha_hours = ha_deg / 15.0;
+                const double lst = core::AstronomicalCalculations::calculateLST(
+                    jd, config_.mount_config.longitude);
+                ra_hours = lst - ha_hours;
+                ra_hours = std::fmod(ra_hours, 24.0);
+                if (ra_hours < 0.0) ra_hours += 24.0;
+                dec_deg = raw_tel_axis2;
+                if (dec_deg > 180.0) dec_deg -= 360.0;
+            } else {
+                // ALT_AZ / CASUAL: reverse the mount orientation quaternion.
+                auto eq = astro_calc_->mountOrientationToEquatorial(
+                    raw_tel_axis1, raw_tel_axis2, jd, mount_orientation_.quaternion);
+                ra_hours = eq.first;
+                dec_deg = eq.second;
+            }
+
+            if (tpoint_calibrated_ && tpoint_model_) {
+                double ha_for_tp = 0.0;
+                if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
+                    const double lst = core::AstronomicalCalculations::calculateLST(
+                        jd, config_.mount_config.longitude);
+                    ha_for_tp = lst - ra_hours;
+                    while (ha_for_tp > 12.0) ha_for_tp -= 24.0;
+                    while (ha_for_tp < -12.0) ha_for_tp += 24.0;
+                }
+                auto corrected = tpoint_model_->applyCorrections(
+                    ra_hours, dec_deg, ha_for_tp, dec_deg, status.env_temperature);
+                ra_hours = corrected.first;
+                dec_deg = corrected.second;
+            }
+
+            status.current_ra = ra_hours;
+            status.current_dec = dec_deg;
+        }
 
         return status;
     }
@@ -7708,8 +7764,11 @@ bool MountController::slewToHorizontal(double altitude, double azimuth) {
     return pimpl->slewToHorizontal(altitude, azimuth);
 }
 
-bool MountController::startTracking(double ra, double dec, config::TrackingMode mode) {
-    return pimpl->startTracking(ra, dec, mode);
+bool MountController::startTracking(double ra, double dec, config::TrackingMode mode,
+                                    double customRateRaArcsecPerSec,
+                                    double customRateDecArcsecPerSec) {
+    return pimpl->startTracking(ra, dec, mode,
+                                customRateRaArcsecPerSec, customRateDecArcsecPerSec);
 }
 
 void MountController::stop() {

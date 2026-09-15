@@ -64,6 +64,9 @@ if(LIBNOVA_INCLUDE_DIR)
     set(LIBNOVA_INCLUDE_DIRS ${LIBNOVA_INCLUDE_DIR})
 endif()
 
+# libnova runtime library (some distributions ship headers without a .pc file).
+find_library(LIBNOVA_LIBRARY NAMES nova libnova)
+
 # The gRPC C++ plugin path — the imported target is the reliable way to locate
 # it (some gRPC builds do not set the GRPC_CPP_PLUGIN variable).
 get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
@@ -138,6 +141,8 @@ target_link_libraries(astro_mount_indi_driver
     mount_grpc_client
     indidriver
     ${INDI_LIBRARIES}
+    ${LIBNOVA_LIBRARIES}
+    ${LIBNOVA_LIBRARY}
     ${GRPCXX_PKG_LIBRARIES}
     pthread
 )
@@ -160,4 +165,11 @@ install(TARGETS astro_mount_indi_driver
 install(TARGETS astro_mount_indi_driver
     RUNTIME DESTINATION ${INDI_DATA_DIR}/drivers
     OPTIONAL
+)
+
+# Driver metadata (device list entry) — used by KStars/Ekos to discover the
+# driver. Note: on systems that use a single /usr/share/indi/drivers.xml list
+# the <device> block must additionally be merged into that file.
+install(FILES astro_mount_indi_driver.xml
+    DESTINATION ${INDI_DATA_DIR}/drivers
 )

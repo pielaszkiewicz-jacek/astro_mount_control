@@ -31,6 +31,10 @@ function formatState(state) {
       axis2: state.telescope_axis2 || 0,
     },
 
+    // --- Corrected on-sky position (after bootstrap orientation / TPOINT) ---
+    current_ra: state.current_ra || 0,
+    current_dec: state.current_dec || 0,
+
     // --- Tracking rates (already in arcsec/s from proto) ---
     tracking_rate_ra: state.tracking_rate_ra || 0,
     tracking_rate_dec: state.tracking_rate_dec || 0,

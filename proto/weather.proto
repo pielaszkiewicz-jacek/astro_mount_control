@@ -25,6 +25,11 @@ service WeatherService {
 
     /** Subscribe to real-time weather alert stream */
     rpc SubscribeWeatherAlerts(google.protobuf.Empty) returns (stream WeatherAlert);
+
+    /** Subscribe to a continuous push of current weather conditions.
+     *  The weather service streams WeatherStatus updates on every monitoring
+     *  cycle, so the mount controller no longer needs to poll GetWeatherStatus. */
+    rpc SubscribeWeatherStatus(google.protobuf.Empty) returns (stream WeatherStatus);
 }
 
 // ─── Enums ───────────────────────────────────────────────────────────────────

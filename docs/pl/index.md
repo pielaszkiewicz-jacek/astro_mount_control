@@ -18,6 +18,7 @@
 14. [Parametry fizyczne osi](#parametry-fizyczne-osi)
 15. [Sterowniki ASCOM i INDI](#ascom-i-indi-drivers)
 16. [Interfejs Web](#interfejs-web)
+17. [Instrukcja obsługi sekwencjonera](instrukcja_sekwencjonera.md)
 
 ## Wprowadzenie
 

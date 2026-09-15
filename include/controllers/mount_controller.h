@@ -171,6 +171,10 @@ public:
         bool tracking_active{false};       ///< True when mount is tracking a target
         double tracking_target_ra{0.0};    ///< Target RA [hours]
         double tracking_target_dec{0.0};   ///< Target Dec [degrees]
+
+        // === Corrected on-sky position (after bootstrap / TPOINT) ===
+        double current_ra{0.0};    ///< Corrected RA [hours]
+        double current_dec{0.0};   ///< Corrected Dec [degrees]
         
         std::chrono::system_clock::time_point timestamp;
         std::string error_message;
@@ -213,9 +217,14 @@ public:
      * @param ra Right ascension in hours
      * @param dec Declination in degrees
      * @param mode Tracking mode
+     * @param customRateRaArcsecPerSec Custom RA rate (arcsec/s) for CUSTOM mode (0 = configured default)
+     * @param customRateDecArcsecPerSec Custom Dec rate (arcsec/s) for CUSTOM mode (0 = no Dec drift)
      * @return True if command accepted
      */
-    bool startTracking(double ra, double dec, config::TrackingMode mode = config::TrackingMode::SIDEREAL);
+    bool startTracking(double ra, double dec,
+                       config::TrackingMode mode = config::TrackingMode::SIDEREAL,
+                       double customRateRaArcsecPerSec = 0.0,
+                       double customRateDecArcsecPerSec = 0.0);
 
     /**
      * @brief Stop tracking/slewing

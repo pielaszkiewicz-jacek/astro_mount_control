@@ -1,6 +1,9 @@
 #include "IndiPropertyMapper.h"
 #include <cmath>
 #include <ctime>
+#include <libnova/julian_day.h>
+#include <libnova/precession.h>
+#include <libnova/transform.h>
 
 IndiPropertyMapper::IndiPropertyMapper(double latitude, double longitude, double elevation)
     : latitude_(latitude)
@@ -19,9 +22,15 @@ void IndiPropertyMapper::setLocation(double latitude, double longitude, double e
 astro_mount::Coordinates IndiPropertyMapper::toGrpcCoordinates(
     double raHours, double decDegrees) const
 {
+    // INDI hands the driver JNow (apparent) coordinates. The mount controller
+    // expects J2000, so precess JNow → J2000 before building the request.
+    double raJ2000 = raHours;
+    double decJ2000 = decDegrees;
+    jnowToJ2000(raHours, decDegrees, raJ2000, decJ2000);
+
     astro_mount::Coordinates coords;
-    coords.set_ra(raHours);
-    coords.set_dec(decDegrees);
+    coords.set_ra(raJ2000);
+    coords.set_dec(decJ2000);
     coords.set_apply_precession(true);
     coords.set_apply_nutation(true);
     coords.set_apply_refraction(true);
@@ -29,31 +38,115 @@ astro_mount::Coordinates IndiPropertyMapper::toGrpcCoordinates(
     return coords;
 }
 
+void IndiPropertyMapper::jnowToJ2000(double raHours, double decDegrees,
+                                     double& raJ2000Hours, double& decJ2000Degrees) const
+{
+    const double jdNow = (jd_ > 0.0) ? jd_ : ln_get_julian_from_sys();
+    const double jdJ2000 = 2451545.0;
+
+    ln_equ_posn meanOfDate{};
+    meanOfDate.ra = raHours * 15.0;
+    meanOfDate.dec = decDegrees;
+
+    ln_equ_posn j2000{};
+    ln_get_equ_prec2(&meanOfDate, jdNow, jdJ2000, &j2000);
+
+    raJ2000Hours = j2000.ra / 15.0;
+    decJ2000Degrees = j2000.dec;
+}
+
+void IndiPropertyMapper::j2000ToJnow(double raJ2000Hours, double decJ2000Degrees,
+                                     double& raHours, double& decDegrees) const
+{
+    const double jdNow = (jd_ > 0.0) ? jd_ : ln_get_julian_from_sys();
+    const double jdJ2000 = 2451545.0;
+
+    ln_equ_posn j2000{};
+    j2000.ra = raJ2000Hours * 15.0;
+    j2000.dec = decJ2000Degrees;
+
+    ln_equ_posn meanOfDate{};
+    ln_get_equ_prec2(&j2000, jdJ2000, jdNow, &meanOfDate);
+
+    raHours = meanOfDate.ra / 15.0;
+    decDegrees = meanOfDate.dec;
+}
+
+void IndiPropertyMapper::equatorialToHorizontal(double raHours, double decDegrees,
+                                                double& altitudeDeg, double& azimuthDeg) const
+{
+    ln_equ_posn equ{};
+    equ.ra = raHours * 15.0;
+    equ.dec = decDegrees;
+
+    ln_lnlat_posn observer{};
+    observer.lng = longitude_;
+    observer.lat = latitude_;
+
+    ln_hrz_posn hrz{};
+    ln_get_hrz_from_equ(&equ, &observer,
+                        (jd_ > 0.0) ? jd_ : ln_get_julian_from_sys(), &hrz);
+
+    altitudeDeg = hrz.alt;
+    azimuthDeg = hrz.az;
+}
+
+void IndiPropertyMapper::horizontalToEquatorial(double altitudeDeg, double azimuthDeg,
+                                                double& raHours, double& decDegrees) const
+{
+    ln_hrz_posn hrz{};
+    hrz.alt = altitudeDeg;
+    hrz.az = azimuthDeg;
+
+    ln_lnlat_posn observer{};
+    observer.lng = longitude_;
+    observer.lat = latitude_;
+
+    ln_equ_posn equ{};
+    ln_get_equ_from_hrz(&hrz, &observer,
+                        (jd_ > 0.0) ? jd_ : ln_get_julian_from_sys(), &equ);
+
+    raHours = equ.ra / 15.0;
+    decDegrees = equ.dec;
+}
+
 bool IndiPropertyMapper::toIndiRaDec(
-    const astro_mount::MountPosition& mountPos,
     const astro_mount::ControllerState& state,
     double lstHours,
     double& raHours, double& decDegrees) const
 {
-    // For equatorial mounts: axis1 = HA (degrees), axis2 = Dec (degrees)
-    // RA = LST - HA (convert HA from deg to hours)
-    double haHours = mountPos.axis1() / 15.0;
+    // Prefer the controller's corrected on-sky position (current_ra/current_dec),
+    // which already includes bootstrap orientation and TPOINT corrections.
+    // Fall back to raw telescope axes for older controllers that don't set it.
+    if (state.current_ra() != 0.0 || state.current_dec() != 0.0)
+    {
+        raHours = state.current_ra();
+        decDegrees = state.current_dec();
+        raHours = fmod(raHours, 24.0);
+        if (raHours < 0) raHours += 24.0;
+        return true;
+    }
 
-    // Normalize HA to [-12, 12] hours
+    // telescope_axis1/axis2 are TELESCOPE degrees (servo ÷ gear ratio), already
+    // normalized by the controller. current_position() holds RAW servo degrees
+    // and must NOT be used here.
+    //   equatorial: axis1 = HA in [0°,360°), axis2 = Dec in [0°,360°)
+    double axis1Deg = state.telescope_axis1();
+    double axis2Deg = state.telescope_axis2();
+
+    // HA → [-12, 12] hours
+    double haHours = axis1Deg / 15.0;
     if (haHours > 12.0) haHours -= 24.0;
     else if (haHours < -12.0) haHours += 24.0;
 
+    // RA = LST - HA, normalized to [0, 24) hours
     raHours = lstHours - haHours;
-
-    // Normalize RA to [0, 24) hours
     raHours = fmod(raHours, 24.0);
     if (raHours < 0) raHours += 24.0;
 
-    decDegrees = mountPos.axis2();
-
-    // Clamp Dec to valid range
-    if (decDegrees > 90.0) decDegrees = 90.0;
-    else if (decDegrees < -90.0) decDegrees = -90.0;
+    // Dec from [0°,360°) back to signed degrees
+    decDegrees = axis2Deg;
+    if (decDegrees > 180.0) decDegrees -= 360.0;
 
     return true;
 }
@@ -92,25 +185,11 @@ int IndiPropertyMapper::toIndiPierSide(double pierSide) const
         return INDI::Telescope::PIER_UNKNOWN;
 }
 
-double IndiPropertyMapper::computeLst(double longitudeDeg)
+double IndiPropertyMapper::computeLst() const
 {
-    // Simplified LST from system time
-    std::time_t now = std::time(nullptr);
-    std::tm* utc = std::gmtime(&now);
-
-    // Julian Date since J2000.0 approximation
-    int year = utc->tm_year + 1900;
-    int month = utc->tm_mon + 1;
-    int day = utc->tm_mday;
-
-    // Simple JD calculation
-    double jd = 367 * year - std::floor(7 * (year + std::floor((month + 9) / 12.0)) / 4.0)
-                + std::floor(275 * month / 9.0) + day + 1721013.5;
-
-    double hour_utc = utc->tm_hour + utc->tm_min / 60.0 + utc->tm_sec / 3600.0;
-    jd += hour_utc / 24.0;
-
-    double jd2000 = jd - 2451545.0;
+    // LST from stored JD (fallback: system time).
+    const double jd = (jd_ > 0.0) ? jd_ : ln_get_julian_from_sys();
+    const double jd2000 = jd - 2451545.0;
 
     // GMST (hours)
     double gmst = 18.697374558 + 24.06570982441908 * jd2000;
@@ -118,11 +197,16 @@ double IndiPropertyMapper::computeLst(double longitudeDeg)
     if (gmst < 0) gmst += 24.0;
 
     // LST
-    double lst = gmst + longitudeDeg / 15.0;
+    double lst = gmst + longitude_ / 15.0;
     lst = fmod(lst, 24.0);
     if (lst < 0) lst += 24.0;
 
     return lst;
+}
+
+void IndiPropertyMapper::setJulianDate(double jd)
+{
+    jd_ = jd;
 }
 
 bool IndiPropertyMapper::mountPositionToRaDec(

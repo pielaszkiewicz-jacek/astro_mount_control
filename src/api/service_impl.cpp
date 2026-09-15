@@ -64,7 +64,9 @@ grpc::Status MountControllerServiceImpl::TrackObject(grpc::ServerContext* contex
                 break;
         }
         
-        if (controller_.startTracking(request->ra(), request->dec(), mode)) {
+        if (controller_.startTracking(request->ra(), request->dec(), mode,
+                                      request->custom_track_rate_ra(),
+                                      request->custom_track_rate_dec())) {
             return grpc::Status::OK;
         } else {
             return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to start tracking");
@@ -129,7 +131,12 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         // Computed as servo_position / gear_ratio, then normalized per mount type.
         response->set_telescope_axis1(status.telescope_axis1_position);
         response->set_telescope_axis2(status.telescope_axis2_position);
-        
+
+        // Corrected on-sky position (after bootstrap orientation / TPOINT).
+        // Clients should prefer these over telescope_axis1/axis2 for RA/Dec display.
+        response->set_current_ra(status.current_ra);
+        response->set_current_dec(status.current_dec);
+
         // Meridian flip status
         response->set_pier_side(status.pier_side);
         response->set_meridian_flipped(status.meridian_flip_in_progress);
@@ -1229,6 +1236,22 @@ grpc::Status MountControllerServiceImpl::Unpark(grpc::ServerContext* context,
         controller_.unpark();
         return grpc::Status::OK;
     } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
+    }
+}
+
+grpc::Status MountControllerServiceImpl::ExecuteMeridianFlip(grpc::ServerContext* context,
+                                                             const google::protobuf::Empty* request,
+                                                             google::protobuf::Empty* response) {
+    try {
+        API_LOG_INFO("ExecuteMeridianFlip called");
+        if (!controller_.executeMeridianFlip()) {
+            return grpc::Status(grpc::StatusCode::INTERNAL,
+                                "Failed to execute meridian flip — mount must be tracking");
+        }
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        API_LOG_ERROR("ExecuteMeridianFlip failed: {}", e.what());
         return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
     }
 }

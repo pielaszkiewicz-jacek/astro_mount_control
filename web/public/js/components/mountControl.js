@@ -91,6 +91,7 @@ const MountControlComponent = (() => {
     bindHelpToggle('card-control-help');
     initSlewForm();
     initSlewAndTrackBtn();
+    initUseCurrentPositionBtn();
     initSlewSearch();
     initQuickActions();
     initAxisControl();
@@ -263,6 +264,36 @@ const MountControlComponent = (() => {
   function initSlewAndTrackBtn() {
     const btn = $('#btn-slew-and-track');
     if (btn) btn.addEventListener('click', handleSlewAndTrack);
+  }
+
+  /**
+   * Bind the "Use current" button — fetches the corrected current sky position
+   * and fills the slew form RA/Dec fields with it.
+   */
+  function initUseCurrentPositionBtn() {
+    const btn = $('#btn-slew-use-current');
+    if (btn) btn.addEventListener('click', handleUseCurrentPosition);
+  }
+
+  async function handleUseCurrentPosition() {
+    const raInput = $('#slew-ra');
+    const decInput = $('#slew-dec');
+    if (!raInput || !decInput) return;
+
+    try {
+      const state = await Api.getStatus();
+      const ra = state.current_ra ?? 0;
+      const dec = state.current_dec ?? 0;
+
+      if (raInput.setAngleDecimal) raInput.setAngleDecimal(ra);
+      else raInput.value = ra;
+      if (decInput.setAngleDecimal) decInput.setAngleDecimal(dec);
+      else decInput.value = dec;
+
+      App.showToast('Slew form set to current (corrected) position', 'info');
+    } catch (err) {
+      App.showToast(`Failed to fetch position: ${err.message}`, 'error');
+    }
   }
 
   async function handleSlewAndTrack() {

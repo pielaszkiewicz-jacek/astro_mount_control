@@ -1,8 +1,11 @@
 #include "astro_mount_driver.h"
+#include <libnova/julian_day.h>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <algorithm>
+#include <chrono>
+#include <thread>
 
 // We declare the driver loader function expected by indiserver
 static std::unique_ptr<AstroMountINDI> s_driver;
@@ -61,6 +64,7 @@ void ISSnoopDevice(XMLEle* root)
 
 AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
     : INDI::Telescope()
+    , INDI::GuiderInterface(this)
     , m_isParked(false)
     , m_targetRA(0)
     , m_targetDec(0)
@@ -68,6 +72,10 @@ AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
     , m_grpcPort(grpcPort > 0 ? grpcPort : 50051)
 {
     setVersion(2, 0);
+    // The transport to the controller is gRPC, not a serial/TCP telescope
+    // connection. Disable the base class connection plugins so Connect() does
+    // not attempt a TCP handshake with 127.0.0.1:7624.
+    setTelescopeConnection(INDI::Telescope::CONNECTION_NONE);
     // INDI 2.x: telescope type is expressed through capability flags.
     SetTelescopeCapability(INDI::Telescope::TELESCOPE_CAN_GOTO |
                                INDI::Telescope::TELESCOPE_CAN_SYNC |
@@ -77,6 +85,12 @@ AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
                                INDI::Telescope::TELESCOPE_CAN_CONTROL_TRACK,
                            4); // GUIDE / CENTERING / FIND / MAX slew rates
 
+    // Tracking modes advertised to INDI clients.
+    AddTrackMode("TRACK_SIDEREAL", "Sidereal", true);
+    AddTrackMode("TRACK_SOLAR", "Solar");
+    AddTrackMode("TRACK_LUNAR", "Lunar");
+    AddTrackMode("TRACK_CUSTOM", "Custom");
+
     m_grpc = std::make_unique<MountGrpcClient>(m_grpcHost, m_grpcPort, m_grpcUseSsl);
     m_mapper = std::make_unique<IndiPropertyMapper>();
 
@@ -85,13 +99,13 @@ AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
 
 bool AstroMountINDI::Connect()
 {
-    // Establish the gRPC channel to the mount controller. The base
-    // INDI::Telescope::Connect() only flips the connection state and defines
-    // properties — it knows nothing about the gRPC link, so without this the
-    // "Connect" switch in the INDI client never reached the controller.
-    // Recreate the client from the UI-configured host/port/TLS first, so any
-    // GRPC_CONNECTION / GRPC_TLS changes are applied on every connect.
+    // Establish the gRPC channel to the mount controller. The transport is
+    // gRPC only (CONNECTION_NONE), so the base class connection plugins must
+    // not run — call setConnected() directly instead of the base Connect(),
+    // which would report "No active connection defined".
     applyConnectionConfig();
+    LOGF_DEBUG("Connect: attempting gRPC connection to %s:%d (ssl=%d)",
+               m_grpcHost.c_str(), m_grpcPort, m_grpcUseSsl);
     try
     {
         m_grpc->connect();
@@ -102,8 +116,12 @@ bool AstroMountINDI::Connect()
         return false;
     }
 
-    if (!INDI::Telescope::Connect())
-        return false;
+    setConnected(true, IPS_OK, nullptr);
+
+    // Start the periodic poll timer. Without this initial SetTimer the
+    // framework never invokes TimerHit(), so KStars would keep showing the
+    // position captured once during updateProperties().
+    SetTimer(getCurrentPollingPeriod());
 
     LOG_INFO("Connected to mount controller (gRPC)");
     updateConnectionStatus();
@@ -112,7 +130,7 @@ bool AstroMountINDI::Connect()
 
 bool AstroMountINDI::Disconnect()
 {
-    bool ok = INDI::Telescope::Disconnect();
+    bool ok = true;
     try
     {
         m_grpc->disconnect();
@@ -122,9 +140,19 @@ bool AstroMountINDI::Disconnect()
         LOGF_ERROR("Failed to disconnect gRPC: %s", e.what());
         ok = false;
     }
+
+    setConnected(false, IPS_OK, nullptr);
+
     LOG_INFO("Disconnected from mount controller (gRPC)");
     updateConnectionStatus();
     return ok;
+}
+
+bool AstroMountINDI::Handshake()
+{
+    // The real handshake (gRPC CheckHealth) already happened in Connect().
+    // With CONNECTION_NONE there is no serial/TCP telescope to handshake with.
+    return m_grpc && m_grpc->isConnected();
 }
 
 const char *AstroMountINDI::getDefaultName()
@@ -140,15 +168,22 @@ void AstroMountINDI::ISGetProperties(const char* dev)
     // updateProperties() runs on connect/disconnect. The gRPC endpoint config
     // (host/port/TLS) must be visible BEFORE connecting, so define it here as
     // well. Re-defining it later is harmless.
-    defineText(&ConnectionTP);
-    defineSwitch(&ConnectionSslSP);
-    defineText(&ConnectionStatusTP);
+    defineProperty(&ConnectionTP);
+    defineProperty(&ConnectionSslSP);
+    defineProperty(&ConnectionStatusTP);
     updateConnectionStatus();
 }
 
 bool AstroMountINDI::initProperties()
 {
     INDI::Telescope::initProperties();
+
+    // Pulse-guiding interface (defines GuideNSNP / GuideWENP).
+    INDI::GuiderInterface::initProperties("Guide");
+
+    // Debug control — adds the DEBUG switch so LOG_DEBUG/LOGF_DEBUG output can
+    // be toggled from the INDI client at runtime.
+    addDebugControl();
 
     // Primary axis: EQUATORIAL_EOD_COORD (RA/Dec JNow)
     // We add J2000 as additional coordinate display
@@ -158,7 +193,7 @@ bool AstroMountINDI::initProperties()
                  -90, 90, 0.001, 0);
     IUFillNumberVector(&EquatorialCoordsJ2000NP, EquatorialCoordsJ2000N, 2,
                        getDeviceName(), "EQUATORIAL_J2000", "Eq J2000",
-                       MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
+                       MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
     // Bootstrap Calibration switch
     IUFillSwitch(&BootstrapCalibrationS[0], "RUN", "Run Bootstrap", ISS_OFF);
@@ -199,6 +234,78 @@ bool AstroMountINDI::initProperties()
                        getDeviceName(), "ENVIRONMENT",
                        "Environment", MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
 
+    // Horizontal (Alt/Az) coordinates — RW, lets clients slew in horizontal frame.
+    IUFillNumber(&HorizontalCoordN[0], "ALT", "Altitude (deg)", "%10.6f",
+                 -90, 90, 0.001, 0);
+    IUFillNumber(&HorizontalCoordN[1], "AZ", "Azimuth (deg)", "%10.6f",
+                 0, 360, 0.001, 0);
+    IUFillNumberVector(&HorizontalCoordNP, HorizontalCoordN, 2,
+                       getDeviceName(), "HORIZONTAL_COORD",
+                       "Horizontal Coord", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
+
+    // Controller status (read-only) — surfaces the controller ERROR state.
+    IUFillText(&MountStatusT[0], "STATE", "State", "Unknown");
+    IUFillText(&MountStatusT[1], "ERROR", "Error", "");
+    IUFillTextVector(&MountStatusTP, MountStatusT, 2,
+                     getDeviceName(), "MOUNT_STATUS",
+                     "Mount Status", MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
+
+    // TPOINT calibration control
+    IUFillSwitch(&TPointCalibrationS[0], "RUN", "Run TPOINT", ISS_OFF);
+    IUFillSwitch(&TPointCalibrationS[1], "CLEAR", "Clear Measurements", ISS_OFF);
+    IUFillSwitch(&TPointCalibrationS[2], "STATUS", "Show Status", ISS_OFF);
+    IUFillSwitchVector(&TPointCalibrationSP, TPointCalibrationS, 3,
+                       getDeviceName(), "TPOINT_CALIBRATION",
+                       "TPOINT Calibration", MAIN_CONTROL_TAB, IP_RW,
+                       ISR_ATMOST1, 60, IPS_IDLE);
+
+    // Encoder control
+    IUFillSwitch(&EncodersS[0], "ENABLE", "Enable", ISS_OFF);
+    IUFillSwitch(&EncodersS[1], "DISABLE", "Disable", ISS_ON);
+    IUFillSwitchVector(&EncodersSP, EncodersS, 2,
+                       getDeviceName(), "ENCODERS",
+                       "Encoders", MAIN_CONTROL_TAB, IP_RW, ISR_1OFMANY, 60, IPS_IDLE);
+
+    // Homing — set reference position from current telescope axes
+    IUFillSwitch(&HomeS[0], "SET_REFERENCE", "Set Reference", ISS_OFF);
+    IUFillSwitchVector(&HomeSP, HomeS, 1,
+                       getDeviceName(), "HOME",
+                       "Home", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+
+    // Emergency stop
+    IUFillSwitch(&EmergencyStopS[0], "TRIGGER", "Emergency Stop", ISS_OFF);
+    IUFillSwitchVector(&EmergencyStopSP, EmergencyStopS, 1,
+                       getDeviceName(), "EMERGENCY_STOP",
+                       "Emergency Stop", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+
+    // Controller state save / load
+    IUFillSwitch(&ControllerStateS[0], "SAVE", "Save State", ISS_OFF);
+    IUFillSwitch(&ControllerStateS[1], "LOAD", "Load State", ISS_OFF);
+    IUFillSwitchVector(&ControllerStateSP, ControllerStateS, 2,
+                       getDeviceName(), "CONTROLLER_STATE",
+                       "Controller State", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+
+    // Automatic bootstrap
+    IUFillSwitch(&AutoBootstrapS[0], "RUN", "Run Auto-Bootstrap", ISS_OFF);
+    IUFillSwitch(&AutoBootstrapS[1], "STATUS", "Show Status", ISS_OFF);
+    IUFillSwitchVector(&AutoBootstrapSP, AutoBootstrapS, 2,
+                       getDeviceName(), "AUTO_BOOTSTRAP",
+                       "Auto Bootstrap", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+
+    // Gamepad manual-control loop
+    IUFillSwitch(&GamepadS[0], "START", "Start", ISS_OFF);
+    IUFillSwitch(&GamepadS[1], "STOP", "Stop", ISS_OFF);
+    IUFillSwitchVector(&GamepadSP, GamepadS, 2,
+                       getDeviceName(), "GAMEPAD",
+                       "Gamepad", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+
+    // LX200 serial protocol server
+    IUFillSwitch(&Lx200S[0], "START", "Start", ISS_OFF);
+    IUFillSwitch(&Lx200S[1], "STOP", "Stop", ISS_OFF);
+    IUFillSwitchVector(&Lx200SP, Lx200S, 2,
+                       getDeviceName(), "LX200",
+                       "LX200 Server", MAIN_CONTROL_TAB, IP_RW, ISR_ATMOST1, 60, IPS_IDLE);
+
     // ============================================
     // Connection configuration (UI) — gRPC endpoint
     // ============================================
@@ -234,21 +341,32 @@ bool AstroMountINDI::initProperties()
 bool AstroMountINDI::updateProperties()
 {
     INDI::Telescope::updateProperties();
+    INDI::GuiderInterface::updateProperties();
 
     // Connection configuration (GRPC_CONNECTION / GRPC_TLS / GRPC_CONNECTION_STATUS)
     // is always defined so the endpoint can be configured before connecting.
-    defineText(&ConnectionTP);
-    defineSwitch(&ConnectionSslSP);
-    defineText(&ConnectionStatusTP);
+    defineProperty(&ConnectionTP);
+    defineProperty(&ConnectionSslSP);
+    defineProperty(&ConnectionStatusTP);
     updateConnectionStatus();
 
     if (isConnected())
     {
-        defineNumber(&EquatorialCoordsJ2000NP);
-        defineSwitch(&BootstrapCalibrationSP);
-        defineText(&BootstrapStatusTP);
-        defineText(&TPointStatusTP);
-        defineNumber(&EnvironmentNP);
+        defineProperty(&EquatorialCoordsJ2000NP);
+        defineProperty(&BootstrapCalibrationSP);
+        defineProperty(&BootstrapStatusTP);
+        defineProperty(&TPointStatusTP);
+        defineProperty(&EnvironmentNP);
+        defineProperty(&HorizontalCoordNP);
+        defineProperty(&MountStatusTP);
+        defineProperty(&TPointCalibrationSP);
+        defineProperty(&EncodersSP);
+        defineProperty(&HomeSP);
+        defineProperty(&EmergencyStopSP);
+        defineProperty(&ControllerStateSP);
+        defineProperty(&AutoBootstrapSP);
+        defineProperty(&GamepadSP);
+        defineProperty(&Lx200SP);
 
         // Poll initial state
         pollController();
@@ -261,6 +379,16 @@ bool AstroMountINDI::updateProperties()
         deleteProperty(BootstrapStatusTP.name);
         deleteProperty(TPointStatusTP.name);
         deleteProperty(EnvironmentNP.name);
+        deleteProperty(HorizontalCoordNP.name);
+        deleteProperty(MountStatusTP.name);
+        deleteProperty(TPointCalibrationSP.name);
+        deleteProperty(EncodersSP.name);
+        deleteProperty(HomeSP.name);
+        deleteProperty(EmergencyStopSP.name);
+        deleteProperty(ControllerStateSP.name);
+        deleteProperty(AutoBootstrapSP.name);
+        deleteProperty(GamepadSP.name);
+        deleteProperty(Lx200SP.name);
     }
 
     return true;
@@ -275,11 +403,50 @@ bool AstroMountINDI::ISNewNumber(const char* dev, const char* name,
 {
     if (dev && !strcmp(dev, getDeviceName()))
     {
-        // Handle J2000 coordinate input
+        LOGF_DEBUG("ISNewNumber(%s, n=%d)", name, n);
+
+        // Delegate guide-pulse properties (GuideNSNP / GuideWENP) to the
+        // GuiderInterface, which maps them onto GuideNorth/South/East/West.
+        if (INDI::GuiderInterface::processNumber(dev, name, values, names, n))
+            return true;
+
+        // Handle J2000 coordinate input — precess to JNow and slew.
         if (!strcmp(name, EquatorialCoordsJ2000NP.name))
         {
-            // Read-only in Faza 2; will be writable in Faza 3
+            IUUpdateNumber(&EquatorialCoordsJ2000NP, values, names, n);
+            double raNow = EquatorialCoordsJ2000N[0].value;
+            double decNow = EquatorialCoordsJ2000N[1].value;
+            m_mapper->j2000ToJnow(EquatorialCoordsJ2000N[0].value,
+                                  EquatorialCoordsJ2000N[1].value, raNow, decNow);
+            if (GotoRaDec(raNow, decNow))
+                EquatorialCoordsJ2000NP.s = IPS_OK;
+            else
+                EquatorialCoordsJ2000NP.s = IPS_ALERT;
             IDSetNumber(&EquatorialCoordsJ2000NP, nullptr);
+            return true;
+        }
+
+        // Handle horizontal (Alt/Az) coordinate input
+        if (!strcmp(name, HorizontalCoordNP.name))
+        {
+            IUUpdateNumber(&HorizontalCoordNP, values, names, n);
+            try
+            {
+                astro_mount::HorizontalCoordinates coords;
+                coords.set_altitude(HorizontalCoordN[0].value);
+                coords.set_azimuth(HorizontalCoordN[1].value);
+                m_grpc->slewToHorizontal(coords);
+                TrackState = SCOPE_SLEWING;
+                HorizontalCoordNP.s = IPS_OK;
+                LOGF_INFO("Slewing to Alt=%.4f, Az=%.4f",
+                          coords.altitude(), coords.azimuth());
+            }
+            catch (const std::exception& e)
+            {
+                HorizontalCoordNP.s = IPS_ALERT;
+                LOGF_ERROR("Horizontal slew failed: %s", e.what());
+            }
+            IDSetNumber(&HorizontalCoordNP, nullptr);
             return true;
         }
     }
@@ -292,6 +459,8 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
 {
     if (dev && !strcmp(dev, getDeviceName()))
     {
+        LOGF_DEBUG("ISNewSwitch(%s, n=%d)", name, n);
+
         // gRPC TLS toggle (Enabled/Disabled)
         if (!strcmp(name, ConnectionSslSP.name))
         {
@@ -311,46 +480,34 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
 
             if (runIndex == 0) // RUN
             {
-                // Add current position as bootstrap measurement and calibrate
+                // Add current position as bootstrap measurement and calibrate.
                 try
                 {
-                    auto state = m_grpc->getState();
-                    auto mountPos = state.current_position();
-
-                    // Use current J2000 coords from client
+                    // Use the currently displayed equatorial coordinates as the
+                    // catalog target for the measurement.
                     double ra = EquatorialCoordsJ2000N[0].value;
                     double dec = EquatorialCoordsJ2000N[1].value;
 
-                    if (ra == 0 && dec == 0)
+                    if (!addSyncMeasurement(ra, dec))
                     {
-                        // Use from EQUATORIAL_EOD_COORD instead
-                        ra = EquatorialCoordsJ2000N[0].value;
-                        dec = EquatorialCoordsJ2000N[1].value;
-                    }
-
-                    auto coords = m_mapper->toGrpcCoordinates(ra, dec);
-
-                    astro_mount::BootstrapMeasurement measurement;
-                    *measurement.mutable_observed() = coords;
-                    *measurement.mutable_expected() = coords;
-                    *measurement.mutable_mount_position() = mountPos;
-                    measurement.set_use_for_initial_alignment(true);
-
-                    m_grpc->addBootstrapMeasurement(measurement);
-                    auto result = m_grpc->runBootstrapCalibration();
-
-                    if (result.success())
-                    {
-                        LOGF_INFO("Bootstrap calibration successful. "
-                                 "Error: %.2f arcsec",
-                                 result.alignment_error_arcsec());
-                        BootstrapCalibrationSP.s = IPS_OK;
+                        BootstrapCalibrationSP.s = IPS_ALERT;
                     }
                     else
                     {
-                        LOGF_ERROR("Bootstrap calibration failed: %s",
-                                  result.error_message().c_str());
-                        BootstrapCalibrationSP.s = IPS_ALERT;
+                        auto result = m_grpc->runBootstrapCalibration();
+                        if (result.success())
+                        {
+                            LOGF_INFO("Bootstrap calibration successful. "
+                                     "Error: %.2f arcsec",
+                                     result.alignment_error_arcsec());
+                            BootstrapCalibrationSP.s = IPS_OK;
+                        }
+                        else
+                        {
+                            LOGF_ERROR("Bootstrap calibration failed: %s",
+                                      result.error_message().c_str());
+                            BootstrapCalibrationSP.s = IPS_ALERT;
+                        }
                     }
 
                     // Update status text
@@ -407,6 +564,265 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
             IDSetSwitch(&BootstrapCalibrationSP, nullptr);
             return true;
         }
+
+        // TPOINT calibration control (RUN / CLEAR / STATUS)
+        if (!strcmp(name, TPointCalibrationSP.name))
+        {
+            int idx = IUFindOnSwitchIndex(&TPointCalibrationSP);
+            IUResetSwitch(&TPointCalibrationSP);
+            try
+            {
+                if (idx == 0) // RUN
+                {
+                    auto state = m_grpc->getState();
+                    double lst = m_mapper->computeLst();
+                    double curRa = 0, curDec = 0;
+                    if (!m_mapper->toIndiRaDec(state, lst, curRa, curDec))
+                    {
+                        TPointCalibrationSP.s = IPS_ALERT;
+                    }
+                    else
+                    {
+                        double obsRa = 0, obsDec = 0;
+                        m_mapper->jnowToJ2000(curRa, curDec, obsRa, obsDec);
+                        astro_mount::Coordinates observed;
+                        observed.set_ra(obsRa);
+                        observed.set_dec(obsDec);
+                        observed.set_epoch(2000.0);
+                        auto expected = m_mapper->toGrpcCoordinates(
+                            EquatorialCoordsJ2000N[0].value,
+                            EquatorialCoordsJ2000N[1].value);
+
+                        astro_mount::Measurement m;
+                        *m.mutable_observed() = observed;
+                        *m.mutable_expected() = expected;
+                        *m.mutable_mount_position() = state.current_position();
+                        m_grpc->addTPointMeasurement(m);
+                        m_grpc->runTPointCalibration();
+                        TPointCalibrationSP.s = IPS_OK;
+                        LOG_INFO("TPOINT measurement added and calibration run");
+                    }
+                }
+                else if (idx == 1) // CLEAR
+                {
+                    m_grpc->clearTPointMeasurements();
+                    TPointCalibrationSP.s = IPS_IDLE;
+                }
+                else // STATUS
+                {
+                    auto tp = m_grpc->getTPointParameters();
+                    std::string coeffs;
+                    for (int i = 0; i < tp.coefficients_size(); ++i)
+                    {
+                        if (i > 0) coeffs += ", ";
+                        coeffs += std::to_string(tp.coefficients(i));
+                    }
+                    IUSaveText(&TPointStatusT[0], coeffs.empty() ? "none" : coeffs.c_str());
+                    IUSaveText(&TPointStatusT[1], std::to_string(tp.chi_squared()).c_str());
+                    IUSaveText(&TPointStatusT[2], tp.calibrated() ? "Yes" : "No");
+                    IDSetText(&TPointStatusTP, nullptr);
+                    TPointCalibrationSP.s = IPS_OK;
+                }
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("TPOINT calibration error: %s", e.what());
+                TPointCalibrationSP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&TPointCalibrationSP, nullptr);
+            return true;
+        }
+
+        // Encoder control (ENABLE / DISABLE)
+        if (!strcmp(name, EncodersSP.name))
+        {
+            IUUpdateSwitch(&EncodersSP, states, names, n);
+            try
+            {
+                if (EncodersS[0].s == ISS_ON)
+                {
+                    auto cfg = m_grpc->getConfiguration();
+                    astro_mount::EncoderConfig ec;
+                    ec.set_type(cfg.encoders_absolute()
+                        ? astro_mount::EncoderConfig_EncoderType_ABSOLUTE
+                        : astro_mount::EncoderConfig_EncoderType_INCREMENTAL);
+                    ec.set_resolution(cfg.encoder_resolution_config());
+                    ec.set_use_feedback(true);
+                    m_grpc->enableEncoders(ec);
+                    LOG_INFO("Encoders enabled");
+                }
+                else
+                {
+                    m_grpc->disableEncoders();
+                    LOG_INFO("Encoders disabled");
+                }
+                EncodersSP.s = IPS_OK;
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("Encoder control failed: %s", e.what());
+                EncodersSP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&EncodersSP, nullptr);
+            return true;
+        }
+
+        // Homing — set reference position from current telescope axes
+        if (!strcmp(name, HomeSP.name))
+        {
+            IUResetSwitch(&HomeSP);
+            try
+            {
+                auto state = m_grpc->getState();
+                astro_mount::MountHomingRequest req;
+                req.set_axis1(state.telescope_axis1());
+                req.set_axis2(state.telescope_axis2());
+                m_grpc->home(req);
+                HomeSP.s = IPS_OK;
+                LOGF_INFO("Home reference set: axis1=%.4f°, axis2=%.4f°",
+                          req.axis1(), req.axis2());
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("Home failed: %s", e.what());
+                HomeSP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&HomeSP, nullptr);
+            return true;
+        }
+
+        // Emergency stop (all axes)
+        if (!strcmp(name, EmergencyStopSP.name))
+        {
+            IUResetSwitch(&EmergencyStopSP);
+            try
+            {
+                astro_mount::EmergencyStopRequest req;
+                req.set_axis_id(-1);
+                req.set_reset_after(false);
+                m_grpc->emergencyStop(req);
+                EmergencyStopSP.s = IPS_OK;
+                TrackState = SCOPE_IDLE;
+                LOG_WARN("Emergency stop triggered");
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("Emergency stop failed: %s", e.what());
+                EmergencyStopSP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&EmergencyStopSP, nullptr);
+            return true;
+        }
+
+        // Controller state save / load
+        if (!strcmp(name, ControllerStateSP.name))
+        {
+            int idx = IUFindOnSwitchIndex(&ControllerStateSP);
+            IUResetSwitch(&ControllerStateSP);
+            try
+            {
+                if (idx == 0)
+                {
+                    astro_mount::StateSaveRequest req;
+                    req.set_include_measurements(true);
+                    auto resp = m_grpc->saveState(req);
+                    LOGF_INFO("Controller state saved: %s", resp.file_path().c_str());
+                }
+                else
+                {
+                    astro_mount::StateLoadRequest req;
+                    m_grpc->loadState(req);
+                    LOG_INFO("Controller state loaded");
+                }
+                ControllerStateSP.s = IPS_OK;
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("Controller state operation failed: %s", e.what());
+                ControllerStateSP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&ControllerStateSP, nullptr);
+            return true;
+        }
+
+        // Automatic bootstrap (RUN / STATUS)
+        if (!strcmp(name, AutoBootstrapSP.name))
+        {
+            int idx = IUFindOnSwitchIndex(&AutoBootstrapSP);
+            IUResetSwitch(&AutoBootstrapSP);
+            try
+            {
+                if (idx == 0)
+                {
+                    astro_mount::AutoBootstrapRequest req;
+                    req.set_min_measurements(3);
+                    req.set_max_alignment_error_arcsec(60.0);
+                    req.set_proceed_to_tpoint(false);
+                    m_grpc->runAutomaticBootstrap(req);
+                    AutoBootstrapSP.s = IPS_OK;
+                    LOG_INFO("Automatic bootstrap started");
+                }
+                else
+                {
+                    auto st = m_grpc->getAutoBootstrapStatus();
+                    LOGF_INFO("Auto-bootstrap: state=%d, progress=%.1f%%, measurements=%d/%d",
+                              st.state(), st.progress_percent(),
+                              st.measurements_collected(), st.measurements_target());
+                    AutoBootstrapSP.s = IPS_OK;
+                }
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("Auto-bootstrap failed: %s", e.what());
+                AutoBootstrapSP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&AutoBootstrapSP, nullptr);
+            return true;
+        }
+
+        // Gamepad manual-control loop (START / STOP)
+        if (!strcmp(name, GamepadSP.name))
+        {
+            int idx = IUFindOnSwitchIndex(&GamepadSP);
+            IUResetSwitch(&GamepadSP);
+            try
+            {
+                if (idx == 0) m_grpc->startGamepad();
+                else m_grpc->stopGamepad();
+                GamepadSP.s = IPS_OK;
+                LOGF_INFO("Gamepad %s", idx == 0 ? "started" : "stopped");
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("Gamepad control failed: %s", e.what());
+                GamepadSP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&GamepadSP, nullptr);
+            return true;
+        }
+
+        // LX200 serial protocol server (START / STOP)
+        if (!strcmp(name, Lx200SP.name))
+        {
+            int idx = IUFindOnSwitchIndex(&Lx200SP);
+            IUResetSwitch(&Lx200SP);
+            try
+            {
+                astro_mount::Lx200Status st;
+                if (idx == 0) st = m_grpc->startLx200();
+                else st = m_grpc->stopLx200();
+                Lx200SP.s = IPS_OK;
+                LOGF_INFO("LX200 %s (running=%d, port=%s)",
+                          idx == 0 ? "started" : "stopped", st.running(), st.port().c_str());
+            }
+            catch (const std::exception& e)
+            {
+                LOGF_ERROR("LX200 control failed: %s", e.what());
+                Lx200SP.s = IPS_ALERT;
+            }
+            IDSetSwitch(&Lx200SP, nullptr);
+            return true;
+        }
     }
 
     return INDI::Telescope::ISNewSwitch(dev, name, states, names, n);
@@ -417,6 +833,8 @@ bool AstroMountINDI::ISNewText(const char* dev, const char* name,
 {
     if (dev && !strcmp(dev, getDeviceName()))
     {
+        LOGF_DEBUG("ISNewText(%s, n=%d)", name, n);
+
         // gRPC endpoint configuration (host/port) — editable from the client
         // even while connected; takes effect on the next Connect.
         if (!strcmp(name, ConnectionTP.name))
@@ -501,31 +919,19 @@ bool AstroMountINDI::Sync(double ra, double dec)
 
     try
     {
-        auto state = m_grpc->getState();
-        auto mountPos = state.current_position();
+        if (!addSyncMeasurement(ra, dec))
+            return false;
 
-        auto coords = m_mapper->toGrpcCoordinates(ra, dec);
-
-        astro_mount::BootstrapMeasurement measurement;
-        *measurement.mutable_observed() = coords;
-        *measurement.mutable_expected() = coords;
-        *measurement.mutable_mount_position() = mountPos;
-        measurement.set_use_for_initial_alignment(true);
-
-        m_grpc->addBootstrapMeasurement(measurement);
         auto result = m_grpc->runBootstrapCalibration();
-
         if (result.success())
         {
             LOGF_INFO("Sync successful. Error: %.2f arcsec",
                      result.alignment_error_arcsec());
             return true;
         }
-        else
-        {
-            LOGF_ERROR("Sync failed: %s", result.error_message().c_str());
-            return false;
-        }
+
+        LOGF_ERROR("Sync failed: %s", result.error_message().c_str());
+        return false;
     }
     catch (const std::exception& e)
     {
@@ -543,8 +949,9 @@ bool AstroMountINDI::MoveNS(INDI_DIR_NS dir, TelescopeMotionCommand command)
     {
         if (command == MOTION_START)
         {
-            // Move Dec axis (axis_id=1) at a fixed rate
-            double rate = (dir == DIRECTION_NORTH) ? 1.0 : -1.0; // deg/s
+            // Move Dec axis (axis_id=1) at the selected slew rate
+            double rate = (dir == DIRECTION_NORTH) ? m_slewRateDegPerSec
+                                                    : -m_slewRateDegPerSec;
             astro_mount::AxisControlRequest req;
             req.set_axis_id(1);
             req.set_mode(astro_mount::AxisControlMode::VELOCITY_CONTROL);
@@ -576,8 +983,9 @@ bool AstroMountINDI::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
     {
         if (command == MOTION_START)
         {
-            // Move RA axis (axis_id=0) at a fixed rate
-            double rate = (dir == DIRECTION_WEST) ? 1.0 : -1.0; // deg/s
+            // Move RA axis (axis_id=0) at the selected slew rate
+            double rate = (dir == DIRECTION_WEST) ? m_slewRateDegPerSec
+                                                   : -m_slewRateDegPerSec;
             astro_mount::AxisControlRequest req;
             req.set_axis_id(0);
             req.set_mode(astro_mount::AxisControlMode::VELOCITY_CONTROL);
@@ -597,6 +1005,134 @@ bool AstroMountINDI::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
     {
         LOGF_ERROR("MoveWE failed: %s", e.what());
         return false;
+    }
+}
+
+// 0.5x sidereal rate — used for INDI guide pulses (INDI::GuiderInterface).
+static constexpr double kGuideRateDegPerSec = 0.5 * 15.041067 / 3600.0;
+static constexpr double kGuideRateArcsecPerSec = 0.5 * 15.041067;
+
+bool AstroMountINDI::SetSlewRate(int index)
+{
+    // INDI TelescopeSlewRate: 0 = GUIDE, 1 = CENTERING, 2 = FIND, 3 = MAX.
+    static const double kSlewRatesDegPerSec[4] = {
+        kGuideRateDegPerSec,  // guide speed
+        0.05,                 // centering
+        0.5,                  // find
+        1.0                   // max
+    };
+
+    if (index < 0 || index > 3)
+        return false;
+
+    m_slewRateIndex = index;
+    m_slewRateDegPerSec = kSlewRatesDegPerSec[index];
+    LOGF_INFO("Slew rate set to %.6f deg/s", m_slewRateDegPerSec);
+    return true;
+}
+
+bool AstroMountINDI::SetTrackMode(uint8_t mode)
+{
+    if (mode > INDI::Telescope::TRACK_CUSTOM)
+        return false;
+
+    m_trackMode = mode;
+    LOGF_INFO("Track mode set to %d", mode);
+    return true;
+}
+
+bool AstroMountINDI::SetTrackRate(double raRate, double deRate)
+{
+    // Store the custom rates and switch to CUSTOM mode. They are sent to the
+    // controller as Coordinates.custom_track_rate_ra/dec by SetTrackEnabled().
+    m_customTrackRaArcsecPerSec = raRate;
+    m_customTrackDecArcsecPerSec = deRate;
+    m_trackMode = INDI::Telescope::TRACK_CUSTOM;
+    LOGF_INFO("Custom track rate: RA=%.4f arcsec/s, Dec=%.4f arcsec/s",
+              raRate, deRate);
+    return true;
+}
+
+bool AstroMountINDI::SetTrackEnabled(bool enabled)
+{
+    try
+    {
+        if (enabled)
+        {
+            if (m_targetRA == 0.0 && m_targetDec == 0.0)
+            {
+                LOG_WARN("Cannot enable tracking — no target has been slewed to yet");
+                return false;
+            }
+
+            auto coords = m_mapper->toGrpcCoordinates(m_targetRA, m_targetDec);
+            coords.set_tracking_mode(m_trackMode);
+            if (m_trackMode == INDI::Telescope::TRACK_CUSTOM)
+            {
+                coords.set_custom_track_rate_ra(m_customTrackRaArcsecPerSec);
+                coords.set_custom_track_rate_dec(m_customTrackDecArcsecPerSec);
+            }
+            LOGF_DEBUG("SetTrackEnabled(true): RA=%.6f Dec=%.4f mode=%d "
+                       "customRA=%.4f customDec=%.4f arcsec/s",
+                       coords.ra(), coords.dec(), m_trackMode,
+                       m_customTrackRaArcsecPerSec, m_customTrackDecArcsecPerSec);
+            m_grpc->trackObject(coords);
+            TrackState = SCOPE_TRACKING;
+            LOGF_INFO("Tracking engaged (mode=%d)", m_trackMode);
+        }
+        else
+        {
+            m_grpc->stop();
+            TrackState = SCOPE_IDLE;
+            LOG_INFO("Tracking disengaged");
+        }
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        LOGF_ERROR("SetTrackEnabled failed: %s", e.what());
+        return false;
+    }
+}
+
+IPState AstroMountINDI::GuideNorth(uint32_t ms)
+{
+    return guideCorrection(0.0, kGuideRateArcsecPerSec * ms / 1000.0);
+}
+
+IPState AstroMountINDI::GuideSouth(uint32_t ms)
+{
+    return guideCorrection(0.0, -kGuideRateArcsecPerSec * ms / 1000.0);
+}
+
+IPState AstroMountINDI::GuideEast(uint32_t ms)
+{
+    // East = RA+ → positive RA correction.
+    return guideCorrection(kGuideRateArcsecPerSec * ms / 1000.0, 0.0);
+}
+
+IPState AstroMountINDI::GuideWest(uint32_t ms)
+{
+    // West = RA- → negative RA correction.
+    return guideCorrection(-kGuideRateArcsecPerSec * ms / 1000.0, 0.0);
+}
+
+IPState AstroMountINDI::guideCorrection(double raCorrectionArcsec, double decCorrectionArcsec)
+{
+    LOGF_DEBUG("Guide correction: dRA=%.3f arcsec, dDec=%.3f arcsec",
+               raCorrectionArcsec, decCorrectionArcsec);
+    try
+    {
+        astro_mount::GuiderCorrection correction;
+        correction.set_ra_correction(raCorrectionArcsec);
+        correction.set_dec_correction(decCorrectionArcsec);
+        m_grpc->sendGuiderCorrection(correction);
+        return IPS_OK;
+    }
+    catch (const std::exception& e)
+    {
+        LOGF_ERROR("Guide correction failed: %s", e.what());
+        return IPS_ALERT;
     }
 }
 
@@ -653,6 +1189,43 @@ bool AstroMountINDI::UnPark()
         LOGF_ERROR("Unpark failed: %s", e.what());
         return false;
     }
+}
+
+bool AstroMountINDI::Flip(double ra, double dec)
+{
+    LOGF_INFO("Meridian flip requested for RA=%.4f Dec=%.4f", ra, dec);
+
+    // Execute a real meridian flip through the controller (slew HA+180°,
+    // Dec→180°-Dec, then resume tracking on the opposite pier side).
+    try
+    {
+        m_grpc->executeMeridianFlip();
+        TrackState = SCOPE_SLEWING;
+        return true;
+    }
+    catch (const std::exception& e)
+    {
+        LOGF_ERROR("Meridian flip failed: %s", e.what());
+        return false;
+    }
+}
+
+bool AstroMountINDI::updateTime(ln_date* utc, double utc_offset)
+{
+    // Store the client-provided time so the driver's coordinate conversions
+    // (LST, JNow↔J2000, Alt/Az) use it instead of the system clock. The
+    // controller itself uses system time internally and exposes no time RPC.
+    if (utc)
+    {
+        const double jd = ln_get_julian_day(utc);
+        m_mapper->setJulianDate(jd);
+        LOGF_INFO("Time updated: JD=%.6f, UTC offset=%.2f h", jd, utc_offset);
+    }
+    else
+    {
+        LOG_WARN("updateTime called with null ln_date");
+    }
+    return true;
 }
 
 bool AstroMountINDI::SetCurrentPark()
@@ -743,6 +1316,12 @@ bool AstroMountINDI::pollController()
             m_lastState = state;
         }
 
+        LOGF_DEBUG("Poll OK: status=%d, axis1=%.4f°, axis2=%.4f°, "
+                   "encoders=%d, guider=%d, pier=%.1f",
+                   state.status(), state.current_position().axis1(),
+                   state.current_position().axis2(), state.encoders_enabled(),
+                   state.guider_active(), state.pier_side());
+
         return true;
     }
     catch (const std::exception& e)
@@ -775,12 +1354,11 @@ void AstroMountINDI::updateIndiProperties()
         state = m_lastState;
     }
 
-    double lst = IndiPropertyMapper::computeLst(m_mapper->latitude());
+    double lst = m_mapper->computeLst();
 
     // Convert mount position to RA/Dec
     double raHours = 0, decDegrees = 0;
-    if (!m_mapper->toIndiRaDec(state.current_position(), state, lst,
-                                raHours, decDegrees))
+    if (!m_mapper->toIndiRaDec(state, lst, raHours, decDegrees))
     {
         return;
     }
@@ -795,6 +1373,27 @@ void AstroMountINDI::updateIndiProperties()
     // Update pier side
     setPierSide(static_cast<INDI::Telescope::TelescopePierSide>(
         m_mapper->toIndiPierSide(state.pier_side())));
+
+    // ============================================
+    // Mount status — surfaces the controller ERROR state
+    // ============================================
+    {
+        const char* stateName = "UNKNOWN";
+        switch (state.status())
+        {
+        case astro_mount::ControllerState_MountStatus_IDLE:     stateName = "IDLE";     break;
+        case astro_mount::ControllerState_MountStatus_SLEWING:  stateName = "SLEWING";  break;
+        case astro_mount::ControllerState_MountStatus_TRACKING: stateName = "TRACKING"; break;
+        case astro_mount::ControllerState_MountStatus_PARKED:   stateName = "PARKED";   break;
+        case astro_mount::ControllerState_MountStatus_ERROR:    stateName = "ERROR";    break;
+        default: break;
+        }
+        const bool inError = (state.status() == astro_mount::ControllerState_MountStatus_ERROR);
+        IUSaveText(&MountStatusT[0], stateName);
+        IUSaveText(&MountStatusT[1], inError ? "Mount in ERROR state" : "");
+        MountStatusTP.s = inError ? IPS_ALERT : IPS_OK;
+        IDSetText(&MountStatusTP, nullptr);
+    }
 
     // Update time to meridian
     if (state.time_to_meridian() != 0)
@@ -827,6 +1426,19 @@ void AstroMountINDI::updateIndiProperties()
     EnvironmentN[1].value = state.pressure();
     EnvironmentN[2].value = state.humidity();
     IDSetNumber(&EnvironmentNP, nullptr);
+
+    // ============================================
+    // Horizontal (Alt/Az) readback
+    // ============================================
+    double altDeg = 0, azDeg = 0;
+    m_mapper->equatorialToHorizontal(raHours, decDegrees, altDeg, azDeg);
+    HorizontalCoordN[0].value = altDeg;
+    HorizontalCoordN[1].value = azDeg;
+    IDSetNumber(&HorizontalCoordNP, nullptr);
+
+    LOGF_DEBUG("Scope: RA=%.6f Dec=%.4f LST=%.6f Alt=%.4f Az=%.4f status=%d pier=%.1f",
+               raHours, decDegrees, lst, altDeg, azDeg,
+               state.status(), state.pier_side());
 }
 
 void AstroMountINDI::setEquatorialCoords(double raHours, double decDegrees)
@@ -840,6 +1452,41 @@ void AstroMountINDI::setEquatorialCoords(double raHours, double decDegrees)
     IDSetNumber(&EquatorialCoordsJ2000NP, nullptr);
 }
 
+bool AstroMountINDI::addSyncMeasurement(double raHours, double decDegrees)
+{
+    LOGF_DEBUG("addSyncMeasurement: client RA=%.6f Dec=%.4f", raHours, decDegrees);
+    auto state = m_grpc->getState();
+    auto mountPos = state.current_position();
+
+    // Catalog coordinates: the client provides JNow → convert to J2000.
+    auto expected = m_mapper->toGrpcCoordinates(raHours, decDegrees);
+
+    // Observed coordinates: current telescope pointing (JNow → J2000).
+    double lst = m_mapper->computeLst();
+    double curRa = 0, curDec = 0;
+    if (!m_mapper->toIndiRaDec(state, lst, curRa, curDec))
+        return false;
+
+    double curRaJ2000 = 0, curDecJ2000 = 0;
+    m_mapper->jnowToJ2000(curRa, curDec, curRaJ2000, curDecJ2000);
+
+    astro_mount::Coordinates observed;
+    observed.set_ra(curRaJ2000);
+    observed.set_dec(curDecJ2000);
+    observed.set_epoch(2000.0);
+
+    astro_mount::BootstrapMeasurement measurement;
+    *measurement.mutable_observed() = observed;
+    *measurement.mutable_expected() = expected;
+    *measurement.mutable_mount_position() = mountPos;
+    measurement.set_use_for_initial_alignment(true);
+
+    LOGF_DEBUG("addSyncMeasurement: expected RA=%.6f Dec=%.4f, observed RA=%.6f Dec=%.4f",
+               expected.ra(), expected.dec(), observed.ra(), observed.dec());
+    m_grpc->addBootstrapMeasurement(measurement);
+    return true;
+}
+
 bool AstroMountINDI::performGoto(double ra, double dec)
 {
     return GotoRaDec(ra, dec);
@@ -849,6 +1496,8 @@ void AstroMountINDI::applyConnectionConfig()
 {
     // Recreate the gRPC client from the UI-configured endpoint. Used at
     // Connect() so GRPC_CONNECTION / GRPC_TLS changes take effect.
+    LOGF_DEBUG("applyConnectionConfig: %s:%d (ssl=%d)",
+               m_grpcHost.c_str(), m_grpcPort, m_grpcUseSsl);
     m_grpc = std::make_unique<MountGrpcClient>(m_grpcHost, m_grpcPort, m_grpcUseSsl);
 }
 

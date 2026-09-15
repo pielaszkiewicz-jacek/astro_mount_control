@@ -49,6 +49,10 @@ public:
     grpc::Status Unpark(grpc::ServerContext* context,
                         const google::protobuf::Empty* request,
                         google::protobuf::Empty* response) override;
+
+    grpc::Status ExecuteMeridianFlip(grpc::ServerContext* context,
+                                     const google::protobuf::Empty* request,
+                                     google::protobuf::Empty* response) override;
     
     // State management
     grpc::Status GetState(grpc::ServerContext* context,

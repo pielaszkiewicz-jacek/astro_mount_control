@@ -626,6 +626,15 @@ const MountStatusComponent = (() => {
           <span class="stat-label">Axis 2</span>
           <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis2, true)}</span>
         </div>
+        <div class="stat-section-label">Current Sky Position (corrected)</div>
+        <div class="stat-row">
+          <span class="stat-label">RA</span>
+          <span class="stat-value highlight">${formatRA(state.current_ra || 0)}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Dec</span>
+          <span class="stat-value highlight">${formatDec(state.current_dec || 0)}</span>
+        </div>
         <div class="stat-section-label">Tracking Rates</div>
         <div class="stat-row">
           <span class="stat-label">RA</span>

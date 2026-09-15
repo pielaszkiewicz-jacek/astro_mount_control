@@ -189,6 +189,45 @@ public:
      */
     void sendGuiderCorrection(const astro_mount::GuiderCorrection& correction);
 
+    // ============================================
+    // Additional controller operations
+    // ============================================
+
+    /**
+     * @brief Execute a manual meridian flip (requires active tracking).
+     */
+    void executeMeridianFlip();
+
+    // TPOINT calibration
+    void addTPointMeasurement(const astro_mount::Measurement& measurement);
+    void clearTPointMeasurements();
+    void runTPointCalibration();
+    astro_mount::TPointParameters getTPointParameters();
+
+    // Encoder control
+    void enableEncoders(const astro_mount::EncoderConfig& config);
+    void disableEncoders();
+
+    // Homing
+    void home(const astro_mount::MountHomingRequest& request);
+
+    // State save / load
+    astro_mount::StateSaveResponse saveState(const astro_mount::StateSaveRequest& request);
+    void loadState(const astro_mount::StateLoadRequest& request);
+
+    // Auto-bootstrap
+    void setBootstrapMode(const astro_mount::BootstrapModeRequest& request);
+    void runAutomaticBootstrap(const astro_mount::AutoBootstrapRequest& request);
+    astro_mount::AutoBootstrapStatus getAutoBootstrapStatus();
+
+    // Gamepad manual-control loop
+    void startGamepad();
+    void stopGamepad();
+
+    // LX200 serial protocol server
+    astro_mount::Lx200Status startLx200();
+    astro_mount::Lx200Status stopLx200();
+
 private:
     std::string host_;
     int port_;

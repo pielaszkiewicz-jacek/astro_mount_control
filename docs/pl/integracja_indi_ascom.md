@@ -122,6 +122,22 @@ sudo cmake --install .
 # kopiuje do ${INDI_DATA_DIR}/drivers (zwykle /usr/share/indi/drivers)
 ```
 
+> **Ważne — rejestracja w KStars/Ekos:** samo skopiowanie pliku wykonywalnego nie wystarczy.
+> KStars/Ekos buduje listę dostępnych driverów na podstawie `/usr/share/indi/drivers.xml`
+> (format `<driversList>`). Dodaj wpis naszego urządzenia w grupie `Telescopes`, bo inaczej
+> w profilu Ekos (zakładka Mount) zobaczysz tylko „Find telescope”, a nie „AstroMount”:
+>
+> ```xml
+> <devGroup group="Telescopes">
+>     <device label="AstroMount" manufacturer="AstroMountController">
+>         <driver name="AstroMount">astro_mount_indi_driver</driver>
+>         <version>2.0</version>
+>     </device>
+> </devGroup>
+> ```
+>
+> Wpis jest też dostarczany jako [`indi/astro_mount_indi_driver.xml`](../indi/astro_mount_indi_driver.xml).
+
 ### 4.2 Konfiguracja adresu kontrolera
 
 #### a) Wartości domyślne (zmienne środowiskowe)
@@ -165,29 +181,102 @@ indiserver -v astro_mount_indi_driver
 
 ### 4.4 Połączenie z klienta (KStars / Ekos)
 
-1. **KStars → Ekos → Ekos Manager (lub Narzędzia → Urządzenia):**
-   - wybierz **AstroMount** jako teleskop (zakładka „Mount”),
-   - opcjonalnie: uruchom indiserver przez przycisk **Start** (lokalnie) albo podaj adres zdalnego serwera INDI,
-   - kliknij **Connect** — driver nawiąże gRPC do kontrolera.
-2. **INDI Control Panel:** połącz się z `localhost:7624` (lub adresem serwera), znajdź `astro_mount_indi_driver`, włącz **CONNECT**.
+#### Krok 1 — rejestracja drivera w KStars/Ekos (jednorazowo)
 
-> **Ważne:** od poprawki N12 `Connect()` faktycznie nawiązuje gRPC (`m_grpc->connect()`). Bez niej przycisk Connect niczego nie łączył.
+KStars/Ekos pokazuje w profilu tylko driver'y wpisane w `/usr/share/indi/drivers.xml`.
+Jeśli w zakładce **Mount** widzisz tylko **„Find telescope”**, dodaj wpis (raz):
+
+```bash
+sudo python3 - <<'EOF'
+p = '/usr/share/indi/drivers.xml'
+s = open(p).read()
+entry = '''        <device label="AstroMount" manufacturer="AstroMountController">
+            <driver name="AstroMount">astro_mount_indi_driver</driver>
+            <version>2.0</version>
+        </device>
+'''
+if 'astro_mount_indi_driver' not in s:
+    s = s.replace('<devGroup group="Telescopes">',
+                  '<devGroup group="Telescopes">\n' + entry, 1)
+    open(p, 'w').write(s)
+    print('OK')
+else:
+    print('już istnieje')
+EOF
+```
+
+Po zmianie zrestartuj KStars/Ekos i indiserver.
+
+#### Krok 2 — profil Ekos
+
+1. KStars → **Ekos** → **Profile Editor**.
+2. Utwórz/edytuj profil i w sekcji **Mount** wybierz **AstroMount**.
+3. Zapisz profil i kliknij **Start INDI** (indiserver uruchomi drivera).
+
+#### Krok 3 — uruchom kontroler gRPC
+
+Driver to tylko „cienki” mostek — logika działa w kontrolerze, który musi nasłuchiwać:
+
+```bash
+# realny sprzęt:
+./build/bin/astro_mount_controller config/default.json
+# test bez sprzętu (HAL symulowany):
+./build/bin/astro_mount_controller config/emulation.json
+```
+
+Zweryfikuj: `grpc_cli call localhost:50051 CheckHealth "service: 'mount_controller'"`.
+
+#### Krok 4 — połącz
+
+1. W Ekos (zakładka **Mount**) kliknij **Connect**.
+2. Sprawdź w panelu INDI `GRPC_CONNECTION_STATUS` — musi pokazać `Connected to <host>:<port>`.
+3. Po połączeniu pojawią się właściwości `EQUATORIAL_EOD_COORD`, `ON_COORD_SET`, `TELESCOPE_MOTION_NS/WE`, `TELESCOPE_PARK` itd.
+
+> Bez udanego `Connect()` (kontroler gRPC nieosiągalny) właściwości sterujące nie są definiowane i KStars nie pokaże GoTo.
+
+#### Krok 5 — GoTo do obiektu
+
+- **Mapa nieba:** kliknij prawym przyciskiem na obiekt → **GoTo** / **Slew to object**.
+- **Ekos → Mount:** wpisz RA/Dec (lub wybierz cel) i kliknij **GoTo**; montaż musi być **Unparked** i w stanie IDLE/TRACKING.
+- **Ręcznie (INDI Control Panel):** `ON_COORD_SET = SLEW`, wpisz RA/Dec w `EQUATORIAL_EOD_COORD` (JNow).
+
+#### Krok 6 — logowanie diagnostyczne
+
+Driver ma przełącznik **DEBUG** (grupa `Options`). Włącz go, aby otrzymywać szczegółowe logi
+(`ISNewNumber/Switch/Text`, poll stanu, RA/Dec/LST/Alt/Az, korekcje guidera, pomiary bootstrap).
+Logi INFO/ERROR są widoczne zawsze; logi DEBUG tylko po włączeniu DEBUG.
 
 ### 4.5 Dostępne funkcje INDI
 
 | Funkcja | Gdzie w INDI | RPC na kontrolerze |
 |---------|--------------|--------------------|
 | **Goto (RA/Dec)** | `EQUATORIAL_EOD_COORD` | `SlewToCoordinates` |
+| **Goto (J2000)** | `EQUATORIAL_J2000` (RW) | `SlewToCoordinates` (po precesji J2000→JNow) |
+| **Goto (Alt/Az)** | `HORIZONTAL_COORD` | `SlewToHorizontal` |
 | **Sync** | `EQUATORIAL_EOD_COORD` | `AddBootstrapMeasurement` + `RunBootstrapCalibration` |
 | **MoveNS / MoveWE** | `TELESCOPE_MOTION_NS/WE` | `ControlAxis` (velocity) / `StopAxis` |
 | **Abort** | `TELESCOPE_ABORT_MOTION` | `Stop` |
 | **Park / Unpark** | `TELESCOPE_PARK` | `Park` / `Unpark` |
+| **Meridian flip** | `Flip()` (klient INDI) | `ExecuteMeridianFlip` |
+| **Prowadzenie impulsowe** | `GuideNSNP` / `GuideWENP` | `SendGuiderCorrection` |
+| **Śledzenie (tryb/tempo)** | `TELESCOPE_TRACK_MODE/RATE/STATE` | `TrackObject` (z `tracking_mode` i `custom_track_rate_*`) |
 | **Bootstrap** | `BOOTSTRAP_CALIBRATION` (RUN/CLEAR/STATUS) | `AddBootstrapMeasurement`, `RunBootstrapCalibration`, `GetBootstrapStatus` |
+| **Auto-bootstrap** | `AUTO_BOOTSTRAP` (RUN/STATUS) | `RunAutomaticBootstrap`, `GetAutoBootstrapStatus` |
 | **TPOINT status** | `TPOINT_STATUS` (read-only) | z `GetState().tpoint_params` |
+| **TPOINT kalibracja** | `TPOINT_CALIBRATION` (RUN/CLEAR/STATUS) | `AddTPointMeasurement`, `RunTPointCalibration`, `ClearTPointMeasurements`, `GetTPointParameters` |
+| **Enkodery** | `ENCODERS` (ENABLE/DISABLE) | `EnableEncoders` / `DisableEncoders` |
+| **Home (referencja)** | `HOME` (SET_REFERENCE) | `Home` |
+| **Emergency stop** | `EMERGENCY_STOP` (TRIGGER) | `EmergencyStop` |
+| **Zapis/odczyt stanu** | `CONTROLLER_STATE` (SAVE/LOAD) | `SaveState` / `LoadState` |
+| **Gamepad** | `GAMEPAD` (START/STOP) | `StartGamepad` / `StopGamepad` |
+| **LX200** | `LX200` (START/STOP) | `StartLx200` / `StopLx200` |
+| **Stan/awaria** | `MOUNT_STATUS` (read-only, IPS_ALERT przy ERROR) | z `GetState().status` |
 | **Environment** | `ENVIRONMENT` (temp/ciśnienie/wilgotność) | z `GetState()` |
 | **Lokalizacja** | `GEOGRAPHIC_COORD` | `GetConfiguration`/`UpdateConfiguration` |
+| **Czas** | `TIME_UTC` (uwzględniany w LST i konwersjach) | — (kontroler używa czasu systemowego) |
 
-Stan odpytywany co ~1 s (`TimerHit` → `GetState`); RA/Dec przeliczane z pozycji montażu (LST w `IndiPropertyMapper`).
+Stan odpytywany co ~1 s (`TimerHit` → `GetState`); RA/Dec przeliczane z pozycji montażu (LST w [`IndiPropertyMapper`](../indi/IndiPropertyMapper.cpp)).
+Szczegółowe logi diagnostyczne: przełącznik **DEBUG** (grupa `Options`).
 
 ---
 

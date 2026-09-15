@@ -14,6 +14,11 @@ message Coordinates {
     // Tracking mode
     // 0 = SIDEREAL (default), 1 = SOLAR, 2 = LUNAR, 3 = CUSTOM, 4 = OFF
     int32 tracking_mode = 31;
+
+    // Custom tracking rates (arcsec/s), used when tracking_mode = 3 (CUSTOM).
+    // 0 means "use configured default" (RA) / "no Dec drift" (Dec).
+    double custom_track_rate_ra = 32;   // arcsec/s
+    double custom_track_rate_dec = 33;  // arcsec/s
     
     // Proper motion
     double pm_ra = 3;       // Proper motion in RA (mas/yr)
@@ -251,6 +256,12 @@ message ControllerState {
     // Actual motor velocity (from CANopen hardware, deg/s)
     double actual_rate_axis1 = 28;  // Actual axis1 velocity [deg/s]
     double actual_rate_axis2 = 29;  // Actual axis2 velocity [deg/s]
+
+    // Corrected on-sky position (after bootstrap orientation / TPOINT).
+    // These reflect the sky coordinates the mount is actually pointing at,
+    // unlike telescope_axis1/axis2 which are raw mount axes.
+    double current_ra = 30;   // Corrected right ascension [hours]
+    double current_dec = 31;  // Corrected declination [degrees]
 }
 
 // Pole position
@@ -332,6 +343,7 @@ service MountControllerService {
     rpc Stop(google.protobuf.Empty) returns (google.protobuf.Empty);
     rpc Park(google.protobuf.Empty) returns (google.protobuf.Empty);
     rpc Unpark(google.protobuf.Empty) returns (google.protobuf.Empty);
+    rpc ExecuteMeridianFlip(google.protobuf.Empty) returns (google.protobuf.Empty);
     
     // State management
     rpc GetState(google.protobuf.Empty) returns (ControllerState);

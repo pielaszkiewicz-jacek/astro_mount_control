@@ -123,7 +123,7 @@ config.external_services = {
   guider:     process.env.EXT_SERVICE_GUIDER !== 'false',      // in-process, enabled by default
   pec:        process.env.EXT_SERVICE_PEC !== 'false',         // in-process, enabled by default
   camera:     process.env.EXT_SERVICE_CAMERA !== 'false',      // in-process, enabled by default (R3)
-  pulley:     process.env.EXT_SERVICE_PULLEY !== 'false',      // in-process, enabled by default (R3)
+  pulley:     false,                                          // in-process (R3), hidden from the UI
   pidcal:     process.env.EXT_SERVICE_PIDCAL !== 'false',      // in-process, enabled by default
   notifications: process.env.EXT_SERVICE_NOTIFICATIONS !== 'false',  // in-process, enabled by default
 };

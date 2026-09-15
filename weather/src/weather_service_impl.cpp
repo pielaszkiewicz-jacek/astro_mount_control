@@ -234,6 +234,36 @@ grpc::Status WeatherServiceImpl::SetWeatherRules(
     return grpc::Status::OK;
 }
 
+grpc::Status WeatherServiceImpl::SubscribeWeatherStatus(
+    grpc::ServerContext* context,
+    const google::protobuf::Empty* request,
+    grpc::ServerWriter<astro_mount::WeatherStatus>* writer) {
+    // Inversion of the previous polling model: the weather service now pushes
+    // a fresh WeatherStatus snapshot to the mount controller on every
+    // monitoring cycle. The mount controller simply consumes the stream.
+    int interval_seconds = 10;
+    {
+        std::lock_guard<std::mutex> lock(monitor_mutex_);
+        if (!initialized_ || !monitor_) {
+            return grpc::Status(grpc::StatusCode::UNAVAILABLE, "Weather monitor not initialised");
+        }
+        interval_seconds = std::max(1, monitor_->getRules().check_interval_seconds);
+    }
+
+    while (!context->IsCancelled()) {
+        astro_mount::WeatherStatus status;
+        {
+            std::lock_guard<std::mutex> lock(monitor_mutex_);
+            if (!initialized_ || !monitor_) break;
+            monitor_->forceRead();
+            populateWeatherStatus(&status);
+        }
+        if (!writer->Write(status)) break;
+        std::this_thread::sleep_for(std::chrono::seconds(interval_seconds));
+    }
+    return grpc::Status::OK;
+}
+
 grpc::Status WeatherServiceImpl::SubscribeWeatherAlerts(
     grpc::ServerContext* context,
     const google::protobuf::Empty* request,

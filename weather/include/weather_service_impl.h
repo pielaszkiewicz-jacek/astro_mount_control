@@ -46,6 +46,10 @@ public:
                                         const google::protobuf::Empty* request,
                                         grpc::ServerWriter<astro_mount::WeatherAlert>* writer) override;
 
+    grpc::Status SubscribeWeatherStatus(grpc::ServerContext* context,
+                                        const google::protobuf::Empty* request,
+                                        grpc::ServerWriter<astro_mount::WeatherStatus>* writer) override;
+
 private:
     void populateWeatherStatus(astro_mount::WeatherStatus* status) const;
     bool configureFromJson(const std::string& config_path);
