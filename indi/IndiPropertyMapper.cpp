@@ -1,4 +1,5 @@
 #include "IndiPropertyMapper.h"
+#include "core/sidereal_time.h"
 #include <cmath>
 #include <ctime>
 #include <libnova/julian_day.h>
@@ -188,21 +189,11 @@ int IndiPropertyMapper::toIndiPierSide(double pierSide) const
 
 double IndiPropertyMapper::computeLst() const
 {
-    // LST from stored JD (fallback: system time).
+    // LST from stored JD (fallback: system time).  Delegated to the shared
+    // sidereal-time header so the INDI driver and the mount controller use the
+    // SAME LST source (see core/sidereal_time.h).
     const double jd = (jd_ > 0.0) ? jd_ : ln_get_julian_from_sys();
-    const double jd2000 = jd - 2451545.0;
-
-    // GMST (hours)
-    double gmst = 18.697374558 + 24.06570982441908 * jd2000;
-    gmst = fmod(gmst, 24.0);
-    if (gmst < 0) gmst += 24.0;
-
-    // LST
-    double lst = gmst + longitude_ / 15.0;
-    lst = fmod(lst, 24.0);
-    if (lst < 0) lst += 24.0;
-
-    return lst;
+    return astro_mount::core::calculateLST(jd, longitude_);
 }
 
 void IndiPropertyMapper::setJulianDate(double jd)

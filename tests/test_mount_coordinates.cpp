@@ -46,6 +46,17 @@ TEST(MountCoordinatesTest, ResolveDecTargetNearestEquivalent)
     EXPECT_DOUBLE_EQ(resolveDecTarget(-46.0, 0.0), -46.0);
 }
 
+// Floating-point tie at the 90° fold boundary must resolve to the in-range
+// candidate, never the opposite-side (180 − dec) value.
+TEST(MountCoordinatesTest, ResolveDecTargetFoldBoundaryTie)
+{
+    // 45.998 is not exactly representable in binary; at current Dec = 90° the
+    // distances to 45.998 and to 180−45.998 = 134.002 differ by < 1 ULP.  The
+    // result must stay inside [-90, 90].
+    EXPECT_NEAR(resolveDecTarget(45.998, 90.0), 45.998, 1e-9);
+    EXPECT_NEAR(resolveDecTarget(45.001, 90.0), 45.001, 1e-9);
+}
+
 } // namespace test
 } // namespace core
 } // namespace astro_mount

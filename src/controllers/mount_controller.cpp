@@ -307,18 +307,34 @@ public:
             // The bootstrap calibration (Wahba/SVD) will later determine the
             // rotation offset between the mount frame and the true horizontal frame,
             // which implicitly absorbs the unknown encoder zero offset.
-            MOUNT_LOG_INFO("Incremental encoders: starting from park position ({:.4f}°, {:.4f}°)",
-                          config_.safety_config.park_position_axis1, config_.safety_config.park_position_axis2);
-            // Park positions are in telescope degrees; convert to servo degrees.
-            axis1_position_ = config_.safety_config.park_position_axis1 * config_.mount_config.ha_axis_params.gear_ratio;
-            axis2_position_ = config_.safety_config.park_position_axis2 * config_.mount_config.dec_axis_params.gear_ratio;
-            // Also initialise raw servo positions so getStatus() reports
-            // correct telescope positions from the start (status tab).
-            raw_servo_axis1_position_ = axis1_position_;
-            raw_servo_axis2_position_ = axis2_position_;
-            MOUNT_LOG_INFO("Park init: axis1_pos={:.2f} axis2_pos={:.2f} raw_servo1={:.2f} raw_servo2={:.2f}",
-                          axis1_position_, axis2_position_,
-                          raw_servo_axis1_position_, raw_servo_axis2_position_);
+            if (hal_config_.type == hal::HALType::MF7025V2 ||
+                hal_config_.type == hal::HALType::SIMULATED) {
+                // Authoritative HALs report the true absolute position via
+                // refreshPositionsFromHAL().  Start at (0, 0) instead of the
+                // park position so a Home "Set Reference" issued immediately
+                // after start does not capture the park default (e.g. Dec=90°)
+                // as the reference — which would offset the whole coordinate
+                // frame by 90°.
+                MOUNT_LOG_INFO("Authoritative HAL ({}): starting from (0, 0)",
+                               static_cast<int>(hal_config_.type));
+                axis1_position_ = 0.0;
+                axis2_position_ = 0.0;
+                raw_servo_axis1_position_ = 0.0;
+                raw_servo_axis2_position_ = 0.0;
+            } else {
+                MOUNT_LOG_INFO("Incremental encoders: starting from park position ({:.4f}°, {:.4f}°)",
+                               config_.safety_config.park_position_axis1, config_.safety_config.park_position_axis2);
+                // Park positions are in telescope degrees; convert to servo degrees.
+                axis1_position_ = config_.safety_config.park_position_axis1 * config_.mount_config.ha_axis_params.gear_ratio;
+                axis2_position_ = config_.safety_config.park_position_axis2 * config_.mount_config.dec_axis_params.gear_ratio;
+                // Also initialise raw servo positions so getStatus() reports
+                // correct telescope positions from the start (status tab).
+                raw_servo_axis1_position_ = axis1_position_;
+                raw_servo_axis2_position_ = axis2_position_;
+                MOUNT_LOG_INFO("Park init: axis1_pos={:.2f} axis2_pos={:.2f} raw_servo1={:.2f} raw_servo2={:.2f}",
+                               axis1_position_, axis2_position_,
+                               raw_servo_axis1_position_, raw_servo_axis2_position_);
+            }
         }
 
         // Initialize position Kalman filter with config noise parameters.
@@ -1490,6 +1506,17 @@ public:
                        double customRateDecArcsecPerSec = 0.0) {
         // Reject non-finite coordinates to prevent infinite loops in HA normalization
         if (!std::isfinite(ra) || !std::isfinite(dec)) {
+            return false;
+        }
+
+        // Reject out-of-range Dec early (same guard as slewToEquatorial).  The
+        // Web UI proxy validates Dec, but INDI and other gRPC clients reach
+        // TrackObject directly; an invalid Dec would otherwise resolve to a
+        // servo target exceeding the Dec soft limits (the "axis2=134°" symptom).
+        if (dec < -90.0 || dec > 90.0) {
+            MOUNT_LOG_ERROR("startTracking: rejecting invalid Dec={:.4f}° "
+                            "(expected [-90, 90]); RA={:.6f}h",
+                            dec, ra);
             return false;
         }
         
@@ -3715,8 +3742,9 @@ public:
         std::shared_lock<std::shared_mutex> lock(*state_mutex_);
         MountStatus status;
         status.state = state_;
-        status.axis1_position = axis1_position_;
-        status.axis2_position = axis2_position_;
+        // axis1/axis2_position are assigned below from raw_servo1/raw_servo2
+        // (the physical ground-truth), NOT from the internal tracking state —
+        // single source of truth for the reported servo position.
         // Telescope position: servo degrees divided by gear ratio gives
         // the actual telescope axis position on the sky.
         // Uses raw_servo_axis1_position_ (updated by refreshPositionsFromHAL
@@ -3748,6 +3776,12 @@ public:
             if (std::abs(raw_servo2) < 0.001 && std::abs(axis2_position_) > 0.001)
                 raw_servo2 = axis2_position_;
         }
+
+        // Report the physical servo position (single source of truth).  The
+        // internal axis1/axis2_position_ remains the tracking-loop working
+        // state and is no longer exposed directly through getStatus().
+        status.axis1_position = raw_servo1;
+        status.axis2_position = raw_servo2;
 
         double raw_tel_axis1 = raw_servo1 / ha_gear;
         double raw_tel_axis2 = raw_servo2 / dec_gear;
@@ -6911,8 +6945,10 @@ public:
         {
             std::shared_lock<std::shared_mutex> lock(*state_mutex_);
             status.state = state_;
-            status.axis1_position = axis1_position_;
-            status.axis2_position = axis2_position_;
+            // Report the physical servo position (single source of truth),
+            // matching getStatus() — not the internal tracking-loop state.
+            status.axis1_position = raw_servo_axis1_position_;
+            status.axis2_position = raw_servo_axis2_position_;
             {
                 std::shared_lock<std::shared_mutex> rate_lock(*rate_mutex_);
                 status.axis1_rate = axis1_rate_;

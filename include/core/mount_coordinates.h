@@ -34,6 +34,7 @@ inline double foldDec(double dec_deg) {
  * no-op on the Dec axis.
  */
 inline double resolveDecTarget(double dec, double current_dec_tel) {
+    constexpr double kEps = 1e-9;
     double best = dec;
     double best_dist = std::abs(dec - current_dec_tel);
     const double candidates[] = {
@@ -43,7 +44,16 @@ inline double resolveDecTarget(double dec, double current_dec_tel) {
     };
     for (double c : candidates) {
         const double d = std::abs(c - current_dec_tel);
-        if (d < best_dist) {
+        const bool c_in_range = (c >= -90.0 && c <= 90.0);
+        const bool best_in_range = (best >= -90.0 && best <= 90.0);
+        if (d < best_dist - kEps) {
+            best = c;
+            best_dist = d;
+        } else if (d <= best_dist + kEps && c_in_range && !best_in_range) {
+            // Floating-point near-tie (e.g. current Dec on the 90° fold
+            // boundary): prefer the candidate inside the astronomical range
+            // [-90, 90] so the target never lands on the opposite pier side
+            // and trips the Dec soft limit.
             best = c;
             best_dist = d;
         }

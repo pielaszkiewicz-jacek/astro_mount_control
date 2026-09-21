@@ -149,6 +149,7 @@ target_link_libraries(astro_mount_indi_driver
 
 target_include_directories(astro_mount_indi_driver PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${INDI_INCLUDE_DIRS}
     ${LIBNOVA_INCLUDE_DIRS}
 )
@@ -183,6 +184,7 @@ if(GTest_FOUND)
 
     target_include_directories(test_indi_mapper PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/../include
         ${INDI_INCLUDE_DIRS}
         ${LIBNOVA_INCLUDE_DIRS}
     )

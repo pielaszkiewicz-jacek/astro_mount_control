@@ -1,4 +1,5 @@
 #include "core/astronomical_calculations.h"
+#include "core/sidereal_time.h"
 #include <sofa.h>
 #include <sofam.h>
 #include <cmath>
@@ -600,28 +601,14 @@ double AstronomicalCalculations::calculateEarthRotationAngle(double jd) {
 }
 
 double AstronomicalCalculations::calculateGMST(double jd) {
-    // iauGst94() computes Greenwich apparent sidereal time from a UT1 Julian date.
-    //
-    // NUMERICAL CORRECTNESS FIX: the previous implementation approximated
-    // UT1 as UTC + ΔAT (ΔAT = TAI - UTC = 37 s). This is incorrect — UT1 differs
-    // from UTC by DUT1 ∈ (−0.9 s, +0.9 s), NOT by ΔAT. Adding 37 s introduced a
-    // systematic ~36 s error in GMST/LST, i.e. ~0.15° (~9 arcmin) — far above the
-    // ~1″ target accuracy. Passing the UTC Julian date directly as UT1 leaves a
-    // residual error of at most ~0.9 s (~15″), negligible at our target accuracy.
-    // For sub-arcsecond UT1 one would need IERS Bulletin A (UT1-UTC) via iauUtcut1().
-    return iauGst94(jd, 0.0) * R2D / 15.0;  // Convert to hours
+    // Delegated to the shared header so the controller and the INDI driver use
+    // the SAME sidereal-time source (see core/sidereal_time.h).  UTC Julian Date
+    // is used directly as the UT1 approximation; the residual is ≤ ~0.9 s.
+    return astro_mount::core::calculateGMST(jd);
 }
 
 double AstronomicalCalculations::calculateLST(double jd, double longitude) {
-    double gmst = calculateGMST(jd);
-    double lst = gmst + longitude / 15.0;
-    // Normalize to [0, 24) hours
-    if (lst < 0.0) {
-        lst += 24.0;
-    } else if (lst >= 24.0) {
-        lst -= 24.0;
-    }
-    return lst;
+    return astro_mount::core::calculateLST(jd, longitude);
 }
 
 double AstronomicalCalculations::calculateParallacticAngle(double ra, double dec, double jd, double latitude) {

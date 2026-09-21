@@ -285,19 +285,61 @@ rekomendacjami z sekcji 8.
 
 ## 8. Rekomendacje
 
-1. **Pojedyncze źródło prawdy pozycji.** *(otwarte)* Docelowo `getStatus()`
-   powinien raportować wyłącznie `raw_servo_axis*` (fizyczny odczyt), a
-   `axis*_position_` powinno być jedynie stanem wewnętrznym pętli trackingu.
+1. **Pojedyncze źródło prawdy pozycji.** *(wdrożone)* [`getStatus()`](src/controllers/mount_controller.cpp:3767)
+   i [`notifyStatusChanged()`](src/controllers/mount_controller.cpp:6935)
+   raportują `axis1/2_position` wyłącznie z `raw_servo_axis*` (fizyczny odczyt);
+   `axis*_position_` pozostaje wyłącznie stanem wewnętrznym pętli trackingu.
 2. **Synchronizacja `axis*_position_` z HAL po zatrzymaniu trackingu.**
    *(wdrożone)* [`startTracking()`](src/controllers/mount_controller.cpp:1517)
    i [`slewToEquatorial()`](src/controllers/mount_controller.cpp:574) wywołują
    `refreshPositionsFromHAL()` po `joinWorkThread()`, więc kolejny cel liczony
    jest z fizycznej pozycji.
-3. **Wspólne źródło LST.** *(otwarte)* Przenieść `computeLst` do jednej
-   klasy/modułu, aby kontroler i INDI zawsze używały tej samej wartości
-   (eliminacja fallback RA).
+3. **Wspólne źródło LST.** *(wdrożone)* Wspólny nagłówek
+   [`include/core/sidereal_time.h`](include/core/sidereal_time.h); kontroler
+   ([`calculateGMST`/`calculateLST`](src/core/astronomical_calculations.cpp:602))
+   i INDI ([`computeLst()`](indi/IndiPropertyMapper.cpp:189)) delegują do jednej
+   implementacji.
 4. **Testy round-trip.** *(wdrożone)* [`tests/test_mount_coordinates.cpp`](tests/test_mount_coordinates.cpp)
    sprawdza `foldDec()` i `resolveDecTarget(foldDec(p), p) == p` (3 testy).
 5. **Logowanie diagnostyczne.** *(wdrożone)* `slewToEquatorial: RA=... Dec=...`
    oraz `slewToEquatorial Dec: requested/current/resolved` pozwala szybko
    zidentyfikować źródło nieprawidłowego celu.
+
+### 8.1 Praktyczne znaczenie (historyczne)
+
+Pozycje #1 i #3 zostały domknięte. Poniższy opis wyjaśnia, co wcześniej
+oznaczały w praktyce.
+
+**#1 Pojedyncze źródło prawdy pozycji**
+
+Kontroler trzyma dwie reprezentacje pozycji:
+
+- `raw_servo_axis*` — fizyczna pozycja napędu (jeden piszący:
+  [`refreshPositionsFromHAL()`](src/controllers/mount_controller.cpp:3890));
+  z tego liczone jest to, co widzi INDI (`current_ra/current_dec`).
+- `axis*_position_` — pozycja wewnętrzna, aktualizowana przez pętlę trackingu
+  (całkowanie prędkości) oraz przez HAL (gdy nie śledzi); z tego liczona jest
+  najkrótsza ścieżka HA i poprawki nutacji/TPOINT.
+
+W praktyce podczas długiego śledzenia te dwie wartości powoli się rozjeżdżają
+(opóźnienie PID, luz). Raport do INDI jest już poprawny (z `raw_servo`), ale
+wybór równoważnika HA i poprawki modelu używają pozycji wewnętrznej, która
+może być o ułamek stopnia obok. Skutek realny: przy wielogodzinnych sesjach
+ponowne wycelowanie może być minimalnie przesunięte; przy krótkich testach —
+nieodczuwalne.
+
+**#3 Wspólne źródło LST**
+
+Są dwie implementacje LST: kontroler ([`calculateLST()`](src/controllers/mount_controller.cpp:3800)
+z `config.longitude`) oraz INDI ([`computeLst()`](indi/IndiPropertyMapper.cpp:189)
+z lokalizacji podanej przez KStars). LST z INDI jest używane tylko w dwóch
+miejscach: fallback w [`toIndiRaDec()`](indi/IndiPropertyMapper.cpp:114) (gdy
+`current_ra/dec` są dokładnie zerowe) oraz w [`addSyncMeasurement()`](indi/astro_mount_driver.cpp:1493)
+przy pomiarach bootstrap.
+
+Jeśli lokalizacja w KStars różni się od `config.longitude`, w tych dwóch
+ścieżkach RA będzie przesunięte o Δlongitude/15 h. Normalnie (gdy
+`current_ra/dec` niezerowe) wpływ jest zerowy.
+
+Rekomendacja: oba punkty to higiena/odporność — warto domknąć przy okazji
+większego refaktoringu, ale nie blokują działania.
