@@ -98,6 +98,8 @@ public:
         // Position/rate tolerance
         double position_tolerance{0.1};
         double rate_tolerance{0.01};
+        // Post-slew verification tolerance (servo degrees).
+        double slew_verify_tolerance_servo_deg{10.0};
         
         // Meridian flip configuration
         bool meridian_flip_enabled{true};

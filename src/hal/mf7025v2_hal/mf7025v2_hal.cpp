@@ -4,8 +4,10 @@
 #include "hal/sensor_interface.h"
 #include "logging/logger.h"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <sstream>
+#include <thread>
 
 using namespace astro_mount::hal;
 using namespace astro_mount::controllers;
@@ -91,18 +93,29 @@ bool Mf7025v2Hal::Mf7025v2Motor::setPosition(double position_deg, double velocit
     // Convert to protocol units: 0.01°/LSB
     int32_t angle_001deg = static_cast<int32_t>(pos * 100.0);
 
-    bool ok;
-    if (velocity_deg_s > 0.0) {
-        uint16_t max_speed_dps = static_cast<uint16_t>(std::min(velocity_deg_s, 65535.0));
-        ok = can->positionControl2(can_node_id_, max_speed_dps, angle_001deg);
-    } else {
-        ok = can->positionControl1(can_node_id_, angle_001deg);
+    // The CAN bus is shared with the HAL monitor thread (0x9C status polls).
+    // Under load the drive may not echo the position command within the
+    // interface timeout even though it is still able to execute it. Retrying
+    // here prevents an intermittent "one axis never moved" failure where one
+    // drive receives its target and the other does not.
+    bool ok = false;
+    constexpr int MAX_ATTEMPTS = 3;
+    for (int attempt = 0; attempt < MAX_ATTEMPTS && !ok; ++attempt) {
+        if (velocity_deg_s > 0.0) {
+            uint16_t max_speed_dps = static_cast<uint16_t>(std::min(velocity_deg_s, 65535.0));
+            ok = can->positionControl2(can_node_id_, max_speed_dps, angle_001deg);
+        } else {
+            ok = can->positionControl1(can_node_id_, angle_001deg);
+        }
+        if (!ok && attempt + 1 < MAX_ATTEMPTS) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
     }
 
     if (!ok) {
         auto logger = logging::Logger::get("mf7025v2");
-        logger->error("Motor {} setPosition({:.2f}°) failed on node {}",
-                      axis_id_, position_deg, can_node_id_);
+        logger->error("Motor {} setPosition({:.2f}°) failed on node {} after {} attempts",
+                      axis_id_, position_deg, can_node_id_, MAX_ATTEMPTS);
         can_failures_++;
         if (can_failures_ >= CAN_FAILURE_THRESHOLD) {
             error_state_ = true;
@@ -112,7 +125,6 @@ bool Mf7025v2Hal::Mf7025v2Motor::setPosition(double position_deg, double velocit
     }
     can_failures_ = 0;
     target_position_ = pos;
-    actual_position_ = pos;
     actual_velocity_ = 0.0;  // Reset velocity so updateStatus() does not keep
                              // integrating position using a stale velocity from
                              // a previous velocity-control or position move.
@@ -536,15 +548,27 @@ void Mf7025v2Hal::Mf7025v2Motor::updateStatus(const Mf7025v2Status& st) {
     moving_ = std::abs(can_speed) > SPEED_HYSTERESIS;
 
     // ── Position ──────────────────────────────────────────────────────
-    // Always integrate from the current velocity so position tracks
-    // continuously in both position and velocity control modes.
-    // In position mode, when the motor stops (can_moving → false and
-    // current_vel ≈ 0), we snap to the commanded target for accuracy.
-    if (!moving_) {
-        actual_position_ = target_position_.load();
-    } else {
-        actual_position_ = actual_position_.load() + actual_velocity_.load() * 0.1;
+    // Integrate from the current velocity while moving, using the ACTUAL
+    // elapsed time since the previous status update.  The old hardcoded
+    // 0.1 s factor assumed a 100 ms poll, but status_poll_ms defaults to
+    // 50 ms — the position therefore advanced at 2× the real rate and,
+    // after a few manual moves, the reported position drifted far from the
+    // true one (visible as INDI showing a position far from the current
+    // pointing).  When stopped, keep the last value set by
+    // updateAbsolutePosition() (0x92 multi-turn read) so getActualPosition()
+    // reports the true measured position, not the commanded target — this
+    // is required for the slew-monitor verification that re-issues the move
+    // when an axis did not reach its target.
+    auto now = std::chrono::steady_clock::now();
+    if (moving_ && last_status_update_.time_since_epoch().count() != 0) {
+        const double dt = std::chrono::duration<double>(now - last_status_update_).count();
+        // Clamp to a sane window so a stalled monitor thread cannot inject a
+        // huge position step on the next wake-up.
+        if (dt > 0.0 && dt < 0.5) {
+            actual_position_ = actual_position_.load() + actual_velocity_.load() * dt;
+        }
     }
+    last_status_update_ = now;
 
     double iq_a = st.iq * (33.0 / 4096.0);
     actual_torque_ = (config_.max_torque > 0) ? (iq_a / (config_.max_torque * 2048.0 / 100.0 / (33.0/4096.0))) * 100.0 : 0.0;
@@ -554,8 +578,9 @@ void Mf7025v2Hal::Mf7025v2Motor::updateStatus(const Mf7025v2Status& st) {
 
 void Mf7025v2Hal::Mf7025v2Motor::updateAbsolutePosition(double abs_pos_deg) {
     std::lock_guard<std::mutex> lock(mutex_);
+    // Do NOT overwrite target_position_ here — it must keep the commanded
+    // target so the slew monitor can compare the measured position against it.
     actual_position_ = abs_pos_deg;
-    target_position_ = abs_pos_deg;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -890,14 +915,11 @@ void Mf7025v2Hal::monitorLoop() {
                     }
                 }
 
-                // Fallback: if 0x92 failed or returned garbage, use the
-                // encoder position from 0x94 (single-turn angle) as the
-                // motor position.  This prevents the position from being
-                // stuck at 0 on uncalibrated axes.
-                if (!abs_ok && encoders_[i]) {
-                    double enc_pos = encoders_[i]->read().position_deg;
-                    motors_[i]->updateAbsolutePosition(enc_pos);
-                }
+                // Fallback: if 0x92 failed or returned garbage, do NOT
+                // overwrite the motor's multi-turn position with the 0x94
+                // single-turn encoder value — that would corrupt the absolute
+                // reference used by the slew-monitor verification.
+                (void)abs_ok;
             }
             last_absolute = now;
         }

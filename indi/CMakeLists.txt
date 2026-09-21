@@ -154,6 +154,44 @@ target_include_directories(astro_mount_indi_driver PRIVATE
 )
 
 # ============================================
+# Unit tests for the INDI coordinate mapper
+# ============================================
+
+find_package(GTest QUIET)
+if(GTest_FOUND)
+    add_executable(test_indi_mapper
+        test_indi_mapper.cpp
+        IndiPropertyMapper.cpp
+    )
+
+    target_link_directories(test_indi_mapper PRIVATE
+        ${INDI_LIBRARY_DIRS}
+    )
+
+    # NOTE: IndiPropertyMapper only uses header-only INDI enums and libnova,
+    # so do NOT link 'indidriver' here — it defines its own main() and would
+    # clash with GTest::gtest_main (the binary would run as an INDI driver
+    # instead of the unit tests).
+    target_link_libraries(test_indi_mapper
+        mount_grpc_client
+        ${LIBNOVA_LIBRARIES}
+        ${LIBNOVA_LIBRARY}
+        ${GRPCXX_PKG_LIBRARIES}
+        pthread
+        GTest::gtest_main
+    )
+
+    target_include_directories(test_indi_mapper PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${INDI_INCLUDE_DIRS}
+        ${LIBNOVA_INCLUDE_DIRS}
+    )
+
+    add_test(NAME IndiMapperTest
+        COMMAND test_indi_mapper)
+endif()
+
+# ============================================
 # Install rules
 # ============================================
 

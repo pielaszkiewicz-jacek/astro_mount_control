@@ -39,7 +39,7 @@
                     "use_index_pulse": true
                 },
                 "id": 0,
-                "invert_direction": true,
+                "invert_direction": false,
                 "motor_config": {
                     "current_limit": 5.0,
                     "default_mode": "POSITION",
@@ -78,7 +78,7 @@
                     "use_index_pulse": true
                 },
                 "id": 1,
-                "invert_direction": true,
+                "invert_direction": false,
                 "motor_config": {
                     "current_limit": 5.0,
                     "default_mode": "POSITION",

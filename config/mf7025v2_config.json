@@ -52,7 +52,7 @@
                 "id": 0,
                 "name": "HA_Axis",
                 "can_node_id": 1,
-                "invert_direction": true,
+                "invert_direction": false,
                 "motor_config": {
                     "type": "BRUSHLESS_DC",
                     "default_mode": "POSITION",
@@ -81,7 +81,7 @@
                 "id": 1,
                 "name": "Dec_Axis",
                 "can_node_id": 2,
-                "invert_direction": true,
+                "invert_direction": false,
                 "motor_config": {
                     "type": "BRUSHLESS_DC",
                     "default_mode": "POSITION",

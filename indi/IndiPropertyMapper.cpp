@@ -22,19 +22,20 @@ void IndiPropertyMapper::setLocation(double latitude, double longitude, double e
 astro_mount::Coordinates IndiPropertyMapper::toGrpcCoordinates(
     double raHours, double decDegrees) const
 {
-    // INDI hands the driver JNow (apparent) coordinates. The mount controller
-    // expects J2000, so precess JNow → J2000 before building the request.
-    double raJ2000 = raHours;
-    double decJ2000 = decDegrees;
-    jnowToJ2000(raHours, decDegrees, raJ2000, decJ2000);
-
+    // INDI hands the driver JNow (apparent) coordinates. The controller's
+    // slew/track/status pipeline also works in the apparent frame: it computes
+    // HA = GAST − RA with apparent sidereal time (iauGst94) and applies no
+    // precession/nutation to the incoming RA/Dec. Pass the JNow coordinates
+    // through unchanged — precessing to J2000 here would make the controller
+    // point ~0.4° away from the selected object (precession + nutation +
+    // aberration), which shows up as a wrong reported position.
     astro_mount::Coordinates coords;
-    coords.set_ra(raJ2000);
-    coords.set_dec(decJ2000);
-    coords.set_apply_precession(true);
-    coords.set_apply_nutation(true);
-    coords.set_apply_refraction(true);
-    coords.set_epoch(2000.0);
+    coords.set_ra(raHours);
+    coords.set_dec(decDegrees);
+    coords.set_apply_precession(false);
+    coords.set_apply_nutation(false);
+    coords.set_apply_refraction(false);
+    coords.set_epoch(0.0);  // JNow (of date)
     return coords;
 }
 

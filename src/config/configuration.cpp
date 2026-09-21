@@ -272,6 +272,7 @@ public:
         // Position/rate tolerance (from config file, fallback to struct defaults)
         config.position_tolerance = mount.value("position_tolerance", 0.1);
         config.rate_tolerance = mount.value("rate_tolerance", 0.01);
+        config.slew_verify_tolerance_servo_deg = mount.value("slew_verify_tolerance_servo_deg", 10.0);
         
         // Meridian flip configuration
         config.meridian_flip_enabled = mount.value("meridian_flip_enabled", true);
@@ -485,6 +486,7 @@ public:
         // Position/rate tolerance
         mount["position_tolerance"] = config.position_tolerance;
         mount["rate_tolerance"] = config.rate_tolerance;
+        mount["slew_verify_tolerance_servo_deg"] = config.slew_verify_tolerance_servo_deg;
         
         // Meridian flip configuration
         mount["meridian_flip_enabled"] = config.meridian_flip_enabled;
@@ -843,6 +845,7 @@ private:
         // Position/rate tolerance
         mount_default.position_tolerance = 0.1;
         mount_default.rate_tolerance = 0.01;
+        mount_default.slew_verify_tolerance_servo_deg = 10.0;
         
         // Meridian flip
         mount_default.meridian_flip_enabled = true;

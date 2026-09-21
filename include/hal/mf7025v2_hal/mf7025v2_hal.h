@@ -162,6 +162,9 @@ private:
         StateChangeCallback state_change_callback_;
 
         std::chrono::steady_clock::time_point start_time_;
+        // Timestamp of the previous status poll, used by updateStatus() to
+        // integrate the measured velocity over the ACTUAL elapsed time.
+        std::chrono::steady_clock::time_point last_status_update_{};
         uint32_t can_failures_{0};
         static constexpr uint32_t CAN_FAILURE_THRESHOLD = 5;
         static constexpr double SPEED_HYSTERESIS = 0.01; // dps

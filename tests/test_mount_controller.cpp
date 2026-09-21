@@ -163,6 +163,63 @@ TEST_F(MountControllerTest, SlewToEquatorialReachesTarget) {
     EXPECT_TRUE(reached) << "Slew did not complete within timeout";
 }
 
+// Verifies the round-trip invariant that prevents the mount from "driving
+// away": slewing to the position the controller itself reports (what INDI
+// shows) must map back to the SAME physical HA/Dec — i.e. a no-op.  A broken
+// Dec fold / stale internal position would instead produce a target 60–180°
+// (or a full 360°) away.
+TEST_F(MountControllerTest, ReportedPositionSlewedBackIsNoOp)
+{
+    controller_->initialize(config_);
+
+    ASSERT_TRUE(controller_->slewToEquatorial(12.0, 45.0));
+    bool reached = false;
+    for (int i = 0; i < 50 && !reached; ++i) {
+        std::this_thread::sleep_for(200ms);
+        reached = (controller_->getStatus().state ==
+                   MountController::MountStatus::State::IDLE);
+    }
+    ASSERT_TRUE(reached) << "Initial slew did not complete";
+
+    const auto before = controller_->getStatus();
+
+    ASSERT_TRUE(controller_->slewToEquatorial(before.current_ra,
+                                              before.current_dec));
+
+    const auto after = controller_->getStatus();
+    const double gear = config_.mount_config.ha_axis_params.gear_ratio;
+    EXPECT_NEAR(after.axis1_target, before.axis1_position, 1.0 * gear)
+        << "RA round-trip target diverged from current HA (drive-away)";
+    EXPECT_NEAR(after.axis2_target, before.axis2_position, 1.0 * gear)
+        << "Dec round-trip target diverged from current Dec (drive-away)";
+}
+
+// Verifies that after a slew the on-sky position reported to INDI matches the
+// requested target.  A large mismatch means the mount and INDI coordinate
+// frames have diverged.
+TEST_F(MountControllerTest, ReportedPositionMatchesSlewTarget)
+{
+    controller_->initialize(config_);
+
+    const double target_ra = 12.0;   // hours
+    const double target_dec = 45.0;  // degrees
+    ASSERT_TRUE(controller_->slewToEquatorial(target_ra, target_dec));
+
+    bool reached = false;
+    for (int i = 0; i < 50 && !reached; ++i) {
+        std::this_thread::sleep_for(200ms);
+        reached = (controller_->getStatus().state ==
+                   MountController::MountStatus::State::IDLE);
+    }
+    ASSERT_TRUE(reached) << "Slew did not complete";
+
+    const auto status = controller_->getStatus();
+    EXPECT_NEAR(status.current_ra, target_ra, 0.01)
+        << "Reported RA diverged from slew target";
+    EXPECT_NEAR(status.current_dec, target_dec, 0.01)
+        << "Reported Dec diverged from slew target";
+}
+
 TEST_F(MountControllerTest, SlewToEquatorialFromErrorState) {
     controller_->initialize(config_);
     // After shutdown, state is UNINITIALIZED; slew should be rejected

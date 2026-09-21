@@ -623,6 +623,17 @@ if(GTest_FOUND)
     add_test(NAME MountControllerTest
         COMMAND test_mount_controller)
 
+    add_executable(test_mount_coordinates
+        tests/test_mount_coordinates.cpp
+    )
+
+    target_link_libraries(test_mount_coordinates
+        GTest::gtest_main
+    )
+
+    add_test(NAME MountCoordinatesTest
+        COMMAND test_mount_coordinates)
+
     add_executable(test_ephemeris_tracker
         tests/test_ephemeris_tracker.cpp
         ${PROTO_SRCS}

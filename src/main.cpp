@@ -262,6 +262,7 @@ int main(int argc, char* argv[]) {
         mount_cfg.tracking_acceleration = cfg_mount.tracking_acceleration;
         mount_cfg.position_tolerance = cfg_mount.position_tolerance;
         mount_cfg.rate_tolerance = cfg_mount.rate_tolerance;
+        mount_cfg.slew_verify_tolerance_servo_deg = cfg_mount.slew_verify_tolerance_servo_deg;
         mount_cfg.default_temperature = cfg_mount.default_temperature;
         mount_cfg.default_pressure = cfg_mount.default_pressure;
         mount_cfg.default_humidity = cfg_mount.default_humidity;

@@ -1,6 +1,7 @@
 #include "controllers/mount_controller.h"
 #include "controllers/lx200_server.h"
 #include "core/astronomical_calculations.h"
+#include "core/mount_coordinates.h"
 #include "hal/hal_interface.h"
 #include "hal/hal_config.h"
 #include "hal/hal_factory.h"
@@ -399,8 +400,8 @@ public:
             bool pos1_valid = false;
             if (hal_axis1_motor_ && hal_axis2_motor_) {
                 try {
-                    double pos0 = hal_axis1_motor_->getActualPosition();
-                    double pos1 = hal_axis2_motor_->getActualPosition();
+                    double pos0 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                    double pos1 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
                     if (std::isfinite(pos0) && std::isfinite(pos1)) {
                         // For incremental encoders, the drive reports 0.0 at
                         // power-up.  Only sync from the drive when it returns a
@@ -543,6 +544,19 @@ public:
         if (!std::isfinite(ra) || !std::isfinite(dec)) {
             return false;
         }
+
+        // Reject out-of-range Dec early.  A Dec outside [-90°, 90°] is invalid
+        // astronomical input and would otherwise produce a servo target that
+        // exceeds the Dec soft limits (the "target exceeds soft limits:
+        // axis2=134°" symptom seen right after start when a client replays a
+        // stale target).  Log the request so the caller is identifiable.
+        if (dec < -90.0 || dec > 90.0) {
+            MOUNT_LOG_ERROR("slewToEquatorial: rejecting invalid Dec={:.4f}° "
+                            "(expected [-90, 90]); RA={:.6f}h",
+                            dec, ra);
+            return false;
+        }
+        MOUNT_LOG_INFO("slewToEquatorial: RA={:.6f}h Dec={:.4f}°", ra, dec);
         
         // Lock thread_mutex_ across the entire join + state-check + create sequence
         // to prevent data races on work_thread_ from concurrent calls.
@@ -558,6 +572,12 @@ public:
             
             // Join any previous work thread (thread_mutex_ held, state_mutex_ NOT held)
             joinWorkThreadLocked();
+
+            // Sync axis1/2_position_ from the physical drive now that any
+            // previous move has stopped, so the shortest-path HA/Dec below is
+            // computed from the true physical position (not the stale internal
+            // one left by the tracking loop).
+            refreshPositionsFromHAL();
             
             {
                 std::lock_guard<std::shared_mutex> lock(*state_mutex_);
@@ -596,16 +616,47 @@ public:
                     const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
                     const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
                     
+                    // Choose the HA equivalent (mod 24h) closest to the current RA
+                    // axis position. Without this, slewing to a target that lies just
+                    // across the meridian (a few arcminutes away) would command the
+                    // HA axis through almost a full 360° rotation instead of the
+                    // short path.
+                    const double ha_gear_safe = ha_gear > 0.0 ? ha_gear : 360.0;
+                    // axis1_position_ is already in the home-offset-adjusted
+                    // (telescope) reference: refreshPositionsFromHAL() stores
+                    // pos_drive + home_offset_axis1_ there. Do NOT add the home
+                    // offset again.
+                    const double current_ha_hours =
+                        axis1_position_ / (ha_gear_safe * 15.0);
+                    double ha_delta = ha_hours - current_ha_hours;
+                    while (ha_delta > 12.0) ha_delta -= 24.0;
+                    while (ha_delta < -12.0) ha_delta += 24.0;
+                    ha_hours = current_ha_hours + ha_delta;
+                    
                     // Use TPOINT model to correct the mount position for systematic errors
                     // predictMountPosition() inverts the fitted model via Newton-Raphson
                     // to find the mount HA/Dec that produces the correct on-sky position
                     if (tpoint_calibrated_) {
                         auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
+                        // Same shortest-path selection for the TPOINT-corrected HA.
+                        double tpoint_delta = mount_ha - current_ha_hours;
+                        while (tpoint_delta > 12.0) tpoint_delta -= 24.0;
+                        while (tpoint_delta < -12.0) tpoint_delta += 24.0;
+                        mount_ha = current_ha_hours + tpoint_delta;
                         axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
                         axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
                     } else {
                         axis1_target_ = ha_hours * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
-                        axis2_target_ = dec * dec_gear - home_offset_axis2_;
+                        // Resolve the Dec target to the pier-side equivalent nearest
+                        // to the current physical Dec axis position (see
+                        // resolveDecTarget()), so "slew to current position" does
+                        // not drive the Dec axis 60–180° (or a full 360°) away.
+                        const double dec_gear_safe_se = dec_gear > 0.0 ? dec_gear : 360.0;
+                        const double cur_dec_tel_se = axis2_position_ / dec_gear_safe_se;
+                        const double resolved_dec_se = resolveDecTarget(dec, cur_dec_tel_se);
+                        axis2_target_ = resolved_dec_se * dec_gear_safe_se - home_offset_axis2_;
+                        MOUNT_LOG_INFO("slewToEquatorial Dec: requested={:.4f}° current={:.4f}° resolved={:.4f}°",
+                                       dec, cur_dec_tel_se, resolved_dec_se);
                     }
                 } else if (config_.mount_config.mount_type == config::MountType::CASUAL) {
                     // Convert RA/Dec to mount-frame alt/az using the orientation quaternion.
@@ -661,6 +712,20 @@ public:
                     // compares against the actual telescope coordinate.
                     double telescope_axis1 = (axis1_target_ + home_offset_axis1_) / ha_gear_lim;
                     double telescope_axis2 = (axis2_target_ + home_offset_axis2_) / dec_gear_lim;
+                    // The shortest-path HA selection may produce a target outside
+                    // the configured soft-limit range (e.g. 403.9° when the nearest
+                    // sky path crosses the 360° limit). The physical axis cannot
+                    // rotate past the limit, so wrap the target back into the legal
+                    // range and take the legal (longer) path instead of rejecting
+                    // the slew.
+                    if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
+                        config_.mount_config.mount_type != config::MountType::CASUAL) {
+                        while (telescope_axis1 > config_.safety_config.soft_limit_axis1_max)
+                            telescope_axis1 -= 360.0;
+                        while (telescope_axis1 < config_.safety_config.soft_limit_axis1_min)
+                            telescope_axis1 += 360.0;
+                        axis1_target_ = telescope_axis1 * ha_gear_lim - home_offset_axis1_;
+                    }
                     bool limit_violation = false;
                     if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
                         config_.mount_config.mount_type != config::MountType::CASUAL) {
@@ -746,6 +811,16 @@ public:
             // to persist across iterations (Fix 3: timeout was broken by re-initializing each loop)
             const int SIM_TIMEOUT_MS = 60000; // 60s max simulated slew
             int sim_elapsed_ms = 0;
+            // Number of consecutive polls both drives must report "target
+            // reached" before the slew is considered complete. See the HAL
+            // branch below for why a single poll is not sufficient.
+            const int SETTLE_POLLS = 5;
+            const int NO_MOTION_TIMEOUT_POLLS = 40;
+            int reached_polls = 0;
+            int stopped_polls = 0;
+            bool motion_observed = false;
+            const int MAX_VERIFY_RETRIES = 3;
+            int verify_retries = 0;
             
             while (true) {
                 // Check if slewing was cancelled
@@ -757,11 +832,31 @@ public:
                 bool reached = true;
                 
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                    // HAL path: poll MotorControl::targetReached()
+                    // HAL path: poll MotorControl::targetReached().
+                    // The MF7025v2 HAL clears its velocity cache in setPosition()
+                    // and reports targetReached()=true on the very first poll,
+                    // before the drives have actually started moving. Requiring
+                    // SETTLE_POLLS consecutive "reached" polls prevents the slew
+                    // monitor from declaring completion at t≈0 and letting an
+                    // INDI client (which starts tracking on slew completion)
+                    // stop the drives mid-slew — the classic "only one axis
+                    // moved" symptom.
                     try {
-                        reached = hal_axis1_motor_->targetReached() && hal_axis2_motor_->targetReached();
+                        if (hal_axis1_motor_->targetReached() &&
+                            hal_axis2_motor_->targetReached()) {
+                            stopped_polls++;
+                            if (motion_observed) reached_polls++;
+                        } else {
+                            motion_observed = true;
+                            stopped_polls = 0;
+                            reached_polls = 0;
+                        }
+                        reached = (motion_observed && reached_polls >= SETTLE_POLLS) ||
+                                  (!motion_observed && stopped_polls >= NO_MOTION_TIMEOUT_POLLS);
                     } catch (const std::exception& e) {
                         MOUNT_LOG_WARN("HAL motor error during slew: {}", e.what());
+                        reached_polls = 0;
+                        stopped_polls = 0;
                         reached = false;
                     }
                 } else {
@@ -880,31 +975,49 @@ public:
                 }
                 
                 if (reached) {
-                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                    if (state_ == MountStatus::State::SLEWING) {
-                        // Update actual positions from HAL encoder feedback
-                        if (hal_axis1_encoder_ && hal_axis2_encoder_) {
+                    // Verify with the drive's measured position before declaring
+                    // completion. The velocity-based targetReached() cannot tell
+                    // "stopped at target" from "never moved", so re-issue the
+                    // target for any axis that is still far away (bounded retries).
+                    bool retried = false;
+                    if (hal_axis1_motor_ && hal_axis2_motor_) {
+                        const double verify_tol = config_.mount_config.slew_verify_tolerance_servo_deg;
+                        const double pos0 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                        const double pos1 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                        const bool axis1_ok = std::abs(pos0 - axis1_target_) <= verify_tol;
+                        const bool axis2_ok = std::abs(pos1 - axis2_target_) <= verify_tol;
+                        if ((!axis1_ok || !axis2_ok) && verify_retries < MAX_VERIFY_RETRIES) {
+                            verify_retries++;
+                            retried = true;
+                            const double vel = config_.mount_config.max_slew_rate;
+                            const double acc = config_.mount_config.slew_acceleration;
                             try {
-                                auto enc1 = hal_axis1_encoder_->read();
-                                auto enc2 = hal_axis2_encoder_->read();
-                                if (enc1.data_valid && enc2.data_valid) {
-                                    axis1_position_ = enc1.position_deg;
-                                    axis2_position_ = enc2.position_deg;
-                                    // Keep raw servo positions in sync so getStatus()
-                                    // reports consistent telescope positions
-                                    // (telescope = raw_servo / gear_ratio).
-                                    raw_servo_axis1_position_ = enc1.position_deg;
-                                    raw_servo_axis2_position_ = enc2.position_deg;
-                                }
+                                if (!axis1_ok) hal_axis1_motor_->setPosition(axis1_target_, vel, acc);
+                                if (!axis2_ok) hal_axis2_motor_->setPosition(axis2_target_, vel, acc);
                             } catch (const std::exception& e) {
-                                MOUNT_LOG_WARN("HAL encoder read error during slew: {}", e.what());
+                                MOUNT_LOG_WARN("HAL motor re-issue failed during slew verification: {}", e.what());
                             }
+                            reached_polls = 0;
+                            stopped_polls = 0;
+                            motion_observed = false;
                         }
-                        axis1_rate_ = 0.0;
-                        axis2_rate_ = 0.0;
-                        state_ = MountStatus::State::IDLE;
+                        {
+                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                            axis1_position_ = pos0 + home_offset_axis1_;
+                            axis2_position_ = pos1 + home_offset_axis2_;
+                            raw_servo_axis1_position_ = axis1_position_;
+                            raw_servo_axis2_position_ = axis2_position_;
+                        }
                     }
-                    break;
+                    if (!retried) {
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                        if (state_ == MountStatus::State::SLEWING) {
+                            axis1_rate_ = 0.0;
+                            axis2_rate_ = 0.0;
+                            state_ = MountStatus::State::IDLE;
+                        }
+                        break;
+                    }
                 }
                 
                 std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
@@ -1142,6 +1255,16 @@ public:
             // Simulated timeout tracking - declared outside the while loop
             // to persist across iterations
             int sim_elapsed_ms = 0;
+            // Number of consecutive polls both drives must report "target
+            // reached" before the slew is considered complete. See the HAL
+            // branch below for why a single poll is not sufficient.
+            const int SETTLE_POLLS = 5;
+            const int NO_MOTION_TIMEOUT_POLLS = 40;
+            int reached_polls = 0;
+            int stopped_polls = 0;
+            bool motion_observed = false;
+            const int MAX_VERIFY_RETRIES = 3;
+            int verify_retries = 0;
             
             while (true) {
                 // Check if slewing was cancelled
@@ -1152,11 +1275,31 @@ public:
                 bool reached = true;
                 
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                    // HAL path: poll MotorControl::targetReached()
+                    // HAL path: poll MotorControl::targetReached().
+                    // The MF7025v2 HAL clears its velocity cache in setPosition()
+                    // and reports targetReached()=true on the very first poll,
+                    // before the drives have actually started moving. Requiring
+                    // SETTLE_POLLS consecutive "reached" polls prevents the slew
+                    // monitor from declaring completion at t≈0 and letting an
+                    // INDI client (which starts tracking on slew completion)
+                    // stop the drives mid-slew — the classic "only one axis
+                    // moved" symptom.
                     try {
-                        reached = hal_axis1_motor_->targetReached() && hal_axis2_motor_->targetReached();
+                        if (hal_axis1_motor_->targetReached() &&
+                            hal_axis2_motor_->targetReached()) {
+                            stopped_polls++;
+                            if (motion_observed) reached_polls++;
+                        } else {
+                            motion_observed = true;
+                            stopped_polls = 0;
+                            reached_polls = 0;
+                        }
+                        reached = (motion_observed && reached_polls >= SETTLE_POLLS) ||
+                                  (!motion_observed && stopped_polls >= NO_MOTION_TIMEOUT_POLLS);
                     } catch (const std::exception& e) {
                         MOUNT_LOG_WARN("HAL motor error during slew: {}", e.what());
+                        reached_polls = 0;
+                        stopped_polls = 0;
                         reached = false;
                     }
                 } else {
@@ -1276,26 +1419,47 @@ public:
                 }
                 
                 if (reached) {
-                    std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                    if (state_ == MountStatus::State::SLEWING) {
-                        // Update actual positions from HAL encoder feedback
-                        if (hal_axis1_encoder_ && hal_axis2_encoder_) {
+                    // Verify with the drive's measured position before declaring
+                    // completion (see slewToEquatorial for the full rationale).
+                    bool retried = false;
+                    if (hal_axis1_motor_ && hal_axis2_motor_) {
+                        const double verify_tol = config_.mount_config.slew_verify_tolerance_servo_deg;
+                        const double pos0 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                        const double pos1 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                        const bool axis1_ok = std::abs(pos0 - axis1_target_) <= verify_tol;
+                        const bool axis2_ok = std::abs(pos1 - axis2_target_) <= verify_tol;
+                        if ((!axis1_ok || !axis2_ok) && verify_retries < MAX_VERIFY_RETRIES) {
+                            verify_retries++;
+                            retried = true;
+                            const double vel = config_.mount_config.max_slew_rate;
+                            const double acc = config_.mount_config.slew_acceleration;
                             try {
-                                auto enc1 = hal_axis1_encoder_->read();
-                                auto enc2 = hal_axis2_encoder_->read();
-                                if (enc1.data_valid && enc2.data_valid) {
-                                    axis1_position_ = enc1.position_deg;
-                                    axis2_position_ = enc2.position_deg;
-                                }
+                                if (!axis1_ok) hal_axis1_motor_->setPosition(axis1_target_, vel, acc);
+                                if (!axis2_ok) hal_axis2_motor_->setPosition(axis2_target_, vel, acc);
                             } catch (const std::exception& e) {
-                                MOUNT_LOG_WARN("HAL encoder read error during slew: {}", e.what());
+                                MOUNT_LOG_WARN("HAL motor re-issue failed during slew verification: {}", e.what());
                             }
+                            reached_polls = 0;
+                            stopped_polls = 0;
+                            motion_observed = false;
                         }
-                        axis1_rate_ = 0.0;
-                        axis2_rate_ = 0.0;
-                        state_ = MountStatus::State::IDLE;
+                        {
+                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                            axis1_position_ = pos0 + home_offset_axis1_;
+                            axis2_position_ = pos1 + home_offset_axis2_;
+                            raw_servo_axis1_position_ = axis1_position_;
+                            raw_servo_axis2_position_ = axis2_position_;
+                        }
                     }
-                    break;
+                    if (!retried) {
+                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                        if (state_ == MountStatus::State::SLEWING) {
+                            axis1_rate_ = 0.0;
+                            axis2_rate_ = 0.0;
+                            state_ = MountStatus::State::IDLE;
+                        }
+                        break;
+                    }
                 }
                 
                 std::this_thread::sleep_for(std::chrono::milliseconds(POLL_MS));
@@ -1357,6 +1521,12 @@ public:
         // This avoids deadlock: if we held state_mutex_, a running work thread
         // would block on state_mutex_ while we block on joinWorkThread().
         joinWorkThread();
+
+        // Sync axis1/2_position_ from the physical drive now that tracking has
+        // stopped.  Without this, a re-target issued immediately after stop()
+        // would compute the shortest-path HA/Dec from the last internal
+        // (integrated) position instead of the true physical position.
+        refreshPositionsFromHAL();
         
         double axis1_tracking_rate = 0.0;  // deg/s
         double axis2_tracking_rate = 0.0;  // deg/s
@@ -1392,19 +1562,54 @@ public:
                 const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
                 const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
 
+                // Choose the HA equivalent (mod 24h) closest to the current RA
+                // axis position so re-targeting never commands a full 360° RA
+                // rotation for a target just across the meridian.
+                const double ha_gear_safe = ha_gear > 0.0 ? ha_gear : 360.0;
+                // axis1_position_ is already in the home-offset-adjusted
+                // (telescope) reference: refreshPositionsFromHAL() stores
+                // pos_drive + home_offset_axis1_ there. Do NOT add the home
+                // offset again.
+                const double current_ha_hours =
+                    axis1_position_ / (ha_gear_safe * 15.0);
+                double ha_delta = ha_hours - current_ha_hours;
+                while (ha_delta > 12.0) ha_delta -= 24.0;
+                while (ha_delta < -12.0) ha_delta += 24.0;
+                ha_hours = current_ha_hours + ha_delta;
+
                 // Use TPOINT model to correct the mount position for systematic errors
                 // predictMountPosition() inverts the fitted model via Newton-Raphson
                 // to find the mount HA/Dec that produces the correct on-sky position
                 if (tpoint_calibrated_) {
                     auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
+                    // Same shortest-path selection for the TPOINT-corrected HA.
+                    double tpoint_delta = mount_ha - current_ha_hours;
+                    while (tpoint_delta > 12.0) tpoint_delta -= 24.0;
+                    while (tpoint_delta < -12.0) tpoint_delta += 24.0;
+                    mount_ha = current_ha_hours + tpoint_delta;
                     axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
                     axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
-                    // Store TPOINT-corrected target for the tracking loop
-                    tracking_target_ra_hours_ = mount_ha;
+                    // Store the TPOINT-corrected target for the tracking loop.
+                    // The tracking loop computes HA = LST - RA, so store an
+                    // effective RA whose HA at the current LST equals the
+                    // TPOINT-corrected mount HA: RA_effective = LST - mount_ha.
+                    // Storing mount_ha directly (as the previous code did) made
+                    // the tracking loop compute HA = LST - mount_ha, which is a
+                    // different sky position and caused uncontrolled RA motion.
+                    double effective_ra = lst - mount_ha;
+                    effective_ra = std::fmod(effective_ra, 24.0);
+                    if (effective_ra < 0.0) effective_ra += 24.0;
+                    tracking_target_ra_hours_ = effective_ra;
                     tracking_target_dec_deg_ = mount_dec;
                 } else {
                     axis1_target_ = ha_hours * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
-                    axis2_target_ = dec * dec_gear - home_offset_axis2_;
+                    // Resolve the Dec target to the pier-side equivalent nearest
+                    // to the current physical Dec axis position (see
+                    // resolveDecTarget()), so "track current position" does not
+                    // drive the Dec axis 60–180° (or a full 360°) away.
+                    const double dec_gear_safe_st = dec_gear > 0.0 ? dec_gear : 360.0;
+                    const double cur_dec_tel_st = axis2_position_ / dec_gear_safe_st;
+                    axis2_target_ = resolveDecTarget(dec, cur_dec_tel_st) * dec_gear_safe_st - home_offset_axis2_;
                     // Store celestial target for the tracking loop so it can
                     // compute HA = LST - RA correctly as sidereal time advances.
                     tracking_target_ra_hours_ = ra;
@@ -1457,6 +1662,15 @@ public:
                 // compares against the actual telescope coordinate.
                 double telescope_axis1 = (axis1_target_ + home_offset_axis1_) / ha_gear_lim3;
                 double telescope_axis2 = (axis2_target_ + home_offset_axis2_) / dec_gear_lim3;
+                // The shortest-path HA selection may produce a target outside the
+                // configured soft-limit range (the nearest sky path can cross the
+                // 360° limit). Wrap the target back into the legal range and take
+                // the legal path instead of rejecting the track command.
+                while (telescope_axis1 > config_.safety_config.soft_limit_axis1_max)
+                    telescope_axis1 -= 360.0;
+                while (telescope_axis1 < config_.safety_config.soft_limit_axis1_min)
+                    telescope_axis1 += 360.0;
+                axis1_target_ = telescope_axis1 * ha_gear_lim3 - home_offset_axis1_;
                 bool limit_violation = (telescope_axis1 < config_.safety_config.soft_limit_axis1_min ||
                                         telescope_axis1 > config_.safety_config.soft_limit_axis1_max);
                 if (config_.mount_config.mount_type != config::MountType::ALT_AZ &&
@@ -1673,6 +1887,7 @@ public:
                 bool is_tracking = false;
                 double snap_target_ra = 0.0;
                 double snap_target_dec = 0.0;
+                double snap_dec_target_servo = 0.0;  // resolved Dec servo target (pier-side aware)
                 
                 // ---- I/O Block 1: HAL safety monitor check (outside state_mutex_) ----
                 // Reading hardware safety status is I/O-bound and takes significant time
@@ -1811,12 +2026,16 @@ public:
                 axis2_position_ += current_rate_2 * dt + guider_offset_2;
                 
                 // Update raw (absolute) servo positions to keep telescope-position
-                // calculations accurate. raw_servo tracks the un-normalized absolute
-                // servo position, which is needed for:
-                //  - telescope_axis1/2_position in getStatus() (servo ÷ gear_ratio)
-                //  - CANopen absolute position target commands
-                raw_servo_axis1_position_ = axis1_position_;
-                raw_servo_axis2_position_ = axis2_position_;
+                // calculations accurate ONLY for the simulated path (no hardware
+                // motors).  With real HAL motors, refreshPositionsFromHAL() is the
+                // single authoritative writer of raw_servo_axis*; overwriting it
+                // here as well makes getStatus() alternate between the internal
+                // estimate and the physical drive position — the "current position
+                // jumps between several values" symptom seen in INDI.
+                if (!hal_axis1_motor_ && !hal_axis2_motor_) {
+                    raw_servo_axis1_position_ = axis1_position_;
+                    raw_servo_axis2_position_ = axis2_position_;
+                }
                 
                 // IMPORTANT: Do NOT normalize axis1_position to [-180, 180] here.
                 // CANopen drives use absolute positioning — if the servo is at
@@ -2826,6 +3045,7 @@ public:
                     // Store current axis targets for the I/O block below
                     snap_pos_target_axis1_ = axis1_target_;
                     snap_pos_target_axis2_ = axis2_target_;
+                    snap_dec_target_servo = axis2_target_;
                 }
                 }   // state_mutex_ scope ends, lock released
                 
@@ -2878,13 +3098,30 @@ public:
                             
                             const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0 ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
                             const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0 ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
+                            
+                            // Keep the HA target in the same 24h window as the
+                            // initial target computed by startTracking(), which
+                            // selects the HA equivalent nearest to the current
+                            // axis position (shortest path).  startTracking() can
+                            // produce a target outside [-12h, +12h] (e.g. +13h
+                            // instead of -11h) to avoid a full revolution; if this
+                            // loop re-normalizes it back into [-12h, +12h], the
+                            // drive is commanded to a position 24h (one full RA
+                            // revolution) away and the mount chases the RA axis
+                            // instead of settling on the object.
+                            const double current_ha_hours = axis1_position_ / (ha_gear * 15.0);
+                            double ha_delta = ha_hours - current_ha_hours;
+                            while (ha_delta > 12.0) ha_delta -= 24.0;
+                            while (ha_delta < -12.0) ha_delta += 24.0;
+                            ha_hours = current_ha_hours + ha_delta;
+                            
                             // Targets are RAW servo degrees, matching startTracking():
                             // raw = telescope_deg * gear - home_offset.  Without the
                             // home_offset subtraction the drive is commanded to a
                             // wrong absolute position (e.g. Dec offset by the park
                             // offset), causing the Dec axis to keep rotating.
                             double new_axis1_target = ha_hours * 15.0 * ha_gear - home_offset_axis1_;
-                            double new_axis2_target = snap_target_dec * dec_gear - home_offset_axis2_;
+                            double new_axis2_target = snap_dec_target_servo;
                             
                             // Use profile velocity 1.5× the sidereal servo rate so the
                             // drive smoothly catches up to the lead target without
@@ -2904,8 +3141,8 @@ public:
                                     if (hal_axis1_motor_ && hal_axis2_motor_ &&
                                         hal_axis1_motor_->isEnabled() &&
                                         hal_axis2_motor_->isEnabled()) {
-                                        act1 = hal_axis1_motor_->getActualPosition();
-                                        act2 = hal_axis2_motor_->getActualPosition();
+                                        act1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                                        act2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
                                         have_act = std::isfinite(act1) && std::isfinite(act2);
                                     }
                                 } catch (const std::exception& e) {
@@ -3501,10 +3738,16 @@ public:
         // position is non-zero.
         double raw_servo1 = raw_servo_axis1_position_;
         double raw_servo2 = raw_servo_axis2_position_;
-        if (std::abs(raw_servo1) < 0.001 && std::abs(axis1_position_) > 0.001)
-            raw_servo1 = axis1_position_;
-        if (std::abs(raw_servo2) < 0.001 && std::abs(axis2_position_) > 0.001)
-            raw_servo2 = axis2_position_;
+        // For authoritative HALs (MF7025V2/SIMULATED) zero is the true
+        // physical position — do not replace it with the park-initialised
+        // internal position.  For incremental encoders zero means "unknown",
+        // so fall back to the internally tracked (park) position.
+        if (!halPositionIsAuthoritative()) {
+            if (std::abs(raw_servo1) < 0.001 && std::abs(axis1_position_) > 0.001)
+                raw_servo1 = axis1_position_;
+            if (std::abs(raw_servo2) < 0.001 && std::abs(axis2_position_) > 0.001)
+                raw_servo2 = axis2_position_;
+        }
 
         double raw_tel_axis1 = raw_servo1 / ha_gear;
         double raw_tel_axis2 = raw_servo2 / dec_gear;
@@ -3671,10 +3914,10 @@ public:
         // briefly to update the cached state.
         double pos0 = 0.0, pos1 = 0.0, vel0 = 0.0, vel1 = 0.0;
         try {
-            pos0 = hal_axis1_motor_->getActualPosition();
-            pos1 = hal_axis2_motor_->getActualPosition();
-            vel0 = hal_axis1_motor_->getActualVelocity();
-            vel1 = hal_axis2_motor_->getActualVelocity();
+            pos0 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+            pos1 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+            vel0 = applyAxis1Inversion(hal_axis1_motor_->getActualVelocity());
+            vel1 = applyAxis2Inversion(hal_axis2_motor_->getActualVelocity());
         } catch (const std::exception& e) {
             MOUNT_LOG_DEBUG("refreshPositionsFromHAL: {}", e.what());
             return;
@@ -3709,18 +3952,22 @@ public:
             // update axis1_position_/axis2_position_ so getStatus() returns
             // the correct drive position for UI display and status queries.
             if (!tracking_active_) {
-                // Only update from HAL if the motor reports a plausible
-                // position.  At startup with incremental encoders the HAL
-                // returns 0.0, which would overwrite the park-position
-                // initialisation done during mount init.
-                //
+                // MF7025V2 (absolute multi-turn 0x92 read) and SIMULATED HALs
+                // report the TRUE physical position, and 0.0 is a valid position
+                // rather than "unknown".  The old guard below treated zero as
+                // "incremental encoder not yet moved" and therefore kept the
+                // park-position initialisation (e.g. Dec=90°) forever, so the
+                // controller reported Dec=90° while the physical axis actually
+                // sat at 0° — the "position far from current" symptom.
                 // Apply home_offset so axis1/2_position_ stays in the
                 // offset-adjusted (homed) reference frame.  Without this,
                 // getStatus()'s fallback would override the home reference
                 // when raw_servo_axis* is near zero (e.g. after Home(0,0)).
-                if (std::abs(pos0) > 0.001 || std::abs(axis1_position_) < 0.001)
+                if (halPositionIsAuthoritative() || std::abs(pos0) > 0.001 ||
+                    std::abs(axis1_position_) < 0.001)
                     axis1_position_ = pos0 + home_offset_axis1_;
-                if (std::abs(pos1) > 0.001 || std::abs(axis2_position_) < 0.001)
+                if (halPositionIsAuthoritative() || std::abs(pos1) > 0.001 ||
+                    std::abs(axis2_position_) < 0.001)
                     axis2_position_ = pos1 + home_offset_axis2_;
             }
             // Store actual motor velocities in dedicated fields.
@@ -5839,8 +6086,8 @@ public:
 
         // Read actual motor positions after zeroing and compute home offset.
         // offset = desired_servo − actual_logical_motor
-        double actual1 = hal_axis1_motor_ ? hal_axis1_motor_->getActualPosition() : 0.0;
-        double actual2 = hal_axis2_motor_ ? hal_axis2_motor_->getActualPosition() : 0.0;
+        double actual1 = hal_axis1_motor_ ? applyAxis1Inversion(hal_axis1_motor_->getActualPosition()) : 0.0;
+        double actual2 = hal_axis2_motor_ ? applyAxis2Inversion(hal_axis2_motor_->getActualPosition()) : 0.0;
 
         home_offset_axis1_ = new_axis1 - actual1;
         home_offset_axis2_ = new_axis2 - actual2;
@@ -7021,8 +7268,8 @@ private:
         // Perform the blocking CANopen reads OUTSIDE state_mutex_.
         double p1 = 0.0, p2 = 0.0;
         try {
-            p1 = hal_axis1_motor_->getActualPosition();
-            p2 = hal_axis2_motor_->getActualPosition();
+            p1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+            p2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
         } catch (const std::exception& e) {
             MOUNT_LOG_DEBUG("readActualAxisPositions: {}", e.what());
             return false;
@@ -7041,6 +7288,36 @@ private:
         out1 = p1 + ho1;
         out2 = p2 + ho2;
         return true;
+    }
+
+    // True when the HAL reports the true absolute position (zero is a valid
+    // position), as opposed to incremental encoders that report 0.0 as
+    // "unknown" at startup.  MF7025V2 reads the absolute multi-turn angle
+    // (0x92); SIMULATED holds an explicit simulated position.
+    bool halPositionIsAuthoritative() const {
+        return (hal_config_.type == hal::HALType::MF7025V2 ||
+                hal_config_.type == hal::HALType::SIMULATED);
+    }
+
+    // Choose the physical Dec-axis target (telescope degrees) equivalent to the
+    // requested astronomical Dec that is nearest to the current Dec axis
+    // position.  Delegates to the free function in core/mount_coordinates.h so
+    // the round-trip invariant is unit-testable.
+    double resolveDecTarget(double dec, double current_dec_tel) const {
+        return astro_mount::core::resolveDecTarget(dec, current_dec_tel);
+    }
+
+    // Apply the configured per-axis direction inversion to the motor position
+    // and velocity READBACK (getActualPosition/getActualVelocity).  The drives
+    // on this mount report their position feedback with the opposite sign to
+    // the true physical angle, so the readback is negated while the commanded
+    // targets stay un-negated.  This keeps position tracking, slew verification
+    // and RA/Dec display consistent with the true on-sky position.
+    double applyAxis1Inversion(double value) const {
+        return config_.mount_config.invert_axis1 ? -value : value;
+    }
+    double applyAxis2Inversion(double value) const {
+        return config_.mount_config.invert_axis2 ? -value : value;
     }
 
     struct Measurement {

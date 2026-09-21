@@ -484,11 +484,15 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
                 try
                 {
                     // Use the currently displayed equatorial coordinates as the
-                    // catalog target for the measurement.
-                    double ra = EquatorialCoordsJ2000N[0].value;
-                    double dec = EquatorialCoordsJ2000N[1].value;
+                    // catalog target for the measurement. The J2000 display now
+                    // really holds J2000; addSyncMeasurement expects JNow, so
+                    // precess before submitting.
+                    double raJ2000 = EquatorialCoordsJ2000N[0].value;
+                    double decJ2000 = EquatorialCoordsJ2000N[1].value;
+                    double raNow = 0.0, decNow = 0.0;
+                    m_mapper->j2000ToJnow(raJ2000, decJ2000, raNow, decNow);
 
-                    if (!addSyncMeasurement(ra, dec))
+                    if (!addSyncMeasurement(raNow, decNow))
                     {
                         BootstrapCalibrationSP.s = IPS_ALERT;
                     }
@@ -583,20 +587,29 @@ bool AstroMountINDI::ISNewSwitch(const char* dev, const char* name,
                     }
                     else
                     {
-                        double obsRa = 0, obsDec = 0;
-                        m_mapper->jnowToJ2000(curRa, curDec, obsRa, obsDec);
                         astro_mount::Coordinates observed;
-                        observed.set_ra(obsRa);
-                        observed.set_dec(obsDec);
-                        observed.set_epoch(2000.0);
-                        auto expected = m_mapper->toGrpcCoordinates(
-                            EquatorialCoordsJ2000N[0].value,
-                            EquatorialCoordsJ2000N[1].value);
+                        observed.set_ra(curRa);
+                        observed.set_dec(curDec);
+                        observed.set_epoch(0.0);  // JNow (of date)
+                        // EquatorialCoordsJ2000N now really holds J2000, but
+                        // toGrpcCoordinates expects JNow, so precess first.
+                        double raJ2000 = EquatorialCoordsJ2000N[0].value;
+                        double decJ2000 = EquatorialCoordsJ2000N[1].value;
+                        double raNow = 0.0, decNow = 0.0;
+                        m_mapper->j2000ToJnow(raJ2000, decJ2000, raNow, decNow);
+                        auto expected = m_mapper->toGrpcCoordinates(raNow, decNow);
 
                         astro_mount::Measurement m;
                         *m.mutable_observed() = observed;
                         *m.mutable_expected() = expected;
-                        *m.mutable_mount_position() = state.current_position();
+                        // AddTPointMeasurement treats mount_position as
+                        // telescope degrees (axis1 is divided by 15 server-side).
+                        // current_position() holds raw servo degrees and would
+                        // corrupt the TPOINT fit, mirroring the bootstrap bug.
+                        astro_mount::MountPosition mountPos;
+                        mountPos.set_axis1(state.telescope_axis1());
+                        mountPos.set_axis2(state.telescope_axis2());
+                        *m.mutable_mount_position() = mountPos;
                         m_grpc->addTPointMeasurement(m);
                         m_grpc->runTPointCalibration();
                         TPointCalibrationSP.s = IPS_OK;
@@ -1059,13 +1072,27 @@ bool AstroMountINDI::SetTrackEnabled(bool enabled)
     {
         if (enabled)
         {
-            if (m_targetRA == 0.0 && m_targetDec == 0.0)
+            // Track the CURRENT on-sky position, not the last Goto target.
+            // KStars "Track" (and "Slew and Track" once the slew settles)
+            // enables sidereal tracking where the telescope currently points.
+            // Using the stale m_targetRA/m_targetDec from an earlier Goto made
+            // the controller slew away to a previous target — the "two
+            // alternating positions" symptom observed after "Use current".
+            astro_mount::ControllerState state;
             {
-                LOG_WARN("Cannot enable tracking — no target has been slewed to yet");
+                std::lock_guard<std::mutex> lock(m_stateMutex);
+                state = m_lastState;
+            }
+
+            double raHours = 0.0, decDegrees = 0.0;
+            const double lst = m_mapper->computeLst();
+            if (!m_mapper->toIndiRaDec(state, lst, raHours, decDegrees))
+            {
+                LOG_WARN("Cannot enable tracking — no current position available");
                 return false;
             }
 
-            auto coords = m_mapper->toGrpcCoordinates(m_targetRA, m_targetDec);
+            auto coords = m_mapper->toGrpcCoordinates(raHours, decDegrees);
             coords.set_tracking_mode(m_trackMode);
             if (m_trackMode == INDI::Telescope::TRACK_CUSTOM)
             {
@@ -1078,7 +1105,7 @@ bool AstroMountINDI::SetTrackEnabled(bool enabled)
                        m_customTrackRaArcsecPerSec, m_customTrackDecArcsecPerSec);
             m_grpc->trackObject(coords);
             TrackState = SCOPE_TRACKING;
-            LOGF_INFO("Tracking engaged (mode=%d)", m_trackMode);
+            LOGF_INFO("Tracking engaged at current position (mode=%d)", m_trackMode);
         }
         else
         {
@@ -1446,9 +1473,13 @@ void AstroMountINDI::setEquatorialCoords(double raHours, double decDegrees)
     // Update EOD coordinates (JNow) — INDI 2.x standard is a single NewRaDec.
     NewRaDec(raHours, decDegrees);
 
-    // Update J2000 coordinates
-    EquatorialCoordsJ2000N[0].value = raHours;
-    EquatorialCoordsJ2000N[1].value = decDegrees;
+    // Update J2000 coordinates. The incoming raHours/decDegrees are JNow, so
+    // precess them before storing; previously the J2000 display showed JNow
+    // values, which made "current object" calibrations double-precess.
+    double raJ2000 = 0.0, decJ2000 = 0.0;
+    m_mapper->jnowToJ2000(raHours, decDegrees, raJ2000, decJ2000);
+    EquatorialCoordsJ2000N[0].value = raJ2000;
+    EquatorialCoordsJ2000N[1].value = decJ2000;
     IDSetNumber(&EquatorialCoordsJ2000NP, nullptr);
 }
 
@@ -1456,24 +1487,32 @@ bool AstroMountINDI::addSyncMeasurement(double raHours, double decDegrees)
 {
     LOGF_DEBUG("addSyncMeasurement: client RA=%.6f Dec=%.4f", raHours, decDegrees);
     auto state = m_grpc->getState();
-    auto mountPos = state.current_position();
 
-    // Catalog coordinates: the client provides JNow → convert to J2000.
+    // The server's AddBootstrapMeasurement treats MountPosition.axis1/axis2 as
+    // TELESCOPE degrees (HA/Dec or alt/az in [0°,360°)) and feeds them through
+    // sin/cos to build a unit vector for the Wahba/SVD orientation fit. Sending
+    // current_position() (raw SERVO degrees, i.e. telescope degrees × gear ratio)
+    // therefore produces an essentially random unit vector and corrupts the
+    // computed orientation — which shows up as a random on-sky position after
+    // calibration. Use telescope_axis1/2 instead.
+    astro_mount::MountPosition mountPos;
+    mountPos.set_axis1(state.telescope_axis1());
+    mountPos.set_axis2(state.telescope_axis2());
+
+    // Catalog coordinates: the client provides JNow; toGrpcCoordinates now
+    // passes JNow through unchanged (the controller works in JNow).
     auto expected = m_mapper->toGrpcCoordinates(raHours, decDegrees);
 
-    // Observed coordinates: current telescope pointing (JNow → J2000).
+    // Observed coordinates: current telescope pointing (JNow).
     double lst = m_mapper->computeLst();
     double curRa = 0, curDec = 0;
     if (!m_mapper->toIndiRaDec(state, lst, curRa, curDec))
         return false;
 
-    double curRaJ2000 = 0, curDecJ2000 = 0;
-    m_mapper->jnowToJ2000(curRa, curDec, curRaJ2000, curDecJ2000);
-
     astro_mount::Coordinates observed;
-    observed.set_ra(curRaJ2000);
-    observed.set_dec(curDecJ2000);
-    observed.set_epoch(2000.0);
+    observed.set_ra(curRa);
+    observed.set_dec(curDec);
+    observed.set_epoch(0.0);  // JNow (of date)
 
     astro_mount::BootstrapMeasurement measurement;
     *measurement.mutable_observed() = observed;

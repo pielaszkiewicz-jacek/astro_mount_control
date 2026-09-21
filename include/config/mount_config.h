@@ -118,6 +118,10 @@ struct MountConfig {
     double tracking_acceleration{0.5};
     double position_tolerance{0.1};
     double rate_tolerance{0.01};
+    // Tolerance (servo degrees) for the post-slew verification that re-issues
+    // a move when an axis did not reach its target. 10° servo ≈ 0.028°
+    // telescope at gear_ratio 360:1.
+    double slew_verify_tolerance_servo_deg{10.0};
     
     // Environmental defaults
     double default_temperature{15.0};
