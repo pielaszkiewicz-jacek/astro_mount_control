@@ -101,6 +101,26 @@ struct HALConfig {
         bool send_position_pid{true};    // Send position-loop PID gains (on by default)
     } mf7025v2;
 
+    // Konfiguracja CANopen (CiA 402, NiMotion STM42/STM42M)
+    struct {
+        std::string library{"canopensocket"};
+        std::string interface_name{"can0"};
+        uint32_t bitrate{1000000};
+        uint8_t node_id{1};
+        uint32_t sdo_timeout_ms{1000};
+        uint32_t pdo_update_rate{100};
+        std::string accel_mode{"rate"};     // "rate" | "time"
+        bool pdo_config_enabled{false};
+        bool position_rewind_enabled{true};
+        double position_rewind_interval_seconds{3600.0};
+        double position_rewind_threshold_percent{80.0};
+        bool enable_nmt{true};
+        uint32_t heartbeat_period_ms{100};
+        uint32_t heartbeat_timeout_ms{500};
+        uint32_t max_missed_heartbeats{3};
+        bool enable_auto_recovery{true};
+    } canopen;
+
     // Konfiguracja symulacji
     struct {
         bool enable_simulation{true};
@@ -239,6 +259,28 @@ struct HALConfig {
             entry.position_ki    = row.value("position_ki", 0.0);
             config.mf7025v2.speed_pid_schedule.push_back(entry);
         }
+
+        // Parse CANopen configuration
+        auto canopen = json.value("canopen", nlohmann::json::object());
+        config.canopen.library = canopen.value("library", "canopensocket");
+        config.canopen.interface_name = canopen.value("interface_name", "can0");
+        config.canopen.bitrate = canopen.value("bitrate", 1000000);
+        config.canopen.node_id = canopen.value("node_id", 1);
+        config.canopen.sdo_timeout_ms = canopen.value("sdo_timeout_ms", 1000);
+        config.canopen.pdo_update_rate = canopen.value("pdo_update_rate", 100);
+        config.canopen.accel_mode = canopen.value("accel_mode", "rate");
+        config.canopen.pdo_config_enabled = canopen.value("pdo_config_enabled", false);
+        config.canopen.position_rewind_enabled = canopen.value("position_rewind_enabled", true);
+        config.canopen.position_rewind_interval_seconds =
+            canopen.value("position_rewind_interval_seconds", 3600.0);
+        config.canopen.position_rewind_threshold_percent =
+            canopen.value("position_rewind_threshold_percent", 80.0);
+        auto canopen_nmt = canopen.value("nmt", nlohmann::json::object());
+        config.canopen.enable_nmt = canopen_nmt.value("enable_nmt", true);
+        config.canopen.heartbeat_period_ms = canopen_nmt.value("heartbeat_period_ms", 100);
+        config.canopen.heartbeat_timeout_ms = canopen_nmt.value("heartbeat_timeout_ms", 500);
+        config.canopen.max_missed_heartbeats = canopen_nmt.value("max_missed_heartbeats", 3);
+        config.canopen.enable_auto_recovery = canopen_nmt.value("enable_auto_recovery", true);
 
         // Parse serial configuration
         auto serial = json.value("serial", nlohmann::json::object());

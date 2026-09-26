@@ -3006,7 +3006,34 @@ public:
                         // Set axis targets to flip targets (now matching current position)
                         axis1_target_ = flip_ha_target_;
                         axis2_target_ = flip_dec_target_;
-                        
+
+                        // Update the celestial tracking target to the post-flip
+                        // pier side.  The tracking loop computes
+                        // HA = LST - tracking_target_ra_hours_ and then selects
+                        // the shortest-path HA equivalent; leaving the pre-flip
+                        // RA here makes it pick the pre-flip equivalent (12h
+                        // away) and command a 180° RA rotation back to the
+                        // pre-flip side — the "uncontrolled rotation after
+                        // meridian flip" symptom.
+                        {
+                            const double ha_gear_mf = config_.mount_config.ha_axis_params.gear_ratio > 0.0
+                                ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                            const double jd_mf = core::AstronomicalCalculations::getCurrentJulianDate();
+                            const double lst_mf = core::AstronomicalCalculations::calculateLST(
+                                jd_mf, config_.mount_config.longitude);
+                            // axis1_position_ already holds the post-flip HA
+                            // (flip_ha_target_), in the same reference the
+                            // tracking loop uses for current_ha_hours.
+                            const double post_flip_ha_hours = axis1_position_ / (ha_gear_mf * 15.0);
+                            double effective_ra = lst_mf - post_flip_ha_hours;
+                            effective_ra = std::fmod(effective_ra, 24.0);
+                            if (effective_ra < 0.0) effective_ra += 24.0;
+                            tracking_target_ra_hours_ = effective_ra;
+                            MOUNT_LOG_INFO("Meridian flip: tracking RA updated to {:.6f}h "
+                                           "(post-flip HA={:.4f}°)",
+                                           effective_ra, post_flip_ha_hours * 15.0);
+                        }
+
                         // Re-initialize Kalman filter with post-flip positions.
                         // The meridian flip causes a discontinuous jump in axis positions
                         // (HA flips by ~12h, Dec wraps to 180°-Dec), so the KF's internal
@@ -5418,15 +5445,22 @@ public:
             }
             auto motor = axis_id == 0 ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
 
-            if (!motor->isEnabled()) {
-                MOUNT_LOG_ERROR("controlAxis: motor {} is not enabled (error_state={})",
-                               axis_id, motor->inErrorState());
-                return false;
-            }
             if (motor->inErrorState()) {
                 MOUNT_LOG_ERROR("controlAxis: motor {} is in error state: {}",
                                axis_id, motor->getErrorString());
                 return false;
+            }
+            if (!motor->isEnabled()) {
+                // Manual axis control (e.g. the web UI "control" tab) sends
+                // ControlAxis without a preceding enable, and the drive may be
+                // disabled after parking or a failed startup enable.  Re-enable
+                // it automatically unless it is in an error state (checked above).
+                MOUNT_LOG_INFO("controlAxis: motor {} is not enabled, enabling drive", axis_id);
+                if (!motor->enable()) {
+                    MOUNT_LOG_ERROR("controlAxis: motor {} enable failed (error_state={})",
+                                   axis_id, motor->inErrorState());
+                    return false;
+                }
             }
 
             if (mode == 0) {  // POSITION_CONTROL

@@ -87,6 +87,9 @@ public:
     // physical position (e.g. MF7025v2 0x95 SetZeroRAM).  Default: no-op.
     virtual bool zeroPosition() { return false; }
 
+    // Homing mode (CiA 402 6098h). Default: not supported.
+    virtual bool home() { return false; }
+
     // Reinstall the speed-dependent PID gain schedule on an already-running
     // drive WITHOUT a full HAL restart.  This lets a Web-UI config change take
     // effect immediately instead of requiring a restart/reinit.

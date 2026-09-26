@@ -24,6 +24,11 @@ const MountControlComponent = (() => {
   /** Whether the mount is calibrated (TRACKING or SLEWING state) */
   let isCalibrated = false;
 
+  /** Whether bootstrap/TPOINT calibration has completed (used to detect
+   *  the exact moment a calibration finishes, separately from the transient
+   *  SLEWING/TRACKING status). */
+  let calibrationCompleted = false;
+
   /** Gear ratios for HA and Dec axes (servo → telescope) */
   let haAxisGearRatio = 360.0;
   let decAxisGearRatio = 360.0;
@@ -45,6 +50,9 @@ const MountControlComponent = (() => {
 
   /** Step size for step mode in degrees */
   let stepSizeDeg = 1.0;
+
+  /** Timestamp of the last issued step move, used to debounce duplicate events. */
+  let lastStepMoveAt = 0;
 
   // ─── Help Content ───────────────────────────────────────────────────
 
@@ -719,6 +727,16 @@ const MountControlComponent = (() => {
 
   /**
    * Get the current step size from the input, falling back to stored value.
+   *
+   * The step angle is NOT multiplied by the gear ratio here.  The
+   * speed-reference toggle ("Telescope axis") affects only SPEED (°/s).
+   * Step units depend on the control mode of the caller:
+   *   - uncalibrated low-level ControlAxis: SERVO (motor) degrees
+   *   - calibrated coordinate nudge:        TELESCOPE degrees
+   * Mixing the gear ratio into the step previously turned a 360° low-level
+   * step into gear_ratio×360° of servo travel (e.g. 360 motor revolutions
+   * for a 360:1 mount), which looked like "more than one turn".
+   *
    * @returns {number} Step size in degrees
    */
   function getStepSize(axisId = 0) {
@@ -728,12 +746,6 @@ const MountControlComponent = (() => {
       const parsed = parseFloat(input.value);
       if (!isNaN(parsed) && parsed > 0) val = parsed;
       else val = stepSizeDeg;
-    }
-    // When in telescope-axis mode, step refers to telescope angle,
-    // so convert to servo angle via gear ratio
-    if (speedRefTelescope) {
-      const gear = (axisId === 1) ? decAxisGearRatio : haAxisGearRatio;
-      return val * gear;
     }
     return val;
   }
@@ -1015,7 +1027,7 @@ const MountControlComponent = (() => {
    * @param {string} mountType - 'equatorial' | 'alt_az' | 'unknown'
    */
   function setCalibrationState(state, mountType) {
-    const wasCalibrated = isCalibrated;
+    const hadCalibration = calibrationCompleted;
     currentMountType = mountType || 'unknown';
 
     // Mount is considered calibrated when bootstrap or TPOINT is done,
@@ -1023,9 +1035,15 @@ const MountControlComponent = (() => {
     const status = (state && state.status || '').toUpperCase();
     const hasCalibration = (state && (state.bootstrap_calibrated || state.tpoint_calibrated));
     isCalibrated = hasCalibration || (status === 'TRACKING' || status === 'SLEWING');
+    calibrationCompleted = hasCalibration;
 
-    // When calibration just completed, auto-populate from last used object
-    if (!wasCalibrated && isCalibrated) {
+    // Auto-populate the slew form only when a real calibration (bootstrap or
+    // TPOINT) just completed.  The previous `!wasCalibrated && isCalibrated`
+    // check also fired on every IDLE → SLEWING/TRACKING transition, so
+    // "Use current" followed by "Slew"/"Slew & Track" re-populated the form
+    // with the last calibration object — making the mount slew away to that
+    // object instead of the requested current position.
+    if (!hadCalibration && hasCalibration) {
       populateSlewFromLastObject();
     }
 
@@ -1251,6 +1269,18 @@ const MountControlComponent = (() => {
    * @param {number} direction - +1 or -1
    */
   async function performStepMove(axisId, direction) {
+    // Debounce: a single physical click can fire several pointer/touch/mouse
+    // events (touchstart + synthesized mousedown, duplicated listeners, etc.),
+    // each of which calls this function. Collapse bursts within a short window
+    // into one move so the drive does not stack multiple relative 360° steps.
+    const now = Date.now();
+    if (now - lastStepMoveAt < 500) {
+      console.log('[AxisCtrl] performStepMove: debounced duplicate (%d ms since last step)',
+                  now - lastStepMoveAt);
+      return;
+    }
+    lastStepMoveAt = now;
+
     const speed = getCurrentSpeed(axisId);
     const stepSize = getStepSize(axisId);
     const offset = direction * stepSize;

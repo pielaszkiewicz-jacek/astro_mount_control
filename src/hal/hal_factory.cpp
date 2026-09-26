@@ -1,7 +1,9 @@
 #include "hal/hal_factory.h"
 #include "hal/simulated_hal/simulated_hal.h"
 #include "hal/mf7025v2_hal/mf7025v2_hal.h"
+#include "hal/canopen_hal/canopen_hal.h"
 #include "controllers/imf7025v2_interface.h"
+#include "controllers/canopen_factory.h"
 #include "serial_hal/serial_hal.h"
 #include "ethernet_hal/ethernet_hal.h"
 #include "gamepad_hal/gamepad_hal.h"
@@ -19,7 +21,7 @@ std::unique_ptr<HALInterface> HALFactory::create(const HALConfig& config) {
         case HALType::SIMULATED:
             return createSimulatedHAL(config);
         case HALType::CANOPEN:
-            throw std::runtime_error("CANopen HAL implementation not yet available");
+            return createCanOpenHAL(config);
         case HALType::MF7025V2:
             return createMf7025v2HAL(config);
         case HALType::SERIAL:
@@ -64,6 +66,7 @@ std::vector<HALType> HALFactory::getAvailableTypes() {
     // MF7025v2 HAL is available on Linux (SocketCAN)
 #ifdef __linux__
     types.push_back(HALType::MF7025V2);
+    types.push_back(HALType::CANOPEN);
 #endif
 
     // Gamepad HAL is always available
@@ -254,8 +257,20 @@ std::unique_ptr<HALInterface> HALFactory::createGamepadHAL(const HALConfig& conf
 }
 
 std::unique_ptr<HALInterface> HALFactory::createCanOpenHAL(const HALConfig& config) {
-    (void)config;
-    throw std::runtime_error("CANopen HAL not yet implemented");
+    try {
+        auto can = controllers::CanOpenFactory::create(config.canopen.library);
+        if (!can) {
+            throw std::runtime_error("Unsupported CANopen library: " + config.canopen.library);
+        }
+        auto hal = std::make_unique<CanOpenHAL>(std::move(can));
+        if (!hal->initialize(config)) {
+            throw std::runtime_error("Failed to initialize CanOpenHAL");
+        }
+        return hal;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create CanOpenHAL: " << e.what() << std::endl;
+        throw;
+    }
 }
 
 std::unique_ptr<HALInterface> HALFactory::createMf7025v2HAL(const HALConfig& config) {

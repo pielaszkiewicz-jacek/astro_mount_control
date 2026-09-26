@@ -76,7 +76,7 @@ const SettingsComponent = (() => {
       restartRequired: false,
       fields: [
         { key: 'mount_type', label: 'Mount Type', type: 'select', options: ['EQUATORIAL', 'ALT_AZ', 'CASUAL', 'UNKNOWN'] },
-        { key: 'max_slew_rate', label: 'Max Slew Rate (°/s)', type: 'number', min: 0.1, max: 50, step: 0.1 },
+        { key: 'max_slew_rate', label: 'Max Slew Rate (°/s)', type: 'number', min: 0.1, max: 2000, step: 0.1 },
         { key: 'max_tracking_rate', label: 'Max Tracking Rate (°/s)', type: 'number', min: 0.0001, max: 0.1, step: 0.000001 },
         { key: 'slew_acceleration', label: 'Slew Acceleration (°/s²)', type: 'number', min: 0.01, max: 20, step: 0.1 },
         { key: 'tracking_acceleration', label: 'Tracking Acceleration (°/s²)', type: 'number', min: 0.0001, max: 1, step: 0.0001 },

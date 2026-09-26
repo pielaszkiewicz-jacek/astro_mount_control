@@ -31,7 +31,10 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/sofa
     ${CMAKE_SOURCE_DIR}
     ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/lib/canopen_wrapper/include
 )
+
+find_package(Threads REQUIRED)
 
 # Find dependencies
 find_package(PkgConfig REQUIRED)
@@ -189,7 +192,11 @@ set(CORE_SOURCES
     src/hal/gamepad_hal/gamepad_hal.cpp
     src/hal/gamepad_hal/gamepad_input_evdev.cpp
     src/hal/mf7025v2_hal/mf7025v2_hal.cpp
+    src/hal/canopen_hal/canopen_hal.cpp
     src/controllers/mf7025v2_interface.cpp
+    src/controllers/canopen_interface.cpp
+    src/controllers/canopen_factory.cpp
+    lib/canopen_wrapper/src/canopen.cpp
 )
 
 set(DEROTATOR_SOURCES
@@ -332,6 +339,7 @@ target_link_libraries(astro_mount_core
     Eigen3::Eigen
     SQLite3::SQLite3
     CURL::libcurl
+    Threads::Threads
     $<$<BOOL:${OpenSSL_FOUND}>:OpenSSL::SSL>
     $<$<BOOL:${OpenSSL_FOUND}>:OpenSSL::Crypto>
 )
@@ -774,6 +782,36 @@ if(GTest_FOUND)
 
     add_test(NAME WeatherTest
         COMMAND test_weather)
+
+    add_executable(test_canopen_wrapper
+        tests/test_canopen_wrapper.cpp
+    )
+    target_link_libraries(test_canopen_wrapper
+        astro_mount_core
+        GTest::gtest_main
+    )
+    add_test(NAME CanOpenWrapperTest
+        COMMAND test_canopen_wrapper)
+
+    add_executable(test_canopen_factory
+        tests/test_canopen_factory.cpp
+    )
+    target_link_libraries(test_canopen_factory
+        astro_mount_core
+        GTest::gtest_main
+    )
+    add_test(NAME CanOpenFactoryTest
+        COMMAND test_canopen_factory)
+
+    add_executable(test_canopen_hal
+        tests/test_canopen_hal.cpp
+    )
+    target_link_libraries(test_canopen_hal
+        astro_mount_core
+        GTest::gtest_main
+    )
+    add_test(NAME CanOpenHALTest
+        COMMAND test_canopen_hal)
 
 endif()
 
