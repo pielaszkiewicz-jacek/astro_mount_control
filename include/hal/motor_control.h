@@ -61,10 +61,23 @@ public:
     virtual bool isEnabled() const = 0;
     
     // Sterowanie
-    virtual bool setPosition(double position_deg, 
-                            double velocity_deg_s = 0.0, 
+    virtual bool setPosition(double position_deg,
+                            double velocity_deg_s = 0.0,
                             double acceleration_deg_s2 = 0.0) = 0;
-    virtual bool setVelocity(double velocity_deg_s, 
+
+    // Relative position move: advances by position_deg from the current
+    // position. Default: emulated as (actual + delta) absolute move. Field-bus
+    // motors (e.g. CANopen CiA 402) override this with a true relative profile
+    // (control-word bit6=1) so the move does not depend on a freshly-read
+    // absolute position counter.
+    virtual bool setPositionRelative(double position_deg,
+                                     double velocity_deg_s = 0.0,
+                                     double acceleration_deg_s2 = 0.0) {
+        return setPosition(getActualPosition() + position_deg,
+                           velocity_deg_s, acceleration_deg_s2);
+    }
+
+    virtual bool setVelocity(double velocity_deg_s,
                             double acceleration_deg_s2 = 0.0) = 0;
     virtual bool setTorque(double torque_percent) = 0;
     virtual bool stop() = 0;

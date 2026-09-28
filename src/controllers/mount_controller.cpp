@@ -346,13 +346,18 @@ public:
         
         // Initialize HAL interface — create it from config type if not injected
         if (!hal_interface_) {
-            hal_interface_ = hal::HALFactory::create(hal_config_.type);
+            // Pass the FULL config (not just the type) so the factory does not
+            // initialize the HAL with getDefaultConfig() defaults (e.g.
+            // encoder_counts_per_degree = 10000).  CanOpenHAL::initialize() is
+            // idempotent and returns early on a second call, so the subsequent
+            // initialize(hal_config_) below would otherwise be ignored.
+            hal_interface_ = hal::HALFactory::create(hal_config_);
             if (!hal_interface_) {
                 MOUNT_LOG_ERROR("Failed to create HAL interface for type={}",
                                static_cast<int>(hal_config_.type));
                 return false;
             }
-            MOUNT_LOG_INFO("HAL interface created from config type");
+            MOUNT_LOG_INFO("HAL interface created from config");
         }
 
         // Initialize HAL interface
@@ -1877,6 +1882,18 @@ public:
                 hal_interface_->start();
             }
             
+            // Reset the delta-tracking correction state for the new tracking
+            // session.  The E1 fix applies nutation/TPoint/refraction corrections
+            // as deltas versus the previous iteration; carrying over the last
+            // values from a previous session (a different sky position) would
+            // inject a spurious position jump on the first iteration.
+            last_nutation_correction_axis1_ = 0.0;
+            last_nutation_correction_axis2_ = 0.0;
+            last_tpoint_correction_axis1_ = 0.0;
+            last_tpoint_correction_axis2_ = 0.0;
+            last_refraction_correction_axis1_ = 0.0;
+            last_refraction_correction_axis2_ = 0.0;
+
             tracking_active_ = true;
         }  // end state_mutex_ scope
         
@@ -2841,14 +2858,39 @@ public:
                     // Only process flip logic when in TRACKING state (not already flipping)
                     if (state_ == MountStatus::State::TRACKING) {
                         // Detect meridian crossing: HA crossed from east (negative) to west (positive)
-                        // beyond the hysteresis threshold
+                        // beyond the hysteresis threshold.  Skip the flip entirely when the
+                        // complementary Dec (180° − Dec) would fall outside the configured Dec
+                        // soft limits — e.g. a ±90°-limited mount tracking a near-pole object,
+                        // where Dec 89.75° would complement to 90.25°.  In that case the mount
+                        // simply keeps tracking through the meridian (the HA axis is not limited
+                        // at the pole).
                         if (!meridian_flip_pending_ && !meridian_flipped_ &&
                             ha > config_.safety_config.meridian_flip_hysteresis_degrees) {
-                            // HA has crossed the meridian past the hysteresis zone
-                            meridian_flip_pending_ = true;
-                            meridian_flip_pending_time_ = std::chrono::steady_clock::now();
-                            MOUNT_LOG_INFO("Meridian flip pending: HA={:.2f}°, delay={:.1f}min",
-                                     ha, config_.safety_config.meridian_flip_delay_minutes);
+                            const double dec_gear_chk = config_.mount_config.dec_axis_params.gear_ratio > 0.0
+                                ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
+                            double folded_dec_chk = std::fmod(axis2_position_ / dec_gear_chk, 360.0);
+                            if (folded_dec_chk > 180.0) folded_dec_chk -= 360.0;
+                            else if (folded_dec_chk < -180.0) folded_dec_chk += 360.0;
+                            const double flipped_dec_chk = 180.0 - folded_dec_chk;
+                            const bool flip_feasible =
+                                flipped_dec_chk >= config_.safety_config.soft_limit_axis2_min - 1e-9 &&
+                                flipped_dec_chk <= config_.safety_config.soft_limit_axis2_max + 1e-9;
+
+                            if (flip_feasible) {
+                                // HA has crossed the meridian past the hysteresis zone
+                                meridian_flip_pending_ = true;
+                                meridian_flip_pending_time_ = std::chrono::steady_clock::now();
+                                MOUNT_LOG_INFO("Meridian flip pending: HA={:.2f}°, delay={:.1f}min",
+                                         ha, config_.safety_config.meridian_flip_delay_minutes);
+                            } else if (tracking_iteration_count_ % 100 == 0) {
+                                // Throttle: only log every ~100 iterations (~2 s) to
+                                // avoid flooding the log at the 50 Hz loop rate.
+                                MOUNT_LOG_DEBUG("Meridian flip suppressed: flipped Dec={:.4f}° outside Dec limits [{:.1f}, {:.1f}] (Dec={:.4f}°, HA={:.2f}°)",
+                                         flipped_dec_chk,
+                                         config_.safety_config.soft_limit_axis2_min,
+                                         config_.safety_config.soft_limit_axis2_max,
+                                         folded_dec_chk, ha);
+                            }
                         }
                         
                         // Execute pending flip after delay has elapsed
@@ -2866,18 +2908,37 @@ public:
                                 flip_start_time_ = now;
                                 flip_targets_sent_ = false;
                                 
-                                // Compute flip targets: add 180° telescope to HA (scaled by gear_ratio), complement Dec.
-                                // axis1_target_ is in servo degrees, so add 180° * gear_ratio for the flip.
-                                const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
-                                double new_ha = axis1_target_ + 180.0 * ha_gear;
-                                // Normalize HA to [-180*gear, 180*gear] servo degrees
-                                const double half_range = 180.0 * ha_gear;
-                                while (new_ha > half_range) new_ha -= 360.0 * ha_gear;
-                                while (new_ha < -half_range) new_ha += 360.0 * ha_gear;
+                                // Compute flip targets as the current physical position plus a
+                                // shortest-path delta to the opposite pier side.  The drives use
+                                // absolute multi-turn positions that can reach millions of degrees
+                                // after long tracking; complementing the raw multi-turn target
+                                // directly (e.g. 180*gear - axis2_target_) commands the drive to
+                                // unwind dozens of accumulated revolutions.
+                                const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio > 0.0
+                                    ? config_.mount_config.ha_axis_params.gear_ratio : 360.0;
+                                const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio > 0.0
+                                    ? config_.mount_config.dec_axis_params.gear_ratio : 360.0;
+
+                                // HA flip: +12h (180° telescope) relative to the current physical
+                                // HA, preserving the accumulated multi-turn window.
+                                const double cur_ha_hours = axis1_position_ / (ha_gear * 15.0);
+                                flip_ha_target_ = (cur_ha_hours + 12.0) * 15.0 * ha_gear - home_offset_axis1_;
                                 
-                                flip_ha_target_ = new_ha;
-                                // Dec complement: 180° telescope minus current Dec target (both in servo degrees)
-                                flip_dec_target_ = 180.0 * config_.mount_config.dec_axis_params.gear_ratio - axis2_target_;
+                                // Dec flip: complement (180° - Dec) computed on the FOLDED
+                                // telescope Dec, then resolved to the equivalent nearest the
+                                // current physical Dec axis position (preserves multi-turn window).
+                                const double cur_dec_tel = axis2_position_ / dec_gear;
+                                double folded_dec = std::fmod(cur_dec_tel, 360.0);
+                                if (folded_dec > 180.0) folded_dec -= 360.0;
+                                else if (folded_dec < -180.0) folded_dec += 360.0;
+                                const double flipped_dec_tel = 180.0 - folded_dec;
+
+                                double dec_delta = flipped_dec_tel - folded_dec;
+                                const double full_turn_dec = 360.0;
+                                dec_delta = std::fmod(dec_delta, full_turn_dec);
+                                if (dec_delta > full_turn_dec / 2.0) dec_delta -= full_turn_dec;
+                                else if (dec_delta < -full_turn_dec / 2.0) dec_delta += full_turn_dec;
+                                flip_dec_target_ = (cur_dec_tel + dec_delta) * dec_gear - home_offset_axis2_;
                                 
                                 // Save original tracking RA/Dec for resume after flip.
                                 // axis1_position_ is in servo degrees; divide by gear_ratio for telescope HA.
@@ -5464,17 +5525,22 @@ public:
             }
 
             if (mode == 0) {  // POSITION_CONTROL
-                double final_position = target_position;
+                bool ok = false;
                 if (relative) {
-                    final_position = motor->getActualPosition() + target_position;
+                    // True relative move (CiA 402 bit6=1). Avoids depending on a
+                    // freshly-read absolute position counter — with a large
+                    // accumulated counter, "actual + delta" could otherwise
+                    // unwind the drive many turns.
+                    ok = motor->setPositionRelative(target_position, target_velocity, acceleration);
+                } else {
+                    ok = motor->setPosition(target_position, target_velocity, acceleration);
                 }
-                bool ok = motor->setPosition(final_position, target_velocity, acceleration);
                 if (ok) {
                     axis_position_control_active_[axis_id] = true;
                 }
                 if (!ok) {
                     MOUNT_LOG_ERROR("controlAxis: motor {} setPosition(pos={:.2f}, vel={:.2f}) failed",
-                                   axis_id, final_position, target_velocity);
+                                   axis_id, target_position, target_velocity);
                 }
                 return ok;
             } else {  // VELOCITY_CONTROL
@@ -6604,32 +6670,34 @@ public:
             MOUNT_LOG_INFO("setHALConfig: config updated in place (no reinit required)");
 
             // ── Live speed-PID schedule push ────────────────────────────
-            // When only the MF7025v2 speed-PID schedule (or its enable flag /
-            // update interval) changed, reinstall it on the running drives
-            // immediately so the Web-UI change takes effect WITHOUT a restart.
+            // Reinstall the speed-dependent PID schedule on the running drives
+            // immediately so a Web-UI change takes effect WITHOUT a restart.
+            // The schedule layout depends on the HAL type:
+            //   - MF7025v2: current/speed/position loops via combined 0x31 write
+            //   - CANopen:   speed-loop Kp/Ki via 2008h:01h/02h
             // The HAL's applySpeedPidSchedule() re-copies the schedule into
             // each motor; the next setPosition()/setVelocity() call then writes
-            // the matching gains to the drive RAM (0xC1).  For HAL types that
-            // do not support live gain scheduling the default no-op returns
-            // false and the change simply takes effect after a restart.
-            if (hal_axis1_motor_) {
-                hal_axis1_motor_->applySpeedPidSchedule(
-                    hal_config_.mf7025v2.speed_pid_schedule,
-                    hal_config_.mf7025v2.speed_pid_adaptation_enabled,
-                    hal_config_.mf7025v2.speed_pid_adaptation_update_ms,
-                    hal_config_.mf7025v2.send_speed_pid,
-                    hal_config_.mf7025v2.send_current_pid,
-                    hal_config_.mf7025v2.send_position_pid);
-            }
-            if (hal_axis2_motor_) {
-                hal_axis2_motor_->applySpeedPidSchedule(
-                    hal_config_.mf7025v2.speed_pid_schedule,
-                    hal_config_.mf7025v2.speed_pid_adaptation_enabled,
-                    hal_config_.mf7025v2.speed_pid_adaptation_update_ms,
-                    hal_config_.mf7025v2.send_speed_pid,
-                    hal_config_.mf7025v2.send_current_pid,
-                    hal_config_.mf7025v2.send_position_pid);
-            }
+            // the matching gains to the drive RAM.
+            auto push_schedule = [&](std::unique_ptr<hal::MotorControl>& motor) {
+                if (!motor) return;
+                if (hal_config_.type == hal::HALType::CANOPEN) {
+                    motor->applySpeedPidSchedule(
+                        hal_config_.canopen.speed_pid_schedule,
+                        hal_config_.canopen.speed_pid_adaptation_enabled,
+                        hal_config_.canopen.speed_pid_adaptation_update_ms,
+                        true, false, false);
+                } else {
+                    motor->applySpeedPidSchedule(
+                        hal_config_.mf7025v2.speed_pid_schedule,
+                        hal_config_.mf7025v2.speed_pid_adaptation_enabled,
+                        hal_config_.mf7025v2.speed_pid_adaptation_update_ms,
+                        hal_config_.mf7025v2.send_speed_pid,
+                        hal_config_.mf7025v2.send_current_pid,
+                        hal_config_.mf7025v2.send_position_pid);
+                }
+            };
+            push_schedule(hal_axis1_motor_);
+            push_schedule(hal_axis2_motor_);
 
             // Persist to disk
             if (!config_file_path_.empty()) {

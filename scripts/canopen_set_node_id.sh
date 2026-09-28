@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 #
-# canopen_set_node_id.sh — ustawia Node-ID kontrolera NiMotion STM42 (CANopen/CiA402).
+# canopen_set_node_id.sh — ustawia adres osi (Node-ID) kontrolera NiMotion STMP42SXI
+# (CANopen/CiA402).
 #
-# Źródło protokołu: docs/stm42-canopen-protocol.pdf
-#   - Node-ID jest zapisywany w obiekcie 200Ch:02h ("ServoShaftAddress", uint16, 1..127).
-#   - Aktywacja następuje po restarcie ("Restart to take effect").
+# Źródło protokołu: docs/1787619745915-ymnq3q.pdf (rozdział 10.2, 200Ch).
+#   - Adres osi jest zapisywany w obiekcie 200Ch:02h ("驱动器轴地址", uint16, 1..247).
+#   - Dla CANopen obowiązuje zakres Node-ID 1..127 (COB-ID 7-bitowe).
+#   - Aktywacja następuje po ponownym włączeniu zasilania ("再次通电").
 #   - SDO write: COB-ID = 0x600 + biezacy_node_id, dane little-endian.
 #   - Zapis 2 bajtow -> command specifier 0x2B.
 #   - Zapis parametrow do EEPROM: 1010h:01h = 0x65766173 ("save").
@@ -28,8 +30,8 @@ Użycie:
   canopen_set_node_id.sh <biezacy_id> <nowy_id> [interfejs_can] [opcje]
 
 Argumenty:
-  biezacy_id       aktualny Node-ID kontrolera (1..127)
-  nowy_id          nowy Node-ID do ustawienia (1..127)
+  biezacy_id       aktualny Node-ID kontrolera (CANopen: 1..127)
+  nowy_id          nowy Node-ID do ustawienia (CANopen: 1..127)
   interfejs_can    interfejs CAN (domyslnie: can0 lub zmienna CAN_IF)
 
 Opcje:

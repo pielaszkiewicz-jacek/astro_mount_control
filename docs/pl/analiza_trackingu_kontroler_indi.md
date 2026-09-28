@@ -226,6 +226,9 @@ Wniosek: obie osie domykają się — „Use current" + „Slew i Śledź" jest 
 | 6 | Podwójne odwrócenie osi | `invert_direction` (HAL) × `invert_axis` (kontroler) | Usunięto z konfiguracji (`false`) |
 | 7 | Cel HA o pełny obrót (24 h) obok | Brak najkrótszej ścieżki | Wrap ±12 h w `slewToEquatorial`/`startTracking` |
 | 8 | Nieprawidłowa Dec (>90°) od klienta | Brak walidacji wejścia | Odrzucenie + log ([`mount_controller.cpp`](src/controllers/mount_controller.cpp:551)) |
+| 9 | Ciągły obrót / odjazd po „Use current" + „Slew i Śledź" (cel Dec `−5247089°` ≈ 40 obrotów) | Cel flipa meridianowego liczony z **surowej pozycji multi-turn**: `180°·gear − axis2_target_` (i cel HA normalizowany do `[−180°, 180°]` zamiast względem bieżącej pozycji) | Cele flipa liczone najkrótszą ścieżką od bieżącej pozycji fizycznej, z zachowaniem okna multi-turn ([`mount_controller.cpp:2911`](src/controllers/mount_controller.cpp:2911)) |
+| 10 | Flip wyzwalany blisko bieguna (Dec 89,75° → dopełnienie 90,25° poza limitem ±90°) | Brak kontroli wykonalności flipa względem limitów Dec | Flip pomijany, gdy dopełnione Dec (`180°−Dec`) wychodzi poza `soft_limit_axis2_min/max` ([`mount_controller.cpp:2867`](src/controllers/mount_controller.cpp:2867)) |
+| 11 | Skok pozycji na starcie nowej sesji śledzenia | Niezerowane stany korekcji delta `last_*_correction_*` (nutacja/TPoint/refrakcja) między sesjami | Zerowanie 6 zmiennych przy starcie śledzenia ([`mount_controller.cpp:1885`](src/controllers/mount_controller.cpp:1885)) |
 
 ---
 
@@ -243,6 +246,10 @@ powyżej. Bezpośrednie mapowanie:
 | „Niekontrolowany obrót" | #3 oś Dec wirowała (fold bez domknięcia w pętli trackingu) | naprawione |
 | „Rozjazd układów współrzędnych montaż↔INDI" | #1/#2/#3 — złamany niezmiennik round-trip | naprawione (sekcja 5) |
 | „Odwrócenie osi w konfiguracji" | #6 podwójne odwrócenie (`invert_direction` × `invert_axis`) | usunięte z konfiguracji |
+| „Ciągły obrót odjeżdżający od bieżącej pozycji" | #9 cel flipa z surowej pozycji multi-turn + #10 flip wyzwolony blisko bieguna | naprawione |
+| „Oś Dec jedzie kilkadziesiąt obrotów po flipie" | #9 dopełnienie Dec na surowej wartości multi-turn | naprawione |
+| „Flip wyzwalany dla obiektu blisko bieguna" | #10 brak kontroli wykonalności flipa | naprawione |
+| „Drobny skok pozycji po włączeniu śledzenia" | #11 stary stan korekcji delta z poprzedniej sesji | naprawione |
 
 ---
 
@@ -251,7 +258,10 @@ powyżej. Bezpośrednie mapowanie:
 **Status wdrożenia:** pozycje 1 (osobliwość biegunowa), 4 (home offset) i 6
 (precyzja double) są obsłużone w kodzie; pozycje 2 (histereza granicy folda),
 3 (jednolite źródło LST) i 5 (synchronizacja Kalmana) pozostają **otwartymi**
-rekomendacjami z sekcji 8.
+rekomendacjami z sekcji 8. Dodatkowo obsłużone są problemy #9 (normalizacja
+multi-turn celów flipa meridianowego), #10 (pomijanie flipa, gdy dopełnienie
+Dec wychodzi poza limity) oraz #11 (zerowanie stanu korekcji delta przy starcie
+śledzenia) — wszystkie opisane w sekcjach 6 i 6a.
 
 1. **Osobliwość biegunowa (|Dec| ≈ 90°).** RA jest niezdefiniowana na biegunie;
    kod ma guard `NUTATION_POLE_GUARD_DEG = 0.1°`, ale ogólna precyzja w pobliżu

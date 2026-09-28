@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #
-# canopen_get_node_id.sh — odczyt Node-ID kontrolerów NiMotion STM42 (CANopen/CiA402).
+# canopen_get_node_id.sh — odczyt adresu osi (Node-ID) kontrolerów NiMotion STMP42SXI
+# (CANopen/CiA402).
 #
-# Źródło protokołu: docs/stm42-canopen-protocol.pdf
-#   - Node-ID jest zapisany w obiekcie 200Ch:02h ("ServoShaftAddress", uint16).
+# Źródło protokołu: docs/1787619745915-ymnq3q.pdf (rozdział 10.2, 200Ch).
+#   - Adres osi jest zapisany w obiekcie 200Ch:02h ("驱动器轴地址", uint16).
 #   - Odczyt SDO: COB-ID = 0x600 + node_id, dane: 40 0C 20 02 00 00 00 00
 #     (0x40 = initiate upload request).
 #   - Odpowiedź SDO na 0x580 + node_id: 4B 0C 20 02 <lo> <hi> 00 00

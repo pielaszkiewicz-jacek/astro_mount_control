@@ -728,16 +728,16 @@ const MountControlComponent = (() => {
   /**
    * Get the current step size from the input, falling back to stored value.
    *
-   * The step angle is NOT multiplied by the gear ratio here.  The
-   * speed-reference toggle ("Telescope axis") affects only SPEED (°/s).
-   * Step units depend on the control mode of the caller:
-   *   - uncalibrated low-level ControlAxis: SERVO (motor) degrees
-   *   - calibrated coordinate nudge:        TELESCOPE degrees
-   * Mixing the gear ratio into the step previously turned a 360° low-level
-   * step into gear_ratio×360° of servo travel (e.g. 360 motor revolutions
-   * for a 360:1 mount), which looked like "more than one turn".
+   * Returns the angle in the units selected by the speed-reference toggle:
+   *   - servo reference (default):        SERVO (motor) degrees
+   *   - "Telescope axis" reference:       TELESCOPE degrees
    *
-   * @returns {number} Step size in degrees
+   * The gear-ratio conversion to servo degrees for the telescope reference
+   * happens in performStepMove() only for the uncalibrated low-level path
+   * (which expects servo degrees).  The calibrated coordinate-nudge path
+   * already works in telescope degrees and therefore uses this value as-is.
+   *
+   * @returns {number} Step size in degrees (servo or telescope, see above)
    */
   function getStepSize(axisId = 0) {
     const input = $('#axis-step-size');
@@ -929,10 +929,10 @@ const MountControlComponent = (() => {
         // In telescope-axis mode, the effective max is reduced by gear ratio
         const avgGear = (haAxisGearRatio + decAxisGearRatio) / 2;
         const effectiveMax = speedRefTelescope ? (maxSpeed / avgGear) : maxSpeed;
-        const step = speedRefTelescope ? Math.max(0.001, effectiveMax / 500) : 0.1;
+        const step = speedRefTelescope ? Math.max(0.001, effectiveMax / 500) : 0.01;
         slider.max = effectiveMax;
         slider.step = step;
-        slider.min = speedRefTelescope ? 0.001 : 0.1;
+        slider.min = speedRefTelescope ? 0.001 : 0.01;
         if (parseFloat(slider.value) > effectiveMax) {
           slider.value = effectiveMax;
         }
@@ -955,7 +955,7 @@ const MountControlComponent = (() => {
         // Show in arcsec/s for very small telescope-axis speeds
         label.textContent = (val * 3600).toFixed(1) + '"';
       } else {
-        label.textContent = val.toFixed(val < 0.1 ? 3 : 1);
+        label.textContent = val.toFixed(val < 0.1 ? 3 : 2);
       }
     }
   }
@@ -1283,7 +1283,6 @@ const MountControlComponent = (() => {
 
     const speed = getCurrentSpeed(axisId);
     const stepSize = getStepSize(axisId);
-    const offset = direction * stepSize;
     console.log('[AxisCtrl] performStepMove: axisId=%d, direction=%d, speed=%f, stepSize=%f, isCalibrated=%s',
                 axisId, direction, speed, stepSize, isCalibrated);
 
@@ -1291,16 +1290,23 @@ const MountControlComponent = (() => {
     activeDirection = direction;
 
     if (isCalibrated) {
-      // Calibrated: single coordinate nudge by stepSize degrees
+      // Calibrated: single coordinate nudge by stepSize telescope degrees.
       // The speed slider controls the slew velocity used to reach the target.
       await performCalibratedNudge(axisId, direction, stepSize);
       App.showToast(`Step ${stepSize.toFixed(1)}° on axis ${axisId}`, 'success', 1500);
     } else {
-      // Uncalibrated: use POSITION_CONTROL with relative offset.
-      // The drive handles the CiA 402 profile position move — acceleration,
-      // deceleration, and automatic stop at the target.  No timer needed.
-      // Pass the speed slider value as max_velocity so the drive respects it.
-      const offset = direction * stepSize;
+      // Uncalibrated: use POSITION_CONTROL with a relative offset in SERVO
+      // (motor) degrees.  getCurrentSpeed() already converts the speed slider
+      // to servo °/s when the telescope-axis reference is active, so the step
+      // must be converted the same way to keep speed and angle in one frame.
+      // Without this, a 360° telescope step at 1°/s telescope would execute as
+      // 360° of SERVO travel — gear_ratio× too fast for the requested angle.
+      let servoStep = stepSize;
+      if (speedRefTelescope) {
+        const gear = (axisId === 1) ? decAxisGearRatio : haAxisGearRatio;
+        servoStep = stepSize * gear;
+      }
+      const offset = direction * servoStep;
       const acceleration = getCurrentAcceleration();
       const deceleration = getCurrentDeceleration();
       console.log('[AxisCtrl] performStepMove uncalibrated: offset=%f°, speed=%f °/s, accel=%f °/s², decel=%f °/s²',

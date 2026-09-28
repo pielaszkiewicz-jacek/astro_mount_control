@@ -1,37 +1,27 @@
 #!/usr/bin/env bash
 #
-# canopen_encoder_resolution.sh — odczyt i modyfikacja rozdzielczości enkodera
-# pozycji (608Fh) napędów NiMotion STM42 (CANopen/CiA402) przez SDO.
+# canopen_encoder_resolution.sh — odczyt rozdzielczości enkodera pozycji (608Fh)
+# napędów NiMotion STMP42SXI (CANopen/CiA402) przez SDO.
 #
 # Obiekt 608Fh (Position encoder resolution):
 #   - 608Fh:01h = Encoder increments  (uint32) — liczba inkrementów enkodera na obrót silnika
 #   - 608Fh:02h = Motor revolutions   (uint32) — liczba obrotów silnika
 #   - Rozdzielczość pozycji = 608Fh:01h / 608Fh:02h  [counts / obrót silnika]
+#   - STMP42SXI: 608Fh jest rw; enkoder 17-bitowy zgłasza 131072 imp/obr.
 #
 # Odczyt SDO (upload expedited, uint32):
 #   Żądanie:   COB-ID = 0x600 + node_id, dane: 40 8F 60 <sub> 00 00 00 00
 #   Odpowiedź: COB-ID = 0x580 + node_id, dane: 43 8F 60 <sub> <b0> <b1> <b2> <b3>
 #
-# Zapis SDO (download expedited, uint32, command specifier 0x23):
-#   Żądanie:       COB-ID = 0x600 + node_id, dane: 23 8F 60 <sub> <b0> <b1> <b2> <b3>
-#   Potwierdzenie: COB-ID = 0x580 + node_id, dane: 60 8F 60 <sub> 00 00 00 00
-#
-# UWAGA: zapis 608Fh może wymagać wyłączonego napędu (CiA402 "Switch on
-# disabled"). W niektórych kontrolerach obiekt jest tylko do odczytu — wtedy
-# urządzenie odpowie abortem SDO (0x80...), a skrypt to zgłosi.
-#
 # Użycie:
 #   ./scripts/canopen_encoder_resolution.sh <node_id ...> [interfejs_can]
-#   ./scripts/canopen_encoder_resolution.sh <node_id> --increments <n>  [interfejs_can] [--save]
+#   ./scripts/canopen_encoder_resolution.sh <node_id> --increments <n> [interfejs_can] [--save]
 #   ./scripts/canopen_encoder_resolution.sh <node_id> --revolutions <n> [interfejs_can] [--save]
-#   ./scripts/canopen_encoder_resolution.sh <node_id> --increments <n> --revolutions <m> [interfejs_can] [--save]
 #
 # Przykłady:
 #   ./scripts/canopen_encoder_resolution.sh 1                          # odczyt node 1
 #   ./scripts/canopen_encoder_resolution.sh 1 2 can0                   # odczyt node 1 i 2
 #   ./scripts/canopen_encoder_resolution.sh 1 --increments 131072 can0 # zapis 608Fh:01h
-#   ./scripts/canopen_encoder_resolution.sh 1 --increments 131072 --revolutions 1 --save can0
-#   CAN_IF=can1 ./scripts/canopen_encoder_resolution.sh 1 --revolutions 1
 
 set -euo pipefail
 
@@ -43,14 +33,13 @@ Użycie:
   canopen_encoder_resolution.sh <node_id ...> [interfejs_can]
   canopen_encoder_resolution.sh <node_id> --increments <n>  [interfejs_can] [--save]
   canopen_encoder_resolution.sh <node_id> --revolutions <n> [interfejs_can] [--save]
-  canopen_encoder_resolution.sh <node_id> --increments <n> --revolutions <m> [interfejs_can] [--save]
 
 Argumenty:
   node_id           adresy CANopen (1..127). W trybie zapisu dokładnie jeden.
   interfejs_can     interfejs CAN (domyślnie: can0 lub zmienna CAN_IF)
 
 Opcje:
-  --increments <n>  zapisz 608Fh:01h = Encoder increments (uint32)
+  --increments <n>  zapisz 608Fh:01h = Encoder increments (uint32, 17-bit = 131072)
   --revolutions <n> zapisz 608Fh:02h = Motor revolutions (uint32)
   --save            zapisz parametry do EEPROM (1010h:01h = 0x65766173)
 
@@ -58,7 +47,6 @@ Przykłady:
   ./scripts/canopen_encoder_resolution.sh 1
   ./scripts/canopen_encoder_resolution.sh 1 2 can0
   ./scripts/canopen_encoder_resolution.sh 1 --increments 131072 can0
-  ./scripts/canopen_encoder_resolution.sh 1 --increments 131072 --revolutions 1 --save can0
 EOF
 }
 

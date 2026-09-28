@@ -1,5 +1,5 @@
 #pragma once
-// CANopen/CiA 402 concrete interface for NiMotion STM42/STM42M over SocketCAN.
+// CANopen/CiA 402 concrete interface for NiMotion STMP42SXI over SocketCAN.
 
 #include "controllers/icanopen_interface.h"
 #include "canopen/canopen.h"
@@ -25,6 +25,8 @@ public:
 
     bool setPositionTarget(uint8_t axis_id, int32_t position,
                            uint32_t velocity, uint32_t acceleration) override;
+    bool setPositionTargetRelative(uint8_t axis_id, int32_t position,
+                                   uint32_t velocity, uint32_t acceleration) override;
     bool setVelocityTarget(uint8_t axis_id, int32_t velocity,
                            uint32_t acceleration) override;
     bool stopAxis(uint8_t axis_id) override;

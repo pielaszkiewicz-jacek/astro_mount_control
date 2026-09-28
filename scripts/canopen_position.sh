@@ -4,8 +4,8 @@
 # (CANopen/CiA402) przez SDO: 607Ah (Target position) i 6064h (Position actual).
 #
 # Jednostki pozycji (user units) zależą od napędu:
-#   - STM42: 4000 jednostek / obrót silnika (mikrokroki),
-#   - enkoder 608Fh = 131072 counts/obrót to OSOBNA skala (feedback).
+#   - STM42/STMP42SXI (17-bit): 131072 jednostek / obrót silnika
+#     (jednostki użytkownika = inkrementy enkodera, 608Fh = 131072/1).
 #   Przelicznik na stopnie wału: kat = jednostki / units_per_turn * 360
 #
 # Odczyt SDO (upload expedited, int32):
@@ -60,7 +60,7 @@ Opcje:
   --actual <n>       zapisz 6064h:00h = Position actual value (int32, często read-only)
   --angle <deg>      kąt wału silnika w stopniach -> zapis 607Ah
                      (target = deg / 360 * units_per_turn)
-  --units-per-turn <n>  jednostek na pełny obrót silnika (domyślnie: 4000)
+  --units-per-turn <n>  jednostek na pełny obrót silnika (domyślnie: 131072)
   --help|-h          pomoc
 
 Przykłady:
@@ -237,7 +237,7 @@ diagnose() {
 main() {
     local node_id="" iface=""
     local target="" actual="" angle=""
-    local units_per_turn=4000
+    local units_per_turn=131072
     local diagnose_mode=0
 
     while (( $# )); do

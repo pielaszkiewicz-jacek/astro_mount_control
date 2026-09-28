@@ -2,14 +2,15 @@
 #
 # canopen_params_6000h.sh — odczyt i zapis parametrów grupy 10.3
 # "Sub-protocol Definition Parameter Group 6000h Description" (CiA 402)
-# napędów NiMotion STM42 (CANopen/CiA402) przez SDO.
+# napędów NiMotion STMP42SXI (BLDC/PMSM, CANopen/CiA402) przez SDO.
 #
-# Źródło: docs/stm42-canopen-protocol.pdf, rozdział 10.3 (tabela 603Fh–60FFh).
+# Źródło: docs/1787619745915-ymnq3q.pdf, rozdział 10.3 (tabela 603Fh–60FFh).
 #
-# Grupa obejmuje obiekty CiA 402: słowo sterowania/stanu, tryby pracy,
-# parametry profilu pozycji/prędkości (PP/PV), homing, jednostki (608Fh/6091h),
-# okna pozycji/prędkości (6065h–6070h), ograniczenia (607Bh/607Dh), jerk
-# (60A3h/60A4h), interpolację (60C1h/60C2h) i prędkość docelową (60FFh).
+# Grupa obejmuje obiekty CiA 402: słowo sterowania/stanu, tryby pracy (PP/PV/PT/
+# HM/CSP/CSV/CST), okna pozycji/prędkości (6065h–6070h), moment i prąd
+# (6071h–6078h), profil ruchu (607Fh–6088h), jednostki (608Fh/6091h),
+# homing (6098h–609Ah), jerk (60A3h/60A4h), offsety (60B0h–60B2h), interpolację
+# (60C1h/60C2h), monitory (6069h/60FAh/60FDh/60FEh) i prędkość docelową (60FFh).
 #
 # Obsługiwane typy: uint8/int8 (1 bajt), uint16/int16 (2 bajty),
 #                   uint32/int32 (4 bajty).
@@ -116,87 +117,105 @@ load_registry() {
 6040:00|Controlword|uint16|2|RW|1|0|6=shutdown,7=switch on,15=enable
 6041:00|Statusword|uint16|2|RO|1|0|
 # Tryb prędkości (Velocity Mode, VM)
-6042:00|VITargetVelocity|int16|2|RW|1rpm|0|-3000..3000
-6043:00|VIVelocityDemand|int16|2|RO|1rpm|0|-3000..3000
-6046:01|VIVelocityMinAmount|uint32|4|RW|1rpm|0|0..3000
-6046:02|VIVelocityMaxAmount|uint32|4|RW|1rpm|300|0..3000
-6048:01|VAccelDeltaSpeed|uint32|4|RW|1rpm|500|0..300000
-6048:02|VAccelDeltaTime|uint16|2|RW|1s|1|1..65535
-6049:01|VDecelDeltaSpeed|uint32|4|RW|1rpm|500|0..300000
-6049:02|VDecelDeltaTime|uint16|2|RW|1s|1|1..65535
-604A:01|VBrakeDeltaSpeed|uint32|4|RW|1rpm|1000|0..300000
-604A:02|VBrakeDeltaTime|uint16|2|RW|1s|1|1..65535
+6042:00|VITargetVelocity|int16|2|RW|rpm|0|-3000..3000
+6043:00|VIVelocityDemand|int16|2|RO|rpm|0|-3000..3000
+6044:00|VIActualVelocity|int16|2|RO|rpm|0|
+6046:01|VIVelocityMinAmount|uint32|4|RW|rpm|10|0..6000
+6046:02|VIVelocityMaxAmount|uint32|4|RW|rpm|3000|0..6000
+6048:01|VAccelDeltaSpeed|uint32|4|RW|rpm|500|0..4294967295
+6048:02|VAccelDeltaTime|uint16|2|RW|s|1|1..65535
+6049:01|VDecelDeltaSpeed|uint32|4|RW|rpm|500|0..4294967295
+6049:02|VDecelDeltaTime|uint16|2|RW|s|1|1..65535
+604A:01|VBrakeDeltaSpeed|uint32|4|RW|rpm|800|0..4294967295
+604A:02|VBrakeDeltaTime|uint16|2|RW|s|1|1..65535
 604C:01|VlDimensionFactorNumerator|int32|4|RW|1|0|
 604C:02|VlDimensionFactorDenominator|int32|4|RW|1|0|
 # Kody opcji (CiA 402)
-605A:00|QuickStopOptionCode|int16|2|RW|1|2|0-65535
-605B:00|ShutdownOptionCode|int16|2|RW|1|0|0-65535
-605C:00|DisableOperationOptionCode|int16|2|RW|1|0|0-65535
-605D:00|HaltOptionCode|int16|2|RW|1|1|0-2
-605E:00|FaultReactionOptionCode|int16|2|RO|1|0|0-4
+605A:00|QuickStopOptionCode|int16|2|RW|1|2|0-2
+605B:00|ShutdownOptionCode|int16|2|RW|1|0|0-1
+605C:00|DisableOperationOptionCode|int16|2|RW|1|0|0-1
+605D:00|HaltOptionCode|int16|2|RW|1|1|1-2
+605E:00|FaultReactionOptionCode|int16|2|RO|1|0|0-2
 # Tryb pracy
-6060:00|ModesOfOperation|int8|1|RW|1|1|0-10 (1=PP,3=PV,6=HM)
+6060:00|ModesOfOperation|int8|1|RW|1|1|0-10 (1=PP,3=PV,4=PT,6=HM,8=CSP,9=CSV,10=CST)
 6061:00|ModesOfOperationDisplay|int8|1|RO|1|1|0-10
 # Pozycja
 6062:00|PositionDemandValue|int32|4|RO|UserUnit|0|
 6063:00|PositionActualEncoderValue|int32|4|RO|EncoderUnit|0|
 6064:00|PositionActualUserValue|int32|4|RO|UserUnit|0|
 6065:00|FollowingErrorWindow|uint32|4|RW|UserUnit|50|
-6066:00|FollowingErrorTimeout|uint16|2|RW|1ms|10000|
+6066:00|FollowingErrorTimeout|uint16|2|RW|ms|30000|
 6067:00|PositionWindow|uint32|4|RW|UserUnit|10|
 6068:00|PositionWindowTime|uint16|2|RW|1ms|5|
 # Prędkość
+6069:00|VelocitySensorValue|int32|4|RO|UserUnit/s|0|
 606B:00|VelocityDemandValue|int32|4|RO|UserUnit/s|0|
 606C:00|VelocityActualValue|int32|4|RO|rpm|0|
-606D:00|VelocityWindow|uint16|2|RW|rpm|100|
+606D:00|VelocityWindow|uint16|2|RW|rpm|500|
 606E:00|VelocityWindowTime|uint16|2|RW|ms|5|
 606F:00|VelocityThreshold|uint16|2|RW|UserUnit/s|5|
 6070:00|VelocityThresholdTime|uint16|2|RW|ms|5|
+# Moment i prąd (CST/PT)
+6071:00|TargetTorque|int16|2|RW|0.1%|0|-1000..1000
+6072:00|MaxTorque|uint16|2|RW|0.1%|1000|0..2000
+6073:00|MaxCurrent|uint16|2|RW|0.1%|1500|0..2000
+6074:00|TorqueDemand|int16|2|RO|0.1%|0|
+6075:00|RatedCurrent|uint32|4|RW|0.001A|11700|0..11700
+6076:00|RatedTorque|uint32|4|RW|0.01N.m|1270|0..1270
+6077:00|TorqueFeedback|int16|2|RO|0.001N.m|0|
+6078:00|CurrentFeedback|int16|2|RO|0.1%|0|
 # Pozycja docelowa i ograniczenia
 607A:00|TargetPosition|int32|4|RW|UserUnit|0|
-607B:01|MinPosRangLimit|int32|4|RW|UserUnit|-60000000|
-607B:02|MaxPosRangLimit|int32|4|RW|UserUnit|60000000|
+607B:01|MinPosRangLimit|int32|4|RW|UserUnit|-1048576|
+607B:02|MaxPosRangLimit|int32|4|RW|UserUnit|1048576|
 607C:00|HomeOffset|int32|4|RW|UserUnit|0|aktywne gdy 6041h bit15=1
-607D:01|MinSoftwarePositionLimit|int32|4|RW|InstrUnit|-60000|
-607D:02|MaxSoftwarePositionLimit|int32|4|RW|InstrUnit|60000|
+607D:01|MinSoftwarePositionLimit|int32|4|RW|UserUnit|-65535|
+607D:02|MaxSoftwarePositionLimit|int32|4|RW|UserUnit|65535|
 607E:00|Polarity|uint8|1|RW|1|0|0-255
 # Profil ruchu
-607F:00|MaxProfileVelocity|uint32|4|RW|UserUnit/s|40000|CL=40000,OL=16000
-6080:00|MaxMotorSpeed|uint32|4|RW|rpm|600|0-500
-6081:00|ProfileVelocity|uint32|4|RW|UserUnit/s|12000|CL=12000,OL=4800
-6082:00|EndVelocity|uint32|4|RW|UserUnit/s|0|
-6083:00|ProfileAcceleration|uint32|4|RW|UserUnit/s2|40000|CL=40000,OL=16000
-6084:00|ProfileDeceleration|uint32|4|RW|UserUnit/s2|120000|CL=120000,OL=48000
-6085:00|QuickStopDeceleration|uint32|4|RW|UserUnit/s2|400000|CL=400000,OL=160000
-6086:00|MotionProfileType|int16|2|RW|1|0|0=linear,3=S-curve
+607F:00|MaxProfileVelocity|uint32|4|RW|UserUnit/s|500000|0..1000000
+6080:00|MaxMotorSpeed|uint32|4|RW|rpm|4000|0..6000
+6081:00|ProfileVelocity|uint32|4|RW|UserUnit/s|500000|0..1000000
+6082:00|EndVelocity|uint32|4|RW|UserUnit/s|0|0..1000000
+6083:00|ProfileAcceleration|uint32|4|RW|UserUnit/s2|409600|
+6084:00|ProfileDeceleration|uint32|4|RW|UserUnit/s2|409600|
+6085:00|QuickStopDeceleration|uint32|4|RW|UserUnit/s2|500000|
+6086:00|MotionProfileType|int16|2|RW|1|3|0=linear,3=S-curve
+6087:00|TorqueRamp|uint32|4|RW|0.1%|10|
+6088:00|TorqueRampType|int16|2|RW|1|0|0=ramp,2=no ramp
 # Jednostki (encoder / gear)
-608F:01|EncoderIncrements|uint32|4|RW|1|4000|CL=4000,OL=1600
+608F:01|EncoderIncrements|uint32|4|RW|1|131072|17-bit
 608F:02|MotorRevolutions|uint32|4|RW|1|1|
 6091:01|GearMotorRevolutions|uint32|4|RW|1|1|
 6091:02|GearShaftRevolutions|uint32|4|RW|1|1|
 # Homing
-6098:00|HomingMethod|int8|1|RW|1|24|17-30
-6099:01|HomingSearchSwitchSpeed|uint32|4|RW|UserUnit/s|12000|
-6099:02|HomingSearchZeroSpeed|int32|4|RW|UserUnit/s|4000|
-609A:00|HomingAcceleration|uint32|4|RW|UserUnit/s|80000|
+6098:00|HomingMethod|int8|1|RW|1|20|17-30
+6099:01|HomingSearchSwitchSpeed|uint32|4|RW|UserUnit/s|10000|
+6099:02|HomingSearchZeroSpeed|int32|4|RW|UserUnit/s|2730|
+609A:00|HomingAcceleration|uint32|4|RW|UserUnit/s2|409600|
 # Jerk
-60A3:00|ProfileJerkUse|uint8|1|RW|1|2|tylko 2 (60A4h:01h)
-60A4:01|ProfileJerk1|uint32|4|RW|UserUnit/s3|15000|
-60A4:02|ProfileJerk2|uint32|4|RW|UserUnit/s3|30000|
+60A3:00|ProfileJerkUse|uint8|1|RW|1|2|tylko 2 (60A4h:01h/02h)
+60A4:01|ProfileJerk1|uint32|4|RW|UserUnit/s2|50000|
+60A4:02|ProfileJerk2|uint32|4|RW|UserUnit/s2|50000|
 # Offsety
 60B0:00|PositionOffset|int32|4|RW|UserUnit|0|
 60B1:00|VelocityOffset|int32|4|RW|UserUnit|0|
+60B2:00|TorqueOffset|int32|4|RW|UserUnit|0|
 # Interpolacja
-60C1:01|InterpolationDataRecord|int32|4|RW|InstrUnit|0|
-60C2:01|InterpolationTimePeriodValue|uint8|1|RW|1|20|0-255
-60C2:02|InterpolationTimeIndex|int8|1|RW|10ns|-3|-128..127
+60C1:01|InterpolationDataRecord|int32|4|RW|UserUnit|0|
+60C2:01|InterpolationTimePeriodValue|uint8|1|RW|s|20|0-255
+60C2:02|InterpolationTimeIndex|int8|1|RW|1|-1|-128..127
 # Maksymalne przyspieszenie/hamowanie
 60C5:00|MaxAcceleration|uint32|4|RW|UserUnit/s2|500000|
 60C6:00|MaxDeceleration|uint32|4|RW|UserUnit/s2|500000|
 # Opcja pozycjonowania i wartości zwrotne
 60F2:00|PositioningOptionCode|uint16|2|RW|1|0|0-2
 60F4:00|FollowingErrorActualValue|int32|4|RO|UserUnit|0|
+60FA:00|ControllerOutput|int32|4|RO|InstrUnit|0|
 60FC:00|PositionDemandInternalValue|int32|4|RO|UserUnit|0|
+60FD:00|DigitalInputsMonitor|uint32|4|RO|1|0|
+60FE:01|PhysicalOutputs|uint32|4|RO|1|0|
+60FE:02|PhysicalOutputsEnable|uint32|4|RO|1|0|
 60FF:00|TargetVelocity|int32|4|RW|UserUnit/s|0|
 REGISTRY_EOF
 }

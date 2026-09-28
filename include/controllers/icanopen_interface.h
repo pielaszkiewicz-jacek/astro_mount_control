@@ -1,5 +1,5 @@
 #pragma once
-// Abstract CANopen/CiA 402 interface (NiMotion STM42/STM42M).
+// Abstract CANopen/CiA 402 interface (NiMotion STMP42SXI).
 // Concrete implementation: canopen_interface.cpp (SocketCAN, Linux only).
 
 #include <cstdint>
@@ -60,6 +60,15 @@ public:
     // Motion
     virtual bool setPositionTarget(uint8_t axis_id, int32_t position,
                                    uint32_t velocity, uint32_t acceleration) = 0;
+
+    // Relative profile position move (CiA 402 control-word bit6 = 1). The
+    // position argument is a delta from the current position, so it does not
+    // depend on a freshly-read absolute position. Default: falls back to an
+    // absolute move for backends that do not support true relative positioning.
+    virtual bool setPositionTargetRelative(uint8_t axis_id, int32_t position,
+                                           uint32_t velocity, uint32_t acceleration) {
+        return setPositionTarget(axis_id, position, velocity, acceleration);
+    }
     virtual bool setVelocityTarget(uint8_t axis_id, int32_t velocity,
                                    uint32_t acceleration) = 0;
     virtual bool stopAxis(uint8_t axis_id) = 0;

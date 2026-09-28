@@ -1,5 +1,5 @@
 #pragma once
-// CANopen/CiA 402 HAL — NiMotion STM42/STM42M over SocketCAN (Linux only).
+// CANopen/CiA 402 HAL — NiMotion STMP42SXI over SocketCAN (Linux only).
 
 #include "hal/hal_interface.h"
 #include "hal/motor_control.h"
@@ -31,6 +31,8 @@ private:
 
         bool setPosition(double position_deg, double velocity_deg_s,
                          double acceleration_deg_s2) override;
+        bool setPositionRelative(double position_deg, double velocity_deg_s,
+                                 double acceleration_deg_s2) override;
         bool setVelocity(double velocity_deg_s, double acceleration_deg_s2) override;
         bool setTorque(double torque_percent) override;
         bool stop() override;
@@ -47,6 +49,11 @@ private:
         bool zeroPosition() override;
         bool home() override;
         bool writePidLoopRam(int loop, double kp, double ki, double kd) override;
+        bool applySpeedPidSchedule(const std::vector<SpeedPidEntry>& schedule,
+                                   bool enabled, double update_interval_ms,
+                                   bool send_speed_pid = true,
+                                   bool send_current_pid = false,
+                                   bool send_position_pid = true) override;
 
         bool configure(const MotorConfig& config) override;
         MotorConfig getConfiguration() const override;
@@ -85,6 +92,17 @@ private:
         ErrorCallback error_callback_;
         StateChangeCallback state_change_callback_;
         std::chrono::steady_clock::time_point start_time_;
+
+        // ── Speed-dependent speed-loop PID gain scheduling ────────────
+        std::vector<hal::SpeedPidEntry> speed_pid_schedule_;
+        bool speed_pid_enabled_{false};
+        double speed_pid_update_interval_ms_{50.0};
+        struct LastSentSpeedPid {
+            double speed_kp{-1.0};
+            double speed_ki{-1.0};
+        } last_sent_speed_pid_;
+        std::chrono::steady_clock::time_point last_speed_pid_update_{};
+        void applySpeedBasedPid(double speed_deg_s);
     };
 
     // ── Internal encoder implementation ────────────────────────────────────
@@ -220,6 +238,7 @@ public:
     bool disable() override { return target_->disable(); }
     bool isEnabled() const override { return target_->isEnabled(); }
     bool setPosition(double p, double v, double a) override { return target_->setPosition(p, v, a); }
+    bool setPositionRelative(double p, double v, double a) override { return target_->setPositionRelative(p, v, a); }
     bool setVelocity(double v, double a) override { return target_->setVelocity(v, a); }
     bool setTorque(double t) override { return target_->setTorque(t); }
     bool stop() override { return target_->stop(); }
@@ -236,6 +255,15 @@ public:
     bool home() override { return target_->home(); }
     bool writePidLoopRam(int loop, double kp, double ki, double kd) override {
         return target_->writePidLoopRam(loop, kp, ki, kd);
+    }
+    bool applySpeedPidSchedule(const std::vector<SpeedPidEntry>& s,
+                               bool enabled, double update_ms,
+                               bool send_speed_pid = true,
+                               bool send_current_pid = false,
+                               bool send_position_pid = true) override {
+        return target_->applySpeedPidSchedule(s, enabled, update_ms,
+                                              send_speed_pid, send_current_pid,
+                                              send_position_pid);
     }
     bool configure(const MotorConfig& c) override { return target_->configure(c); }
     MotorConfig getConfiguration() const override { return target_->getConfiguration(); }

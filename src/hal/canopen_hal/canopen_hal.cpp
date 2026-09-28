@@ -1,4 +1,4 @@
-// CANopen/CiA 402 HAL — NiMotion STM42/STM42M over SocketCAN.
+// CANopen/CiA 402 HAL — NiMotion STMP42SXI over SocketCAN.
 
 #ifndef __linux__
 #error "CanOpenHAL requires Linux (SocketCAN)."
@@ -55,6 +55,7 @@ bool CanOpenHAL::CanOpenMotor::isEnabled() const { return enabled_; }
 
 bool CanOpenHAL::CanOpenMotor::setPosition(double position_deg, double velocity_deg_s,
                                            double acceleration_deg_s2) {
+    applySpeedBasedPid(velocity_deg_s);
     auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
     if (!iface) return false;
     const double cpd = config_.encoder_counts_per_degree;
@@ -62,12 +63,28 @@ bool CanOpenHAL::CanOpenMotor::setPosition(double position_deg, double velocity_
     const uint32_t vel = degPerSecToCounts(velocity_deg_s, cpd);
     const uint32_t accel = degPerSecToCounts(acceleration_deg_s2, cpd);
     const bool ok = iface->setPositionTarget(static_cast<uint8_t>(axis_id_),
-                                             target, vel, accel);
+                                              target, vel, accel);
+    if (ok) moving_ = true;
+    return ok;
+}
+
+bool CanOpenHAL::CanOpenMotor::setPositionRelative(double position_deg, double velocity_deg_s,
+                                                   double acceleration_deg_s2) {
+    applySpeedBasedPid(velocity_deg_s);
+    auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
+    if (!iface) return false;
+    const double cpd = config_.encoder_counts_per_degree;
+    const int32_t delta = static_cast<int32_t>(position_deg * cpd);
+    const uint32_t vel = degPerSecToCounts(velocity_deg_s, cpd);
+    const uint32_t accel = degPerSecToCounts(acceleration_deg_s2, cpd);
+    const bool ok = iface->setPositionTargetRelative(static_cast<uint8_t>(axis_id_),
+                                                      delta, vel, accel);
     if (ok) moving_ = true;
     return ok;
 }
 
 bool CanOpenHAL::CanOpenMotor::setVelocity(double velocity_deg_s, double acceleration_deg_s2) {
+    applySpeedBasedPid(velocity_deg_s);
     auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
     if (!iface) return false;
     const double cpd = config_.encoder_counts_per_degree;
@@ -80,7 +97,8 @@ bool CanOpenHAL::CanOpenMotor::setVelocity(double velocity_deg_s, double acceler
 }
 
 bool CanOpenHAL::CanOpenMotor::setTorque(double /*torque_percent*/) {
-    // STM42M does not expose a CiA 402 torque mode in the supported subset.
+    // STMP42SXI exposes CiA 402 torque mode (6071h, mode 0x0A); not implemented
+    // in this HAL subset yet.
     return false;
 }
 
@@ -121,10 +139,11 @@ bool CanOpenHAL::CanOpenMotor::clearErrors() {
 }
 
 bool CanOpenHAL::CanOpenMotor::zeroPosition() {
-    // STM42: set the origin through virtual input 2017h:02h bit1.
+    // STMP42SXI: set the origin through the communication-given VDI level
+    // (2031h:01h). The target VDI must be configured as "set origin" in 2017h.
     auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
     if (!iface) return false;
-    return iface->sendSDO(static_cast<uint8_t>(axis_id_), 0x2017, 0x02, 0x02, 2);
+    return iface->sendSDO(static_cast<uint8_t>(axis_id_), 0x2031, 0x01, 0x02, 2);
 }
 
 bool CanOpenHAL::CanOpenMotor::home() {
@@ -139,28 +158,100 @@ bool CanOpenHAL::CanOpenMotor::writePidLoopRam(int loop, double kp, double ki, d
     auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
     if (!iface) return false;
 
-    // STM42M exposes a limited gain set in the 2008h group:
-    //   loop 1 (current)  -> 2008h:02 Kpc           (scale 0.01)
-    //   loop 2 (speed)    -> 2008h:09 SpdFdFwrGain  (scale 0.01)
-    //   loop 3 (position) -> 2008h:01 PosLoopGain   (scale 0.00001)
+    // STMP42SXI gain set:
+    //   loop 1 (current)  -> 2001h:1Ch CurrentLoopCutoffFreq (Hz)
+    //   loop 2 (speed)    -> 2008h:01h SpeedLoopGain          (scale 0.1Hz)
+    //   loop 3 (position) -> 2008h:03h PositionLoopGain       (scale 1)
     uint16_t index = 0;
     uint16_t value = 0;
     switch (loop) {
         case 1:
-            index = 0x2008;
-            value = static_cast<uint16_t>(kp * 100.0);
-            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x02, value, 2);
+            index = 0x2001;
+            value = static_cast<uint16_t>(kp);
+            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x1C, value, 2);
         case 2:
             index = 0x2008;
-            value = static_cast<uint16_t>(kp * 100.0);
-            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x09, value, 2);
+            value = static_cast<uint16_t>(kp * 10.0);
+            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x01, value, 2);
         case 3:
             index = 0x2008;
-            value = static_cast<uint16_t>(kp * 100000.0);
-            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x01, value, 2);
+            value = static_cast<uint16_t>(kp);
+            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x03, value, 2);
         default:
             return false;
     }
+}
+
+bool CanOpenHAL::CanOpenMotor::applySpeedPidSchedule(
+        const std::vector<hal::SpeedPidEntry>& schedule,
+        bool enabled, double update_interval_ms,
+        bool /*send_speed_pid*/, bool /*send_current_pid*/, bool /*send_position_pid*/) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    speed_pid_schedule_ = schedule;
+    speed_pid_enabled_ = enabled && !schedule.empty();
+    speed_pid_update_interval_ms_ = update_interval_ms > 0.0 ? update_interval_ms : 50.0;
+    // Reset the last-sent cache so the next command applies the gains for the
+    // current speed band (the drive may have been re-powered meanwhile).
+    last_sent_speed_pid_ = LastSentSpeedPid{};
+    last_speed_pid_update_ = std::chrono::steady_clock::time_point{};
+    return true;
+}
+
+void CanOpenHAL::CanOpenMotor::applySpeedBasedPid(double speed_deg_s) {
+    if (!speed_pid_enabled_ || speed_pid_schedule_.empty()) return;
+
+    // Convert servo degrees/second → motor shaft RPM. 1 RPM = 360°/60s = 6°/s.
+    const double rpm = std::abs(speed_deg_s) / 6.0;
+
+    // Throttle re-evaluations to the configured minimum interval to avoid
+    // spamming the CAN bus with SDO writes at high command rates.
+    auto now = std::chrono::steady_clock::now();
+    if (last_speed_pid_update_.time_since_epoch().count() != 0) {
+        auto elapsed_ms =
+            std::chrono::duration<double, std::milli>(now - last_speed_pid_update_).count();
+        if (elapsed_ms < speed_pid_update_interval_ms_) return;
+    }
+
+    // Find the schedule entry: the largest breakpoint <= current RPM.
+    // Entries are expected to be sorted ascending by speed_rpm.
+    const hal::SpeedPidEntry* selected = nullptr;
+    for (const auto& e : speed_pid_schedule_) {
+        if (e.speed_rpm <= rpm) {
+            selected = &e;
+        } else {
+            break;  // table is sorted; no later entry can match either
+        }
+    }
+    if (!selected) {
+        // Speed below the first breakpoint — clamp to the first entry.
+        selected = &speed_pid_schedule_.front();
+    }
+
+    // Skip the write if the speed-loop gains already match what was last sent.
+    if (selected->speed_kp == last_sent_speed_pid_.speed_kp &&
+        selected->speed_ki == last_sent_speed_pid_.speed_ki) {
+        return;
+    }
+
+    auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
+    if (!iface) return;
+
+    // Speed loop gains on STM42/STMP42SXI:
+    //   2008h:01h = SpeedLoopGain (scale 0.1 Hz)
+    //   2008h:02h = SpeedLoopIntegral
+    const uint16_t speed_kp_reg = static_cast<uint16_t>(std::lround(selected->speed_kp * 10.0));
+    const uint16_t speed_ki_reg = static_cast<uint16_t>(std::lround(selected->speed_ki));
+
+    if (!iface->sendSDO(static_cast<uint8_t>(axis_id_), 0x2008, 0x01, speed_kp_reg, 2)) {
+        return;
+    }
+    if (!iface->sendSDO(static_cast<uint8_t>(axis_id_), 0x2008, 0x02, speed_ki_reg, 2)) {
+        return;
+    }
+
+    last_sent_speed_pid_.speed_kp = selected->speed_kp;
+    last_sent_speed_pid_.speed_ki = selected->speed_ki;
+    last_speed_pid_update_ = now;
 }
 
 bool CanOpenHAL::CanOpenMotor::configure(const MotorConfig& config) {
@@ -268,7 +359,7 @@ bool CanOpenHAL::CanOpenEncoder::isDataValid() const { return true; }
 double CanOpenHAL::CanOpenEncoder::getUpdateRate() const { return 100.0; }
 
 bool CanOpenHAL::CanOpenEncoder::calibrate(double reference_position_deg) {
-    // STM42M home offset is applied in the drive (607Ch). Here we track a
+    // STMP42SXI home offset is applied in the drive (607Ch). Here we track a
     // software offset so read() can report the calibrated position.
     calibration_offset_ = reference_position_deg;
     return true;
@@ -403,6 +494,13 @@ bool CanOpenHAL::initialize(const HALConfig& config) {
         if (axis_id < 0 || axis_id >= 2) continue;
         motors_[axis_id] = std::make_unique<CanOpenMotor>(axis_id, axis.can_node_id, this);
         motors_[axis_id]->configure(axis.motor_config);
+        // Install the speed-dependent speed-loop PID gain schedule (volatile
+        // RAM writes applied on the next setPosition()/setVelocity() command).
+        motors_[axis_id]->applySpeedPidSchedule(
+            config.canopen.speed_pid_schedule,
+            config.canopen.speed_pid_adaptation_enabled,
+            config.canopen.speed_pid_adaptation_update_ms,
+            true, false, false);
         encoders_[axis_id] = std::make_unique<CanOpenEncoder>(axis_id, axis.can_node_id, this);
         encoders_[axis_id]->initialize(axis.encoder_config);
 
@@ -447,12 +545,12 @@ std::unique_ptr<SafetyMonitor> CanOpenHAL::createSafetyMonitor() {
 }
 
 std::unique_ptr<SensorInterface> CanOpenHAL::createSensorInterface() {
-    // STM42M does not expose environment sensors.
+    // STMP42SXI does not expose environment sensors.
     return nullptr;
 }
 
-std::string CanOpenHAL::getPlatformName() const { return "CANopen/CiA 402 (STM42)"; }
-std::string CanOpenHAL::getHardwareVersion() const { return "STM42M"; }
+std::string CanOpenHAL::getPlatformName() const { return "CANopen/CiA 402 (STMP42SXI)"; }
+std::string CanOpenHAL::getHardwareVersion() const { return "STMP42SXI"; }
 
 std::vector<HALFeature> CanOpenHAL::getSupportedFeatures() const {
     return { HALFeature::FIELD_BUS_SUPPORT, HALFeature::TRAJECTORY_CONTROL,

@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 #
 # canopen_read_encoder_resolution.sh — odczyt rozdzielczości wbudowanego enkodera
-# napędów NiMotion STM42 (CANopen/CiA402) przez SDO.
+# napędów NiMotion STMP42SXI (CANopen/CiA402) przez SDO.
 #
-# Źródło protokołu: docs/stm42-canopen-protocol.pdf, rozdział 5.1 (608Fh).
+# Źródło protokołu: docs/1787619745915-ymnq3q.pdf, rozdział 10.3 (608Fh).
 #   - 608Fh:01h = Encoder increments  (liczba inkrementów enkodera na obrót silnika)
 #   - 608Fh:02h = Motor revolutions   (liczba obrotów silnika)
 #   - Rozdzielczość pozycji = 608Fh:01h / 608Fh:02h  [counts / obrót silnika]
+#   - STMP42SXI: 608Fh jest rw; enkoder 17-bitowy zgłasza 131072 imp/obr.
 #
 # Odczyt SDO (upload expedited, uint32):
 #   Żądanie:  COB-ID = 0x600 + node_id, dane: 40 8F 60 <sub> 00 00 00 00

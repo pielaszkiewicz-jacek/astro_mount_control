@@ -1,4 +1,4 @@
-// CANopen/CiA 402 concrete interface — NiMotion STM42/STM42M over SocketCAN.
+// CANopen/CiA 402 concrete interface — NiMotion STMP42SXI over SocketCAN.
 
 #ifndef __linux__
 #error "CANopen interface requires Linux (SocketCAN)."
@@ -21,13 +21,15 @@ constexpr uint16_t kCwShutdown       = 0x0006;
 constexpr uint16_t kCwSwitchOn       = 0x0007;
 constexpr uint16_t kCwEnableOp       = 0x000F;
 constexpr uint16_t kCwNewSetpoint    = 0x001F; // absolute, bit4=1
+constexpr uint16_t kCwRelEnableOp    = 0x004F; // relative (bit6=1), enable op
+constexpr uint16_t kCwRelNewSetpoint = 0x005F; // relative + new setpoint (bit4=1)
 constexpr uint16_t kCwFaultReset     = 0x0080;
 
 // Status-word bits.
 constexpr uint16_t kSwFault          = 0x0008;
 constexpr uint16_t kSwTargetReached  = 0x0400;
 
-// STM42 operation modes (6060h).
+// CiA 402 operation modes (6060h).
 constexpr uint8_t kModeProfilePosition = 0x01;
 constexpr uint8_t kModeProfileVelocity = 0x03;
 constexpr uint8_t kModeHoming          = 0x06;
@@ -39,12 +41,17 @@ constexpr uint16_t kOdModesOfOperation = 0x6060;
 constexpr uint16_t kOdModesDisplay     = 0x6061;
 constexpr uint16_t kOdPosDemand        = 0x6062;
 constexpr uint16_t kOdPosActualUser    = 0x6064;
-constexpr uint16_t kOdVelActual        = 0x606C;
+// Velocity actual: use 6069h (Velocity sensor value, UserUnit/s) — 606Ch
+// (Velocity actual value) is in rpm on NiMotion STM42/STMP42SXI and would be
+// mis-scaled by the counts-per-degree division below.
+constexpr uint16_t kOdVelActual        = 0x6069;
 constexpr uint16_t kOdTargetPosition   = 0x607A;
 constexpr uint16_t kOdProfileVelocity  = 0x6081;
 constexpr uint16_t kOdProfileAccel     = 0x6083;
 constexpr uint16_t kOdProfileDecel     = 0x6084;
 constexpr uint16_t kOdTargetVelocity   = 0x60FF;
+constexpr uint16_t kOdMotionProfileType = 0x6086; // 0 = linear, 3 = S-curve
+constexpr uint16_t kOdVelMinAmount      = 0x6046; // sub 1 = min velocity (rpm)
 constexpr uint16_t kOdCtrlModeSelec    = 0x2002;
 constexpr uint16_t kOdNodeId           = 0x200C;
 constexpr uint16_t kOdStoreParams      = 0x1010;
@@ -142,7 +149,7 @@ bool CanOpenInterface::writeMode(uint8_t node_id, uint8_t mode) {
 bool CanOpenInterface::switchMode(uint8_t node_id, uint8_t mode) {
     if (node_id < 128 && mode_cache_[node_id] == mode) return true;
 
-    // STM42 requires the drive to be deactivated before 6060h changes.
+    // STMP42SXI requires the drive to be deactivated before 6060h changes.
     writeControlWord(node_id, kCwDisableVoltage);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     if (!writeMode(node_id, mode)) return false;
@@ -178,14 +185,40 @@ bool CanOpenInterface::sendNMT(uint8_t axis_id, uint8_t command) {
 bool CanOpenInterface::enableDrive(uint8_t axis_id) {
     const uint8_t node = nodeIdForAxis(axis_id);
 
-    // STM42 executes motion only in NMT Operational state.
+    // STMP42SXI executes motion only in NMT Operational state.
     canopen_nmt_send(&ctx_, node, CANOPEN_NMT_START);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
+    // 2002h:01h and 6060h must be written while the drive is DISABLED.
+    // If the drive was left enabled (e.g. previous session), writing 2002h:01h
+    // returns SDO abort 0x08000000 — disable first to avoid it.
+    writeControlWord(node, kCwDisableVoltage);
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
     // Ensure CiA402 mode + Profile Position mode (must be written while disabled).
-    canopen_sdo_write_expedited(&ctx_, node, kOdCtrlModeSelec, kCtrlModeSub, 0, 2);
+    // 2002h:01h (CtrlModeSelec) is uint16 per object dictionary (10.2).
+    if (!canopen_sdo_write_expedited(&ctx_, node, kOdCtrlModeSelec, kCtrlModeSub, 0, 2)) {
+        return false;
+    }
     writeMode(node, kModeProfilePosition);
     if (node < 128) mode_cache_[node] = kModeProfilePosition;
+
+    // Minimum velocity (6046h:01h): factory default is 10 rpm (= 60°/s servo),
+    // which clamps slow profile velocities. Set to 0 rpm so slow moves (e.g.
+    // 0.15°/s) are executed at the commanded speed.
+    if (!writeSDO4(node, kOdVelMinAmount, 0x01, 0)) {
+        return false;
+    }
+
+    // Motion profile type (6086h): use linear/trapezoidal (0), NOT S-curve (3).
+    // On NiMotion STM42/STMP42SXI drives, S-curve mode ignores the commanded
+    // profile velocity (6081h) for slow moves and runs at the drive's minimum
+    // speed (~20 rpm), which makes a 360° @ 1°/s step complete in a few seconds
+    // instead of 360 s. Linear mode honours 6081h in user-unit/s (counts/s).
+    // Written while the drive is disabled.
+    if (!canopen_sdo_write_expedited(&ctx_, node, kOdMotionProfileType, 0x00, 0, 2)) {
+        return false;
+    }
 
     // CiA 402 enable sequence: shutdown -> switch on -> enable operation.
     if (!writeControlWord(node, kCwShutdown)) return false;
@@ -221,6 +254,23 @@ bool CanOpenInterface::setPositionTarget(uint8_t axis_id, int32_t position,
     if (!writeControlWord(node, kCwEnableOp)) return false;
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     return writeControlWord(node, kCwNewSetpoint);
+}
+
+bool CanOpenInterface::setPositionTargetRelative(uint8_t axis_id, int32_t position,
+                                                 uint32_t velocity, uint32_t acceleration) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    const uint32_t accel = accelToRate(acceleration, config_.accel_mode, velocity);
+
+    if (!switchMode(node, kModeProfilePosition)) return false;
+    if (!writeSDO4(node, kOdTargetPosition, 0x00, static_cast<uint32_t>(position))) return false;
+    if (!writeSDO4(node, kOdProfileVelocity, 0x00, velocity)) return false;
+    if (!writeSDO4(node, kOdProfileAccel, 0x00, accel)) return false;
+    if (!writeSDO4(node, kOdProfileDecel, 0x00, accel)) return false;
+
+    // Trigger relative move (bit6=1): enable op, then new setpoint (rising edge).
+    if (!writeControlWord(node, kCwRelEnableOp)) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    return writeControlWord(node, kCwRelNewSetpoint);
 }
 
 bool CanOpenInterface::setVelocityTarget(uint8_t axis_id, int32_t velocity,

@@ -41,7 +41,7 @@ Opcje:
   --angle <deg>           kąt obrotu w stopniach (alternatywnie do argumentu)
   --position <units>      bezpośrednia wartość 607Ah (zamiast kąta)
   --absolute              pozycja absolutna zamiast względnej
-  --units-per-turn <n>    jednostek użytkownika na pełny obrót (domyślnie: 4000)
+  --units-per-turn <n>    jednostek użytkownika na pełny obrót (domyślnie: 131072)
   --velocity <n>          prędkość profilu 6081h (domyślnie: 2000)
   --accel <n>             przyspieszenie 6083h (domyślnie: 8000)
   --decel <n>             hamowanie 6084h (domyślnie: 8000)
@@ -180,7 +180,7 @@ main() {
     local node_id="" angle="" iface=""
     local position=""
     local absolute=0
-    local units_per_turn=4000
+    local units_per_turn=131072
     local velocity=2000
     local accel=8000
     local decel=8000

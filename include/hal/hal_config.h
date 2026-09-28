@@ -101,7 +101,7 @@ struct HALConfig {
         bool send_position_pid{true};    // Send position-loop PID gains (on by default)
     } mf7025v2;
 
-    // Konfiguracja CANopen (CiA 402, NiMotion STM42/STM42M)
+    // Konfiguracja CANopen (CiA 402, NiMotion STMP42SXI)
     struct {
         std::string library{"canopensocket"};
         std::string interface_name{"can0"};
@@ -119,6 +119,17 @@ struct HALConfig {
         uint32_t heartbeat_timeout_ms{500};
         uint32_t max_missed_heartbeats{3};
         bool enable_auto_recovery{true};
+
+        // ── Speed-dependent speed-loop PID gain scheduling ─────────────
+        // Enables live retuning of the speed-loop Kp/Ki gains based on the
+        // motor-shaft speed (RPM).  When enabled, the drive's speed-loop gains
+        // (2008h:01h Kp, 2008h:02h Ki) are rewritten in RAM (volatile) each
+        // time the motor speed crosses into a new band defined by the schedule.
+        // Entries are sorted ascending by speed_rpm; the last entry with
+        // speed_rpm <= current RPM is selected.
+        bool speed_pid_adaptation_enabled{false};   // Master switch
+        double speed_pid_adaptation_update_ms{50.0}; // Min. interval between re-evaluations [ms]
+        std::vector<SpeedPidEntry> speed_pid_schedule; // Uses speed_rpm, speed_kp, speed_ki
     } canopen;
 
     // Konfiguracja symulacji
@@ -281,6 +292,26 @@ struct HALConfig {
         config.canopen.heartbeat_timeout_ms = canopen_nmt.value("heartbeat_timeout_ms", 500);
         config.canopen.max_missed_heartbeats = canopen_nmt.value("max_missed_heartbeats", 3);
         config.canopen.enable_auto_recovery = canopen_nmt.value("enable_auto_recovery", true);
+
+        // ── Speed-dependent speed-loop PID gain schedule ──────────────
+        config.canopen.speed_pid_adaptation_enabled =
+            canopen.value("speed_pid_adaptation_enabled", false);
+        config.canopen.speed_pid_adaptation_update_ms =
+            canopen.value("speed_pid_adaptation_update_ms", 50.0);
+        config.canopen.speed_pid_schedule.clear();
+        auto canopen_pid_schedule = canopen.value("speed_pid_schedule", nlohmann::json::array());
+        for (const auto& row : canopen_pid_schedule) {
+            SpeedPidEntry entry;
+            entry.speed_rpm      = row.value("speed_rpm", 0.0);
+            entry.current_kp     = row.value("current_kp", 0.0);
+            entry.current_ki     = row.value("current_ki", 0.0);
+            entry.speed_kp       = row.value("speed_kp", 0.0);
+            entry.speed_ki       = row.value("speed_ki", 0.0);
+            entry.speed_filter_hz = row.value("speed_filter_hz", 0.0);
+            entry.position_kp    = row.value("position_kp", 0.0);
+            entry.position_ki    = row.value("position_ki", 0.0);
+            config.canopen.speed_pid_schedule.push_back(entry);
+        }
 
         // Parse serial configuration
         auto serial = json.value("serial", nlohmann::json::object());
@@ -538,6 +569,46 @@ struct HALConfig {
         }
         mf7025v2_json["speed_pid_schedule"] = sched_json;
         hal["mf7025v2"] = mf7025v2_json;
+
+        // Save CANopen configuration
+        nlohmann::json canopen_json;
+        canopen_json["library"] = canopen.library;
+        canopen_json["interface_name"] = canopen.interface_name;
+        canopen_json["bitrate"] = canopen.bitrate;
+        canopen_json["node_id"] = canopen.node_id;
+        canopen_json["sdo_timeout_ms"] = canopen.sdo_timeout_ms;
+        canopen_json["pdo_update_rate"] = canopen.pdo_update_rate;
+        canopen_json["accel_mode"] = canopen.accel_mode;
+        canopen_json["pdo_config_enabled"] = canopen.pdo_config_enabled;
+        canopen_json["position_rewind_enabled"] = canopen.position_rewind_enabled;
+        canopen_json["position_rewind_interval_seconds"] = canopen.position_rewind_interval_seconds;
+        canopen_json["position_rewind_threshold_percent"] = canopen.position_rewind_threshold_percent;
+        nlohmann::json canopen_nmt_json;
+        canopen_nmt_json["enable_nmt"] = canopen.enable_nmt;
+        canopen_nmt_json["heartbeat_period_ms"] = canopen.heartbeat_period_ms;
+        canopen_nmt_json["heartbeat_timeout_ms"] = canopen.heartbeat_timeout_ms;
+        canopen_nmt_json["max_missed_heartbeats"] = canopen.max_missed_heartbeats;
+        canopen_nmt_json["enable_auto_recovery"] = canopen.enable_auto_recovery;
+        canopen_json["nmt"] = canopen_nmt_json;
+
+        // ── Speed-dependent speed-loop PID gain schedule ──────────────
+        canopen_json["speed_pid_adaptation_enabled"] = canopen.speed_pid_adaptation_enabled;
+        canopen_json["speed_pid_adaptation_update_ms"] = canopen.speed_pid_adaptation_update_ms;
+        nlohmann::json canopen_sched_json = nlohmann::json::array();
+        for (const auto& entry : canopen.speed_pid_schedule) {
+            canopen_sched_json.push_back({
+                {"speed_rpm", entry.speed_rpm},
+                {"current_kp", entry.current_kp},
+                {"current_ki", entry.current_ki},
+                {"speed_kp", entry.speed_kp},
+                {"speed_ki", entry.speed_ki},
+                {"speed_filter_hz", entry.speed_filter_hz},
+                {"position_kp", entry.position_kp},
+                {"position_ki", entry.position_ki}
+            });
+        }
+        canopen_json["speed_pid_schedule"] = canopen_sched_json;
+        hal["canopen"] = canopen_json;
 
         // Save serial configuration
         nlohmann::json serial_json;
