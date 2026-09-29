@@ -5,6 +5,17 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+include(GNUInstallDirs)
+
+# Install into /usr by default instead of /usr/local.  The driver must land in
+# /usr/bin, where indiserver (and the standard indi_* drivers) live: KStars
+# launches indiserver with a minimal GUI PATH that may omit /usr/local/bin, so a
+# binary installed only there is visible in the KStars device list but cannot be
+# started ("execlp: No such file or directory").
+if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
+endif()
+
 # ============================================
 # Dependencies
 # ============================================
@@ -43,6 +54,19 @@ endif()
 
 find_package(gRPC REQUIRED)
 find_package(Protobuf REQUIRED)
+
+# Prefer the protoc executable discovered by find_package(Protobuf) so the
+# generated sources always match the headers/runtime that CMake links against.
+# Falling back to the bare `protoc` from PATH can silently use a different
+# protobuf version, producing a ".pb.h built with an incompatible version"
+# compile error after a system protobuf upgrade.
+if(Protobuf_PROTOC_EXECUTABLE)
+    set(INDI_PROTOC_EXECUTABLE ${Protobuf_PROTOC_EXECUTABLE})
+elseif(PROTOBUF_PROTOC_EXECUTABLE)
+    set(INDI_PROTOC_EXECUTABLE ${PROTOBUF_PROTOC_EXECUTABLE})
+else()
+    set(INDI_PROTOC_EXECUTABLE protoc)
+endif()
 
 # Resolve the full gRPC C++ link line (grpc++ pulls in grpc, gpr, upb, absl,
 # re2, cares, z, ssl, crypto). The generated .grpc.pb.cc references symbols
@@ -91,13 +115,16 @@ set(PROTO_SOURCES
 
 add_custom_command(
     OUTPUT ${PROTO_SOURCES}
-    COMMAND protoc
+    COMMAND ${INDI_PROTOC_EXECUTABLE}
         --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/../proto
         --cpp_out=${PROTO_BINARY_DIR}
         --grpc_out=${PROTO_BINARY_DIR}
         --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN}
         ${PROTO_FILE}
-    DEPENDS ${PROTO_FILE}
+    # Depending on the protoc binary forces regeneration whenever protobuf is
+    # upgraded, preventing stale generated sources from being compiled against
+    # a newer runtime (the cross-version compile error).
+    DEPENDS ${PROTO_FILE} ${INDI_PROTOC_EXECUTABLE}
     COMMENT "Generating protobuf/gRPC sources from mount_controller.proto"
 )
 
@@ -197,19 +224,21 @@ endif()
 # Install rules
 # ============================================
 
+# Main binary — must land in ${CMAKE_INSTALL_BINDIR} (= /usr/bin with the default
+# prefix) so indiserver can exec it from the KStars GUI session.
 install(TARGETS astro_mount_indi_driver
-    RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-# Copy driver to INDI directory for indiserver discovery
-install(TARGETS astro_mount_indi_driver
-    RUNTIME DESTINATION ${INDI_DATA_DIR}/drivers
-    OPTIONAL
-)
-
-# Driver metadata (device list entry) — used by KStars/Ekos to discover the
-# driver. Note: on systems that use a single /usr/share/indi/drivers.xml list
-# the <device> block must additionally be merged into that file.
+# Driver metadata XML — kept alongside the standard INDI driver XML files.
 install(FILES astro_mount_indi_driver.xml
-    DESTINATION ${INDI_DATA_DIR}/drivers
+    DESTINATION ${INDI_DATA_DIR}
 )
+
+# One-time registration of the <device> entry in the monolithic KStars driver
+# list (/usr/share/indi/drivers.xml).  Runs at `cmake --install` time (as root)
+# and is idempotent — it only inserts the block if it is missing.
+set(INDI_REGISTER_SCRIPT ${CMAKE_CURRENT_BINARY_DIR}/register_driver.cmake)
+configure_file(${CMAKE_CURRENT_SOURCE_DIR}/register_driver.cmake.in
+               ${INDI_REGISTER_SCRIPT} @ONLY)
+install(SCRIPT ${INDI_REGISTER_SCRIPT})

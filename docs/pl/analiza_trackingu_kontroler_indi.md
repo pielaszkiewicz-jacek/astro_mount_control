@@ -230,7 +230,9 @@ Wniosek: obie osie domykają się — „Use current" + „Slew i Śledź" jest 
 | 10 | Flip wyzwalany blisko bieguna (Dec 89,75° → dopełnienie 90,25° poza limitem ±90°) | Brak kontroli wykonalności flipa względem limitów Dec | Flip pomijany, gdy dopełnione Dec (`180°−Dec`) wychodzi poza `soft_limit_axis2_min/max` ([`mount_controller.cpp:2867`](src/controllers/mount_controller.cpp:2867)) |
 | 11 | Skok pozycji na starcie nowej sesji śledzenia | Niezerowane stany korekcji delta `last_*_correction_*` (nutacja/TPoint/refrakcja) między sesjami | Zerowanie 6 zmiennych przy starcie śledzenia ([`mount_controller.cpp:1885`](src/controllers/mount_controller.cpp:1885)) |
 | 12 | Oś RA wykonywała kilka pełnych obrotów po serii slewów przez INDI | Wrap soft limitu HA w `slewToEquatorial`/`startTracking` odejmował 360° pętlą `while` od surowej pozycji multi-turn — niszczył okno multi-turn i kazał osi odkręcić dziesiątki obrotów | [`wrapHaTargetToLimits()`](src/controllers/mount_controller.cpp:6457) — fold + co najwyżej jedna korekta o 360°, z zachowaniem okna multi-turn |
-
+| 13 | Po „Slew i Śledź" oś RA wykonywała wiele pełnych obrotów, a Stop (WEB UI) zostawiał kontroler w stanie ERROR — niemożliwy kolejny ruch | Cel HA w pętli trackingu liczony z **wewnętrznej** pozycji `axis1_position_`, która potrafi rozjechać się z fizycznym napędem o całe obroty (napęd odkręcał te obroty z pełną prędkością); ponadto `stop()` nie wychodził ze stanu ERROR | (a) cel RA przed wysłaniem `setPosition` zawijany do najkrótszej ścieżki (≤ pół obrotu) od fizycznej pozycji napędu ([`mount_controller.cpp:2484`](src/controllers/mount_controller.cpp:2484)); (b) `stop()` przechodzi ERROR → IDLE i zeruje flagi soft limitów ([`mount_controller.cpp:2730`](src/controllers/mount_controller.cpp:2730)) |
+| 14 | Niekontrolowany ruch RA po kalibracji TPOINT | Zdegenerowany model TPOINT zwracał NaN/Inf z `predictMountPosition()`; wartość trafiała do `tracking_target_ra_hours_`, a stamtąd jako cel NaN do napędu | Guard skończoności `mount_ha`/`mount_dec` w `startTracking()` z fallbackiem na cel nieskorygowany ([`mount_controller.cpp:1256`](src/controllers/mount_controller.cpp:1256)) |
+| 15 | Potencjalny cel NaN/Inf wysyłany do napędu z pętli trackingu | Brak walidacji `new_axis1_target`/`new_axis2_target` przed `setPosition()` | Guard skończoności z pominięciem aktualizacji pozycji ([`mount_controller.cpp:2472`](src/controllers/mount_controller.cpp:2472)) |
 ---
 
 ## 6a. Mapowanie zaobserwowanych objawów na przyczyny
@@ -252,7 +254,9 @@ powyżej. Bezpośrednie mapowanie:
 | „Flip wyzwalany dla obiektu blisko bieguna" | #10 brak kontroli wykonalności flipa | naprawione |
 | „Drobny skok pozycji po włączeniu śledzenia" | #11 stary stan korekcji delta z poprzedniej sesji | naprawione |
 | „Oś RA wykonuje kilka pełnych obrotów po slew przez INDI" | #12 wrap soft limitu niszczący okno multi-turn | naprawione |
-
+| „Slew i Śledź → oś RA wykonuje wiele obrotów, po Stop problem z Soft limit i brak dalszych ruchów" | #13 rozjazd wewnętrznej pozycji od napędu + brak wyjścia ze stanu ERROR w `stop()` | naprawione |
+| „Niekontrolowany ruch RA po kalibracji TPOINT" | #14 NaN z `predictMountPosition()` trafiający do celu trackingu | naprawione |
+| „Cel NaN/Inf wysyłany do napędu" | #15 brak walidacji celu przed `setPosition()` | naprawione |
 ---
 
 ## 7. Pozostałe ryzyka i przypadki brzegowe
@@ -262,9 +266,11 @@ powyżej. Bezpośrednie mapowanie:
 3 (jednolite źródło LST) i 5 (synchronizacja Kalmana) pozostają **otwartymi**
 rekomendacjami z sekcji 8. Dodatkowo obsłużone są problemy #9 (normalizacja
 multi-turn celów flipa meridianowego), #10 (pomijanie flipa, gdy dopełnienie
-Dec wychodzi poza limity) oraz #11 (zerowanie stanu korekcji delta przy starcie
-śledzenia) oraz #12 (multi-turn-safe wrap soft limitu HA) — wszystkie opisane
-w sekcjach 6 i 6a.
+Dec wychodzi poza limity), #11 (zerowanie stanu korekcji delta przy starcie
+śledzenia), #12 (multi-turn-safe wrap soft limitu HA), #13 (zawijanie celu RA
+do fizycznej pozycji napędu + wyjście `stop()` ze stanu ERROR), #14 (guard
+NaN/Inf z `predictMountPosition()`) oraz #15 (guard NaN/Inf celu przed
+`setPosition()`) — wszystkie opisane w sekcjach 6 i 6a.
 
 1. **Osobliwość biegunowa (|Dec| ≈ 90°).** RA jest niezdefiniowana na biegunie;
    kod ma guard `NUTATION_POLE_GUARD_DEG = 0.1°`, ale ogólna precyzja w pobliżu

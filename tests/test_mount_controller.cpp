@@ -1688,6 +1688,52 @@ TEST_F(MountControllerTest, ClearErrorsRecoversFromError) {
     EXPECT_TRUE(can_slew_again) << "Should be able to slew after clearErrors()";
 }
 
+TEST_F(MountControllerTest, StopRecoversFromError) {
+    // A soft-limit violation during tracking leaves the controller in ERROR.
+    // The Web UI "Stop" button maps to stop(), which must recover ERROR → IDLE
+    // so the operator can move the mount again without finding the separate
+    // Clear Errors action (the "no movement possible after Stop" symptom).
+    config_.safety_config.soft_limit_axis1_min = -270.0;
+    config_.safety_config.soft_limit_axis1_max = 25.0;
+    config_.safety_config.soft_limit_warning_degrees = 10.0;
+    config_.safety_config.soft_limit_deceleration_degrees = 0.0; // Disable decel so axis crosses limit
+    config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
+    config_.mount_config.max_tracking_rate = 30.0;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra < 0.0) ra += 24.0;
+    while (ra >= 24.0) ra -= 24.0;
+
+    EXPECT_TRUE(controller_->startTracking(ra, 45.0, config::TrackingMode::CUSTOM));
+
+    // Wait for axis1 to cross the soft limit and enter ERROR.
+    std::this_thread::sleep_for(1200ms);
+
+    auto status_before = controller_->getStatus();
+    EXPECT_EQ(status_before.state, MountController::MountStatus::State::ERROR)
+        << "Should be in ERROR state before stop()"
+        << " state=" << static_cast<int>(status_before.state);
+
+    // The operator presses the Web UI Stop button.
+    controller_->stop();
+
+    auto status_after = controller_->getStatus();
+    EXPECT_EQ(status_after.state, MountController::MountStatus::State::IDLE)
+        << "stop() should recover ERROR → IDLE"
+        << " state=" << static_cast<int>(status_after.state);
+    EXPECT_TRUE(status_after.error_message.empty())
+        << "Error message should be cleared after stop()";
+
+    // The mount must be usable again without a separate Clear Errors action.
+    // Use the same RA≈LST so the target HA≈0 is within soft limits.
+    EXPECT_TRUE(controller_->slewToEquatorial(ra, 45.0))
+        << "Should be able to slew after stop()";
+}
+
 TEST_F(MountControllerTest, ClearErrorsNoEffectInNonErrorState) {
     // Verify clearErrors() has no effect when not in ERROR state
     controller_->initialize(config_);

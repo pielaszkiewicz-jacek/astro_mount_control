@@ -1,0 +1,27 @@
+# Generated from register_driver.cmake.in by indi/CMakeLists.txt — do not edit.
+# One-time, idempotent registration of the AstroMount <device> entry in the
+# monolithic INDI drivers list used by KStars/Ekos (/usr/share/indi/drivers.xml).
+# Runs at `cmake --install` time (as root). Only inserts the block if missing.
+
+set(_drivers_xml "@INDI_DATA_DIR@/drivers.xml")
+
+if(NOT EXISTS "${_drivers_xml}")
+    message(WARNING "AstroMount: ${_drivers_xml} not found — skipping drivers.xml registration")
+    return()
+endif()
+
+file(READ "${_drivers_xml}" _content)
+
+if(_content MATCHES "astro_mount_indi_driver")
+    message(STATUS "AstroMount: already registered in drivers.xml")
+    return()
+endif()
+
+set(_device_block "        <device label=\"AstroMount\" manufacturer=\"AstroMountController\">\n            <driver name=\"AstroMount\">astro_mount_indi_driver</driver>\n            <version>2.0</version>\n        </device>")
+
+string(REPLACE "<devGroup group=\"Telescopes\">"
+               "<devGroup group=\"Telescopes\">\n${_device_block}"
+               _content "${_content}")
+
+file(WRITE "${_drivers_xml}" "${_content}")
+message(STATUS "AstroMount: registered in ${_drivers_xml}")

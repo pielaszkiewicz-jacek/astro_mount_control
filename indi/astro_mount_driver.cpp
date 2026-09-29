@@ -1420,6 +1420,37 @@ void AstroMountINDI::updateIndiProperties()
         IUSaveText(&MountStatusT[1], inError ? "Mount in ERROR state" : "");
         MountStatusTP.s = inError ? IPS_ALERT : IPS_OK;
         IDSetText(&MountStatusTP, nullptr);
+
+        // Auto-recover transient controller ERROR so INDI stays responsive.
+        // The controller rejects Goto/Track while in ERROR, which surfaced as
+        // "controller does not respond via INDI" until the operator pressed
+        // Stop and moved from the Web UI.  Rate-limit to one attempt per 10 s
+        // so a real hardware fault is not masked by an endless retry loop.
+        if (inError)
+        {
+            const auto nowRec = std::chrono::steady_clock::now();
+            const bool neverRecovered =
+                (m_lastErrorRecovery == std::chrono::steady_clock::time_point{});
+            const auto sinceLast = neverRecovered
+                ? std::chrono::seconds(10000)
+                : std::chrono::duration_cast<std::chrono::seconds>(
+                      nowRec - m_lastErrorRecovery);
+            if (sinceLast.count() >= 10)
+            {
+                LOG_WARN("Controller reported ERROR — attempting automatic "
+                         "recovery (ClearErrors)");
+                try
+                {
+                    m_grpc->clearErrors();
+                    m_lastErrorRecovery = nowRec;
+                    IUSaveText(&MountStatusT[1], "Recovered from ERROR");
+                }
+                catch (const std::exception& e)
+                {
+                    LOGF_ERROR("Automatic error recovery failed: %s", e.what());
+                }
+            }
+        }
     }
 
     // Update time to meridian

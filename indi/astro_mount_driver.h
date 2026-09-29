@@ -196,6 +196,9 @@ private:
     std::unique_ptr<IndiPropertyMapper> m_mapper;
     astro_mount::ControllerState m_lastState;
     std::chrono::steady_clock::time_point m_lastPoll;
+    // Last time we auto-recovered the controller from its ERROR state.
+    // Used to rate-limit automatic recovery so it does not fight a real fault.
+    std::chrono::steady_clock::time_point m_lastErrorRecovery{};
     bool m_isParked;
     double m_targetRA;
     double m_targetDec;

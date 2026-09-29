@@ -1253,28 +1253,43 @@ public:
                 // Use TPOINT model to correct the mount position for systematic errors
                 // predictMountPosition() inverts the fitted model via Newton-Raphson
                 // to find the mount HA/Dec that produces the correct on-sky position
+                bool tpoint_target_valid = false;
                 if (tpoint_calibrated_) {
                     auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
-                    // Same shortest-path selection for the TPOINT-corrected HA.
-                    double tpoint_delta = mount_ha - current_ha_hours;
-                    while (tpoint_delta > 12.0) tpoint_delta -= 24.0;
-                    while (tpoint_delta < -12.0) tpoint_delta += 24.0;
-                    mount_ha = current_ha_hours + tpoint_delta;
-                    axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
-                    axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
-                    // Store the TPOINT-corrected target for the tracking loop.
-                    // The tracking loop computes HA = LST - RA, so store an
-                    // effective RA whose HA at the current LST equals the
-                    // TPOINT-corrected mount HA: RA_effective = LST - mount_ha.
-                    // Storing mount_ha directly (as the previous code did) made
-                    // the tracking loop compute HA = LST - mount_ha, which is a
-                    // different sky position and caused uncontrolled RA motion.
-                    double effective_ra = lst - mount_ha;
-                    effective_ra = std::fmod(effective_ra, 24.0);
-                    if (effective_ra < 0.0) effective_ra += 24.0;
-                    tracking_target_ra_hours_ = effective_ra;
-                    tracking_target_dec_deg_ = mount_dec;
-                } else {
+                    // Guard against a degenerate/failed TPOINT model returning
+                    // NaN/Inf.  A non-finite mount_ha would otherwise flow into
+                    // tracking_target_ra_hours_ and, from there, into the tracking
+                    // loop's position update, which commands the drive to NaN
+                    // targets and can produce uncontrolled RA motion.
+                    if (std::isfinite(mount_ha) && std::isfinite(mount_dec)) {
+                        // Same shortest-path selection for the TPOINT-corrected HA.
+                        double tpoint_delta = mount_ha - current_ha_hours;
+                        while (tpoint_delta > 12.0) tpoint_delta -= 24.0;
+                        while (tpoint_delta < -12.0) tpoint_delta += 24.0;
+                        mount_ha = current_ha_hours + tpoint_delta;
+                        axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
+                        axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
+                        // Store the TPOINT-corrected target for the tracking loop.
+                        // The tracking loop computes HA = LST - RA, so store an
+                        // effective RA whose HA at the current LST equals the
+                        // TPOINT-corrected mount HA: RA_effective = LST - mount_ha.
+                        // Storing mount_ha directly (as the previous code did) made
+                        // the tracking loop compute HA = LST - mount_ha, which is a
+                        // different sky position and caused uncontrolled RA motion.
+                        double effective_ra = lst - mount_ha;
+                        effective_ra = std::fmod(effective_ra, 24.0);
+                        if (effective_ra < 0.0) effective_ra += 24.0;
+                        tracking_target_ra_hours_ = effective_ra;
+                        tracking_target_dec_deg_ = mount_dec;
+                        tpoint_target_valid = true;
+                    } else {
+                        MOUNT_LOG_WARN("startTracking: TPOINT predictMountPosition returned "
+                                       "non-finite position (HA={:.4f}, Dec={:.4f}); "
+                                       "falling back to uncorrected target",
+                                       mount_ha, mount_dec);
+                    }
+                }
+                if (!tpoint_target_valid) {
                     axis1_target_ = ha_hours * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
                     // Resolve the Dec target to the pier-side equivalent nearest
                     // to the current physical Dec axis position (see
@@ -2447,6 +2462,19 @@ public:
                             // offset), causing the Dec axis to keep rotating.
                             double new_axis1_target = ha_hours * 15.0 * ha_gear - home_offset_axis1_;
                             double new_axis2_target = snap_dec_target_servo;
+
+                            // Guard against non-finite targets before they reach the
+                            // drive.  A NaN/Inf target (e.g. from a corrupted TPOINT
+                            // model feeding tracking_target_ra_hours_) would be sent
+                            // verbatim to the CANopen drive and can cause uncontrolled
+                            // axis motion.
+                            if (!std::isfinite(new_axis1_target) ||
+                                !std::isfinite(new_axis2_target)) {
+                                MOUNT_LOG_ERROR("Non-finite tracking position target "
+                                                "(axis1={}, axis2={}) — position update skipped",
+                                                new_axis1_target, new_axis2_target);
+                                continue;
+                            }
                             
                             // Use profile velocity 1.5× the sidereal servo rate so the
                             // drive smoothly catches up to the lead target without
@@ -2474,6 +2502,26 @@ public:
                                     MOUNT_LOG_DEBUG("Tracking pos-vel distance read: {}", e.what());
                                 }
                                 if (have_act) {
+                                    // Keep the commanded RA target in the same
+                                    // multi-turn window as the physical drive.  The
+                                    // internal axis1_position_ used above can drift
+                                    // from the drive by whole revolutions (e.g. after
+                                    // a long session or a stopped drive); commanding
+                                    // the raw target would make the drive unwind those
+                                    // revolutions at full speed — the "RA axis spinning
+                                    // several full turns" symptom.  Re-wrap to the
+                                    // shortest path (≤ half a turn) from the drive's
+                                    // actual position.  Dec is deliberately NOT wrapped:
+                                    // Dec is not 360°-periodic (180°−Dec flips the pier
+                                    // side), and snap_dec_target_servo is already the
+                                    // pier-side-resolved target from startTracking().
+                                    const double full_turn1 = 360.0 * ha_gear;
+                                    double d1 = new_axis1_target - act1;
+                                    d1 = std::fmod(d1, full_turn1);
+                                    if (d1 > full_turn1 / 2.0) d1 -= full_turn1;
+                                    else if (d1 < -full_turn1 / 2.0) d1 += full_turn1;
+                                    new_axis1_target = act1 + d1;
+
                                     const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(ha_gear, 1.0) * 4.0;
                                     const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(dec_gear, 1.0) * 4.0;
                                     if (std::abs(new_axis1_target - act1) > close1 ||
@@ -2729,6 +2777,29 @@ public:
                 state_ == MountStatus::State::MERIDIAN_FLIP ||
                 state_ == MountStatus::State::PARKING) {
                 state_ = MountStatus::State::IDLE;
+            } else if (state_ == MountStatus::State::ERROR) {
+                // A soft-limit violation / watchdog / safety fault during
+                // tracking or slewing leaves the controller in ERROR.  The Web
+                // UI "Stop" button is the operator's universal "halt and make
+                // the mount usable again" action, so recover ERROR → IDLE here
+                // too.  Without this, the controller stayed stuck in ERROR and
+                // slewToEquatorial()/startTracking() rejected every subsequent
+                // move ("no further movement possible after Stop" symptom),
+                // forcing the operator to find the separate Clear Errors
+                // button.
+                state_ = MountStatus::State::IDLE;
+                error_message_.clear();
+                meridian_flip_pending_ = false;
+                meridian_flip_in_progress_ = false;
+                flip_soft_limit_cooldown_ = 0;
+                // Reset the soft-limit evaluation state so the next movement
+                // does not inherit stale "hard limit exceeded" flags from the
+                // position that triggered the error.
+                soft_limit_warning_active_ = false;
+                soft_limit_deceleration_active_ = false;
+                soft_limit_distance_axis1_ = 0.0;
+                soft_limit_distance_axis2_ = 0.0;
+                soft_limit_warning_message_.clear();
             }
         }
         

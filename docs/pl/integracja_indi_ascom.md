@@ -115,14 +115,28 @@ cmake .. -DCMAKE_PREFIX_PATH=/usr
 make -j$(nproc)
 ```
 
-Powstaje plik wykonywalny `astro_mount_indi_driver`. Opcjonalnie zainstaluj do katalogu driverów INDI:
+Powstaje plik wykonywalny `astro_mount_indi_driver`. Instalacja jest teraz
+**w pełni automatyczna** ([`indi/CMakeLists.txt`](../indi/CMakeLists.txt)):
+instaluje binarkę do **`/usr/bin`** (domyślny prefiks to `/usr`), kopiuje
+metadane `astro_mount_indi_driver.xml` do katalogu INDI oraz **jednorazowo
+dopisuje wpis `<device>` do `/usr/share/indi/drivers.xml`** (idempotentnie):
 
 ```bash
+# z katalogu indi/build:
 sudo cmake --install .
-# kopiuje do ${INDI_DATA_DIR}/drivers (zwykle /usr/share/indi/drivers)
 ```
 
+> **Dlaczego `/usr/bin`, a nie `/usr/local/bin`?**
+> KStars uruchamia `indiserver` z własnym, okrojonym `PATH` (sesja graficzna),
+> w którym `/usr/local/bin` może **nie występować**. Gdy binarka leży tylko w
+> `/usr/local/bin`, `indiserver` zgłasza `execlp: No such file or directory`
+> i sterownik nie startuje z poziomu listy teleskopów, mimo że jest widoczny
+> w KStars (wpis w `drivers.xml` jest poprawny). Umieszczenie binarki w `/usr/bin`
+> gwarantuje, że `indiserver` zawsze ją znajdzie.
+
 > **Ważne — rejestracja w KStars/Ekos:** samo skopiowanie pliku wykonywalnego nie wystarczy.
+> (`sudo cmake --install .` robi to automatycznie — patrz wyżej; poniżej opis
+> rejestracji ręcznej dla instalacji bez CMake.)
 > KStars/Ekos buduje listę dostępnych driverów na podstawie `/usr/share/indi/drivers.xml`
 > (format `<driversList>`). Dodaj wpis naszego urządzenia w grupie `Telescopes`, bo inaczej
 > w profilu Ekos (zakładka Mount) zobaczysz tylko „Find telescope”, a nie „AstroMount”:
@@ -137,6 +151,44 @@ sudo cmake --install .
 > ```
 >
 > Wpis jest też dostarczany jako [`indi/astro_mount_indi_driver.xml`](../indi/astro_mount_indi_driver.xml).
+>
+> **Rejestracja jednym poleceniem** (wstawia powyższy blok do grupy `Telescopes`
+> w `/usr/share/indi/drivers.xml`):
+>
+> ```bash
+> sudo python3 - <<'EOF'
+> p = '/usr/share/indi/drivers.xml'
+> s = open(p).read()
+> entry = '''        <device label="AstroMount" manufacturer="AstroMountController">
+>             <driver name="AstroMount">astro_mount_indi_driver</driver>
+>             <version>2.0</version>
+>         </device>
+> '''
+> if 'astro_mount_indi_driver' not in s:
+>     s = s.replace('<devGroup group="Telescopes">',
+>                   '<devGroup group="Telescopes">\n' + entry, 1)
+>     open(p, 'w').write(s)
+>     print('OK — dodano wpis')
+> else:
+>     print('Wpis już istnieje')
+> EOF
+> ```
+>
+> **Weryfikacja przed uruchomieniem KStars** — sprawdź, że `indiserver` ładuje
+> sterownik (niezależnie od wpisu na liście teleskopów):
+>
+> ```bash
+> indiserver -v astro_mount_indi_driver
+> # Ctrl+C po zobaczeniu linii "Driver astro_mount_indi_driver: pid=..."
+> ```
+>
+> Do uruchomienia z listy teleskopów potrzeba **dwóch** rzeczy:
+> 1. binarka `astro_mount_indi_driver` w katalogu `/usr/bin` (gdzie `indiserver`
+>    szuka driverów — patrz sekcja 4.1),
+> 2. wpis w `/usr/share/indi/drivers.xml` (powyżej).
+>
+> Sam plik `astro_mount_indi_driver.xml` skopiowany do `/usr/share/indi/drivers/`
+> **nie wystarcza** — KStars/Ekos czyta monolityczny `drivers.xml`.
 
 ### 4.2 Konfiguracja adresu kontrolera
 
