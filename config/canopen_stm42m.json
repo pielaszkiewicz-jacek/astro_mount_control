@@ -201,7 +201,7 @@
             "node_id": 1,
             "use_sync": false,
             "sync_period_ms": 100,
-            "sdo_timeout_ms": 500,
+            "sdo_timeout_ms": 100,
             "pdo_update_rate": 100,
             "accel_mode": "rate",
             "pdo_config_enabled": true,

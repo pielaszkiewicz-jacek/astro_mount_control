@@ -229,6 +229,7 @@ Wniosek: obie osie domykają się — „Use current" + „Slew i Śledź" jest 
 | 9 | Ciągły obrót / odjazd po „Use current" + „Slew i Śledź" (cel Dec `−5247089°` ≈ 40 obrotów) | Cel flipa meridianowego liczony z **surowej pozycji multi-turn**: `180°·gear − axis2_target_` (i cel HA normalizowany do `[−180°, 180°]` zamiast względem bieżącej pozycji) | Cele flipa liczone najkrótszą ścieżką od bieżącej pozycji fizycznej, z zachowaniem okna multi-turn ([`mount_controller.cpp:2911`](src/controllers/mount_controller.cpp:2911)) |
 | 10 | Flip wyzwalany blisko bieguna (Dec 89,75° → dopełnienie 90,25° poza limitem ±90°) | Brak kontroli wykonalności flipa względem limitów Dec | Flip pomijany, gdy dopełnione Dec (`180°−Dec`) wychodzi poza `soft_limit_axis2_min/max` ([`mount_controller.cpp:2867`](src/controllers/mount_controller.cpp:2867)) |
 | 11 | Skok pozycji na starcie nowej sesji śledzenia | Niezerowane stany korekcji delta `last_*_correction_*` (nutacja/TPoint/refrakcja) między sesjami | Zerowanie 6 zmiennych przy starcie śledzenia ([`mount_controller.cpp:1885`](src/controllers/mount_controller.cpp:1885)) |
+| 12 | Oś RA wykonywała kilka pełnych obrotów po serii slewów przez INDI | Wrap soft limitu HA w `slewToEquatorial`/`startTracking` odejmował 360° pętlą `while` od surowej pozycji multi-turn — niszczył okno multi-turn i kazał osi odkręcić dziesiątki obrotów | [`wrapHaTargetToLimits()`](src/controllers/mount_controller.cpp:6457) — fold + co najwyżej jedna korekta o 360°, z zachowaniem okna multi-turn |
 
 ---
 
@@ -250,6 +251,7 @@ powyżej. Bezpośrednie mapowanie:
 | „Oś Dec jedzie kilkadziesiąt obrotów po flipie" | #9 dopełnienie Dec na surowej wartości multi-turn | naprawione |
 | „Flip wyzwalany dla obiektu blisko bieguna" | #10 brak kontroli wykonalności flipa | naprawione |
 | „Drobny skok pozycji po włączeniu śledzenia" | #11 stary stan korekcji delta z poprzedniej sesji | naprawione |
+| „Oś RA wykonuje kilka pełnych obrotów po slew przez INDI" | #12 wrap soft limitu niszczący okno multi-turn | naprawione |
 
 ---
 
@@ -261,7 +263,8 @@ powyżej. Bezpośrednie mapowanie:
 rekomendacjami z sekcji 8. Dodatkowo obsłużone są problemy #9 (normalizacja
 multi-turn celów flipa meridianowego), #10 (pomijanie flipa, gdy dopełnienie
 Dec wychodzi poza limity) oraz #11 (zerowanie stanu korekcji delta przy starcie
-śledzenia) — wszystkie opisane w sekcjach 6 i 6a.
+śledzenia) oraz #12 (multi-turn-safe wrap soft limitu HA) — wszystkie opisane
+w sekcjach 6 i 6a.
 
 1. **Osobliwość biegunowa (|Dec| ≈ 90°).** RA jest niezdefiniowana na biegunie;
    kod ma guard `NUTATION_POLE_GUARD_DEG = 0.1°`, ale ogólna precyzja w pobliżu

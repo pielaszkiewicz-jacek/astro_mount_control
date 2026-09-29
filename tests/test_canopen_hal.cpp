@@ -188,10 +188,12 @@ TEST(CanOpenHAL, WritePidLoopRamMapsToObject2008) {
 
     auto motor = hal.createMotorControl(0);
     ASSERT_NE(motor, nullptr);
-    EXPECT_TRUE(motor->writePidLoopRam(3, 0.5, 0.0, 0.0));
+    // Position loop (loop 3) → 2008h:03h PositionLoopGain (scale 1), per the
+    // STMP42SXI gain-set mapping in CanOpenMotor::writePidLoopRam().
+    EXPECT_TRUE(motor->writePidLoopRam(3, 1.5, 0.0, 0.0));
     EXPECT_EQ(mock_ptr->last_sdo_index, 0x2008u);
-    EXPECT_EQ(mock_ptr->last_sdo_sub, 0x01u);
-    EXPECT_EQ(mock_ptr->last_sdo_value, 50000u); // 0.5 * 100000
+    EXPECT_EQ(mock_ptr->last_sdo_sub, 0x03u);
+    EXPECT_EQ(mock_ptr->last_sdo_value, 1u); // uint16(1.5) = 1
 }
 
 TEST(CanOpenHAL, MonitorLoopUpdatesPosition) {

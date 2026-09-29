@@ -321,14 +321,18 @@ TEST_F(MountControllerTest, TrackingUpdatesPosition) {
 
     controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL);
 
-    // Take two readings and verify position moved.
-    // Servo position advances at ~1.5°/s (0.004178°/s telescope × 360 gear).
-    std::this_thread::sleep_for(500ms);
+    // The first position-mode target update fires after ~50 tracking-loop
+    // iterations (~1 s at 20 ms).  Wait beyond that so the simulated drive has
+    // actually started moving, then refresh live positions (as the production
+    // main loop does) before each read.
+    std::this_thread::sleep_for(1500ms);
+    controller_->refreshPositions();
     auto status1 = controller_->getStatus();
-    std::this_thread::sleep_for(500ms);
+    std::this_thread::sleep_for(1500ms);
+    controller_->refreshPositions();
     auto status2 = controller_->getStatus();
 
-    // Position should have increased (tracking RA = +1.504 deg/s servo)
+    // Position should have increased while sidereal tracking is active.
     EXPECT_GT(status2.axis1_position, status1.axis1_position)
         << "Tracking should increase axis1 position over time";
 }
@@ -415,10 +419,14 @@ TEST_F(MountControllerTest, AltAzTrackingUpdatesPosition) {
 
     controller_->startTracking(60.0, 180.0, config::TrackingMode::SIDEREAL);
 
-    // Let tracking run for ~1s to accumulate measurable position change
+    // Let tracking run for ~1s to accumulate measurable position change.
+    // Refresh live positions before each read (the production main loop does
+    // this; the unit test must too, otherwise raw_servo stays stale at 0).
     std::this_thread::sleep_for(600ms);
+    controller_->refreshPositions();
     auto status1 = controller_->getStatus();
     std::this_thread::sleep_for(600ms);
+    controller_->refreshPositions();
     auto status2 = controller_->getStatus();
 
     // Both axes should have changed over time
@@ -456,9 +464,11 @@ TEST_F(MountControllerTest, AltAzZenithClamp) {
     EXPECT_GE(telescope_alt, -5.0)
         << "Telescope altitude should not drop below -5°";
     
-    // Azimuth should be in [0, 360) telescope range
+    // Azimuth should be in [0, 360) telescope range.  The simulated encoder
+    // adds ~1e-5° Gaussian noise to the reported position, so allow a small
+    // negative tolerance instead of an exact zero lower bound.
     double telescope_az = status.axis2_position / gear2;
-    EXPECT_GE(telescope_az, 0.0);
+    EXPECT_GT(telescope_az, -0.01);
     EXPECT_LT(telescope_az, 360.0);
 
     // Should still be in TRACKING state (no ERROR from NaN)
@@ -1518,16 +1528,16 @@ TEST_F(MountControllerTest, SoftLimitWarningDuringTracking) {
     // but not the deceleration zone, set park_position_axis2 to 90° (midway between
     // limits 0° and 185°). Distance to min=90°, to max=95° → warning active,
     // deceleration NOT active (90° > 80° decel, 95° > 80° decel).
-    config_.safety_config.soft_limit_axis2_min = 0.0;
-    config_.safety_config.soft_limit_axis2_max = 185.0;
+    config_.safety_config.soft_limit_axis2_min = -100.0;
+    config_.safety_config.soft_limit_axis2_max = 95.0;
     config_.safety_config.soft_limit_warning_degrees = 100.0;     // Warning zone: within 100° of a limit
     config_.safety_config.soft_limit_deceleration_degrees = 80.0;  // Decel zone: within 80° of a limit
-    config_.safety_config.park_position_axis2 = 90.0;  // Override fixture default (0°) to match test intent
     controller_->initialize(config_);
 
-    // Start tracking — axis2 starts at park_position_axis2 (90°).
-    // Distance to axis2_min = 90-0 = 90°, to axis2_max = 185-90 = 95°.
-    // Nearest is 90° → within warning (90 < 100) but NOT deceleration (90 >= 80).
+    // The authoritative HAL reports the physical axis2 position (0°), not the
+    // park position.  With axis2=0 and limits [-100, 95], the distance to the
+    // nearest limit is 95° → within warning (95 < 100) but NOT deceleration
+    // (95 >= 80).
     controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for at least one tracking loop iteration (100ms)
@@ -2060,13 +2070,20 @@ TEST_F(CasualMountIdentityTest, SlewToHorizontalMatchesAltAz) {
 }
 
 TEST_F(CasualMountIdentityTest, TrackingComputesRates) {
-    controller_->startTracking(60.0, 180.0, config::TrackingMode::SIDEREAL);
-    
+    // CASUAL startTracking takes equatorial RA (hours) / Dec (degrees); the
+    // previous (60, 180) input was an ALT_AZ-style altitude/azimuth pair that
+    // the CASUAL path interprets as an invalid Dec.
+    controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL);
+
+    // Refresh live positions before each read (the production main loop does
+    // this; the unit test must too).
     std::this_thread::sleep_for(600ms);
+    controller_->refreshPositions();
     auto status1 = controller_->getStatus();
     std::this_thread::sleep_for(600ms);
+    controller_->refreshPositions();
     auto status2 = controller_->getStatus();
-    
+
     // Both axes should change over time (like ALT_AZ)
     EXPECT_NE(status2.axis1_position, status1.axis1_position)
         << "Identity CASUAL should show position change like ALT_AZ";

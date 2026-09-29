@@ -233,6 +233,7 @@ no-op.
 | 9 | Continuous rotation / drive-away after "Use current" + "Slew and Track" (Dec target `−5247089°` ≈ 40 revolutions) | Meridian-flip target computed from the **raw multi-turn position**: `180°·gear − axis2_target_` (and the HA target normalized to `[−180°, 180°]` instead of relative to the current position) | Flip targets computed as the shortest path from the current physical position, preserving the multi-turn window ([`mount_controller.cpp:2911`](src/controllers/mount_controller.cpp:2911)) |
 | 10 | Flip triggered near the pole (Dec 89.75° → complement 90.25° outside the ±90° limit) | No feasibility check of the flip against the Dec limits | Flip skipped when the complemented Dec (`180°−Dec`) falls outside `soft_limit_axis2_min/max` ([`mount_controller.cpp:2867`](src/controllers/mount_controller.cpp:2867)) |
 | 11 | Position jump at the start of a new tracking session | Delta-correction state `last_*_correction_*` (nutation/TPoint/refraction) not reset between sessions | Zero the 6 variables at tracking start ([`mount_controller.cpp:1885`](src/controllers/mount_controller.cpp:1885)) |
+| 12 | RA axis performed several full rotations after a series of INDI slews | The HA soft-limit wrap in `slewToEquatorial`/`startTracking` subtracted 360° in a `while` loop from the raw multi-turn position — destroying the multi-turn window and commanding the drive to unwind dozens of revolutions | [`wrapHaTargetToLimits()`](src/controllers/mount_controller.cpp:6457) — fold + at most one 360° correction, preserving the multi-turn window |
 
 ---
 
@@ -253,6 +254,7 @@ All symptoms reported during testing map to the table above. Direct mapping:
 | "Dec axis travels dozens of revolutions after a flip" | #9 Dec complement on the raw multi-turn value | fixed |
 | "Flip triggered for an object near the pole" | #10 no flip feasibility check | fixed |
 | "Small position jump after enabling tracking" | #11 stale delta-correction state from the previous session | fixed |
+| "RA axis performs several full rotations after INDI slews" | #12 soft-limit wrap destroying the multi-turn window | fixed |
 
 ---
 
@@ -264,7 +266,8 @@ All symptoms reported during testing map to the table above. Direct mapping:
 recommendations from section 8. In addition, problems #9 (multi-turn
 normalization of meridian-flip targets), #10 (skipping a flip when the Dec
 complement falls outside the limits) and #11 (zeroing the delta-correction state
-at tracking start) are handled — all described in sections 6 and 6a.
+at tracking start) and #12 (multi-turn-safe HA soft-limit wrap) are handled — all
+described in sections 6 and 6a.
 
 1. **Polar singularity (|Dec| ≈ 90°).** RA is undefined at the pole; the code has
    the `NUTATION_POLE_GUARD_DEG = 0.1°` guard, but the general precision near the

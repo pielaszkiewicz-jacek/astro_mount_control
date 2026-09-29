@@ -21,6 +21,10 @@
 #include <iostream>
 #include <sstream>
 #include <iomanip>
+#include <atomic>
+#include <array>
+#include <condition_variable>
+#include <thread>
 
 namespace astro_mount {
 namespace controllers {
@@ -76,17 +80,32 @@ public:
 
         // Set send timeout — bounds sendFrame()'s ::write().  A blocking
         // SocketCAN write (bus-off, no ACK from a powered-down drive, or a full
-        // TX queue) would otherwise hang forever while holding can_mutex_,
+        // TX queue) would otherwise hang forever while holding write_mutex_,
         // stalling every other CAN caller (tracking loop, monitor thread, gRPC)
         // and tripping the 5 s tracking-loop watchdog.
         ::setsockopt(sock_fd_, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 
         iface_name_ = can_iface;
         std::cout << "[MF7025v2] SocketCAN opened on " << can_iface << std::endl;
+
+        // Start the demultiplexing reader thread.  It owns the socket reads and
+        // routes each response to the pending transaction for that node, so a
+        // hung node only stalls its own queue instead of every CAN caller.
+        running_ = true;
+        reader_thread_ = std::thread(&Mf7025v2CanInterface::readerLoop, this);
         return true;
     }
 
     void close() override {
+        running_ = false;
+        tx_cv_.notify_all();
+        // Wake a reader blocked in ::read so it can observe running_ == false.
+        if (sock_fd_ >= 0) {
+            ::shutdown(sock_fd_, SHUT_RDWR);
+        }
+        if (reader_thread_.joinable()) {
+            reader_thread_.join();
+        }
         std::lock_guard<std::mutex> lock(mutex_);
         if (sock_fd_ >= 0) {
             ::close(sock_fd_);
@@ -312,7 +331,21 @@ private:
     int sock_fd_{-1};
     std::string iface_name_;
     std::mutex mutex_;
-    std::mutex can_mutex_;  // Protects send/receive pairs (request-response atomicity)
+    std::mutex write_mutex_;  // Serializes ::write on the socket (short hold)
+    std::mutex tx_mutex_;     // Guards the per-node pending response slots
+    std::condition_variable tx_cv_;
+    std::atomic<bool> running_{false};
+    std::thread reader_thread_;
+    // One in-flight command per node.  Responses are demultiplexed by the
+    // reader thread using the CAN ID (0x140 + node_id).
+    struct PendingRx {
+        bool active{false};
+        uint8_t expected_cmd{0};
+        bool ok{false};
+        uint8_t dlc{0};
+        std::array<uint8_t, 8> data{};
+    };
+    std::array<PendingRx, 33> pending_;  // indexed by node_id (1..32)
     uint32_t timeout_us_{100000}; // 100ms CAN response timeout
     bool can_trace_enabled_{true};
     bool can_trace_read_state_enabled_{false};
@@ -486,63 +519,99 @@ private:
         return true;
     }
 
-    bool receiveFrame(uint32_t expected_can_id, uint8_t expected_cmd_byte,
-                      std::vector<uint8_t>& data, int timeout_ms = 100) {
-        struct can_frame frame;
-        auto start = std::chrono::steady_clock::now();
-        while (true) {
+    // Owns the socket reads.  Each incoming frame is routed to the pending
+    // transaction of its node (CAN ID = 0x140 + node_id).  Responses whose
+    // command byte does not match the request are stale/late replies and are
+    // dropped so the sender can time out and retry.
+    void readerLoop() {
+        while (running_) {
+            struct can_frame frame;
             ssize_t n = ::read(sock_fd_, &frame, sizeof(frame));
-            if (n == sizeof(frame)) {
-                if (frame.can_id == expected_can_id) {
-                    // Validate echo: command byte must match the request.
-                    // Without this check, cross-talk between concurrent
-                    // speedControl (0xA2) and readStatus2 (0x9C) on the
-                    // same CAN ID would silently corrupt data.
-                    if (frame.can_dlc > 0 && frame.data[0] != expected_cmd_byte) {
-                        // Wrong command echo — another thread's response.
-                        // Keep waiting for our actual response.
-                        auto elapsed = std::chrono::steady_clock::now() - start;
-                        if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() > timeout_ms)
-                            return false;
-                        continue;
-                    }
-                    data.assign(frame.data, frame.data + frame.can_dlc);
-                    return true;
-                }
-                // else: not our frame, keep waiting
-            } else if (n < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    auto elapsed = std::chrono::steady_clock::now() - start;
-                    if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() > timeout_ms)
-                        return false;
-                    continue;
-                }
-                return false;
+            if (n < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;
+                if (!running_) break;
+                continue;
             }
-            auto elapsed = std::chrono::steady_clock::now() - start;
-            if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() > timeout_ms)
-                return false;
+            if (n != static_cast<ssize_t>(sizeof(frame))) continue;
+
+            const uint32_t can_id = frame.can_id & CAN_EFF_MASK;
+            if (can_id < 0x141 || can_id > 0x140 + 32) continue;
+            const uint8_t node_id = static_cast<uint8_t>(can_id - 0x140);
+
+            std::lock_guard<std::mutex> lock(tx_mutex_);
+            auto& slot = pending_[node_id];
+            if (!slot.active) continue;
+
+            // Validate echo: command byte must match the request.  Without
+            // this check, cross-talk between concurrent speedControl (0xA2)
+            // and readStatus2 (0x9C) on the same CAN ID would silently
+            // corrupt data.
+            if (frame.can_dlc > 0 && frame.data[0] != slot.expected_cmd) {
+                continue;
+            }
+
+            std::memcpy(slot.data.data(), frame.data, frame.can_dlc);
+            slot.dlc = frame.can_dlc;
+            slot.ok = true;
+            slot.active = false;
+            tx_cv_.notify_all();
         }
     }
 
     bool executeCommand(uint8_t node_id, const uint8_t* cmd, size_t cmd_len,
                         std::vector<uint8_t>& response) {
         if (sock_fd_ < 0) return false;
-
-        // Protect the send/receive pair against concurrent access from
-        // the monitor thread (readStatus2) and gRPC handler threads
-        // (speedControl, positionControl, etc.).
-        std::lock_guard<std::mutex> lock(can_mutex_);
+        if (node_id < 1 || node_id > 32) return false;
 
         // CAN ID = 0x140 + node_id
         uint32_t can_id = 0x140 + node_id;
-
-        if (!sendFrame(can_id, cmd, cmd_len))
-            return false;
-
-        // Pass the command byte so receiveFrame can validate the echo
         uint8_t expected_cmd = (cmd_len > 0) ? cmd[0] : 0;
-        return receiveFrame(can_id, expected_cmd, response, 100);
+
+        std::unique_lock<std::mutex> lock(tx_mutex_);
+        auto& slot = pending_[node_id];
+
+        // Serialize per node: only one command in flight for this node.
+        // Commands to other nodes proceed independently.
+        tx_cv_.wait(lock, [&]{ return !slot.active || !running_; });
+        if (!running_) return false;
+
+        slot.active = true;
+        slot.expected_cmd = expected_cmd;
+        slot.ok = false;
+        slot.dlc = 0;
+        slot.data.fill(0);
+
+        lock.unlock();
+
+        bool sent = false;
+        {
+            std::lock_guard<std::mutex> write_lock(write_mutex_);
+            sent = sendFrame(can_id, cmd, cmd_len);
+        }
+        if (!sent) {
+            lock.lock();
+            slot.active = false;
+            tx_cv_.notify_all();
+            return false;
+        }
+
+        lock.lock();
+        tx_cv_.wait_for(lock, std::chrono::milliseconds(100),
+            [&]{ return !slot.active || !running_; });
+
+        if (!slot.active) {
+            // Response delivered by the reader thread.
+            const bool ok = slot.ok;
+            if (ok) {
+                response.assign(slot.data.begin(), slot.data.begin() + slot.dlc);
+            }
+            return ok;
+        }
+
+        // slot.active is still true: response timeout or shutdown.
+        slot.active = false;
+        tx_cv_.notify_all();
+        return false;
     }
 };
 

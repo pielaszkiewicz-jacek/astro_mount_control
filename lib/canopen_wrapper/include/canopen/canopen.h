@@ -12,10 +12,12 @@
  *   - PDO reception passthrough via callback
  *
  * Thread model:
- *   - SDO exchanges are synchronous and serialized with an internal mutex.
- *   - The caller may poll canopen_recv_frame() from its own thread to receive
- *     heartbeat / EMCY / PDO frames; those frames are dispatched to the
- *     registered callbacks.
+ *   - A dedicated reader thread demultiplexes incoming frames.  SDO responses
+ *     are delivered to the matching per-node pending transaction; heartbeat /
+ *     EMCY / PDO frames are dispatched to the registered callbacks and queued
+ *     for canopen_recv_frame() / canopen_poll_events().
+ *   - SDO exchanges are synchronous but serialized PER NODE, so a hung node
+ *     only stalls its own queue and never blocks SDO traffic to other nodes.
  */
 
 #include <stdint.h>
