@@ -1,10 +1,11 @@
 {
     "_comment": "====================================================================",
-    "_comment1": "Configuration for NiMotion STM42M CANopen/CiA 402 servo drive",
-    "_comment2": "Usage: ./astro_mount_controller config/canopen_stm42m.json",
-    "_comment3": "STMP42SXI built-in 17-bit encoder: 131072 counts/turn (608Fh:01h = 131072) — no gearbox (6091h = 1:1)",
-    "_comment4": "Node IDs: axis 0 = 1, axis 1 = 2",
-    "_comment5": "====================================================================",
+    "_comment1": "Velocity-mode variant of canopen_stm42m.json (NiMotion STM42M/STMP42SXI, CiA 402)",
+    "_comment2": "Usage: ./astro_mount_controller config/canopen_stm42m_velocity.json",
+    "_comment3": "Equatorial tracking via Profile Velocity (60FFh) with 1 Hz drift correction.",
+    "_comment4": "WARNING: velocity mode on this drive previously caused a fast axis run-away;",
+    "_comment5": "verify the 60FFh velocity unit before using on a loaded mount.",
+    "_comment6": "====================================================================",
     "external_services": {
         "_comment": "Weather integration enabled so the mount controller receives live environmental conditions (temperature/pressure/humidity) and auto-park alerts from astro_weather_server on 50055.",
         "weather": {
@@ -446,7 +447,7 @@
         "soft_limit_tracking_rate_factor": 0.1,
         "soft_limit_warning_degrees": 10.0,
         "soft_limits_enabled": true,
-        "tracking_acceleration": 0.001,
+        "tracking_acceleration": 0.5,
         "tracking_pos_lead_seconds": 2.0,
         "tracking_pos_velocity_factor": 1.0,
         "tracking_update_ms": 20,

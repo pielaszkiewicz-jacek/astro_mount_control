@@ -128,6 +128,15 @@ public:
         // true = Profile Velocity (experimental)
         bool equatorial_tracking_velocity_mode{false};
 
+        // Position-mode tracking tuning:
+        //   tracking_pos_velocity_factor — profile velocity multiplier over the
+        //     sidereal servo rate (1.0 = exact sidereal, continuous motion;
+        //     1.5 = legacy catch-up behaviour producing stop-start motion).
+        //   tracking_pos_lead_seconds — fixed target lead [s] for position-mode
+        //     target updates (absorbs loop jitter without a large pointing offset).
+        double tracking_pos_velocity_factor{1.0};
+        double tracking_pos_lead_seconds{2.0};
+
         // Per-axis rotation direction inversion.
         // When true, the motor target position/velocity for this axis is negated.
         bool invert_axis1{false};

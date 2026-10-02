@@ -2425,18 +2425,32 @@ public:
                             double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                             double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
                             constexpr double SIDEREAL_HOURS_PER_SEC = 24.0 / 86164.0905;
-                            // Adaptive lead: must be > profile_velocity_ratio × update_interval
-                            // to prevent the drive from catching up before the next update.
-                            // profile_velocity_ratio = pos_vel / sidereal_rate = 1.5.
-                            // With update interval ~1.0s, lead must be > 1.5s.
-                            // 1.5 × 1.0 + 0.5 margin = 2.0s ensures the drive never stops.
-                            const double update_interval_s = POS_UPDATE_INTERVAL * config_.tracking_config.tracking_update_ms / 1000.0;
-                            const double POS_LEAD_SECONDS = 1.5 * update_interval_s + 0.5;
+
+                            // Profile velocity = configurable factor × sidereal servo rate.
+                            const double ha_gear = haGear();
+                            const double sidereal_servo_rate = 0.004178074 * ha_gear;
+                            const double pos_vel_factor = config_.mount_config.tracking_pos_velocity_factor > 0.0
+                                ? config_.mount_config.tracking_pos_velocity_factor : 1.0;
+
+                            // The lead must exceed pos_vel × update_interval, otherwise the
+                            // drive catches up to the fixed target and stalls between updates
+                            // (the stop-start sawtooth).  Use the MEASURED interval since the
+                            // previous update so a slow loop (heavier than the nominal
+                            // tracking_update_ms) automatically gets a large enough lead.
+                            const double nominal_update_s = POS_UPDATE_INTERVAL * config_.tracking_config.tracking_update_ms / 1000.0;
+                            double measured_update_s = nominal_update_s;
+                            if (last_pos_update_time_.time_since_epoch().count() != 0) {
+                                measured_update_s = std::chrono::duration<double>(now - last_pos_update_time_).count();
+                            }
+                            last_pos_update_time_ = now;
+                            const double configured_lead_s = config_.mount_config.tracking_pos_lead_seconds > 0.0
+                                ? config_.mount_config.tracking_pos_lead_seconds : 2.0;
+                            const double POS_LEAD_SECONDS = std::max(configured_lead_s, pos_vel_factor * measured_update_s + 0.5);
+
                             double ha_hours = lst - snap_target_ra + POS_LEAD_SECONDS * SIDEREAL_HOURS_PER_SEC;
                             while (ha_hours > 12.0) ha_hours -= 24.0;
                             while (ha_hours < -12.0) ha_hours += 24.0;
                             
-                            const double ha_gear = haGear();
                             const double dec_gear = decGear();
                             
                             // Keep the HA target in the same 24h window as the
@@ -2476,11 +2490,11 @@ public:
                                 continue;
                             }
                             
-                            // Use profile velocity 1.5× the sidereal servo rate so the
-                            // drive smoothly catches up to the lead target without
-                            // overshooting.  0.004178 °/s (telescope) × gear_ratio.
-                            const double sidereal_servo_rate = 0.004178074 * ha_gear;
-                            double pos_vel = sidereal_servo_rate * 1.5;
+                            // Profile velocity = configurable factor × sidereal servo rate
+                            // (sidereal_servo_rate / pos_vel_factor computed above with the
+                            // lead).  At 1.0× the drive tracks continuously instead of racing
+                            // ahead of the target and stalling (the sawtooth pattern).
+                            double pos_vel = sidereal_servo_rate * pos_vel_factor;
                             // During the initial "Slew & Track" slew the drive may
                             // still be far from the target. Keep the configured slew
                             // velocity until it is close; switching to the slow tracking
@@ -7404,6 +7418,10 @@ private:
     // updates.  Every N iterations the tracking loop recomputes the celestial
     // target and sends a setPositionTarget to advance the drive.
     size_t last_pos_update_iter_{0};
+    // Wall-clock time of the previous position-target update, used to measure
+    // the real update interval for the adaptive lead (a slow loop needs a
+    // larger lead so the drive never catches up and stalls).
+    std::chrono::steady_clock::time_point last_pos_update_time_{};
     double snap_pos_target_axis1_{0.0};
     double snap_pos_target_axis2_{0.0};
 

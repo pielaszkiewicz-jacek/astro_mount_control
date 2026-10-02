@@ -260,6 +260,8 @@ int main(int argc, char* argv[]) {
         mount_cfg.max_tracking_rate = cfg_mount.max_tracking_rate;
         mount_cfg.slew_acceleration = cfg_mount.slew_acceleration;
         mount_cfg.tracking_acceleration = cfg_mount.tracking_acceleration;
+        mount_cfg.tracking_pos_velocity_factor = cfg_mount.tracking_pos_velocity_factor;
+        mount_cfg.tracking_pos_lead_seconds = cfg_mount.tracking_pos_lead_seconds;
         mount_cfg.position_tolerance = cfg_mount.position_tolerance;
         mount_cfg.rate_tolerance = cfg_mount.rate_tolerance;
         mount_cfg.slew_verify_tolerance_servo_deg = cfg_mount.slew_verify_tolerance_servo_deg;

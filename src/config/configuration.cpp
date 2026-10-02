@@ -260,6 +260,8 @@ public:
         config.tracking_acceleration = mount.value("tracking_acceleration", 0.001);
         config.controller_poll_ms = mount.value("controller_poll_ms", 50);
         config.tracking_update_ms = mount.value("tracking_update_ms", 20);
+        config.tracking_pos_velocity_factor = mount.value("tracking_pos_velocity_factor", 1.0);
+        config.tracking_pos_lead_seconds = mount.value("tracking_pos_lead_seconds", 2.0);
         
         // Load environmental defaults from JSON
         config.default_temperature = mount.value("default_temperature", 15.0);
@@ -517,6 +519,10 @@ public:
         
         // Equatorial tracking mode
         mount["equatorial_tracking_velocity_mode"] = config.equatorial_tracking_velocity_mode;
+
+        // Position-mode tracking tuning
+        mount["tracking_pos_velocity_factor"] = config.tracking_pos_velocity_factor;
+        mount["tracking_pos_lead_seconds"] = config.tracking_pos_lead_seconds;
 
         // Mount orientation quaternion
         mount["orientation_quaternion"] = {config.orientation_quaternion[0],
@@ -876,6 +882,8 @@ private:
         
         // Equatorial tracking mode (default: position mode)
         mount_default.equatorial_tracking_velocity_mode = false;
+        mount_default.tracking_pos_velocity_factor = 1.0;
+        mount_default.tracking_pos_lead_seconds = 2.0;
         
         // Mount orientation quaternion (default unit quaternion for standard mounts)
         mount_default.orientation_quaternion = {0.0, 0.0, 0.0, 1.0};

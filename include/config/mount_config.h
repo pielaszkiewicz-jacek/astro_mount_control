@@ -144,6 +144,15 @@ struct MountConfig {
     // on some hardware, causing the velocity PID to misbehave).
     bool equatorial_tracking_velocity_mode{false};
 
+    // Position-mode tracking tuning:
+    //   tracking_pos_velocity_factor — profile velocity multiplier over the
+    //     sidereal servo rate (1.0 = exact sidereal, continuous motion;
+    //     1.5 = legacy catch-up behaviour producing stop-start motion).
+    //   tracking_pos_lead_seconds — fixed target lead [s] for position-mode
+    //     target updates.
+    double tracking_pos_velocity_factor{1.0};
+    double tracking_pos_lead_seconds{2.0};
+
     // Per-axis rotation direction inversion.
     // When true, the motor target position/velocity for this axis is negated,
     // reversing the physical rotation direction relative to the computed target.

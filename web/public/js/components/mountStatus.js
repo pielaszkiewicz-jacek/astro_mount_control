@@ -661,7 +661,7 @@ const MountStatusComponent = (() => {
         </div>
         <div class="stat-row">
           <span class="stat-label">Humidity</span>
-          <span class="stat-value">${formatNumber(state.humidity, 1)} %</span>
+          <span class="stat-value">${formatNumber((state.humidity || 0) * 100, 1)} %</span>
         </div>
       `;
     }

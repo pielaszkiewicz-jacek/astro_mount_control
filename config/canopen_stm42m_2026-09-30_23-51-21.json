@@ -447,8 +447,6 @@
         "soft_limit_warning_degrees": 10.0,
         "soft_limits_enabled": true,
         "tracking_acceleration": 0.001,
-        "tracking_pos_lead_seconds": 2.0,
-        "tracking_pos_velocity_factor": 1.0,
         "tracking_update_ms": 20,
         "type": "equatorial",
         "use_encoders": true

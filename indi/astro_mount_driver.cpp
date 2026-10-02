@@ -1482,7 +1482,9 @@ void AstroMountINDI::updateIndiProperties()
     // ============================================
     EnvironmentN[0].value = state.temperature();
     EnvironmentN[1].value = state.pressure();
-    EnvironmentN[2].value = state.humidity();
+    // The controller stores humidity as a fraction [0, 1], but the INDI
+    // EnvironmentNP property is defined as "Humidity (%)" in [0, 100].
+    EnvironmentN[2].value = state.humidity() * 100.0;
     IDSetNumber(&EnvironmentNP, nullptr);
 
     // ============================================
