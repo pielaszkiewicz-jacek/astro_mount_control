@@ -155,6 +155,12 @@ bool CanOpenInterface::switchMode(uint8_t node_id, uint8_t mode) {
     if (!writeMode(node_id, mode)) return false;
     if (node_id < 128) mode_cache_[node_id] = mode;
 
+    // Minimum velocity (6046h:01h): re-assert 0 rpm while the drive is still
+    // disabled.  The factory default (10 rpm = 60°/s servo) would otherwise
+    // clamp slow profile velocities (sidereal tracking ≈ 0.25 rpm) and make the
+    // axis run ahead of the commanded rate after a switch to Profile Velocity.
+    writeSDO4(node_id, kOdVelMinAmount, 0x01, 0);
+
     // Re-enable: shutdown -> switch on -> enable operation.
     writeControlWord(node_id, kCwShutdown);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));

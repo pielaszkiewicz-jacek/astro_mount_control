@@ -398,7 +398,7 @@
         "enable_refraction_correction": true,
         "encoder_resolution": 1000.0,
         "encoders_absolute": true,
-        "equatorial_tracking_velocity_mode": false,
+        "equatorial_tracking_velocity_mode": true,
         "invert_axis1": false,
         "invert_axis2": false,
         "latitude": 52.0,

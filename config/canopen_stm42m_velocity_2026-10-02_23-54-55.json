@@ -1,10 +1,11 @@
 {
     "_comment": "====================================================================",
-    "_comment1": "Configuration for NiMotion STM42M CANopen/CiA 402 servo drive",
-    "_comment2": "Usage: ./astro_mount_controller config/canopen_stm42m.json",
-    "_comment3": "STMP42SXI built-in 17-bit encoder: 131072 counts/turn (608Fh:01h = 131072) — no gearbox (6091h = 1:1)",
-    "_comment4": "Node IDs: axis 0 = 1, axis 1 = 2",
-    "_comment5": "====================================================================",
+    "_comment1": "Velocity-mode variant of canopen_stm42m.json (NiMotion STM42M/STMP42SXI, CiA 402)",
+    "_comment2": "Usage: ./astro_mount_controller config/canopen_stm42m_velocity.json",
+    "_comment3": "Equatorial tracking via Profile Velocity (60FFh) with 1 Hz drift correction.",
+    "_comment4": "WARNING: velocity mode on this drive previously caused a fast axis run-away;",
+    "_comment5": "verify the 60FFh velocity unit before using on a loaded mount.",
+    "_comment6": "====================================================================",
     "external_services": {
         "_comment": "Weather integration enabled so the mount controller receives live environmental conditions (temperature/pressure/humidity) and auto-park alerts from astro_weather_server on 50055.",
         "weather": {
@@ -347,13 +348,22 @@
             "dec_axis": {
                 "_comment": "enkoder 17-bit: 131072 counts/obrót (608Fh:01h=131072); counts/stopień = 131072/360",
                 "axis_stiffness": 0.6,
-                "backlash": 20.0,
+                "backlash": 6.3,
                 "backlash_temp_coeff": 0.015,
                 "calibration_table": [],
                 "calibration_temp": 20.0,
-                "cyclic_error_amplitude": 0.0,
+                "cyclic_error_amplitude": 12.8,
                 "cyclic_error_period": 360.0,
-                "cyclic_harmonics": [],
+                "cyclic_harmonics": [
+                    8.2,
+                    0.0,
+                    2.5,
+                    1.5708,
+                    0.8,
+                    3.1416,
+                    0.3,
+                    4.7124
+                ],
                 "encoder_counts_per_arcsec": 0.101136,
                 "encoder_quantization_error": 9.8877,
                 "encoder_resolution": 131072.0,
@@ -364,19 +374,28 @@
                 "torsional_compliance": 1.2e-06,
                 "velocity_counts_per_deg_s": 364.08888889,
                 "worm_ratio": 360.0,
-                "worm_teeth": 0,
-                "worm_wheel_teeth": 0
+                "worm_teeth": 1,
+                "worm_wheel_teeth": 180
             },
             "ha_axis": {
                 "_comment": "enkoder 17-bit: 131072 counts/obrót (608Fh:01h=131072); counts/stopień = 131072/360",
                 "axis_stiffness": 0.5,
-                "backlash": 20.0,
+                "backlash": 8.5,
                 "backlash_temp_coeff": 0.02,
                 "calibration_table": [],
                 "calibration_temp": 20.0,
-                "cyclic_error_amplitude": 0.0,
+                "cyclic_error_amplitude": 15.2,
                 "cyclic_error_period": 360.0,
-                "cyclic_harmonics": [],
+                "cyclic_harmonics": [
+                    10.5,
+                    0.0,
+                    3.2,
+                    1.5708,
+                    1.1,
+                    3.1416,
+                    0.5,
+                    4.7124
+                ],
                 "encoder_counts_per_arcsec": 0.101136,
                 "encoder_quantization_error": 9.8877,
                 "encoder_resolution": 131072.0,
@@ -387,8 +406,8 @@
                 "torsional_compliance": 1e-06,
                 "velocity_counts_per_deg_s": 364.08888889,
                 "worm_ratio": 360.0,
-                "worm_teeth": 0,
-                "worm_wheel_teeth": 0
+                "worm_teeth": 1,
+                "worm_wheel_teeth": 180
             }
         },
         "controller_poll_ms": 50,
@@ -429,9 +448,9 @@
         "soft_limit_warning_degrees": 10.0,
         "soft_limits_enabled": true,
         "tracking_acceleration": 10000.0,
-        "tracking_pos_lead_seconds": 3.0,
+        "tracking_pos_lead_seconds": 2.0,
         "tracking_pos_velocity_factor": 1.0,
-        "tracking_update_ms": 5,
+        "tracking_update_ms": 20,
         "type": "equatorial",
         "use_encoders": true
     },
