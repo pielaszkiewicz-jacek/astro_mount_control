@@ -278,6 +278,16 @@ int main(int argc, char* argv[]) {
         config::TrackingConfig track_cfg;
         track_cfg.controller_poll_ms = cfg_mount.controller_poll_ms;
         track_cfg.tracking_update_ms = cfg_mount.tracking_update_ms;
+        track_cfg.calc_update_hz = cfg_mount.calc_update_hz;
+        track_cfg.io_update_hz = cfg_mount.io_update_hz;
+        track_cfg.telemetry_decimation = cfg_mount.telemetry_decimation;
+        track_cfg.safety_check_decimation = cfg_mount.safety_check_decimation;
+        track_cfg.split_tracking_loop = cfg_mount.split_tracking_loop;
+        track_cfg.io_realtime = cfg_mount.io_realtime;
+        track_cfg.io_realtime_priority = cfg_mount.io_realtime_priority;
+        track_cfg.pdo_fast_path = cfg_mount.pdo_fast_path;
+        track_cfg.pdo_velocity_mapping = cfg_mount.pdo_velocity_mapping;
+        track_cfg.sdo_slow_control = cfg_mount.sdo_slow_control;
         // Guider parameters
         auto guider_cfg = config.getGuiderConfig();
         track_cfg.enable_guider = guider_cfg.enabled;

@@ -1,10 +1,14 @@
 # Propozycja: podział głównego wątku śledzenia na wątek komunikacyjny (I/O) i wątek obliczeniowy
 
-> **Status:** propozycja projektowa — bez zmian w kodzie.
+> **Status:** wdrożone w kodzie — pętla śledzenia działa jako calc
+> ([`work_thread_`](../../src/controllers/mount_controller.cpp:1794)) + dwa wątki
+> io (`io_writer_thread_`, `io_reader_thread_`), z migawkami
+> `TrackingCommand`/`TrackingTelemetry` i ścieżką PDO. Ten dokument pozostaje
+> opisem projektowym i uzasadnieniem decyzji.
 > Zakres: rozdzielenie pojedynczej pętli śledzenia
 > ([`startTracking()`](../../src/controllers/mount_controller.cpp:1144),
-> lambda wątku [`work_thread_`](../../src/controllers/mount_controller.cpp:1563))
-> na dwa współpracujące wątki o różnych częstotliwościach.
+> lambda wątku [`work_thread_`](../../src/controllers/mount_controller.cpp:1794))
+> na współpracujące wątki o różnych częstotliwościach.
 
 ## Spis treści
 
@@ -40,6 +44,18 @@
     - [14.2 Co dałoby przejście na tryb asynchroniczny (PDO)](#142-co-dałoby-przejście-na-tryb-asynchroniczny-pdo)
     - [14.3 Zastrzeżenia](#143-zastrzeżenia)
     - [14.4 Rekomendacja](#144-rekomendacja)
+  - [15. Realna częstotliwość wątku komunikacyjnego](#15-realna-częstotliwość-wątku-komunikacyjnego)
+    - [15.1 Co ogranicza częstotliwość dziś](#151-co-ogranicza-częstotliwość-dziś)
+    - [15.2 Przepustowość magistrali a realny limit](#152-przepustowość-magistrali-a-realny-limit)
+    - [15.3 Realistyczne poziomy docelowe i warunki](#153-realistyczne-poziomy-docelowe-i-warunki)
+    - [15.4 Wniosek](#154-wniosek)
+  - [16. Podział wątku komunikacyjnego na czytający i piszący](#16-podział-wątku-komunikacyjnego-na-czytający-i-piszący)
+    - [16.1 Transport już ma osobny wątek czytający](#161-transport-już-ma-osobny-wątek-czytający)
+    - [16.2 Dlaczego podział ma sens](#162-dlaczego-podział-ma-sens)
+    - [16.3 Proponowany układ wątków](#163-proponowany-układ-wątków)
+    - [16.4 Warunki wstępne i ryzyka](#164-warunki-wstępne-i-ryzyka)
+    - [16.5 Kiedy podział nie jest potrzebny](#165-kiedy-podział-nie-jest-potrzebny)
+    - [16.6 Wniosek](#166-wniosek)
 
 ---
 
@@ -191,7 +207,13 @@ Przejmuje wyłącznie kontakt ze sprzętem, bez astronomii. Komunikacja bazuje n
 - **Safety/sensory:** `hal_safety_monitor_->getStatus()`/`checkLimits()` i
   `readAll()` sensorów z decymacją, wyłącznie z cache/odrębnych wątków,
 - **Stop awaryjny:** natychmiastowy `stop()`/`emergencyStop()` napędów przy
-  błędzie bezpieczeństwa lub fladze `stop_motors` w migawce,
+  błędzie bezpieczeństwa lub fladze `stop_motors` w migawce. Flaga `stop_motors`
+  jest **publikowana** przez `publishStop()` — wywoływane przy wyjściu pętli
+  calc z błędem (`ERROR`), w `emergencyStop()` oraz w awaryjnym stopie z
+  gamepada. Wątek `io_writer_thread_` odczytuje migawkę **przed** sprawdzeniem
+  warunku wyjścia i zatrzaskuje stop (`stop_latched`), dzięki czemu nie
+  reemituje starej prędkości po zatrzymaniu napędów; flaga jest kasowana dopiero
+  przy następnym `startTracking()`,
 - **SDO (opcjonalna, slow control path):** przełączanie trybów, konfiguracja,
   homing, kasowanie błędów — rzadkie, mogą pozostać synchroniczne.
 
@@ -313,7 +335,7 @@ dotychczasowej ścieżki SDO (wariant kompatybilności).
 | Wyścig „calc pisze nowy cel, io czyta stary” | Migawka `TrackingCommand` + `seq`; io zawsze wysyła spójny, kompletny zestaw pól z jednej migawki |
 | Zakleszczenie `state_mutex_` ↔ `command/telemetry_mutex_` | Ścisła hierarchia: `state_mutex_` (stan autorytatywny) jest najwyżej; `command_mutex_`/`telemetry_mutex_` nigdy nie są trzymane razem z `state_mutex_` w przeciwnym kierunku. Calc: weź `state_mutex_` → policz → zwolnij → weź `command_mutex_` → zapisz migawkę. Io: nigdy nie bierze `state_mutex_` poza krótkim ustawieniem `ERROR` przy awarii |
 | `getStatus()`/`stop()` blokowane długimi obliczeniami | Obliczenia nie będą już trzymać `state_mutex_` przez cały blok CPU — calc może trzymać go krócej, a finalne pozycje lądują w migawce; dokładny zakres krytyczny ustalić podczas wdrożenia, zachowując niezmiennik „bez I/O pod `state_mutex_`” |
-| Io wyśle komendę po tym, jak calc ustawił `stop_motors` | `stop_motors` jest częścią migawki; io sprawdza go **przed** każdym `setVelocity`/`setPosition` w danej iteracji |
+| Io wyśle komendę po tym, jak calc ustawił `stop_motors` | `stop_motors` jest częścią migawki, publikowaną przez `publishStop()` (wyjście calc z `ERROR`, `emergencyStop()`, gamepad e-stop); io odczytuje migawkę **przed** sprawdzeniem warunku wyjścia, zatrzaskuje stop (`stop_latched`) i sprawdza go przed każdym `setVelocity`/`setPosition` w danej iteracji |
 | Podwójne sterowanie napędem (startTracking vs slew/park) | Bez zmian: `work_thread_` nadal obsługuje slew/park; wątek śledzenia (calc+io) i slew/park są wzajemnie wykluczone przez istniejący `thread_mutex_` + `joinWorkThreadLocked()` |
 | Utrata ostatniej pozycji przy zatrzymaniu | Io w każdej iteracji aktualizuje `TrackingTelemetry`; `refreshPositionsFromHAL()` po `stop()` nadal czyta fizyczną pozycję jak dotąd |
 
@@ -433,10 +455,13 @@ podniesienia `io_thread_` do wątku RT:
 
 ### 12.2 Wniosek
 
-Wariant bazowy **nie jest wątkiem czasu rzeczywistego** i dla 200 Hz nie musi
-być — realna deterministyka leży w napędzie i magistrali CAN. Podniesienie do
-`SCHED_FIFO` to osobny, opcjonalny krok, sensowny wyłącznie po rozdzieleniu
-wysyłki komend od blokujących odczytów statusowych.
+Wątek **piszący (wysyłający)** jest domyślnie promowany do `SCHED_FIFO`
+(`io_realtime=true`, priorytet `io_realtime_priority`, domyślnie 40) jako pierwsza
+instrukcja `trackingIoWriterLoop()`, wraz z best-effort `mlockall()`. Wynik
+promocji jest logowany (`INFO` przy sukcesie, `WARN` z powodem przy fallbacku do
+CFS — brak `CAP_SYS_NICE` / `RLIMIT_RTPRIO`). Wątek **czytający** (telemetria)
+pozostaje na CFS, żeby blokujące odczyty nie zagłodziły systemu. Progi i
+uzasadnienie: tabela w §12.1.
 
 ---
 
@@ -565,3 +590,170 @@ pozycyjnych** (największy zysk latencyjny, ale wymaga weryfikacji mapowania i
 nadzoru poprawności dostarczenia). SDO pozostaje jako opcjonalna, wolna ścieżka
 sterowania (`sdo_slow_control`), a `pdo_fast_path=false` daje wariant
 kompatybilności z obecnym zachowaniem.
+
+---
+
+## 15. Realna częstotliwość wątku komunikacyjnego
+
+**Osiągnięcie większej częstotliwości jest realne**, ale nie „za darmo".
+W obecnej architekturze tempo wyznaczają **blokujące transakcje SDO w gorącej
+ścieżce**, a nie magistrala. Po przejściu na PDO realistyczne jest 200–500 Hz;
+~1 kHz jest na granicy sensu, a powyżej nie ma uzasadnienia inżynierskiego.
+
+### 15.1 Co ogranicza częstotliwość dziś
+
+- Pętla śledzenia chodzi co [`tracking_update_ms = 20`](../../include/config/tracking_config.h:29)
+  (50 Hz), a pętla statusu HAL co [`pdo_update_rate`, domyślnie 100 ms](../../include/hal/hal_config.h:111).
+- Pojedyncze SDO ma timeout [`500 ms`](../../lib/canopen_wrapper/src/canopen.cpp:57)
+  i `kMaxRetries = 2` + backoff [`50 ms`](../../lib/canopen_wrapper/src/canopen.cpp:41)
+  → transakcja do milczącego węzła może blokować ~1,6 s.
+- `getDriveStatus()` **nadal wykonuje SDO** dla trybu `0x6061` i prędkości
+  `0x606C` ([`canopen_interface.cpp:328`](../../src/controllers/canopen_interface.cpp:328),
+  [`338`](../../src/controllers/canopen_interface.cpp:338)); z cache TPDO korzystają
+  tylko status i pozycja ([`313`](../../src/controllers/canopen_interface.cpp:313)).
+- Zapis `setPositionTarget()` to 4 SDO + 2 controlwordy + 10 ms sleep na jeden
+  trigger ([`canopen_interface.cpp:248`](../../src/controllers/canopen_interface.cpp:248)).
+
+Przy ~6 transakcjach SDO na iterację (3 odczyty × 2 osie) daje to ~3–18 ms —
+stąd obecne tempo oscyluje wokół 20–50 Hz.
+
+### 15.2 Przepustowość magistrali a realny limit
+
+Konfiguracja to [`1 Mbit/s`](../../include/hal/hal_config.h:74). Ramka standardowa
+z 8 B to ~111–135 bitów, czyli ~110–150 µs. Przy 2 osiach (RPDO2 na iterację):
+
+| Docelowa freq. io | Ramki Tx/s | Obciążenie magistrali | Ocena |
+|---|---|---|---|
+| 200 Hz | ~400 | ~5 % | bez problemu |
+| 500 Hz | ~1000 | ~13 % | realne |
+| 1000 Hz | ~2000 | ~26 % + TPDO | na granicy sensu |
+| 2000 Hz | ~4000 | >50 % | niepraktyczne |
+
+Magistrala **nie jest wąskim gardłem** — jest nim SDO oraz jitter harmonogramu.
+
+### 15.3 Realistyczne poziomy docelowe i warunki
+
+| Częstotliwość io | Realne? | Warunek |
+|---|---|---|
+| 100–200 Hz | tak, łatwo | podział wątków + PDO na odczytach |
+| 200–500 Hz | tak, realnie | pełny PDO (odczyt TPDO1 + zapis RPDO2), zdjęty clamp 10 ms, `nice` |
+| ~1 kHz | na granicy | bus ~25 %, wymaga `SCHED_FIFO`; sens tylko przy niższym timerze TPDO |
+| >1–2 kHz | niepraktyczne | brak zysku — napęd ma wewnętrzną pętlę kHz |
+
+Aby je osiągnąć, trzeba:
+
+1. usunąć SDO z gorącej ścieżki (mapowanie `0x606C`/trybu do TPDO1),
+2. zapisy realizować przez RPDO2 (`canopen_send_frame()`, fire-and-forget,
+   [`canopen.cpp:411`](../../lib/canopen_wrapper/src/canopen.cpp:411)),
+3. zmniejszyć event timer TPDO1 z [`10 ms`](../../src/controllers/canopen_interface.cpp:474),
+4. zdjąć clamp 10 ms w pętli statusu HAL
+   ([`canopen_hal.cpp:633`](../../src/hal/canopen_hal/canopen_hal.cpp:633)),
+5. dla <2 ms rozważyć `SCHED_FIFO`/`nice` (patrz §12).
+
+### 15.4 Wniosek
+
+Osiągnięcie większej częstotliwości **jest realne** — magistrala 1 Mbit/s ma
+duży zapas, a wysyłka PDO jest nieblokująca. Wąskim gardłem jest SDO w gorącej
+ścieżce i timer TPDO1 = 10 ms. **200–500 Hz jest realne przy obecnym sprzęcie;
+~1 kHz jest technicznie osiągalne, ale na granicy opłacalności.**
+
+---
+
+## 16. Podział wątku komunikacyjnego na czytający i piszący
+
+Podział ma sens **funkcjonalny** — „ticker komend (zapis)" vs „telemetria
+(odczyt)" — a nie jako drugi czytnik gniazda CAN, który już istnieje w warstwie
+transportowej.
+
+### 16.1 Transport już ma osobny wątek czytający
+
+Wrapper [`canopen_wrapper`](../../lib/canopen_wrapper/src/canopen.cpp:150) ma
+dedykowany `reader_loop`: tylko on wykonuje `::read()` na gnieździe, kieruje
+odpowiedzi SDO do slotów i wywołuje callbacki PDO/heartbeat/EMCY
+([`dispatch_frame`](../../lib/canopen_wrapper/src/canopen.cpp:92)). Zapisy to
+`::write()` pod krótkim `write_mutex`
+([`canopen.cpp:256`](../../lib/canopen_wrapper/src/canopen.cpp:256)) i nie dotykają
+odbioru. Rolę „czytnika aplikacyjnego" pełnią też istniejące pętle monitorujące:
+[`CanOpenHAL::monitorLoop()`](../../src/hal/canopen_hal/canopen_hal.cpp:615) i
+[`Mf7025v2Hal::monitorLoop()`](../../src/hal/mf7025v2_hal/mf7025v2_hal.cpp:805).
+Dodanie trzeciego czytnika gniazda byłoby duplikacją.
+
+### 16.2 Dlaczego podział ma sens
+
+| Aspekt | Zapis (komendy) | Odczyt (telemetria) |
+|---|---|---|
+| Częstotliwość | wysoka, stała: 200–500 Hz | niska: 20–100 Hz |
+| Charakter | fire-and-forget (RPDO2), nieblokujący | może blokować (SDO, `readAll()`) |
+| Priorytet | wysoki / `SCHED_FIFO` | normalny |
+| Skutek opóźnienia | widoczny w płynności ruchu | tylko starsza telemetria |
+
+Jedna pętla o jednym okresie zmusza do kompromisu i przenosi opóźnienia odczytu
+na wysyłkę komend — dokładnie ryzyko opisane w §12.1 („blokujący socket w wątku
+`SCHED_FIFO` może zagłodzić system").
+
+### 16.3 Proponowany układ wątków
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│                     MountController::Impl                      │
+│                                                                │
+│  ┌──────────────┐   TrackingCommand    ┌──────────────────────┐ │
+│  │ calc_thread_ │─────────────────────▶│  io_writer_thread_   │ │
+│  │  20–50 Hz    │   (migawka, seq)     │  (ticker komend)     │ │
+│  └──────────────┘                      │  200–500 Hz, HI-prio │ │
+│         ▲                              │  RPDO2 fire-and-fw   │ │
+│         │ TrackingTelemetry            └──────────┬───────────┘ │
+│         │ (migawka)                              │             │
+│  ┌──────┴────────────┐                           ▼             │
+│  │ io_reader_thread_ │◀── cache PDO / status ────────────────  │
+│  │ 20–100 Hz, normal │    (pdo_cache_, last_status_, sensory)  │
+│  └───────────────────┘                           ▼             │
+│                                            SocketCAN 1 Mbit/s  │
+│  ┌────────────────────────────────────────────────────────────┐│
+│  │ canopen_wrapper: reader_loop (JUŻ ISTNIEJE) + write_mutex   ││
+│  └────────────────────────────────────────────────────────────┘│
+└───────────────────────────────────────────────────────────────┘
+```
+
+- **`io_writer_thread_`** — minimalny, deterministyczny ticker: tylko
+  `canopen_send_frame()` (RPDO2), sprawdzenie `stop_motors`, bez odczytów i SDO.
+- **`io_reader_thread_`** — telemetria/bezpieczeństwo/sensory; może blokować,
+  publikuje `TrackingTelemetry`.
+- **`reader_loop`** wrappera — bez zmian.
+
+### 16.4 Warunki wstępne i ryzyka
+
+1. **Wyścig danych na `pdo_cache_` już istnieje.** `PdoCache pdo_cache_[128]`
+   ([`canopen_interface.h:77`](../../include/controllers/canopen_interface.h:77))
+   jest zapisywana przez `pdoCallback()` w wątku czytnika wrappera
+   ([`canopen_interface.cpp:446`](../../src/controllers/canopen_interface.cpp:446))
+   i czytana przez `getDriveStatus()` w wątku monitora HAL
+   ([`canopen_interface.cpp:313`](../../src/controllers/canopen_interface.cpp:313))
+   **bez synchronizacji**. Przed podziałem trzeba ją uczynić atomową lub
+   podwójnie buforowaną.
+2. **Usunąć SDO z gorącej ścieżki odczytu** (patrz §15.1) — inaczej „reader"
+   może blokować do ~1,6 s.
+3. **Jedna rola — jeden wątek.** Nie tworzyć nowego czytnika gniazda;
+   `io_reader_thread_` konsumuje istniejące cache (`pdo_cache_`, `last_status_`,
+   `readAll()`).
+
+### 16.5 Kiedy podział nie jest potrzebny
+
+W docelowym wariancie PDO-only odczyt to kopia cache (nanosekundy, bez
+blokady), więc jeden `io_thread_` łączący oba zadania wystarcza. Podział daje
+wtedy głównie izolację jitteru, rozdział priorytetów i prostszy watchdog
+wysyłki.
+
+### 16.6 Wniosek
+
+**Tak — podział ma sens jako „ticker komend (piszący)" + „telemetria
+(czytający)", a nie drugi czytnik gniazda CAN.** Zalecana kolejność:
+
+1. naprawić wyścig na [`pdo_cache_`](../../include/controllers/canopen_interface.h:77),
+2. usunąć SDO z `getDriveStatus()` (mapowanie `0x606C`/trybu do TPDO1),
+3. wprowadzić `io_writer_thread_` (wysoki priorytet, RPDO2) oraz
+   `io_reader_thread_` (normalny priorytet, cache/sensory),
+4. dopiero potem ewentualnie wzmocnić `writer` do `SCHED_FIFO`.
+
+To rozwinięcie §12.1, które wymienia „Rozdzielenie ticker od I/O" jako krok
+opcjonalny — przy obecnym SDO w ścieżce odczytu jest to krok **zalecany**.

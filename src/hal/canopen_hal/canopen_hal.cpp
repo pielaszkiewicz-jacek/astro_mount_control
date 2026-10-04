@@ -6,6 +6,7 @@
 
 #include "hal/canopen_hal/canopen_hal.h"
 #include "hal/sensor_interface.h"
+#include "utils/realtime.h"
 
 #include <algorithm>
 #include <chrono>
@@ -62,8 +63,8 @@ bool CanOpenHAL::CanOpenMotor::setPosition(double position_deg, double velocity_
     const int32_t target = static_cast<int32_t>(position_deg * cpd);
     const uint32_t vel = degPerSecToCounts(velocity_deg_s, cpd);
     const uint32_t accel = degPerSecToCounts(acceleration_deg_s2, cpd);
-    const bool ok = iface->setPositionTarget(static_cast<uint8_t>(axis_id_),
-                                              target, vel, accel);
+    const bool ok = iface->setPositionTargetPdo(static_cast<uint8_t>(axis_id_),
+                                                target, vel, accel);
     if (ok) moving_ = true;
     return ok;
 }
@@ -90,8 +91,8 @@ bool CanOpenHAL::CanOpenMotor::setVelocity(double velocity_deg_s, double acceler
     const double cpd = config_.encoder_counts_per_degree;
     const int32_t vel = static_cast<int32_t>(velocity_deg_s * cpd);
     const uint32_t accel = degPerSecToCounts(acceleration_deg_s2, cpd);
-    const bool ok = iface->setVelocityTarget(static_cast<uint8_t>(axis_id_),
-                                             vel, accel);
+    const bool ok = iface->setVelocityTargetPdo(static_cast<uint8_t>(axis_id_),
+                                                vel, accel);
     if (ok) moving_ = true;
     return ok;
 }
@@ -477,6 +478,8 @@ bool CanOpenHAL::initialize(const HALConfig& config) {
     iface_config.pdo_update_rate = config.canopen.pdo_update_rate;
     iface_config.accel_mode = config.canopen.accel_mode;
     iface_config.pdo_config_enabled = config.canopen.pdo_config_enabled;
+    iface_config.pdo_fast_path = config.canopen.pdo_fast_path;
+    iface_config.pdo_velocity_mapping = config.canopen.pdo_velocity_mapping;
     iface_config.position_rewind_enabled = config.canopen.position_rewind_enabled;
     iface_config.position_rewind_interval_seconds = config.canopen.position_rewind_interval_seconds;
     iface_config.position_rewind_threshold_percent = config.canopen.position_rewind_threshold_percent;
@@ -510,7 +513,8 @@ bool CanOpenHAL::initialize(const HALConfig& config) {
                                            static_cast<uint16_t>(config.canopen.heartbeat_period_ms));
         }
         // Configure PDO mapping (TPDO1: 6041h+6064h, RPDO2: 6040h+607Ah).
-        if (config.canopen.pdo_config_enabled) {
+        // Enabled by either the legacy flag or the new PDO fast path.
+        if (config.canopen.pdo_config_enabled || config.canopen.pdo_fast_path) {
             can_iface_->configurePdo(static_cast<uint8_t>(axis_id), true);
         }
     }
@@ -568,6 +572,11 @@ bool CanOpenHAL::start() {
     if (running_) return true;
     running_ = true;
     monitor_thread_ = std::thread(&CanOpenHAL::monitorLoop, this);
+    // Best-effort realtime promotion: keeps the TPDO1 cache fresh with low
+    // jitter so the tracking io thread reads timely telemetry.
+    if (config_.canopen.io_realtime) {
+        utils::setThreadRealtime(monitor_thread_, config_.canopen.io_realtime_priority);
+    }
     return true;
 }
 
@@ -616,21 +625,32 @@ void CanOpenHAL::monitorLoop() {
     while (running_) {
         if (can_iface_) can_iface_->pollEvents();
 
+        const bool fast = can_iface_ && can_iface_->pdoFastPathEnabled();
         for (int axis = 0; axis < 2; ++axis) {
             if (!motors_[axis]) continue;
             controllers::CanOpenStatus st;
-            if (can_iface_ && can_iface_->getDriveStatus(static_cast<uint8_t>(axis), st)) {
+            bool ok = false;
+            if (can_iface_) {
+                // Fast path: publish the TPDO1 cache with no CAN exchange at all.
+                ok = fast ? can_iface_->getCachedDriveStatus(static_cast<uint8_t>(axis), st)
+                          : can_iface_->getDriveStatus(static_cast<uint8_t>(axis), st);
+            }
+            if (ok) {
                 motors_[axis]->updateStatus(st);
                 {
                     std::lock_guard<std::mutex> lock(status_mutex_);
                     last_status_[axis] = st;
                 }
-            } else {
+            } else if (!fast) {
+                // Only report a failure when an actual SDO read was attempted;
+                // with the fast path a merely-not-yet-fresh cache is not an error.
                 std::lock_guard<std::mutex> lock(mutex_);
                 last_error_ = "CANopen status read failed for axis " + std::to_string(axis);
             }
         }
-        const uint32_t interval = std::max<uint32_t>(10, config_.canopen.pdo_update_rate);
+        // 1 ms floor (pdo_update_rate is in ms): the cache-only fast path can be
+        // polled far faster than the previous 10 ms clamp permitted.
+        const uint32_t interval = std::max<uint32_t>(1, config_.canopen.pdo_update_rate);
         std::this_thread::sleep_for(std::chrono::milliseconds(interval));
     }
 }

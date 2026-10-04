@@ -333,41 +333,51 @@ std::thread([this]() {
 
 ### 3.4 `startTracking()` — wątek śledzenia
 
-**Plik**: `src/controllers/mount_controller.cpp`, linie ~255-332
+**Plik**: `src/controllers/mount_controller.cpp` (metody `startTracking`,
+`trackingIoWriterLoop`, `trackingIoReaderLoop`)
 
-**Kod**:
-```cpp
-std::thread([this, axis1_tracking_rate, axis2_tracking_rate]() {
-    while (tracking_active_) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
-        std::lock_guard<std::mutex> lock(*state_mutex_);
-        
-        if (!tracking_active_ || state_ != MountStatus::State::TRACKING) break;
-        
-        // Update positions based on tracking rate
-        double dt = 0.1;
-        axis1_position_ += axis1_rate_ * dt;
-        axis2_position_ += axis2_rate_ * dt;
-        
-        // Update CANopen velocity targets
-        if (canopen_interface_ && state_ == MountStatus::State::TRACKING) {
-            canopen_interface_->setVelocityTarget(0, axis1_rate_, config_.tracking_acceleration);
-            canopen_interface_->setVelocityTarget(1, axis2_rate_, config_.tracking_acceleration);
-        }
-    }
-}).detach();
+Od wdrożenia podziału pętli śledzenia
+([`propozycja_podzialu_watku_sledzenia.md`](propozycja_podzialu_watku_sledzenia.md))
+śledzenie realizują **trzy** współpracujące wątki zamiast jednego:
+
+| Wątek | Rola | Częstotliwość | Synchronizacja |
+|------|------|--------------|----------------|
+| `work_thread_` (calc) | obliczenia astronomiczne (nutacja, TPOINT, refrakcja, filtr Kalmana, HA/ALT-AZ), publikuje `TrackingCommand` | `calc_update_hz` (domyślnie 50 Hz) | `state_mutex_`, `rate_mutex_`, `env_mutex_`, `command_mutex_` (krótko) |
+| `io_writer_thread_` | ticker komend — wysyła `TrackingCommand` do napędów (RPDO2 w wariancie szybkim), sprawdza `stop_motors` | `io_update_hz` (domyślnie 200 Hz), best-effort `SCHED_FIFO` | `command_mutex_` (krótko) |
+| `io_reader_thread_` | telemetria — pozycje/prędkości z cache HAL, safety monitor i sensory z decymacją, publikuje `TrackingTelemetry` | `io_update_hz`, normalny priorytet | `telemetry_mutex_`, `env_mutex_` |
+
+Przepływ danych:
+
+```text
+calc (work_thread_) --TrackingCommand--> io_writer_thread_ --RPDO2--> napędy
+        ^                                                              |
+        +---------------- TrackingTelemetry <-- io_reader_thread_ <----+  (cache TPDO1 / SDO z decymacją)
 ```
+
+- `TrackingCommand` i `TrackingTelemetry` to małe, kopiowalne migawki chronione
+  dedykowanymi `shared_mutex` (`command_mutex_`, `telemetry_mutex_`); blokady
+  obejmują wyłącznie skopiowanie/wstawienie migawki, nigdy operacje I/O ani
+  obliczenia.
+- Przy `split_tracking_loop=false` działa dawna pojedyncza pętla (wariant
+  kompatybilności wstecznej): I/O bezpieczeństwa i sensorów wykonuje się wprost
+  w `work_thread_`.
+- Gdy `pdo_fast_path=true` (domyślnie), odczyt telemetrii korzysta z cache
+  TPDO1 (`getCachedDriveStatus()`), a zapisy pozycji/prędkości idą przez RPDO2
+  jako `canopen_send_frame()` — bez blokującego SDO w gorącej ścieżce. SDO
+  pozostaje jako wolna ścieżka (`sdo_slow_control`) dla przełączania trybów,
+  konfiguracji, homingu i kasowania błędów.
 
 | Właściwość | Wartość |
 |-----------|---------|
-| **Typ** | `std::thread` z `detach()` |
-| **Czas życia** | Od `startTracking()` do `stop()` |
-| **Częstotliwość** | 100 ms (10 Hz) |
-| **Synchronizacja** | `std::lock_guard<std::mutex> lock(*state_mutex_)` |
-| **Flaga stop** | `tracking_active_` + `state_` |
+| **Typ** | `std::thread` przechowywane w `work_thread_`, `io_writer_thread_`, `io_reader_thread_` (join przez `joinWorkThreadLocked()`) |
+| **Czas życia** | Od `startTracking()` do `stop()` / `joinWorkThread()` |
+| **Częstotliwość** | calc `calc_update_hz` (50 Hz), io `io_update_hz` (200 Hz) |
+| **Synchronizacja** | `state_mutex_` + `command_mutex_`/`telemetry_mutex_` (hierarchia: `state_mutex_` najwyżej) |
+| **Flaga stop** | `tracking_active_` + `io_active_` + `state_` |
 
-**Uwaga**: W przeciwieństwie do starego kodu — `startTracking()` **TWORZY** wątek, który cyklicznie aktualizuje pozycję i utrzymuje prędkość śledzenia przez CANopen.
+**Uwaga**: `startTracking()` tworzy obecnie calc + io writer + io reader; oba
+wątki io są łączone (join) przez `joinWorkThreadLocked()` przed zniszczeniem
+`hal_interface_`, co eliminuje use-after-free.
 
 ---
 
@@ -1463,7 +1473,9 @@ valgrind --tool=helgrind ./build/bin/astro_mount 2> helgrind_report.txt
 | 1 | `slewToEquatorial` monitoring | `mount_controller.cpp:448` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (join przez `joinWorkThreadLocked()`) |
 | 2 | `slewToHorizontal` monitoring | `mount_controller.cpp` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (jw.) |
 | 3 | `park` monitoring | `mount_controller.cpp` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (jw.) |
-| 4 | `startTracking` update | `mount_controller.cpp` | 10 Hz | ✅ `state_mutex_` + `thread_mutex_` | `work_thread_` (jw.) |
+| 4 | `startTracking` calc | `mount_controller.cpp` | 50 Hz (`calc_update_hz`) | ✅ `state_mutex_` + `command_mutex_` | `work_thread_` (jw.) |
+| 4a | `startTracking` io writer | `mount_controller.cpp` (`trackingIoWriterLoop`) | 200 Hz (`io_update_hz`) | ✅ `command_mutex_` | `io_writer_thread_` (jw.) |
+| 4b | `startTracking` io reader | `mount_controller.cpp` (`trackingIoReaderLoop`) | 200 Hz (`io_update_hz`) | ✅ `telemetry_mutex_` + `env_mutex_` | `io_reader_thread_` (jw.) |
 | 5 | `CanOpenInterface SYNC` | `canopen_interface.cpp:522` | 10 Hz | ✅ `mutex_` | przechowywany `thread` |
 | 6 | `simulateMovement` | `canopen_interface.cpp:536` | 100 Hz | ✅ `mutex_` | `detach()` |
 | 7 | `CanOpenMotor controlLoop` | `canopen_hal.cpp` | 100 Hz | ⚠️ atomic | `join()` |

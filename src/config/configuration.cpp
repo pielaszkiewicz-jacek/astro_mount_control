@@ -260,6 +260,16 @@ public:
         config.tracking_acceleration = mount.value("tracking_acceleration", 0.001);
         config.controller_poll_ms = mount.value("controller_poll_ms", 50);
         config.tracking_update_ms = mount.value("tracking_update_ms", 20);
+        config.calc_update_hz = mount.value("calc_update_hz", 50);
+        config.io_update_hz = mount.value("io_update_hz", 200);
+        config.telemetry_decimation = mount.value("telemetry_decimation", 5);
+        config.safety_check_decimation = mount.value("safety_check_decimation", 1);
+        config.split_tracking_loop = mount.value("split_tracking_loop", true);
+        config.io_realtime = mount.value("io_realtime", true);
+        config.io_realtime_priority = mount.value("io_realtime_priority", 40);
+        config.pdo_fast_path = mount.value("pdo_fast_path", true);
+        config.pdo_velocity_mapping = mount.value("pdo_velocity_mapping", false);
+        config.sdo_slow_control = mount.value("sdo_slow_control", true);
         config.tracking_pos_velocity_factor = mount.value("tracking_pos_velocity_factor", 1.0);
         config.tracking_pos_lead_seconds = mount.value("tracking_pos_lead_seconds", 2.0);
         
@@ -509,6 +519,16 @@ public:
         // Loop timing
         mount["controller_poll_ms"] = config.controller_poll_ms;
         mount["tracking_update_ms"] = config.tracking_update_ms;
+        mount["calc_update_hz"] = config.calc_update_hz;
+        mount["io_update_hz"] = config.io_update_hz;
+        mount["telemetry_decimation"] = config.telemetry_decimation;
+        mount["safety_check_decimation"] = config.safety_check_decimation;
+        mount["split_tracking_loop"] = config.split_tracking_loop;
+        mount["io_realtime"] = config.io_realtime;
+        mount["io_realtime_priority"] = config.io_realtime_priority;
+        mount["pdo_fast_path"] = config.pdo_fast_path;
+        mount["pdo_velocity_mapping"] = config.pdo_velocity_mapping;
+        mount["sdo_slow_control"] = config.sdo_slow_control;
         
         // Park position
         mount["park_position_axis1"] = config.park_position_axis1;
@@ -872,6 +892,16 @@ private:
         // Loop timing
         mount_default.controller_poll_ms = 50;
         mount_default.tracking_update_ms = 20;
+        mount_default.calc_update_hz = 50;
+        mount_default.io_update_hz = 200;
+        mount_default.telemetry_decimation = 5;
+        mount_default.safety_check_decimation = 1;
+        mount_default.split_tracking_loop = true;
+        mount_default.io_realtime = true;
+        mount_default.io_realtime_priority = 40;
+        mount_default.pdo_fast_path = true;
+        mount_default.pdo_velocity_mapping = false;
+        mount_default.sdo_slow_control = true;
         
         // Park position
         mount_default.park_position_axis1 = 0.0;

@@ -27,6 +27,19 @@ struct TrackingConfig {
     // Loop timing
     int controller_poll_ms{50};     // Main loop poll interval (ms), default 20Hz
     int tracking_update_ms{20};     // Tracking update interval (ms), default 50Hz
+
+    // ── Split tracking loop + PDO fast path ───────────────────────────────
+    // See docs/pl/propozycja_podzialu_watku_sledzenia.md (§3–§10).
+    int  calc_update_hz{50};         // computational thread frequency [Hz]
+    int  io_update_hz{200};          // communication (command ticker) frequency [Hz]
+    int  telemetry_decimation{5};    // io iterations between sensor reads
+    int  safety_check_decimation{1}; // io iterations between safety-monitor reads
+    bool split_tracking_loop{true};  // true: calc + io threads; false: single legacy loop
+    bool io_realtime{true};          // promote io thread to SCHED_FIFO (best effort)
+    int  io_realtime_priority{40};   // SCHED_FIFO priority for the io thread
+    bool pdo_fast_path{true};        // use TPDO1 reads + RPDO2 writes on the hot path
+    bool pdo_velocity_mapping{false};// map RPDO2 to 6040h + 60FFh (target velocity)
+    bool sdo_slow_control{true};     // keep SDO for mode switch / config / homing
     
     // Guider configuration
     bool enable_guider{false};

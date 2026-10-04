@@ -40,6 +40,8 @@ public:
         uint32_t    pdo_update_rate{100};
         std::string accel_mode{"rate"};        // "rate" (6083=acceleration) | "time" (ramp time)
         bool        pdo_config_enabled{false};
+        bool        pdo_fast_path{false};        // TPDO1 reads + RPDO2 writes on the hot path
+        bool        pdo_velocity_mapping{false}; // map RPDO2 to 6040h + 60FFh (target velocity)
         bool        position_rewind_enabled{true};
         double      position_rewind_interval_seconds{3600.0};
         double      position_rewind_threshold_percent{80.0};
@@ -107,6 +109,34 @@ public:
     // Drain pending heartbeat/EMCY/PDO frames into the callbacks (non-blocking).
     // Returns true if at least one frame was processed.
     virtual bool pollEvents() { return false; }
+
+    // ── PDO fast path (asynchronous, non-blocking) ─────────────────────────
+    // True when TPDO1 reads and RPDO2 writes are configured so the hot path can
+    // avoid blocking SDO round-trips entirely.
+    virtual bool pdoFastPathEnabled() const { return false; }
+
+    // Position/velocity command through RPDO2 (controlword + target). Sends raw
+    // CAN frames (fire-and-forget). Falls back to synchronous SDO when the fast
+    // path is unavailable.
+    virtual bool setPositionTargetPdo(uint8_t axis_id, int32_t position,
+                                      uint32_t velocity, uint32_t acceleration) {
+        return setPositionTarget(axis_id, position, velocity, acceleration);
+    }
+    virtual bool setVelocityTargetPdo(uint8_t axis_id, int32_t velocity,
+                                      uint32_t acceleration) {
+        return setVelocityTarget(axis_id, velocity, acceleration);
+    }
+
+    // Cache-only read (no CAN transaction). Returns false when no fresh PDO
+    // telemetry is available; callers should then fall back to getDriveStatus().
+    virtual bool getCachedDriveStatus(uint8_t axis_id, CanOpenStatus& status) {
+        return getDriveStatus(axis_id, status);
+    }
+
+    // Remap RPDO2 to controlword + target velocity (60FFh) for velocity mode.
+    virtual bool configurePdoVelocityMapping(uint8_t axis_id, bool enable) {
+        (void)axis_id; (void)enable; return false;
+    }
 };
 
 } // namespace controllers

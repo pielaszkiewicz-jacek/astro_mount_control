@@ -310,18 +310,42 @@ bool CanOpenInterface::getDriveStatus(uint8_t axis_id, CanOpenStatus& status) {
     int32_t cached_pos = 0;
     bool have_cached = false;
 
-    if (node < 128 && pdo_cache_[node].valid) {
-        sw = pdo_cache_[node].status_word;
-        cached_pos = pdo_cache_[node].position;
-        have_cached = true;
-    } else if (!readStatusWord(node, sw)) {
-        return false;
+    if (node < 128) {
+        std::lock_guard<std::mutex> plock(pdo_mutex_);
+        if (pdo_cache_[node].valid) {
+            sw = pdo_cache_[node].status_word;
+            cached_pos = pdo_cache_[node].position;
+            have_cached = true;
+        }
+    }
+
+    // PDO fast path (see docs/pl/propozycja_podzialu_watku_sledzenia.md §15.3/
+    // §16.4): when TPDO1 telemetry is configured, mode (0x6061) and velocity
+    // (0x606C) are deliberately NOT read through blocking SDO — an unresponsive
+    // node cannot stall the caller for up to ~1.6 s.  The whole status then
+    // comes from the TPDO1 cache.
+    const bool fast = pdoFastPathEnabled();
+    if (!have_cached) {
+        // No fresh PDO telemetry yet: never block on SDO in fast mode, but keep
+        // the legacy synchronous status read when the fast path is disabled.
+        if (fast || !readStatusWord(node, sw)) {
+            return false;
+        }
     }
 
     status.status_word = sw;
     status.enabled = ((sw & 0x6F) == 0x27);
     status.fault = (sw & kSwFault) != 0;
     status.target_reached = (sw & kSwTargetReached) != 0;
+
+    if (fast) {
+        // Cache-only: position from TPDO1; mode/velocity intentionally omitted
+        // (they are not carried by TPDO1 and must not trigger an SDO round-trip).
+        status.actual_position = cached_pos;
+        status.position_valid = true;
+        status.moving = !status.target_reached && status.enabled;
+        return true;
+    }
 
     uint32_t v = 0;
     uint8_t size = 0;
@@ -443,13 +467,20 @@ void CanOpenInterface::pdoCallback(uint32_t cob_id, const uint8_t* data,
     if (cob_id < 0x180 || cob_id > 0x1FF || dlc < 6) return;
     const uint8_t node = static_cast<uint8_t>(cob_id - 0x180);
     if (node >= 128) return;
-    self->pdo_cache_[node].status_word =
-        static_cast<uint16_t>(data[0] | (data[1] << 8));
-    self->pdo_cache_[node].position =
+
+    const uint16_t sw = static_cast<uint16_t>(data[0] | (data[1] << 8));
+    const int32_t pos =
         static_cast<int32_t>(data[2] | (data[3] << 8) |
                              (static_cast<uint32_t>(data[4]) << 16) |
                              (static_cast<uint32_t>(data[5]) << 24));
-    self->pdo_cache_[node].valid = true;
+    {
+        std::lock_guard<std::mutex> lock(self->pdo_mutex_);
+        self->pdo_cache_[node].status_word = sw;
+        self->pdo_cache_[node].position = pos;
+        self->pdo_cache_[node].valid = true;
+    }
+    // Publish freshness outside the lock (release pairs with acquire readers).
+    self->pdo_seq_[node].fetch_add(1, std::memory_order_release);
 }
 
 bool CanOpenInterface::configurePdo(uint8_t axis_id, bool enable) {
@@ -483,11 +514,149 @@ bool CanOpenInterface::configurePdo(uint8_t axis_id, bool enable) {
     canopen_sdo_write_expedited(&ctx_, node, 0x1401, 0x02, 255, 1);
 
     canopen_set_pdo_callback(&ctx_, &CanOpenInterface::pdoCallback, this);
+
+    if (node < 128) {
+        pdo_velocity_mapping_[node].store(false);
+        pdo_configured_[node].store(true);
+        last_profile_velocity_[node].store(0);
+        last_profile_accel_[node].store(0);
+    }
+    // Optional: map RPDO2 for velocity mode (6040h + 60FFh).
+    if (config_.pdo_velocity_mapping) {
+        configurePdoVelocityMapping(axis_id, true);
+    }
     return true;
 }
 
 bool CanOpenInterface::pollEvents() {
     return canopen_poll_events(&ctx_, 16) > 0;
+}
+
+bool CanOpenInterface::pdoFastPathEnabled() const {
+    if (!config_.pdo_fast_path) return false;
+    for (int a = 0; a < 2; ++a) {
+        const uint8_t node = nodeIdForAxis(static_cast<uint8_t>(a));
+        if (node < 128 && !pdo_configured_[node].load(std::memory_order_acquire)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool CanOpenInterface::getCachedDriveStatus(uint8_t axis_id, CanOpenStatus& status) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    if (node >= 128) return false;
+
+    uint16_t sw = 0;
+    int32_t pos = 0;
+    bool valid = false;
+    {
+        std::lock_guard<std::mutex> lock(pdo_mutex_);
+        valid = pdo_cache_[node].valid;
+        sw = pdo_cache_[node].status_word;
+        pos = pdo_cache_[node].position;
+    }
+    if (!valid) return false;
+
+    status = CanOpenStatus{};
+    status.status_word = sw;
+    status.enabled = ((sw & 0x6F) == 0x27);
+    status.fault = (sw & kSwFault) != 0;
+    status.target_reached = (sw & kSwTargetReached) != 0;
+    status.actual_position = pos;
+    status.position_valid = true;
+    status.moving = !status.target_reached && status.enabled;
+    return true;
+}
+
+namespace {
+inline void packControlAndTarget(uint8_t* out, uint16_t cw, int32_t target) {
+    out[0] = static_cast<uint8_t>(cw & 0xFF);
+    out[1] = static_cast<uint8_t>((cw >> 8) & 0xFF);
+    const uint32_t v = static_cast<uint32_t>(target);
+    out[2] = static_cast<uint8_t>(v & 0xFF);
+    out[3] = static_cast<uint8_t>((v >> 8) & 0xFF);
+    out[4] = static_cast<uint8_t>((v >> 16) & 0xFF);
+    out[5] = static_cast<uint8_t>((v >> 24) & 0xFF);
+}
+} // namespace
+
+bool CanOpenInterface::setPositionTargetPdo(uint8_t axis_id, int32_t position,
+                                            uint32_t velocity, uint32_t acceleration) {
+    if (!pdoFastPathEnabled()) {
+        return setPositionTarget(axis_id, position, velocity, acceleration);
+    }
+    const uint8_t node = nodeIdForAxis(axis_id);
+
+    // If RPDO2 is currently mapped for velocity mode, switch back (slow path).
+    if (pdo_velocity_mapping_[node].load(std::memory_order_acquire)) {
+        if (!configurePdoVelocityMapping(axis_id, false)) return false;
+    }
+    if (!switchMode(node, kModeProfilePosition)) return false;
+
+    // Profile velocity / acceleration change rarely; configure via SDO only when
+    // they actually differ (slow control path), never per cycle.
+    const uint32_t accel = accelToRate(acceleration, config_.accel_mode, velocity);
+    if (last_profile_velocity_[node].load() != velocity ||
+        last_profile_accel_[node].load() != accel) {
+        if (!writeSDO4(node, kOdProfileVelocity, 0x00, velocity)) return false;
+        if (!writeSDO4(node, kOdProfileAccel, 0x00, accel)) return false;
+        if (!writeSDO4(node, kOdProfileDecel, 0x00, accel)) return false;
+        last_profile_velocity_[node].store(velocity);
+        last_profile_accel_[node].store(accel);
+    }
+
+    // RPDO2 payload = controlword (6040h) + target position (607Ah). Two frames:
+    // bit4 = 0 then bit4 = 1 (rising "new setpoint" edge). Fire-and-forget.
+    uint8_t f1[6];
+    uint8_t f2[6];
+    packControlAndTarget(f1, kCwEnableOp, position);
+    packControlAndTarget(f2, kCwNewSetpoint, position);
+    const uint32_t cob = 0x300u + node;
+    if (!canopen_send_frame(&ctx_, cob, f1, 6)) return false;
+    return canopen_send_frame(&ctx_, cob, f2, 6);
+}
+
+bool CanOpenInterface::setVelocityTargetPdo(uint8_t axis_id, int32_t velocity,
+                                            uint32_t acceleration) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    if (!pdoFastPathEnabled() ||
+        !pdo_velocity_mapping_[node].load(std::memory_order_acquire)) {
+        return setVelocityTarget(axis_id, velocity, acceleration);
+    }
+    if (!switchMode(node, kModeProfileVelocity)) return false;
+
+    const uint32_t accel =
+        accelToRate(acceleration, config_.accel_mode,
+                    static_cast<uint32_t>(velocity < 0 ? -velocity : velocity));
+    if (last_profile_accel_[node].load() != accel) {
+        if (!writeSDO4(node, kOdProfileAccel, 0x00, accel)) return false;
+        if (!writeSDO4(node, kOdProfileDecel, 0x00, accel)) return false;
+        last_profile_accel_[node].store(accel);
+    }
+
+    // RPDO2 payload = controlword (6040h) + target velocity (60FFh).
+    uint8_t f[6];
+    packControlAndTarget(f, kCwEnableOp, velocity);
+    return canopen_send_frame(&ctx_, 0x300u + node, f, 6);
+}
+
+bool CanOpenInterface::configurePdoVelocityMapping(uint8_t axis_id, bool enable) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+
+    // Remap RPDO2 (0x1601) to 6040h + 60FFh (controlword + target velocity).
+    canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 0, 1);
+    writeSDO4(node, 0x1601, 0x01, 0x60400010);
+    writeSDO4(node, 0x1601, 0x02, 0x60FF0020);
+    canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 2, 1);
+
+    writeSDO4(node, 0x1401, 0x01, 0x300 + node);
+    canopen_sdo_write_expedited(&ctx_, node, 0x1401, 0x02, 255, 1);
+
+    if (node < 128) {
+        pdo_velocity_mapping_[node].store(enable, std::memory_order_release);
+    }
+    return true;
 }
 
 } // namespace controllers

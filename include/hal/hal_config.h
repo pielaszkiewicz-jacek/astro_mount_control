@@ -111,6 +111,10 @@ struct HALConfig {
         uint32_t pdo_update_rate{100};
         std::string accel_mode{"rate"};     // "rate" | "time"
         bool pdo_config_enabled{false};
+        bool pdo_fast_path{true};         // TPDO1 reads + RPDO2 writes on hot path
+        bool pdo_velocity_mapping{false}; // map RPDO2 to controlword + target velocity
+        bool io_realtime{true};           // promote HAL monitor thread to SCHED_FIFO
+        int  io_realtime_priority{40};    // SCHED_FIFO priority for the monitor thread
         bool position_rewind_enabled{true};
         double position_rewind_interval_seconds{3600.0};
         double position_rewind_threshold_percent{80.0};
@@ -281,6 +285,10 @@ struct HALConfig {
         config.canopen.pdo_update_rate = canopen.value("pdo_update_rate", 100);
         config.canopen.accel_mode = canopen.value("accel_mode", "rate");
         config.canopen.pdo_config_enabled = canopen.value("pdo_config_enabled", false);
+        config.canopen.pdo_fast_path = canopen.value("pdo_fast_path", true);
+        config.canopen.pdo_velocity_mapping = canopen.value("pdo_velocity_mapping", false);
+        config.canopen.io_realtime = canopen.value("io_realtime", true);
+        config.canopen.io_realtime_priority = canopen.value("io_realtime_priority", 40);
         config.canopen.position_rewind_enabled = canopen.value("position_rewind_enabled", true);
         config.canopen.position_rewind_interval_seconds =
             canopen.value("position_rewind_interval_seconds", 3600.0);
@@ -580,6 +588,10 @@ struct HALConfig {
         canopen_json["pdo_update_rate"] = canopen.pdo_update_rate;
         canopen_json["accel_mode"] = canopen.accel_mode;
         canopen_json["pdo_config_enabled"] = canopen.pdo_config_enabled;
+        canopen_json["pdo_fast_path"] = canopen.pdo_fast_path;
+        canopen_json["pdo_velocity_mapping"] = canopen.pdo_velocity_mapping;
+        canopen_json["io_realtime"] = canopen.io_realtime;
+        canopen_json["io_realtime_priority"] = canopen.io_realtime_priority;
         canopen_json["position_rewind_enabled"] = canopen.position_rewind_enabled;
         canopen_json["position_rewind_interval_seconds"] = canopen.position_rewind_interval_seconds;
         canopen_json["position_rewind_threshold_percent"] = canopen.position_rewind_threshold_percent;

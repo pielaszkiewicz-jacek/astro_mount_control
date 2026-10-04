@@ -145,6 +145,18 @@ public:
         // Loop timing
         int controller_poll_ms{50};
         int tracking_update_ms{20};
+
+        // ── Split tracking loop + PDO fast path ───────────────────────────
+        int calc_update_hz{50};
+        int io_update_hz{200};
+        int telemetry_decimation{5};
+        int safety_check_decimation{1};
+        bool split_tracking_loop{true};
+        bool io_realtime{true};
+        int io_realtime_priority{40};
+        bool pdo_fast_path{true};
+        bool pdo_velocity_mapping{false};
+        bool sdo_slow_control{true};
         
         // Mount orientation quaternion (for CASUAL mount type).
         // R4: identity default [qx,qy,qz,qw] = [0,0,0,1] — consistent with

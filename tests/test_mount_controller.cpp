@@ -252,9 +252,10 @@ TEST_F(MountControllerTest, SlewToHorizontalSetsTargets) {
     controller_->slewToHorizontal(30.0, 180.0);
 
     auto status = controller_->getStatus();
-    // Targets are now in SERVO degrees (azimuth/altitude * gear_ratio)
-    EXPECT_DOUBLE_EQ(status.axis1_target, 180.0 * config_.mount_config.ha_axis_params.gear_ratio);  // azimuth
-    EXPECT_DOUBLE_EQ(status.axis2_target, 30.0 * config_.mount_config.dec_axis_params.gear_ratio);   // altitude
+    // Targets are now in SERVO degrees. Canonical convention:
+    // axis1 = altitude, axis2 = azimuth.
+    EXPECT_DOUBLE_EQ(status.axis1_target, 30.0 * config_.mount_config.ha_axis_params.gear_ratio);   // altitude
+    EXPECT_DOUBLE_EQ(status.axis2_target, 180.0 * config_.mount_config.dec_axis_params.gear_ratio);  // azimuth
 }
 
 TEST_F(MountControllerTest, SlewToHorizontalReachesTarget) {
@@ -269,8 +270,9 @@ TEST_F(MountControllerTest, SlewToHorizontalReachesTarget) {
             reached = true;
             double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
             double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
-            EXPECT_NEAR(status.axis1_position, 90.0 * gear1, config_.mount_config.position_tolerance * gear1);
-            EXPECT_NEAR(status.axis2_position, 45.0 * gear2, config_.mount_config.position_tolerance * gear2);
+            // axis1 = altitude (45°), axis2 = azimuth (90°)
+            EXPECT_NEAR(status.axis1_position, 45.0 * gear1, config_.mount_config.position_tolerance * gear1);
+            EXPECT_NEAR(status.axis2_position, 90.0 * gear2, config_.mount_config.position_tolerance * gear2);
             break;
         }
     }
@@ -406,7 +408,11 @@ TEST_F(MountControllerTest, AltAzStartTracking) {
     EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
     double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
     EXPECT_DOUBLE_EQ(status.axis1_target, 45.0 * gear1);  // altitude * gear
-    EXPECT_DOUBLE_EQ(status.axis2_target, 0.0);   // azimuth * gear = 0
+    // Azimuth target for dec=0 is 0; use a tolerance because the shortest-path
+    // wrap in startTracking() (raw -= 360*gear) loses the sub-ULP residue of the
+    // simulated drive position, yielding a value within ~1e-11 of 0 instead of
+    // exactly 0 depending on timing.
+    EXPECT_NEAR(status.axis2_target, 0.0, 1e-9);   // azimuth * gear ≈ 0
 }
 
 TEST_F(MountControllerTest, AltAzTrackingUpdatesPosition) {
@@ -1996,22 +2002,13 @@ TEST_F(CasualMountTest, SlewToHorizontalAppliesQuaternionTransform) {
     EXPECT_TRUE(std::isfinite(status.axis1_target));
     EXPECT_TRUE(std::isfinite(status.axis2_target));
     
-    // The quaternion transform should produce different axis targets
-    // than the raw (alt, az) = (45, 180) input.
-    // axis1 should NOT equal altitude (45°) due to the 30° East tilt.
-    // axis2 should NOT equal azimuth (180°) due to the same tilt.
-    //
-    // With 30° East tilt:
-    //   - altitude 45°, azimuth 180° (South) in ENU:
-    //     ENU vector = (0, cos45, sin45) = (0, 0.707, 0.707)
-    //   - Rotating by Q = (sin15°, 0, 0, cos15°) about East:
-    //     The South-Up vector tilts toward the East.
-    //   - After rotation, mount_x > 0, mount_y < 0.707, mount_z > 0.707
-    //   So axis1 ≠ 45 and axis2 ≠ 180.
+    // The quaternion transform should change the mount-frame altitude (axis1)
+    // away from the raw input (45°); with an identity Q it would stay 45°.
+    // (A pure East-axis tilt of a due-South target can legitimately leave the
+    //  azimuth unchanged, so only the altitude is asserted here.)
     EXPECT_NE(status.axis1_target, 45.0)
         << "CASUAL mount should transform altitude through quaternion";
-    EXPECT_NE(status.axis2_target, 180.0)
-        << "CASUAL mount should transform azimuth through quaternion";
+    EXPECT_TRUE(std::isfinite(status.axis2_target));
 }
 
 TEST_F(CasualMountTest, SlewToHorizontalReachesTarget) {
@@ -2103,16 +2100,16 @@ protected:
 };
 
 TEST_F(CasualMountIdentityTest, SlewToHorizontalMatchesAltAz) {
-    // With identity quaternion, slewToHorizontal should map:
-    //   axis1 = azimuth, axis2 = altitude  (same as ALT_AZ convention)
+    // With identity quaternion, slewToHorizontal should map (canonical convention):
+    //   axis1 = altitude, axis2 = azimuth  (same as ALT_AZ)
     controller_->slewToHorizontal(30.0, 180.0);
     
     auto status = controller_->getStatus();
     // Targets are now in servo degrees (telescope * gear_ratio)
     double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
     double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
-    EXPECT_DOUBLE_EQ(status.axis1_target, 180.0 * gear1);  // azimuth
-    EXPECT_DOUBLE_EQ(status.axis2_target, 30.0 * gear2);   // altitude
+    EXPECT_DOUBLE_EQ(status.axis1_target, 30.0 * gear1);   // altitude
+    EXPECT_DOUBLE_EQ(status.axis2_target, 180.0 * gear2);  // azimuth
 }
 
 TEST_F(CasualMountIdentityTest, TrackingComputesRates) {
@@ -2344,13 +2341,14 @@ TEST_F(MountControllerTest, HorizontalTargetsIncludeGearRatio) {
     controller_->slewToHorizontal(60.0, 270.0); // alt=60°, az=270°
 
     auto status = controller_->getStatus();
-    // Park position is axis1=0°, so shortest path to 270° is -90° (backwards 90°)
-    EXPECT_DOUBLE_EQ(status.axis1_target, -90.0 * gear1);  // azimuth: shortest path
-    EXPECT_DOUBLE_EQ(status.axis2_target, 60.0 * gear2);   // altitude * gear (no wrapping)
+    // Canonical convention: axis1 = altitude, axis2 = azimuth.
+    // Altitude 60° → axis1; azimuth 270° shortest path from 0° is -90° (backwards).
+    EXPECT_DOUBLE_EQ(status.axis1_target, 60.0 * gear1);   // altitude * gear (no wrapping)
+    EXPECT_DOUBLE_EQ(status.axis2_target, -90.0 * gear2);  // azimuth: shortest path
 
-    // Verify the diff from current position is within ±half_turn (180° telescope)
-    double half_turn = 180.0 * gear1;
-    double diff = status.axis1_target - status.axis1_position;
+    // Verify the azimuth diff from current position is within ±half_turn (180° telescope)
+    double half_turn = 180.0 * gear2;
+    double diff = status.axis2_target - status.axis2_position;
     EXPECT_GE(diff, -half_turn);
     EXPECT_LE(diff, half_turn);
 
@@ -2373,9 +2371,9 @@ TEST_F(CasualMountTest, CasualTargetsIncludeGearRatio) {
     controller_->slewToHorizontal(60.0, 270.0); // alt=60°, az=270°
     auto status = controller_->getStatus();
 
-    // With identity quaternion: axis1 = azimuth (shortest-path), axis2 = altitude
-    EXPECT_DOUBLE_EQ(status.axis1_target, -90.0 * gear1);  // shortest path from 0° to 270°
-    EXPECT_DOUBLE_EQ(status.axis2_target, 60.0 * gear2);
+    // Canonical convention with identity quaternion: axis1 = altitude, axis2 = azimuth.
+    EXPECT_DOUBLE_EQ(status.axis1_target, 60.0 * gear1);   // altitude (no wrapping)
+    EXPECT_DOUBLE_EQ(status.axis2_target, -90.0 * gear2);  // azimuth: shortest path from 0° to 270°
 
     // Telescope position should equal servo / gear
     EXPECT_NEAR(status.telescope_axis1_position, status.axis1_position / gear1, 1e-9);
@@ -2474,22 +2472,22 @@ TEST_F(MountControllerTest, AzimuthTargetShortestPath0to360) {
 }
 
 TEST_F(MountControllerTest, AltitudeAxisNoWrapping) {
-    // Altitude axis (axis2 for ALT_AZ) should NEVER wrap — it's physically
+    // Altitude axis (axis1 for ALT_AZ) should NEVER wrap — it's physically
     // limited to [0°, 90°] and the target should match the requested altitude.
     config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
+    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
 
     controller_->slewToHorizontal(30.0, 180.0);
     auto status = controller_->getStatus();
-    EXPECT_DOUBLE_EQ(status.axis2_target, 30.0 * gear2);
+    EXPECT_DOUBLE_EQ(status.axis1_target, 30.0 * gear1);
 
     controller_->stop();
     std::this_thread::sleep_for(200ms);
 
     controller_->slewToHorizontal(75.0, 180.0);
     status = controller_->getStatus();
-    EXPECT_DOUBLE_EQ(status.axis2_target, 75.0 * gear2);
+    EXPECT_DOUBLE_EQ(status.axis1_target, 75.0 * gear1);
 }
 
 TEST_F(MountControllerTest, AzimuthTargetAfterAccumulatedTracking) {
@@ -2498,20 +2496,21 @@ TEST_F(MountControllerTest, AzimuthTargetAfterAccumulatedTracking) {
     // ±half_turn of the current absolute position, not reset to [0, 360).
     config_.mount_config.mount_type = config::MountType::ALT_AZ;
     controller_->initialize(config_);
-    double gear1 = config_.mount_config.ha_axis_params.gear_ratio;
+    // Azimuth is axis2 under the canonical convention.
+    double gear2 = config_.mount_config.dec_axis_params.gear_ratio;
 
-    // We can't easily set axis1_position_ to a large value without mocking,
+    // We can't easily set the azimuth position to a large value without mocking,
     // but we can verify that after a series of slews and tracks, the target
     // remains close to the current position.
     
     // First, slew to 10° azimuth (starting from 0°, short path = +10°)
     controller_->slewToHorizontal(45.0, 10.0);
     auto status = controller_->getStatus();
-    double diff_initial = status.axis1_target - status.axis1_position;
-    EXPECT_NEAR(diff_initial, 10.0 * gear1, 1.0);  // ~+10° from 0°
+    double diff_initial = status.axis2_target - status.axis2_position;
+    EXPECT_NEAR(diff_initial, 10.0 * gear2, 1.0);  // ~+10° from 0°
 
     // The diff should always be within [-half_turn, +half_turn]
-    double half_turn = 180.0 * gear1;
+    double half_turn = 180.0 * gear2;
     EXPECT_GE(diff_initial, -half_turn);
     EXPECT_LE(diff_initial, half_turn);
 }

@@ -54,6 +54,13 @@ public:
     bool startHoming(uint8_t axis_id) override;
     bool configurePdo(uint8_t axis_id, bool enable) override;
     bool pollEvents() override;
+    bool pdoFastPathEnabled() const override;
+    bool setPositionTargetPdo(uint8_t axis_id, int32_t position,
+                              uint32_t velocity, uint32_t acceleration) override;
+    bool setVelocityTargetPdo(uint8_t axis_id, int32_t velocity,
+                              uint32_t acceleration) override;
+    bool getCachedDriveStatus(uint8_t axis_id, CanOpenStatus& status) override;
+    bool configurePdoVelocityMapping(uint8_t axis_id, bool enable) override;
 
     // Direct access to the underlying C context (for CanOpenHAL NMT monitor).
     canopen_ctx_t* rawContext() { return &ctx_; }
@@ -74,7 +81,18 @@ private:
         int32_t position{0};
         bool valid{false};
     };
+    // Thread safety: pdo_cache_ is written by the CANopen wrapper reader thread
+    // (pdoCallback) and read by the HAL monitor / tracking io threads. Guarded
+    // by pdo_mutex_; pdo_seq_ is a lock-free freshness counter so a reader can
+    // detect a new sample without holding the lock across I/O.
+    mutable std::mutex pdo_mutex_;
     PdoCache pdo_cache_[128];
+    std::atomic<uint64_t> pdo_seq_[128]{};
+    std::atomic<bool> pdo_configured_[128]{};
+    std::atomic<bool> pdo_velocity_mapping_[128]{};
+    // Last SDO-configured profile values per node (avoid SDO on the hot path).
+    std::atomic<uint32_t> last_profile_velocity_[128]{};
+    std::atomic<uint32_t> last_profile_accel_[128]{};
 
     Config config_;
     canopen_ctx_t ctx_;
