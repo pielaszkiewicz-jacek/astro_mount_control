@@ -288,6 +288,7 @@ int main(int argc, char* argv[]) {
         track_cfg.pdo_fast_path = cfg_mount.pdo_fast_path;
         track_cfg.pdo_velocity_mapping = cfg_mount.pdo_velocity_mapping;
         track_cfg.sdo_slow_control = cfg_mount.sdo_slow_control;
+        track_cfg.tracking_pos_update_hz = cfg_mount.tracking_pos_update_hz;
         // Guider parameters
         auto guider_cfg = config.getGuiderConfig();
         track_cfg.enable_guider = guider_cfg.enabled;
@@ -648,9 +649,17 @@ int main(int argc, char* argv[]) {
                 last_log = now;
             }
             
-            // Check for errors
+            // Check for errors — log only on the transition into ERROR, not on
+            // every loop iteration (a persistent ERROR would otherwise flood the
+            // log and starve the gRPC/INDI clients of CPU).
+            static bool error_logged = false;
             if (status.state == controllers::MountController::MountStatus::State::ERROR) {
-                logger->error("Mount error: {}", status.error_message);
+                if (!error_logged) {
+                    logger->error("Mount error: {}", status.error_message);
+                    error_logged = true;
+                }
+            } else {
+                error_logged = false;
             }
             
             // ── In-process subsystem updates (config-gated) ─────────────────

@@ -136,6 +136,8 @@ public:
         //     target updates (absorbs loop jitter without a large pointing offset).
         double tracking_pos_velocity_factor{1.0};
         double tracking_pos_lead_seconds{2.0};
+        // Position-mode target update cadence [Hz] (EQUATORIAL position mode).
+        int tracking_pos_update_hz{10};
 
         // Per-axis rotation direction inversion.
         // When true, the motor target position/velocity for this axis is negated.

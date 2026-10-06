@@ -642,6 +642,18 @@ if(GTest_FOUND)
     add_test(NAME MountCoordinatesTest
         COMMAND test_mount_coordinates)
 
+    add_executable(test_mount_kinematics
+        tests/test_mount_kinematics.cpp
+    )
+
+    target_link_libraries(test_mount_kinematics
+        astro_mount_core
+        GTest::gtest_main
+    )
+
+    add_test(NAME MountKinematicsTest
+        COMMAND test_mount_kinematics)
+
     add_executable(test_ephemeris_tracker
         tests/test_ephemeris_tracker.cpp
         ${PROTO_SRCS}

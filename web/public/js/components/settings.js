@@ -345,6 +345,24 @@ const SettingsComponent = (() => {
       ],
     },
     {
+      id: 'split_tracking_loop',
+      label: 'Split Tracking Loop & PDO',
+      restartRequired: true,
+      fields: [
+        { key: 'split_tracking_loop', label: 'Split Tracking Loop', type: 'checkbox', help: 'Run tracking as a computational loop plus separate io writer/reader threads. Disable to fall back to the legacy single tracking loop.' },
+        { key: 'calc_update_hz', label: 'Calc Update (Hz)', type: 'number', min: 1, max: 200, step: 1 },
+        { key: 'io_update_hz', label: 'IO Update (Hz)', type: 'number', min: 1, max: 1000, step: 10 },
+        { key: 'telemetry_decimation', label: 'Telemetry Decimation', type: 'number', min: 1, max: 100, step: 1 },
+        { key: 'safety_check_decimation', label: 'Safety Check Decimation', type: 'number', min: 1, max: 100, step: 1 },
+        { key: 'io_realtime', label: 'IO Realtime (SCHED_FIFO)', type: 'checkbox', help: 'Best-effort promotion of the io writer thread to SCHED_FIFO. Requires CAP_SYS_NICE or RLIMIT_RTPRIO; falls back to CFS otherwise.' },
+        { key: 'io_realtime_priority', label: 'IO Realtime Priority', type: 'number', min: 1, max: 99, step: 1 },
+        { key: 'pdo_fast_path', label: 'PDO Fast Path', type: 'checkbox', help: 'Use TPDO1 reads + RPDO2 writes on the hot tracking path instead of blocking SDO transactions.' },
+        { key: 'pdo_velocity_mapping', label: 'PDO Velocity Mapping', type: 'checkbox', help: 'Map RPDO2 to controlword + target velocity (6040h + 60FFh) for velocity-mode tracking.' },
+        { key: 'sdo_slow_control', label: 'SDO Slow Control Path', type: 'checkbox', help: 'Keep synchronous SDO for rare operations (mode switch, config, homing, fault clear).' },
+        { key: 'tracking_pos_update_hz', label: 'Position Update (Hz)', type: 'number', min: 1, max: 100, step: 1, help: 'Cadence of position-mode target updates for EQUATORIAL tracking. Default 10 Hz.' },
+      ],
+    },
+    {
       id: 'field_rotation',
       label: 'Field Rotation',
       fields: [
@@ -516,6 +534,7 @@ const SettingsComponent = (() => {
     kalman: 'Filtr Kalmana do estymacji pozycji: szumy procesu i pomiaru, adaptacyjno\u015b\u0107, próg innowacji.',
     tpoint: 'Model TPoint do korekcji b\u0142\u0119dów systematycznych monta\u017cu: aktywne terminy, pomiary, residua.',
     loop_timing: 'Czasy p\u0119tli g\u0142ównej sterownika: interwa\u0142 odpytywania CANopen i cz\u0119stotliwo\u015b\u0107 aktualizacji trackingu.',
+    split_tracking_loop: 'Podzia\u0142 p\u0119tli \u015bledzenia na w\u0105tek obliczeniowy (calc) oraz w\u0105tki komunikacyjne io (writer/reader) wraz z asynchroniczn\u0105 \u015bcie\u017ck\u0105 PDO (TPDO1/RPDO2).',
     servo_init: 'Sekwencja inicjalizacyjna SDO dla serwonap\u0119dów: w\u0142\u0105czenie/wy\u0142\u0105czenie oraz lista wpisów JSON ({axis, index, subindex, value, description}) wysy\u0142anych podczas startu.',
     mount_tracking_mode: 'Tryb \u015bledzenia dla monta\u017cu paralaktycznego. "Position Mode" (domy\u015blny) wysy\u0142a bezwzgl\u0119dne pozycje docelowe do nap\u0119du, co zapewnia stabilne dzia\u0142anie. "Velocity Mode" korzysta z wewn\u0119trznego regulatora PID nap\u0119du, mo\u017ce by\u0107 mniej niezawodny przy niekt\u00f3rych sterownikach (problem z odczytem pr\u0119dko\u015bci 0x606C).',
     lx200: 'Interfejs szeregowy z protoko\u0142em LX200 (Meade). Umo\u017cliwia pod\u0142\u0105czenie planetarium (Stellarium, Cartes du Ciel, SkySafari) przez port szeregowy. Protok\u00f3\u0142 tekstowy, kompatybilny z wi\u0119kszo\u015bci\u0105 oprogramowania astronomicznego.',
@@ -1040,6 +1059,74 @@ const SettingsComponent = (() => {
       defaultValue: '20',
       type: 'integer',
       range: '5 – 200',
+    },
+
+    // ── Split Tracking Loop + PDO Fast Path ──
+    split_tracking_loop: {
+      description: 'W\u0142\u0105cza podzia\u0142 p\u0119tli \u015bledzenia na w\u0105tek obliczeniowy (calc) oraz osobne w\u0105tki io writer/reader. Gdy wy\u0142\u0105czone, u\u017cywana jest stara pojedyncza p\u0119tla \u015bledzenia.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    calc_update_hz: {
+      description: 'Cz\u0119stotliwo\u015b\u0107 w\u0105tku obliczeniowego (calc) w hercach. Obliczenia astronomiczne (nutacja, TPOINT, refrakcja, filtr Kalmana) nie wymagaj\u0105 setek herców.',
+      defaultValue: '50',
+      type: 'integer',
+      range: '1 – 200',
+    },
+    io_update_hz: {
+      description: 'Cz\u0119stotliwo\u015b\u0107 w\u0105tków komunikacyjnych (io writer/reader) w hercach. Wysy\u0142ka komend do nap\u0119dów z t\u0105 cz\u0119stotliwo\u015bci\u0105 daje p\u0142ynniejsze sterowanie.',
+      defaultValue: '200',
+      type: 'integer',
+      range: '1 – 1000',
+    },
+    telemetry_decimation: {
+      description: 'Co ile iteracji w\u0105tku io reader odczytywane s\u0105 sensory \u015brodowiskowe (temperatura/ci\u015bnienie/wilgotno\u015b\u0107).',
+      defaultValue: '5',
+      type: 'integer',
+      range: '1 – 100',
+    },
+    safety_check_decimation: {
+      description: 'Co ile iteracji w\u0105tku io reader sprawdzany jest monitor bezpiecze\u0144stwa (getStatus/checkLimits).',
+      defaultValue: '1',
+      type: 'integer',
+      range: '1 – 100',
+    },
+    io_realtime: {
+      description: 'Próba promocji w\u0105tku io writer do SCHED_FIFO (best-effort). Wymaga CAP_SYS_NICE lub RLIMIT_RTPRIO; przy braku uprawnie\u0144 w\u0105tek pozostaje na CFS.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    io_realtime_priority: {
+      description: 'Priorytet SCHED_FIFO dla w\u0105tku io writer. Trzyma\u0107 si\u0119 z dala od 99 (watchdog/migration j\u0105dra); typowo 40.',
+      defaultValue: '40',
+      type: 'integer',
+      range: '1 – 99',
+    },
+    pdo_fast_path: {
+      description: 'U\u017cywa asynchronicznych odczytów TPDO1 i zapisów RPDO2 w gor\u0105cej \u015bcie\u017cce \u015bledzenia zamiast blokuj\u0105cych transakcji SDO.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    pdo_velocity_mapping: {
+      description: 'Mapuje RPDO2 na controlword 6040h + target velocity 60FFh dla trybu pr\u0119dko\u015bciowego. Gdy wy\u0142\u0105czone, zmiany pr\u0119dko\u015bci id\u0105 przez SDO.',
+      defaultValue: 'false (wy\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    sdo_slow_control: {
+      description: 'Pozostawia synchroniczne SDO jako woln\u0105 \u015bcie\u017ck\u0119 dla rzadkich operacji: prze\u0142\u0105czanie trybów, konfiguracja, homing, kasowanie b\u0142\u0119dów.',
+      defaultValue: 'true (w\u0142\u0105czone)',
+      type: 'boolean',
+      range: 'true / false',
+    },
+    tracking_pos_update_hz: {
+      description: 'Cz\u0119stotliwo\u015b\u0107 aktualizacji celu pozycyjnego w trybie \u015bledzenia EQUATORIAL (Profile Position). Wi\u0119ksza warto\u015b\u0107 = p\u0142ynniejszy ruch, ale wi\u0119kszy ruch po magistrali CAN.',
+      defaultValue: '10',
+      type: 'integer',
+      range: '1 – 100',
     },
 
     // ── Field Rotation ──

@@ -856,7 +856,20 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         // Loop timing
         response->set_controller_poll_ms(config.tracking_config.controller_poll_ms);
         response->set_tracking_update_ms(config.tracking_config.tracking_update_ms);
-        
+
+        // Split tracking loop + PDO fast path
+        response->set_split_tracking_loop(config.tracking_config.split_tracking_loop);
+        response->set_calc_update_hz(config.tracking_config.calc_update_hz);
+        response->set_io_update_hz(config.tracking_config.io_update_hz);
+        response->set_telemetry_decimation(config.tracking_config.telemetry_decimation);
+        response->set_safety_check_decimation(config.tracking_config.safety_check_decimation);
+        response->set_io_realtime(config.tracking_config.io_realtime);
+        response->set_io_realtime_priority(config.tracking_config.io_realtime_priority);
+        response->set_pdo_fast_path(config.tracking_config.pdo_fast_path);
+        response->set_pdo_velocity_mapping(config.tracking_config.pdo_velocity_mapping);
+        response->set_sdo_slow_control(config.tracking_config.sdo_slow_control);
+        response->set_tracking_pos_update_hz(config.tracking_config.tracking_pos_update_hz);
+
         // Position/rate tolerances for slew operations
         response->set_position_tolerance(config.mount_config.position_tolerance);
         response->set_rate_tolerance(config.mount_config.rate_tolerance);
@@ -1055,10 +1068,23 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
         config.mount_config.mount_orientation.quaternion[2] = request->mount_orientation().qz();
         config.mount_config.mount_orientation.quaternion[3] = request->mount_orientation().qw();
     }
-    
     // ── Loop timing ───────────────────────────────────────────────
     if (request->controller_poll_ms() != 0) config.tracking_config.controller_poll_ms = request->controller_poll_ms();
     if (request->tracking_update_ms() != 0) config.tracking_config.tracking_update_ms = request->tracking_update_ms();
+
+    // ── Split tracking loop + PDO fast path ───────────────────────
+    if (request->has_split_tracking_loop()) config.tracking_config.split_tracking_loop = request->split_tracking_loop();
+    if (request->calc_update_hz() != 0) config.tracking_config.calc_update_hz = request->calc_update_hz();
+    if (request->io_update_hz() != 0) config.tracking_config.io_update_hz = request->io_update_hz();
+    if (request->telemetry_decimation() != 0) config.tracking_config.telemetry_decimation = request->telemetry_decimation();
+    if (request->safety_check_decimation() != 0) config.tracking_config.safety_check_decimation = request->safety_check_decimation();
+    if (request->has_io_realtime()) config.tracking_config.io_realtime = request->io_realtime();
+    if (request->io_realtime_priority() != 0) config.tracking_config.io_realtime_priority = request->io_realtime_priority();
+    if (request->has_pdo_fast_path()) config.tracking_config.pdo_fast_path = request->pdo_fast_path();
+    if (request->has_pdo_velocity_mapping()) config.tracking_config.pdo_velocity_mapping = request->pdo_velocity_mapping();
+    if (request->has_sdo_slow_control()) config.tracking_config.sdo_slow_control = request->sdo_slow_control();
+    if (request->tracking_pos_update_hz() != 0) config.tracking_config.tracking_pos_update_hz = request->tracking_pos_update_hz();
+
     
     // ── Equatorial tracking mode ─────────────────────────────────
     if (request->has_equatorial_tracking_velocity_mode()) config.mount_config.equatorial_tracking_velocity_mode = request->equatorial_tracking_velocity_mode();

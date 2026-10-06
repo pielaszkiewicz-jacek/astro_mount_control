@@ -731,6 +731,21 @@ message Configuration {
     // reversing the physical rotation direction relative to the computed target.
     optional bool invert_axis1 = 87;
     optional bool invert_axis2 = 88;
+
+    // Split tracking loop (calc + io writer + io reader) and PDO fast path.
+    // See docs/pl/propozycja_podzialu_watku_sledzenia.md and
+    // docs/pl/wyznaczanie_predkosci_sledzenia.md.
+    optional bool split_tracking_loop = 97;   // true: calc + io threads; false: legacy single loop
+    int32 calc_update_hz = 98;                // computational thread frequency [Hz]
+    int32 io_update_hz = 99;                  // communication (io) thread frequency [Hz]
+    int32 telemetry_decimation = 100;         // io iterations between sensor reads
+    int32 safety_check_decimation = 101;      // io iterations between safety-monitor reads
+    optional bool io_realtime = 102;          // promote io writer thread to SCHED_FIFO (best effort)
+    int32 io_realtime_priority = 103;         // SCHED_FIFO priority for the io writer thread
+    optional bool pdo_fast_path = 104;        // use TPDO1 reads + RPDO2 writes on the hot path
+    optional bool pdo_velocity_mapping = 105; // map RPDO2 to 6040h + 60FFh (target velocity)
+    optional bool sdo_slow_control = 106;     // keep SDO for mode switch / config / homing
+    int32 tracking_pos_update_hz = 107;       // position-mode target update cadence [Hz] (EQ position mode)
 }
 
 // Health check messages

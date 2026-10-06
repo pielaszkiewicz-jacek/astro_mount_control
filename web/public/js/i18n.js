@@ -1236,6 +1236,21 @@ const I18n = (() => {
       'cfg.btn.save': 'Zapisz',
       'cfg.btn.restore_defaults': 'Przywróć Domyślne',
 
+      // Split tracking loop + PDO fast path
+      'cfg.group.split_tracking_loop': 'Pętla Śledzenia (Split) i PDO',
+      'cfg.field.split_tracking_loop': 'Podzielona Pętla Śledzenia',
+      'cfg.field.calc_update_hz': 'Częstotliwość Calc (Hz)',
+      'cfg.field.io_update_hz': 'Częstotliwość IO (Hz)',
+      'cfg.field.telemetry_decimation': 'Decymacja Telemetrii',
+      'cfg.field.safety_check_decimation': 'Decymacja Kontroli Bezpieczeństwa',
+      'cfg.field.io_realtime': 'IO Real-Time (SCHED_FIFO)',
+      'cfg.field.io_realtime_priority': 'Priorytet IO Real-Time',
+      'cfg.field.pdo_fast_path': 'Szybka Ścieżka PDO',
+      'cfg.field.pdo_velocity_mapping': 'Mapowanie PDO Prędkości',
+      'cfg.field.sdo_slow_control': 'Wolna Ścieżka Sterowania SDO',
+      'cfg.field.tracking_pos_update_hz': 'Częstotliwość Aktualizacji Pozycji (Hz)',
+      'cfg.help.split_tracking_loop': 'Konfiguracja podziału pętli śledzenia na wątek obliczeniowy (calc) oraz wątki komunikacyjne io (writer/reader) wraz z asynchroniczną ścieżką PDO. Zobacz docs/pl/propozycja_podzialu_watku_sledzenia.md i docs/pl/wyznaczanie_predkosci_sledzenia.md.',
+
       'cfg.help.label_type': 'Typ',
       'cfg.help.label_range': 'Zakres',
       'cfg.help.label_default': 'Domyślnie',

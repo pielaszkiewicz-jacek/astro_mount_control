@@ -2,6 +2,7 @@
 #include "controllers/lx200_server.h"
 #include "core/astronomical_calculations.h"
 #include "core/mount_coordinates.h"
+#include "core/mount_kinematics.h"
 #include "hal/hal_interface.h"
 #include "hal/hal_config.h"
 #include "hal/hal_factory.h"
@@ -547,9 +548,32 @@ public:
             bool pos1_valid = false;
             if (hal_axis1_motor_ && hal_axis2_motor_) {
                 try {
-                    double pos0 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
-                    double pos1 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
-                    if (std::isfinite(pos0) && std::isfinite(pos1)) {
+                    double pos0 = 0.0, pos1 = 0.0;
+                    bool have_pos = false;
+                    // For absolute encoders the encoder reader performs a direct
+                    // SDO position read.  The motor's getActualPosition() only
+                    // returns the cached value, which is still zero before the
+                    // HAL monitor loop starts — using it here would leave the
+                    // internal state at (0,0)/park while the drive is physically
+                    // elsewhere, and the first move would command a multi-turn
+                    // slew.  Reading the true position prevents that.
+                    if (config_.mount_config.encoders_absolute &&
+                        hal_axis1_encoder_ && hal_axis2_encoder_) {
+                        const auto enc1 = hal_axis1_encoder_->read();
+                        const auto enc2 = hal_axis2_encoder_->read();
+                        if (std::isfinite(enc1.position_deg) &&
+                            std::isfinite(enc2.position_deg)) {
+                            pos0 = applyAxis1Inversion(enc1.position_deg);
+                            pos1 = applyAxis2Inversion(enc2.position_deg);
+                            have_pos = true;
+                        }
+                    }
+                    if (!have_pos) {
+                        pos0 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                        pos1 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                        have_pos = std::isfinite(pos0) && std::isfinite(pos1);
+                    }
+                    if (have_pos) {
                         // For incremental encoders, the drive reports 0.0 at
                         // power-up.  Only sync from the drive when it returns a
                         // plausible non-zero position; otherwise keep the
@@ -1647,41 +1671,15 @@ public:
             //   Lunar:    ~14.685 "/s        = 0.004079 °/s (telescope)
             //
             // With gear_ratio G, the servo must move G× faster.
-            const double ha_gear = config_.mount_config.ha_axis_params.gear_ratio;
-            const double dec_gear = config_.mount_config.dec_axis_params.gear_ratio;
-
             if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
-                switch (mode) {
-                    case config::TrackingMode::SIDEREAL:
-                        axis1_tracking_rate = 0.004178 * ha_gear;
-                        axis2_tracking_rate = 0.0;
-                        break;
-                    case config::TrackingMode::SOLAR:
-                        axis1_tracking_rate = 0.004167 * ha_gear;
-                        axis2_tracking_rate = 0.0;
-                        break;
-                    case config::TrackingMode::LUNAR:
-                        axis1_tracking_rate = 0.004079 * ha_gear;
-                        axis2_tracking_rate = 0.0;
-                        break;
-                    case config::TrackingMode::CUSTOM:
-                        // Custom rates arrive in telescope arcsec/s (INDI
-                        // SetTrackRate). Convert to servo deg/s:
-                        // deg/s = arcsec/s / 3600, then × gear ratio.
-                        if (customRateRaArcsecPerSec != 0.0)
-                            axis1_tracking_rate = customRateRaArcsecPerSec / 3600.0 * ha_gear;
-                        else
-                            axis1_tracking_rate = config_.mount_config.max_tracking_rate;
-                        if (customRateDecArcsecPerSec != 0.0)
-                            axis2_tracking_rate = customRateDecArcsecPerSec / 3600.0 * dec_gear;
-                        else
-                            axis2_tracking_rate = 0.0;
-                        break;
-                    case config::TrackingMode::OFF:
-                        axis1_tracking_rate = 0.0;
-                        axis2_tracking_rate = 0.0;
-                        break;
-                }
+                // Unified rate determination — EQUATORIAL is the constant-Jacobian
+                // case of core::MountKinematics::trackingRates() (see
+                // docs/pl/wyznaczanie_predkosci_sledzenia.md §4–§5).
+                const core::TrackingRates rates = trackingRatesFor(
+                    mode, 0.0, 0.0,
+                    customRateRaArcsecPerSec, customRateDecArcsecPerSec);
+                axis1_tracking_rate = rates.axis1;
+                axis2_tracking_rate = rates.axis2;
             } else {  // CASUAL or ALT_AZ
                 // Rates are computed dynamically in the tracking loop based on
                 // current altitude/azimuth position. The mode (SIDEREAL/SOLAR/LUNAR)
@@ -1751,6 +1749,58 @@ public:
                 const double TRACK_POS_VEL = config_.mount_config.max_slew_rate > 0.0
                     ? config_.mount_config.max_slew_rate
                     : std::max(axis1_tracking_rate * 2.0, 2.0);  // °/s servo
+                // Validate the Dec target against the physical drive position
+                // (RELATIVE check, not an absolute magnitude check).  The drive's
+                // raw counter can legitimately be millions of degrees after a long
+                // session or a previous runaway, so the raw target may legitimately
+                // be large too — what matters is whether it is close to the drive.
+                // A corrupt home offset (or an axis that has spun since the last
+                // home) makes the target far from the drive; commanding it would
+                // spin the axis, so reject and ask the operator to re-home.
+                {
+                    const double dec_gear_v = decGear();
+                    const double max_dec_jump = 180.0 * dec_gear_v;
+                    double ref_dec = raw_servo_axis2_position_ - home_offset_axis2_;
+                    try {
+                        if (hal_axis2_motor_ && hal_axis2_motor_->isEnabled()) {
+                            const double act2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                            if (std::isfinite(act2)) ref_dec = act2;
+                        }
+                    } catch (const std::exception& e) {
+                        MOUNT_LOG_DEBUG("startTracking Dec validation: {}", e.what());
+                    }
+                    if (std::abs(axis2_target_ - ref_dec) > max_dec_jump) {
+                        MOUNT_LOG_ERROR("startTracking: Dec target {:.2f}° is {:.2f}° away from "
+                                        "the drive position {:.2f}° — corrupt home offset? "
+                                        "Re-home the mount before tracking.",
+                                        axis2_target_, axis2_target_ - ref_dec, ref_dec);
+                        axis1_rate_ = 0.0;
+                        axis2_rate_ = 0.0;
+                        state_ = MountStatus::State::ERROR;
+                        error_message_ = "Dec-axis position desync — re-home required";
+                        return false;
+                    }
+                }
+                // RA target: periodic axis — re-wrap to the drive's multi-turn window.
+                {
+                    const double ha_gear_v = haGear();
+                    const double full_turn_ha = 360.0 * ha_gear_v;
+                    double ref_ha = raw_servo_axis1_position_ - home_offset_axis1_;
+                    try {
+                        if (hal_axis1_motor_ && hal_axis1_motor_->isEnabled()) {
+                            const double act1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                            if (std::isfinite(act1)) ref_ha = act1;
+                        }
+                    } catch (const std::exception& e) {
+                        MOUNT_LOG_DEBUG("startTracking RA validation: {}", e.what());
+                    }
+                    double d1 = axis1_target_ - ref_ha;
+                    d1 = std::fmod(d1, full_turn_ha);
+                    if (d1 > full_turn_ha / 2.0) d1 -= full_turn_ha;
+                    else if (d1 < -full_turn_ha / 2.0) d1 += full_turn_ha;
+                    axis1_target_ = ref_ha + d1;
+                }
+
                 bool pos_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
                     bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
@@ -1768,7 +1818,14 @@ public:
                     state_ = MountStatus::State::IDLE;
                     return false;
                 }
-                last_pos_update_iter_ = 0;
+                // Anchor the position-update cadence to the current iteration
+                // counter and clear the previous session's update clock.  Without
+                // this, the first update of a re-target session fires immediately
+                // with a stale measured interval (potentially hours), producing an
+                // enormous position lead and a sudden high-speed RA slew that the
+                // operator sees as uncontrolled rotation.
+                last_pos_update_iter_ = tracking_iteration_count_;
+                last_pos_update_time_ = std::chrono::steady_clock::time_point{};
             } else {
                 // ALT_AZ / CASUAL: use velocity mode (unchanged).
                 bool velocity_set_ok = false;
@@ -1835,9 +1892,19 @@ public:
             // Track actual elapsed time between iterations, not hardcoded 0.1s.
             // When the scheduler delays wake-up (e.g. sleep_for(100ms) takes 200ms+),
             // using a hardcoded dt causes position under/over-correction.
+            //
+            // Loop period: in the split-loop variant the calc thread is clocked by
+            // calc_update_hz (default 50 Hz) so the expensive astronomy runs at a
+            // lower rate than the io ticker; the legacy single loop keeps
+            // tracking_update_ms for backward compatibility
+            // (docs/pl/propozycja_podzialu_watku_sledzenia.md §6).
+            const auto calc_period = std::chrono::microseconds(
+                config_.tracking_config.split_tracking_loop
+                    ? 1000000 / std::max(1, config_.tracking_config.calc_update_hz)
+                    : config_.tracking_config.tracking_update_ms * 1000);
             auto last_iteration = std::chrono::steady_clock::now();
             while (tracking_active_) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(config_.tracking_config.tracking_update_ms));
+                std::this_thread::sleep_for(calc_period);
                 
                 // Measure actual elapsed time since last iteration
                 auto now = std::chrono::steady_clock::now();
@@ -1859,7 +1926,6 @@ public:
                 bool is_tracking = false;
                 double snap_target_ra = 0.0;
                 double snap_target_dec = 0.0;
-                double snap_dec_target_servo = 0.0;  // resolved Dec servo target (pier-side aware)
                 double snap_flip_ha_target = 0.0;
                 double snap_flip_dec_target = 0.0;
                 bool snap_flip_targets_pending = false;
@@ -1945,6 +2011,19 @@ public:
                 if (!tracking_active_) break;
                 if (state_ != MountStatus::State::TRACKING &&
                     state_ != MountStatus::State::MERIDIAN_FLIP) break;
+
+                // Persistent Dec-axis desync: the drive position diverged from the
+                // fixed Dec target beyond the safety window for many consecutive
+                // updates.  Stop tracking and enter ERROR so the Dec axis does not
+                // keep spinning (and flooding the bus) — the operator can then re-home.
+                if (dec_desync_count_ > 30) {
+                    dec_desync_count_ = 0;
+                    MOUNT_LOG_ERROR("Dec-axis position desync persisted — stopping tracking. "
+                                    "Please re-home the mount (Sync/Home) before tracking again.");
+                    state_ = MountStatus::State::ERROR;
+                    error_message_ = "Dec-axis position desync — re-home required";
+                    break;
+                }
                 
                 // Track iteration count and timing for metrics
                 tracking_iteration_count_++;
@@ -2639,7 +2718,6 @@ public:
                     // Store current axis targets for the I/O block below
                     snap_pos_target_axis1_ = axis1_target_;
                     snap_pos_target_axis2_ = axis2_target_;
-                    snap_dec_target_servo = axis2_target_;
                 }
                 }   // state_mutex_ scope ends, lock released
                 
@@ -2691,10 +2769,18 @@ public:
                             MOUNT_LOG_INFO("Tracking mode: POSITION (equatorial_tracking_velocity_mode=false)");
                             pos_mode_logged_ = true;
                         }
-                        // Every 50 iterations (~1 s) recompute the celestial
-                        // target and send a new setPositionTarget.  The drive
-                        // PID smoothly tracks the advancing target.
-                        constexpr size_t POS_UPDATE_INTERVAL = 50;
+                        // Recompute the celestial target and send a new
+                        // setPositionTarget at the configured cadence
+                        // (tracking_pos_update_hz, default 10 Hz).  The interval
+                        // is derived from the calc frequency so the cadence is
+                        // maintained regardless of calc_update_hz or the legacy
+                        // tracking_update_ms.  The drive PID smoothly tracks the
+                        // advancing target between updates.
+                        const int calc_hz = config_.tracking_config.split_tracking_loop
+                            ? std::max(1, config_.tracking_config.calc_update_hz)
+                            : 1000 / std::max(1, config_.tracking_config.tracking_update_ms);
+                        const int pos_update_hz = std::max(1, config_.tracking_config.tracking_pos_update_hz);
+                        const size_t POS_UPDATE_INTERVAL = std::max<size_t>(1, calc_hz / pos_update_hz);
                         if (tracking_iteration_count_ - last_pos_update_iter_ >= POS_UPDATE_INTERVAL) {
                             last_pos_update_iter_ = tracking_iteration_count_;
                             
@@ -2717,11 +2803,17 @@ public:
                             // (the stop-start sawtooth).  Use the MEASURED interval since the
                             // previous update so a slow loop (heavier than the nominal
                             // tracking_update_ms) automatically gets a large enough lead.
-                            const double nominal_update_s = POS_UPDATE_INTERVAL * config_.tracking_config.tracking_update_ms / 1000.0;
+                            const double nominal_update_s = static_cast<double>(POS_UPDATE_INTERVAL) / calc_hz;
                             double measured_update_s = nominal_update_s;
                             if (last_pos_update_time_.time_since_epoch().count() != 0) {
                                 measured_update_s = std::chrono::duration<double>(now - last_pos_update_time_).count();
                             }
+                            // Clamp the measured interval: a stale clock (session
+                            // gap, scheduler stall, suspend/resume) must never
+                            // produce an unbounded position lead.  Ten nominal
+                            // intervals is ample headroom for a busy loop without
+                            // ever commanding a multi-degree lead jump.
+                            measured_update_s = std::min(measured_update_s, nominal_update_s * 10.0);
                             last_pos_update_time_ = now;
                             const double configured_lead_s = config_.mount_config.tracking_pos_lead_seconds > 0.0
                                 ? config_.mount_config.tracking_pos_lead_seconds : 2.0;
@@ -2743,7 +2835,16 @@ public:
                             // drive is commanded to a position 24h (one full RA
                             // revolution) away and the mount chases the RA axis
                             // instead of settling on the object.
-                            const double current_ha_hours = axis1_position_ / (ha_gear * 15.0);
+                            //
+                            // Anchor the HA target to the PHYSICAL drive position
+                            // (raw_servo_axis1_position_, home-offset-adjusted),
+                            // NOT the internal integrated axis1_position_.  The
+                            // internal position lags the drive by exactly the
+                            // tracking lead (the drive has already advanced to the
+                            // lead target), so anchoring to it cancels the lead and
+                            // commands the drive to its own current position —
+                            // producing the stop-start "steppy" sawtooth.
+                            const double current_ha_hours = raw_servo_axis1_position_ / (ha_gear * 15.0);
                             double ha_delta = ha_hours - current_ha_hours;
                             while (ha_delta > 12.0) ha_delta -= 24.0;
                             while (ha_delta < -12.0) ha_delta += 24.0;
@@ -2755,7 +2856,17 @@ public:
                             // wrong absolute position (e.g. Dec offset by the park
                             // offset), causing the Dec axis to keep rotating.
                             double new_axis1_target = ha_hours * 15.0 * ha_gear - home_offset_axis1_;
-                            double new_axis2_target = snap_dec_target_servo;
+
+                            // Dec target: hold the FIXED pier-side-resolved target that
+                            // startTracking() computed.  Dec is stationary during
+                            // sidereal tracking, so a fixed target is the stable choice.
+                            // Recomputing it every update from the live drive position
+                            // forms a feedback loop (target moves → drive moves → target
+                            // recomputes → …) that can make the Dec axis rotate.  Any
+                            // implausible value (e.g. a corrupt home offset) is caught
+                            // and re-anchored to the physical drive position by the
+                            // safety guard below.
+                            double new_axis2_target = axis2_target_;
 
                             // Guard against non-finite targets before they reach the
                             // drive.  A NaN/Inf target (e.g. from a corrupted TPOINT
@@ -2770,20 +2881,22 @@ public:
                                 continue;
                             }
                             
-                            // Profile velocity = configurable factor × sidereal servo rate
-                            // (sidereal_servo_rate / pos_vel_factor computed above with the
-                            // lead).  At 1.0× the drive tracks continuously instead of racing
-                            // ahead of the target and stalling (the sawtooth pattern).
-                            double pos_vel = sidereal_servo_rate * pos_vel_factor;
+                            // Closed-loop tracking velocity.  The velocity is NOT a fixed
+                            // constant — it is derived from the position error (target −
+                            // actual), so a slow/fast drive speed loop self-corrects
+                            // instead of drifting.  Feed-forward is the sidereal servo
+                            // rate; the proportional correction is added below once the
+                            // physical reference is known.
+                            double pos_vel = sidereal_servo_rate;
                             // During the initial "Slew & Track" slew the drive may
                             // still be far from the target. Keep the configured slew
                             // velocity until it is close; switching to the slow tracking
                             // profile too early would decelerate a long in-progress
                             // slew to ~1.5× sidereal speed and make the mount appear
                             // not to move toward a distant object.
+                            double act1 = 0.0, act2 = 0.0;
+                            bool have_act = false;
                             if (config_.mount_config.max_slew_rate > 0.0) {
-                                double act1 = 0.0, act2 = 0.0;
-                                bool have_act = false;
                                 try {
                                     if (hal_axis1_motor_ && hal_axis2_motor_ &&
                                         hal_axis1_motor_->isEnabled() &&
@@ -2795,38 +2908,147 @@ public:
                                 } catch (const std::exception& e) {
                                     MOUNT_LOG_DEBUG("Tracking pos-vel distance read: {}", e.what());
                                 }
-                                if (have_act) {
-                                    // Keep the commanded RA target in the same
-                                    // multi-turn window as the physical drive.  The
-                                    // internal axis1_position_ used above can drift
-                                    // from the drive by whole revolutions (e.g. after
-                                    // a long session or a stopped drive); commanding
-                                    // the raw target would make the drive unwind those
-                                    // revolutions at full speed — the "RA axis spinning
-                                    // several full turns" symptom.  Re-wrap to the
-                                    // shortest path (≤ half a turn) from the drive's
-                                    // actual position.  Dec is deliberately NOT wrapped:
-                                    // Dec is not 360°-periodic (180°−Dec flips the pier
-                                    // side), and snap_dec_target_servo is already the
-                                    // pier-side-resolved target from startTracking().
-                                    const double full_turn1 = 360.0 * ha_gear;
-                                    double d1 = new_axis1_target - act1;
-                                    d1 = std::fmod(d1, full_turn1);
-                                    if (d1 > full_turn1 / 2.0) d1 -= full_turn1;
-                                    else if (d1 < -full_turn1 / 2.0) d1 += full_turn1;
-                                    new_axis1_target = act1 + d1;
+                            }
 
-                                    const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(ha_gear, 1.0) * 4.0;
-                                    const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(dec_gear, 1.0) * 4.0;
-                                    if (std::abs(new_axis1_target - act1) > close1 ||
-                                        std::abs(new_axis2_target - act2) > close2) {
-                                        pos_vel = config_.mount_config.max_slew_rate;
-                                    }
+                            // Physical reference anchor in the SAME frame as
+                            // new_axis1_target_ (raw drive position, home offset
+                            // NOT added).  getActualPosition() already returns
+                            // that frame; raw_servo_axis* is stored with the
+                            // home offset ADDED (see refreshPositionsFromHAL),
+                            // so subtract it back when the direct read is
+                            // unavailable.  One consistent reference is used for
+                            // the re-wrap, the velocity selection and the safety
+                            // guard — mixing frames either rejects valid targets
+                            // or, with a large home offset, admits a target a
+                            // full turn away from the physical drive.
+                            double ref1 = raw_servo_axis1_position_ - home_offset_axis1_;
+                            double ref2 = raw_servo_axis2_position_ - home_offset_axis2_;
+                            if (have_act) {
+                                ref1 = act1;
+                                ref2 = act2;
+                            }
+
+                            // Keep the commanded RA target in the same multi-turn
+                            // window as the physical drive, but shift it only by WHOLE
+                            // turns so the absolute LST target (and its lead) survives.
+                            // The previous shortest-path wrap re-anchored the target to
+                            // the drive's current position, which cancelled the lead and
+                            // disconnected the tracking rate from the sidereal rate.
+                            // Dec is deliberately NOT wrapped: Dec is not 360°-periodic
+                            // (180°−Dec flips the pier side) and new_axis2_target is
+                            // already resolved to the pier-side equivalent nearest the
+                            // current Dec.
+                            {
+                                const double full_turn1 = 360.0 * ha_gear;
+                                const double turns1 =
+                                    std::round((new_axis1_target - ref1) / full_turn1);
+                                new_axis1_target -= turns1 * full_turn1;
+
+                                // Position error (servo degrees): the actual gap to the
+                                // absolute target minus the intended lead.  Positive =
+                                // drive is behind (falling back), negative = ahead.
+                                const double lead_servo =
+                                    POS_LEAD_SECONDS * SIDEREAL_HOURS_PER_SEC * 15.0 * ha_gear;
+                                const double track_err1 =
+                                    (new_axis1_target - ref1) - lead_servo;
+
+                                // Closed-loop velocity: feed-forward sidereal plus a
+                                // proportional correction from the position error — the
+                                // "velocity derived from the distance the mount has to
+                                // cover" behaviour.  A slow drive speeds up, a fast drive
+                                // slows down, and a correctly tracking drive holds the
+                                // sidereal rate (smooth, no sawtooth).
+                                constexpr double TRACK_POS_KP = 0.5;  // 1/s
+                                pos_vel = sidereal_servo_rate + TRACK_POS_KP * track_err1;
+                                const double track_vel_max =
+                                    std::max(config_.mount_config.max_slew_rate,
+                                             sidereal_servo_rate * 3.0);
+                                if (pos_vel < 0.0) pos_vel = 0.0;
+                                else if (pos_vel > track_vel_max) pos_vel = track_vel_max;
+
+                                // During the initial "Slew & Track" the drive may still
+                                // be far from the target — keep the configured slew
+                                // velocity until it is close.
+                                const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(ha_gear, 1.0) * 4.0;
+                                const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(dec_gear, 1.0) * 4.0;
+                                if (std::abs(new_axis1_target - ref1) > close1 ||
+                                    std::abs(new_axis2_target - ref2) > close2) {
+                                    pos_vel = config_.mount_config.max_slew_rate;
                                 }
                             }
-                            
+
+                            // Hard safety against corrupt/cascading targets: a
+                            // tracking position target must never jump more than
+                            // a sane distance from the last known physical drive
+                            // position.  This prevents the "RA axis spins many
+                            // full turns" symptom when the internal position
+                            // desyncs from the drive (e.g. after a position-rewind
+                            // or an encoders_absolute restart).  Legitimate
+                            // Slew & Track moves are ≤180° telescope on either
+                            // axis, so a 360° HA / 180° Dec window is safe.
+                            {
+                                const double max_jump1 = 360.0 * ha_gear;
+                                const double max_jump2 = 180.0 * dec_gear;
+                                if (std::abs(new_axis1_target - ref1) > max_jump1 ||
+                                    std::abs(new_axis2_target - ref2) > max_jump2) {
+                                    // Throttle the log: a persistent desync fires every
+                                    // position update (~10 Hz) and the log flood can
+                                    // stall the calc thread and make the gRPC/INDI
+                                    // controller unresponsive.
+                                    if (diag_log_counter_ % 10 == 0) {
+                                        MOUNT_LOG_ERROR("Rejecting implausible tracking position "
+                                                        "target (axis1={:.2f} ref={:.2f}, "
+                                                        "axis2={:.2f} ref={:.2f}) — internal/drive "
+                                                        "position desync? Re-anchoring to the "
+                                                        "physical drive position.",
+                                                        new_axis1_target, ref1,
+                                                        new_axis2_target, ref2);
+                                    }
+                                    // Recover instead of skipping the update: anchor
+                                    // the offending axis to the physical drive position
+                                    // so tracking keeps flowing.  Dec is stationary
+                                    // during equatorial tracking, so re-anchoring it to
+                                    // ref2 is always safe; the RA target is already
+                                    // kept within ±half turn by the re-wrap above and
+                                    // the lead clamp, so the axis1 branch is a last
+                                    // resort that should normally never trigger.
+                                    if (std::abs(new_axis1_target - ref1) > max_jump1) {
+                                        new_axis1_target = ref1;
+                                    }
+                                    const bool dec_desync =
+                                        std::abs(new_axis2_target - ref2) > max_jump2;
+                                    if (dec_desync) {
+                                        new_axis2_target = ref2;
+                                        ++dec_desync_count_;
+                                        if (dec_desync_count_ >= 2) {
+                                            // Stop immediately: re-anchoring chases the
+                                            // spinning drive and lets the axis keep rotating.
+                                            // Halt the drives and enter ERROR so the operator
+                                            // can re-home with a stationary mount.
+                                            MOUNT_LOG_ERROR("Dec-axis position desync — stopping drives "
+                                                            "and tracking. Re-home the mount before "
+                                                            "tracking again.");
+                                            publishStop();
+                                            {
+                                                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                                                if (state_ == MountStatus::State::TRACKING ||
+                                                    state_ == MountStatus::State::MERIDIAN_FLIP) {
+                                                    state_ = MountStatus::State::ERROR;
+                                                    error_message_ =
+                                                        "Dec-axis position desync — re-home required";
+                                                }
+                                            }
+                                            tracking_active_ = false;
+                                            break;
+                                        }
+                                    }
+                                } else {
+                                    dec_desync_count_ = 0;
+                                }
+                            }
+
                             // Diagnostic: log tracking target vs actual drive position
-                            // every ~10 position updates (~10 s) to detect drive lag.
+                            // every ~10 position updates (~1 s at ≥10 Hz) to detect drive lag.
                             diag_log_counter_++;
                             const bool diag_log = (diag_log_counter_ % 10 == 0);
 
@@ -3955,6 +4177,56 @@ public:
             
             // Apply estimated orientation to the mount
             mount_orientation_ = estimated_q;
+
+            // For EQUATORIAL mounts the tracking loop uses home_offset_axis1/2
+            // (simple encoder offsets), NOT the orientation quaternion above.
+            // Apply the bootstrap result as a mean offset so the home offsets
+            // actually get corrected — without this, bootstrap calibration was a
+            // no-op for equatorial mounts and a corrupted Dec offset could never
+            // be repaired (the "re-home required" loop).
+            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
+                double sum_ha_err = 0.0, sum_dec_err = 0.0;
+                int n = 0;
+                for (const auto& m : bootstrap_measurements_) {
+                    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                        m.timestamp.time_since_epoch()).count();
+                    const double jd = 2440587.5 + ms / 86400000.0;
+                    const double lst = core::AstronomicalCalculations::calculateLST(
+                        jd, config_.mount_config.longitude);
+
+                    // True HA in telescope degrees, normalized to [0°, 360°).
+                    double true_ha_deg = (lst - m.observed_ra) * 15.0;
+                    true_ha_deg = std::fmod(true_ha_deg, 360.0);
+                    if (true_ha_deg < 0.0) true_ha_deg += 360.0;
+
+                    // Measured HA is telescope_axis1 in [0°, 360°); wrap the
+                    // difference to the shortest path (±180°).
+                    double ha_err = true_ha_deg - m.mount_ha;
+                    while (ha_err > 180.0) ha_err -= 360.0;
+                    while (ha_err < -180.0) ha_err += 360.0;
+
+                    // Measured Dec is telescope_axis2: folded Dec normalized to
+                    // [0°, 360°).  Unfold it back to the astronomical [-90°, 90°].
+                    double measured_dec = std::fmod(m.mount_dec, 360.0);
+                    if (measured_dec < 0.0) measured_dec += 360.0;
+                    if (measured_dec > 270.0) measured_dec -= 360.0;
+                    else if (measured_dec > 90.0) measured_dec = 180.0 - measured_dec;
+                    const double dec_err = m.observed_dec - measured_dec;
+
+                    sum_ha_err += ha_err;
+                    sum_dec_err += dec_err;
+                    ++n;
+                }
+                if (n > 0) {
+                    const double mean_ha_err = sum_ha_err / n;
+                    const double mean_dec_err = sum_dec_err / n;
+                    home_offset_axis1_ += mean_ha_err * haGear();
+                    home_offset_axis2_ += mean_dec_err * decGear();
+                    MOUNT_LOG_INFO("Bootstrap (equatorial): applied home-offset correction "
+                                   "dHA={:.4f}° dDec={:.4f}° (from {} measurements)",
+                                   mean_ha_err, mean_dec_err, n);
+                }
+            }
             
             // --- ALT_AZ caveat (plan §8.6) ---
             // For ALT_AZ mounts, the encoder altitude offset is a translation on the
@@ -6935,115 +7207,43 @@ private:
         return violation;
     }
 
-    // Sidereal/solar/lunar/custom rate factor for position-dependent tracking
-    // modes (ALT_AZ / CASUAL).  Centralizes the duplicated switch statements.
-    double trackingModeFactor(config::TrackingMode mode) const {
-        switch (mode) {
-            case config::TrackingMode::SIDEREAL: return 1.0;
-            case config::TrackingMode::SOLAR:    return 0.9972;
-            case config::TrackingMode::LUNAR:    return 0.9760;
-            case config::TrackingMode::CUSTOM:   return 1.0;
-            case config::TrackingMode::OFF:      return 0.0;
-        }
-        return 1.0;
+    // Unified rate determination — every mount type computes its tracking rates
+    // through core::MountKinematics::trackingRates() (see
+    // docs/pl/wyznaczanie_predkosci_sledzenia.md §4–§5).  Inputs are TELESCOPE
+    // degrees; the result is SERVO degrees/second.
+    core::TrackingRates trackingRatesFor(config::TrackingMode mode,
+                                         double axis1_tel, double axis2_tel,
+                                         double custom_rate_ra_arcsec_s,
+                                         double custom_rate_dec_arcsec_s) const {
+        return core::MountKinematics(
+            config_.mount_config.mount_type,
+            config_.mount_config.latitude,
+            config_.mount_config.ha_axis_params.gear_ratio,
+            config_.mount_config.dec_axis_params.gear_ratio,
+            mount_orientation_.quaternion)
+            .trackingRates(mode, axis1_tel, axis2_tel,
+                           custom_rate_ra_arcsec_s, custom_rate_dec_arcsec_s,
+                           config_.mount_config.max_tracking_rate);
     }
 
-    // ── Unified mount-frame tracking rates (rotation-based kinematics) ────────
-    // ALT_AZ and CASUAL are the SAME calculation modulo the ENU→mount rotation Q
-    // (docs/pl/analiza_typow_montazu.md §2/§6): Q is the identity for ALT_AZ
-    // (its axes already ARE altitude/azimuth) and the configured orientation
-    // quaternion for CASUAL.  Pipeline:
-    //   mount axes → true horizontal (apply Q⁻¹) → sidereal alt/az rates
-    //   → rotate the rate vector through Q → project onto the mount axes.
+    // Position-dependent mount-frame tracking rates for ALT_AZ / CASUAL.
     // Writes axis1_rate_/axis2_rate_ under rate_mutex_ and returns the rates via
     // out parameters.  Returns false (and sets the ERROR state) when the result
     // is non-finite (zenith singularity / NaN).
     bool computeMountFrameRates(config::TrackingMode mode, double& out_rate1, double& out_rate2) {
         const bool casual = (config_.mount_config.mount_type == config::MountType::CASUAL);
-        // Effective ENU→mount rotation: identity for ALT_AZ, configured Q for CASUAL.
-        const std::array<double, 4> q_enu_to_mount = casual
-            ? mount_orientation_.quaternion
-            : std::array<double, 4>{0.0, 0.0, 0.0, 1.0};
-
         const double ha_gear_local = config_.mount_config.ha_axis_params.gear_ratio;
         const double dec_gear_local = config_.mount_config.dec_axis_params.gear_ratio;
-        const double mount_alt_telescope = axis1_position_ / ha_gear_local;
-        const double mount_az_telescope  = axis2_position_ / dec_gear_local;
-        const auto [true_alt, true_az] = astro_calc_->mountOrientationToHorizontal(
-            mount_alt_telescope, mount_az_telescope, q_enu_to_mount);
-
-        const double alt_rad = true_alt * M_PI / 180.0;
-        const double az_rad  = true_az * M_PI / 180.0;
-        const double lat_rad = config_.mount_config.latitude * M_PI / 180.0;
-
-        double cos_lat = std::cos(lat_rad);
-        const double MIN_COS_LAT = 1e-10;
-        if (std::abs(cos_lat) < MIN_COS_LAT) {
-            cos_lat = std::copysign(MIN_COS_LAT, cos_lat);
-        }
-
-        const double MIN_COS_ALT = std::cos(89.5 * M_PI / 180.0);
-        double cos_alt = std::cos(alt_rad);
-        if (std::abs(cos_alt) < MIN_COS_ALT) {
-            cos_alt = std::copysign(MIN_COS_ALT, cos_alt);
-        }
-
-        const double omega = 7.2921150e-5 * trackingModeFactor(mode);
-        const double alt_rate_rad = omega * cos_lat * std::cos(az_rad);
-        const double az_rate_rad  = -omega * cos_lat * std::sin(alt_rad) / cos_alt;
-
-        const double sin_alt = std::sin(alt_rad);
-        const double cos_az_h = std::cos(az_rad);
-        const double sin_az_h = std::sin(az_rad);
-
-        const double vx = -sin_alt * cos_az_h * alt_rate_rad - cos_alt * sin_az_h * az_rate_rad;
-        const double vy = -sin_alt * sin_az_h * alt_rate_rad + cos_alt * cos_az_h * az_rate_rad;
-        const double vz = cos_alt * alt_rate_rad;
-
-        double qx = q_enu_to_mount[0];
-        double qy = q_enu_to_mount[1];
-        double qz = q_enu_to_mount[2];
-        double qw = q_enu_to_mount[3];
-        const double qnorm = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
-        if (qnorm > 1e-15) {
-            qx /= qnorm; qy /= qnorm; qz /= qnorm; qw /= qnorm;
-        }
-
-        auto rotateVec = [qx, qy, qz, qw](double vx, double vy, double vz)
-            -> std::array<double, 3> {
-            const double cross1_x = qy * vz - qz * vy;
-            const double cross1_y = qz * vx - qx * vz;
-            const double cross1_z = qx * vy - qy * vx;
-            const double cross2_x = qy * cross1_z - qz * cross1_y;
-            const double cross2_y = qz * cross1_x - qx * cross1_z;
-            const double cross2_z = qx * cross1_y - qy * cross1_x;
-            return {vx + 2.0 * qw * cross1_x + 2.0 * cross2_x,
-                    vy + 2.0 * qw * cross1_y + 2.0 * cross2_y,
-                    vz + 2.0 * qw * cross1_z + 2.0 * cross2_z};
-        };
-
-        const auto mount_pos = rotateVec(cos_alt * cos_az_h, cos_alt * sin_az_h, sin_alt);
-        const auto mount_vel = rotateVec(vx, vy, vz);
-
-        const double m1_deg = std::asin(mount_pos[2]) * 180.0 / M_PI;
-        const double m2_deg = std::atan2(mount_pos[1], mount_pos[0]) * 180.0 / M_PI;
-        const double m1_rad = m1_deg * M_PI / 180.0;
-        const double m2_rad = m2_deg * M_PI / 180.0;
-        double cos_m1 = std::cos(m1_rad);
-        const double MIN_COS_M1 = std::cos(89.5 * M_PI / 180.0);
-        if (std::abs(cos_m1) < MIN_COS_M1) {
-            cos_m1 = std::copysign(MIN_COS_M1, cos_m1);
-        }
-
-        const double m1_rate_deg = mount_vel[2] / cos_m1 * 180.0 / M_PI;
-        const double m2_rate_deg = (-mount_vel[0] * std::sin(m2_rad)
-                                    + mount_vel[1] * std::cos(m2_rad))
-                                   / cos_m1 * 180.0 / M_PI;
+        const core::TrackingRates rates = trackingRatesFor(
+            mode,
+            axis1_position_ / ha_gear_local,
+            axis2_position_ / dec_gear_local,
+            0.0, 0.0);
 
         {
             std::lock_guard<std::shared_mutex> rate_lock(*rate_mutex_);
-            axis1_rate_ = m1_rate_deg * ha_gear_local;
-            axis2_rate_ = m2_rate_deg * dec_gear_local;
+            axis1_rate_ = rates.axis1;
+            axis2_rate_ = rates.axis2;
             out_rate1 = axis1_rate_;
             out_rate2 = axis2_rate_;
         }
@@ -8329,6 +8529,7 @@ private:
     size_t flip_log_counter_{0};
     bool pos_mode_logged_{false};
     size_t diag_log_counter_{0};
+    int dec_desync_count_{0};   // consecutive Dec-axis desync detections
     bool vel_mode_logged_{false};
     size_t drift_diag_counter_{0};
     int refresh_log_counter_{0};

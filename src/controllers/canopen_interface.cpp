@@ -490,42 +490,59 @@ bool CanOpenInterface::configurePdo(uint8_t axis_id, bool enable) {
         // Disable TPDO1 and RPDO2 (bit31 = 1).
         writeSDO4(node, 0x1800, 0x01, 0x80000000u | (0x180 + node));
         writeSDO4(node, 0x1401, 0x01, 0x80000000u | (0x300 + node));
+        if (node < 128) {
+            pdo_configured_[node].store(false);
+        }
         return true;
     }
 
+    // The STMP42SXI/STM42 drives reject PDO mapping writes (SDO abort
+    // 0x06010002 on 0x1A00/0x1601) when the objects are not writable in their
+    // current state.  Every mapping write MUST succeed for the fast path to be
+    // usable — otherwise RPDO2 frames are silently ignored by the drive and
+    // position commands never reach it.  Track the result and only mark the
+    // node as PDO-configured when the full mapping was accepted; otherwise the
+    // command paths fall back to SDO.
+    bool ok = true;
+
     // ── TPDO1: 6041h + 6064h ──────────────────────────────────────────────
     // Mapping sequence: set sub-0 = 0, write entries, then set sub-0 = count.
-    canopen_sdo_write_expedited(&ctx_, node, 0x1A00, 0x00, 0, 1);
-    writeSDO4(node, 0x1A00, 0x01, 0x60410010);
-    writeSDO4(node, 0x1A00, 0x02, 0x60640020);
-    canopen_sdo_write_expedited(&ctx_, node, 0x1A00, 0x00, 2, 1);
+    ok = canopen_sdo_write_expedited(&ctx_, node, 0x1A00, 0x00, 0, 1) && ok;
+    ok = writeSDO4(node, 0x1A00, 0x01, 0x60410010) && ok;
+    ok = writeSDO4(node, 0x1A00, 0x02, 0x60640020) && ok;
+    ok = canopen_sdo_write_expedited(&ctx_, node, 0x1A00, 0x00, 2, 1) && ok;
 
-    writeSDO4(node, 0x1800, 0x01, 0x180 + node);  // COB-ID
-    canopen_sdo_write_expedited(&ctx_, node, 0x1800, 0x02, 255, 1); // async
-    writeSDO2(node, 0x1800, 0x05, 10);            // event timer 10 ms
+    ok = writeSDO4(node, 0x1800, 0x01, 0x180 + node) && ok;  // COB-ID
+    ok = canopen_sdo_write_expedited(&ctx_, node, 0x1800, 0x02, 255, 1) && ok; // async
+    ok = writeSDO2(node, 0x1800, 0x05, 10) && ok;            // event timer 10 ms
 
     // ── RPDO2: 6040h + 607Ah ──────────────────────────────────────────────
-    canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 0, 1);
-    writeSDO4(node, 0x1601, 0x01, 0x60400010);
-    writeSDO4(node, 0x1601, 0x02, 0x607A0020);
-    canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 2, 1);
+    ok = canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 0, 1) && ok;
+    ok = writeSDO4(node, 0x1601, 0x01, 0x60400010) && ok;
+    ok = writeSDO4(node, 0x1601, 0x02, 0x607A0020) && ok;
+    ok = canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 2, 1) && ok;
 
-    writeSDO4(node, 0x1401, 0x01, 0x300 + node);
-    canopen_sdo_write_expedited(&ctx_, node, 0x1401, 0x02, 255, 1);
+    ok = writeSDO4(node, 0x1401, 0x01, 0x300 + node) && ok;
+    ok = canopen_sdo_write_expedited(&ctx_, node, 0x1401, 0x02, 255, 1) && ok;
 
     canopen_set_pdo_callback(&ctx_, &CanOpenInterface::pdoCallback, this);
 
     if (node < 128) {
         pdo_velocity_mapping_[node].store(false);
-        pdo_configured_[node].store(true);
-        last_profile_velocity_[node].store(0);
-        last_profile_accel_[node].store(0);
+        pdo_configured_[node].store(ok);
+        if (ok) {
+            last_profile_velocity_[node].store(0);
+            last_profile_accel_[node].store(0);
+        }
     }
     // Optional: map RPDO2 for velocity mode (6040h + 60FFh).
-    if (config_.pdo_velocity_mapping) {
-        configurePdoVelocityMapping(axis_id, true);
+    if (ok && config_.pdo_velocity_mapping) {
+        ok = configurePdoVelocityMapping(axis_id, true) && ok;
+        if (node < 128) {
+            pdo_configured_[node].store(ok);
+        }
     }
-    return true;
+    return ok;
 }
 
 bool CanOpenInterface::pollEvents() {

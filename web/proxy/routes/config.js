@@ -170,6 +170,19 @@ function flattenConfig(proto) {
     controller_poll_ms:           proto.controller_poll_ms || 0,
     tracking_update_ms:           proto.tracking_update_ms || 0,
 
+    // Split tracking loop + PDO fast path
+    split_tracking_loop:          proto.split_tracking_loop !== undefined ? proto.split_tracking_loop : true,
+    calc_update_hz:               proto.calc_update_hz || 0,
+    io_update_hz:                 proto.io_update_hz || 0,
+    telemetry_decimation:         proto.telemetry_decimation || 0,
+    safety_check_decimation:      proto.safety_check_decimation || 0,
+    io_realtime:                  proto.io_realtime !== undefined ? proto.io_realtime : true,
+    io_realtime_priority:         proto.io_realtime_priority || 0,
+    pdo_fast_path:                proto.pdo_fast_path !== undefined ? proto.pdo_fast_path : true,
+    pdo_velocity_mapping:         proto.pdo_velocity_mapping !== undefined ? proto.pdo_velocity_mapping : false,
+    sdo_slow_control:             proto.sdo_slow_control !== undefined ? proto.sdo_slow_control : true,
+    tracking_pos_update_hz:       proto.tracking_pos_update_hz || 0,
+
     // Servo init
     servo_init_enabled:           proto.servo_init_enabled || false,
     servo_init_sequence:          proto.servo_init_sequence || '[]',
