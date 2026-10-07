@@ -259,6 +259,21 @@ public:
     void setEnabledTerms(uint32_t term_mask);
 
     /**
+     * @brief Install a coarse two-constant (index-error) correction.
+     *
+     * Used by the small-dataset TPOINT fallback (3-9 measurements), which fits
+     * only the RA index error (IH) and Dec index error (ID) directly via QR.
+     * These constants map onto the INDEX_ERROR and POLAR_ALT terms; the
+     * COLLIMATION_ERROR term is enabled (with a zero coefficient) so the
+     * POLAR_ALT RA side effect (-cos(ha)) stays suppressed, keeping the model
+     * a pure constant correction.
+     *
+     * @param index_error_arcsec  RA index error (IH) in arcseconds
+     * @param index_dec_arcsec    Dec index error (ID) in arcseconds
+     */
+    void setIndexCorrection(double index_error_arcsec, double index_dec_arcsec);
+
+    /**
      * @brief Save model to file
      * @param filename File to save to
      * @return True if save successful

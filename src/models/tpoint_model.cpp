@@ -416,6 +416,21 @@ public:
         enabled_terms_ = term_mask;
         is_fitted_ = false;
     }
+
+    void setIndexCorrection(double index_error_arcsec, double index_dec_arcsec) {
+        // Install the coarse two-constant correction fitted by the level-0
+        // (3-9 measurement) TPOINT fallback: RA index error (IH) and Dec index
+        // error (ID).  COLLIMATION_ERROR is enabled with a zero coefficient so
+        // the POLAR_ALT RA side effect (-cos(ha)) stays suppressed, keeping the
+        // model a pure constant correction (see calculateRACorrection()).
+        parameters_.index_error = index_error_arcsec;
+        parameters_.collimation_error = 0.0;
+        parameters_.polar_alt_error = index_dec_arcsec;
+        enabled_terms_ = TPointTerms::INDEX_ERROR |
+                         TPointTerms::COLLIMATION_ERROR |
+                         TPointTerms::POLAR_ALT;
+        is_fitted_ = true;
+    }
     
     bool saveToFile(const std::string& filename) const {
         json data;
@@ -1237,6 +1252,10 @@ TPointModel::MountPhysicalParameters TPointModel::getMountParameters() const {
 
 void TPointModel::setEnabledTerms(uint32_t term_mask) {
     pimpl->setEnabledTerms(term_mask);
+}
+
+void TPointModel::setIndexCorrection(double index_error_arcsec, double index_dec_arcsec) {
+    pimpl->setIndexCorrection(index_error_arcsec, index_dec_arcsec);
 }
 
 bool TPointModel::saveToFile(const std::string& filename) const {

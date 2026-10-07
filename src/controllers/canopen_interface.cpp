@@ -661,10 +661,15 @@ bool CanOpenInterface::setVelocityTargetPdo(uint8_t axis_id, int32_t velocity,
 bool CanOpenInterface::configurePdoVelocityMapping(uint8_t axis_id, bool enable) {
     const uint8_t node = nodeIdForAxis(axis_id);
 
-    // Remap RPDO2 (0x1601) to 6040h + 60FFh (controlword + target velocity).
+    // Remap RPDO2 (0x1601): enable=true → 6040h + 60FFh (controlword + target
+    // velocity), enable=false → 6040h + 607Ah (controlword + target position).
+    // Previously the second object was hardcoded to 60FFh regardless of the
+    // 'enable' flag, so a call with enable=false left RPDO2 mapped for velocity
+    // while the flag reported position mode — position commands were then
+    // written into the velocity object and the drive moved at a stale velocity.
     canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 0, 1);
     writeSDO4(node, 0x1601, 0x01, 0x60400010);
-    writeSDO4(node, 0x1601, 0x02, 0x60FF0020);
+    writeSDO4(node, 0x1601, 0x02, enable ? 0x60FF0020 : 0x607A0020);
     canopen_sdo_write_expedited(&ctx_, node, 0x1601, 0x00, 2, 1);
 
     writeSDO4(node, 0x1401, 0x01, 0x300 + node);

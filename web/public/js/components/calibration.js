@@ -474,12 +474,22 @@ const CalibrationComponent = (() => {
 
     resultDiv.style.display = 'none';
 
-    // Get current mount position for observed coordinates
+    // Get current mount position for observed coordinates.
+    // The backend expects:
+    //   observed_ra  -> on-sky RA in HOURS   (state.current_ra)
+    //   observed_dec -> on-sky Dec in DEGREES (state.current_dec)
+    //   mount_ha     -> telescope axis1 in DEGREES (state.telescope.axis1)
+    //   mount_dec    -> telescope axis2 in DEGREES (state.telescope.axis2)
+    // Previously the UI sent state.telescope.axis1 (HA degrees) as observed_ra
+    // and state.position.axis1/2 (raw servo degrees) as mount_ha/mount_dec.
+    // Those unit mismatches corrupted the bootstrap/TPOINT fits ("mirroring the
+    // bootstrap bug" in the INDI driver) and, after calibration, made tracking
+    // command a runaway high-speed slew until the safety monitor braked.
     const state = App.getLastState();
-    const observedRa = state ? (state.telescope?.axis1 ?? 0) : 0;
-    const observedDec = state ? (state.telescope?.axis2 ?? 0) : 0;
-    const mountHa = state ? (state.position?.axis1 ?? 0) : 0;
-    const mountDec = state ? (state.position?.axis2 ?? 0) : 0;
+    const observedRa = state ? (state.current_ra ?? 0) : 0;
+    const observedDec = state ? (state.current_dec ?? 0) : 0;
+    const mountHa = state ? (state.telescope?.axis1 ?? 0) : 0;
+    const mountDec = state ? (state.telescope?.axis2 ?? 0) : 0;
 
     const measurement = {
       object_id: obj.id || obj.name,

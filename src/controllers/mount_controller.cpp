@@ -728,6 +728,14 @@ public:
             return false;
         }
         MOUNT_LOG_INFO("slewToEquatorial: RA={:.6f}h Dec={:.4f}°", ra, dec);
+
+        if (motionRequiresHome()) {
+            MOUNT_LOG_ERROR("slewToEquatorial rejected: mount not homed. Perform Home "
+                            "before slewing — the CANopen drive counter has not been "
+                            "zeroed, so an absolute slew would send the axis far from "
+                            "the physical position.");
+            return false;
+        }
         
         // Lock thread_mutex_ across the entire join + state-check + create sequence
         // to prevent data races on work_thread_ from concurrent calls.
@@ -809,17 +817,31 @@ public:
                     while (ha_delta < -12.0) ha_delta += 24.0;
                     ha_hours = current_ha_hours + ha_delta;
                     
-                    // Use TPOINT model to correct the mount position for systematic errors
-                    // predictMountPosition() inverts the fitted model via Newton-Raphson
-                    // to find the mount HA/Dec that produces the correct on-sky position
+                    // Use TPOINT model to correct the mount position for systematic errors.
+                    // computeTPointMountTarget() inverts the fitted model with a
+                    // fixed-point iteration anchored to the target's LST frame; it
+                    // handles constant index-error terms correctly (unlike the old
+                    // predictMountPosition() call, which degenerated to HA≈0).
                     if (tpoint_calibrated_) {
-                        auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
+                        double mount_ha = 0.0, mount_dec = 0.0;
+                        if (!computeTPointMountTarget(ra, dec, lst, mount_ha, mount_dec)) {
+                            MOUNT_LOG_WARN("slewToEquatorial: TPOINT target inversion failed; "
+                                           "falling back to uncorrected target");
+                            mount_ha = lst - ra;
+                            mount_dec = dec;
+                        }
                         // Same shortest-path selection for the TPOINT-corrected HA.
                         double tpoint_delta = mount_ha - current_ha_hours;
                         while (tpoint_delta > 12.0) tpoint_delta -= 24.0;
                         while (tpoint_delta < -12.0) tpoint_delta += 24.0;
                         mount_ha = current_ha_hours + tpoint_delta;
                         axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
+                        // TPOINT returns a folded astronomical Dec; resolve it to the
+                        // pier-side equivalent nearest the current physical Dec axis
+                        // (same as the uncorrected path below), otherwise the target can
+                        // land ~180° (opposite pier) from the drive.
+                        const double dec_gear_safe_tp = dec_gear > 0.0 ? dec_gear : 360.0;
+                        mount_dec = resolveDecTarget(mount_dec, axis2_position_ / dec_gear_safe_tp);
                         axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
                     } else {
                         axis1_target_ = ha_hours * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
@@ -981,6 +1003,14 @@ public:
     bool slewToHorizontal(double altitude, double azimuth) {
         // Reject non-finite coordinates
         if (!std::isfinite(altitude) || !std::isfinite(azimuth)) {
+            return false;
+        }
+
+        if (motionRequiresHome()) {
+            MOUNT_LOG_ERROR("slewToHorizontal rejected: mount not homed. Perform Home "
+                            "before slewing — the CANopen drive counter has not been "
+                            "zeroed, so an absolute slew would send the axis far from "
+                            "the physical position.");
             return false;
         }
         
@@ -1329,10 +1359,17 @@ public:
             } else if (cmd.pos_update_pending && cmd.seq != last_pos_seq) {
                 try {
                     if (hal_axis1_motor_ && hal_axis2_motor_) {
-                        hal_axis1_motor_->setPosition(cmd.pos1, cmd.pos_vel,
+                        const bool ok1 = hal_axis1_motor_->setPosition(cmd.pos1, cmd.pos_vel,
                                                       config_.mount_config.slew_acceleration);
-                        hal_axis2_motor_->setPosition(cmd.pos2, cmd.pos_vel,
+                        const bool ok2 = hal_axis2_motor_->setPosition(cmd.pos2, cmd.pos_vel,
                                                       config_.mount_config.slew_acceleration);
+                        if (!ok1 || !ok2) {
+                            MOUNT_LOG_WARN("io thread: position command FAILED "
+                                           "(axis1_ok={} axis2_ok={} pos1={:.2f}° "
+                                           "pos2={:.2f}° vel={:.2f}°/s) — the drive "
+                                           "may be executing a stale target",
+                                           ok1, ok2, cmd.pos1, cmd.pos2, cmd.pos_vel);
+                        }
                     }
                 } catch (const std::exception& e) {
                     MOUNT_LOG_WARN("io thread: position command error: {}", e.what());
@@ -1459,6 +1496,14 @@ public:
                             dec, ra);
             return false;
         }
+
+        if (motionRequiresHome()) {
+            MOUNT_LOG_ERROR("startTracking rejected: mount not homed. Perform Home "
+                            "before tracking — the CANopen drive counter has not been "
+                            "zeroed, so an absolute move would send the axis far from "
+                            "the physical position.");
+            return false;
+        }
         
         // Quick state check WITHOUT joining the work thread first.
         // If a slew/park is in progress, reject immediately rather than
@@ -1544,24 +1589,31 @@ public:
                 while (ha_delta < -12.0) ha_delta += 24.0;
                 ha_hours = current_ha_hours + ha_delta;
 
-                // Use TPOINT model to correct the mount position for systematic errors
-                // predictMountPosition() inverts the fitted model via Newton-Raphson
-                // to find the mount HA/Dec that produces the correct on-sky position
+                // Use TPOINT model to correct the mount position for systematic errors.
+                // computeTPointMountTarget() inverts the fitted model with a
+                // fixed-point iteration anchored to the target's LST frame.  The old
+                // predictMountPosition() call passed the target as the *observed*
+                // position, degenerating to HA≈0 for constant index-error models —
+                // which made tracking slew to the meridian at high speed ("axes spin
+                // after calibration" symptom).
                 bool tpoint_target_valid = false;
                 if (tpoint_calibrated_) {
-                    auto [mount_ha, mount_dec] = tpoint_model_->predictMountPosition(ra, dec);
-                    // Guard against a degenerate/failed TPOINT model returning
-                    // NaN/Inf.  A non-finite mount_ha would otherwise flow into
-                    // tracking_target_ra_hours_ and, from there, into the tracking
-                    // loop's position update, which commands the drive to NaN
-                    // targets and can produce uncontrolled RA motion.
-                    if (std::isfinite(mount_ha) && std::isfinite(mount_dec)) {
+                    double mount_ha = 0.0, mount_dec = 0.0;
+                    const bool tpoint_ok =
+                        computeTPointMountTarget(ra, dec, lst, mount_ha, mount_dec);
+                    if (tpoint_ok && std::isfinite(mount_ha) && std::isfinite(mount_dec)) {
                         // Same shortest-path selection for the TPOINT-corrected HA.
                         double tpoint_delta = mount_ha - current_ha_hours;
                         while (tpoint_delta > 12.0) tpoint_delta -= 24.0;
                         while (tpoint_delta < -12.0) tpoint_delta += 24.0;
                         mount_ha = current_ha_hours + tpoint_delta;
                         axis1_target_ = mount_ha * 15.0 * ha_gear - home_offset_axis1_;  // Convert hours→degrees→servo degrees, adjust for Home offset
+                        // TPOINT returns a folded astronomical Dec; resolve it to the
+                        // pier-side equivalent nearest the current physical Dec axis,
+                        // otherwise the target can land ~180° (opposite pier) from the
+                        // drive and the Dec axis chases it at max slew rate.
+                        const double dec_gear_safe_tp2 = dec_gear > 0.0 ? dec_gear : 360.0;
+                        mount_dec = resolveDecTarget(mount_dec, axis2_position_ / dec_gear_safe_tp2);
                         axis2_target_ = mount_dec * dec_gear - home_offset_axis2_;
                         // Store the TPOINT-corrected target for the tracking loop.
                         // The tracking loop computes HA = LST - RA, so store an
@@ -1577,10 +1629,10 @@ public:
                         tracking_target_dec_deg_ = mount_dec;
                         tpoint_target_valid = true;
                     } else {
-                        MOUNT_LOG_WARN("startTracking: TPOINT predictMountPosition returned "
-                                       "non-finite position (HA={:.4f}, Dec={:.4f}); "
+                        MOUNT_LOG_WARN("startTracking: TPOINT target inversion failed "
+                                       "(ok={}, HA={:.4f}, Dec={:.4f}); "
                                        "falling back to uncorrected target",
-                                       mount_ha, mount_dec);
+                                       tpoint_ok, mount_ha, mount_dec);
                     }
                 }
                 if (!tpoint_target_valid) {
@@ -1759,7 +1811,7 @@ public:
                 // spin the axis, so reject and ask the operator to re-home.
                 {
                     const double dec_gear_v = decGear();
-                    const double max_dec_jump = 180.0 * dec_gear_v;
+                    const double full_turn_dec = 360.0 * dec_gear_v;
                     double ref_dec = raw_servo_axis2_position_ - home_offset_axis2_;
                     try {
                         if (hal_axis2_motor_ && hal_axis2_motor_->isEnabled()) {
@@ -1769,11 +1821,27 @@ public:
                     } catch (const std::exception& e) {
                         MOUNT_LOG_DEBUG("startTracking Dec validation: {}", e.what());
                     }
-                    if (std::abs(axis2_target_ - ref_dec) > max_dec_jump) {
+                    // Dec is stationary during sidereal tracking, but the raw target
+                    // (dec*gear − home_offset) can land many worm turns from the
+                    // physical drive when home_offset_axis2_ is large (e.g. a drive
+                    // whose "set origin" did not actually zero the counter).  Shift it
+                    // by WHOLE Dec turns so the resolved telescope Dec is preserved and
+                    // the drive never chases a distant absolute target — the previous
+                    // reject-only check admitted targets up to a full Dec turn away,
+                    // which the drive then chased at max slew rate ("Dec-axis position
+                    // desync" runaway).
+                    double d2 = axis2_target_ - ref_dec;
+                    d2 = std::fmod(d2, full_turn_dec);
+                    if (d2 > full_turn_dec / 2.0) d2 -= full_turn_dec;
+                    else if (d2 < -full_turn_dec / 2.0) d2 += full_turn_dec;
+                    axis2_target_ = ref_dec + d2;
+                    // After re-wrapping, a remaining offset beyond half a Dec turn
+                    // means the home offset's fractional part is corrupt — reject.
+                    if (std::abs(d2) > 180.0 * dec_gear_v) {
                         MOUNT_LOG_ERROR("startTracking: Dec target {:.2f}° is {:.2f}° away from "
                                         "the drive position {:.2f}° — corrupt home offset? "
                                         "Re-home the mount before tracking.",
-                                        axis2_target_, axis2_target_ - ref_dec, ref_dec);
+                                        axis2_target_, d2, ref_dec);
                         axis1_rate_ = 0.0;
                         axis2_rate_ = 0.0;
                         state_ = MountStatus::State::ERROR;
@@ -2934,15 +3002,31 @@ public:
                             // The previous shortest-path wrap re-anchored the target to
                             // the drive's current position, which cancelled the lead and
                             // disconnected the tracking rate from the sidereal rate.
-                            // Dec is deliberately NOT wrapped: Dec is not 360°-periodic
-                            // (180°−Dec flips the pier side) and new_axis2_target is
-                            // already resolved to the pier-side equivalent nearest the
-                            // current Dec.
+                            // Dec is wrapped by WHOLE turns only (see below): the
+                            // pier-side-resolved telescope Dec is preserved, while the
+                            // multi-turn window is re-anchored to the physical drive.
                             {
                                 const double full_turn1 = 360.0 * ha_gear;
                                 const double turns1 =
                                     std::round((new_axis1_target - ref1) / full_turn1);
                                 new_axis1_target -= turns1 * full_turn1;
+
+                                // Dec is stationary during equatorial tracking, but the
+                                // fixed target computed by startTracking() can land in a
+                                // different multi-turn window than the physical drive when
+                                // home_offset_axis2_ is large (e.g. a drive whose "set
+                                // origin" did not actually zero the counter).  Shift it by
+                                // WHOLE Dec turns (360° telescope × dec_gear) so the
+                                // resolved telescope Dec is preserved while the absolute
+                                // servo gap to the drive can never exceed half a Dec turn —
+                                // otherwise the drive chases the distant absolute target at
+                                // max slew rate ("Dec-axis position desync" runaway).
+                                if (have_act) {
+                                    const double full_turn2 = 360.0 * dec_gear;
+                                    const double turns2 =
+                                        std::round((new_axis2_target - ref2) / full_turn2);
+                                    new_axis2_target -= turns2 * full_turn2;
+                                }
 
                                 // Position error (servo degrees): the actual gap to the
                                 // absolute target minus the intended lead.  Positive =
@@ -2989,8 +3073,14 @@ public:
                             {
                                 const double max_jump1 = 360.0 * ha_gear;
                                 const double max_jump2 = 180.0 * dec_gear;
-                                if (std::abs(new_axis1_target - ref1) > max_jump1 ||
-                                    std::abs(new_axis2_target - ref2) > max_jump2) {
+                                // ref1/ref2 are trustworthy only when they come from a
+                                // live motor read (have_act).  When an axis is disabled
+                                // its cached position is stale and must not be used to
+                                // re-anchor targets or to judge desync.
+                                const bool trust_ref = have_act;
+                                if (trust_ref &&
+                                    (std::abs(new_axis1_target - ref1) > max_jump1 ||
+                                     std::abs(new_axis2_target - ref2) > max_jump2)) {
                                     // Throttle the log: a persistent desync fires every
                                     // position update (~10 Hz) and the log flood can
                                     // stall the calc thread and make the gRPC/INDI
@@ -3015,32 +3105,28 @@ public:
                                     if (std::abs(new_axis1_target - ref1) > max_jump1) {
                                         new_axis1_target = ref1;
                                     }
-                                    const bool dec_desync =
-                                        std::abs(new_axis2_target - ref2) > max_jump2;
-                                    if (dec_desync) {
-                                        new_axis2_target = ref2;
-                                        ++dec_desync_count_;
-                                        if (dec_desync_count_ >= 2) {
-                                            // Stop immediately: re-anchoring chases the
-                                            // spinning drive and lets the axis keep rotating.
-                                            // Halt the drives and enter ERROR so the operator
-                                            // can re-home with a stationary mount.
-                                            MOUNT_LOG_ERROR("Dec-axis position desync — stopping drives "
-                                                            "and tracking. Re-home the mount before "
-                                                            "tracking again.");
-                                            publishStop();
-                                            {
-                                                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                                                if (state_ == MountStatus::State::TRACKING ||
-                                                    state_ == MountStatus::State::MERIDIAN_FLIP) {
-                                                    state_ = MountStatus::State::ERROR;
-                                                    error_message_ =
-                                                        "Dec-axis position desync — re-home required";
-                                                }
+                                    if (std::abs(new_axis2_target - ref2) > max_jump2) {
+                                        // Dec is stationary during equatorial tracking, so a
+                                        // target more than 180° telescope from the drive means
+                                        // the frame is broken (corrupt home offset / counter
+                                        // desync).  Re-anchoring chases the spinning drive and
+                                        // lets the axis keep rotating; halt immediately so the
+                                        // operator can re-home with a stationary mount.
+                                        MOUNT_LOG_ERROR("Dec-axis position desync — stopping drives "
+                                                        "and tracking. Re-home the mount before "
+                                                        "tracking again.");
+                                        publishStop();
+                                        {
+                                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                                            if (state_ == MountStatus::State::TRACKING ||
+                                                state_ == MountStatus::State::MERIDIAN_FLIP) {
+                                                state_ = MountStatus::State::ERROR;
+                                                error_message_ =
+                                                    "Dec-axis position desync — re-home required";
                                             }
-                                            tracking_active_ = false;
-                                            break;
                                         }
+                                        tracking_active_ = false;
+                                        break;
                                     }
                                 } else {
                                     dec_desync_count_ = 0;
@@ -3834,6 +3920,114 @@ public:
         return status;
     }
 
+    // Periodically rewind the CANopen drive position counters so they never grow
+    // past the ±1,000,000-count window the drives can represent safely.  The
+    // config exposes position_rewind_* options but the HAL never acted on them,
+    // so the counters grew unbounded across long tracking sessions (the logs
+    // showed Dec at ~5,263 turns / ~693M counts) and the drives then ran away on
+    // absolute position targets — the "Dec-axis position desync" failure.
+    void maybeRewindDriveCounters() {
+        if (hal_config_.type != hal::HALType::CANOPEN &&
+            hal_config_.type != hal::HALType::MF7025V2) return;
+        const auto& cn = config_.hal_config.canopen;
+        if (!cn.position_rewind_enabled) return;
+        // Before Home the drive counter is not yet the reference for the
+        // telescope frame; zeroing it here would shift home_offset against an
+        // un-established frame.  home() performs the zero itself.
+        if (!drivePositionIsTrusted()) return;
+
+        const auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration<double>(now - last_rewind_check_).count() < 10.0) return;
+        last_rewind_check_ = now;
+
+        const double threshold =
+            std::clamp(cn.position_rewind_threshold_percent, 1.0, 100.0) / 100.0;
+        const double limit_counts = 1000000.0;
+
+        rewindAxisIfNeeded(0, threshold * limit_counts);
+        rewindAxisIfNeeded(1, threshold * limit_counts);
+    }
+
+    void rewindAxisIfNeeded(int axis, double max_counts) {
+        auto* motor = (axis == 0) ? hal_axis1_motor_.get() : hal_axis2_motor_.get();
+        auto* enc = (axis == 0) ? hal_axis1_encoder_.get() : hal_axis2_encoder_.get();
+        if (!motor || !enc) return;
+
+        // Never rewind while a slew/park/flip/track is in progress — those moves
+        // hold absolute targets in the current counter frame.  Rewinding during
+        // tracking was especially dangerous: zeroing the counter while the split
+        // I/O thread still held the previous absolute target made the drive chase
+        // the stale target across the re-zeroed frame ("Dec-axis position desync").
+        {
+            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+            if (state_ == MountStatus::State::SLEWING ||
+                state_ == MountStatus::State::PARKING ||
+                state_ == MountStatus::State::MERIDIAN_FLIP ||
+                state_ == MountStatus::State::TRACKING) return;
+        }
+
+        double cpd = 10000.0;
+        if (axis < static_cast<int>(config_.hal_config.axes.size())) {
+            cpd = config_.hal_config.axes[axis].motor_config.encoder_counts_per_degree;
+        }
+        if (!(cpd > 0.0)) cpd = 10000.0;
+
+        const auto reading = enc->read();
+        if (!reading.data_valid || !std::isfinite(reading.position_deg)) return;
+        const double pos_drive = (axis == 0) ? applyAxis1Inversion(reading.position_deg)
+                                             : applyAxis2Inversion(reading.position_deg);
+        if (std::abs(pos_drive) * cpd < max_counts) return;
+
+        if (!motor->zeroPosition()) {
+            const auto fail_now = std::chrono::steady_clock::now();
+            if (std::chrono::duration<double>(fail_now - last_rewind_fail_log_).count() >= 60.0) {
+                last_rewind_fail_log_ = fail_now;
+                MOUNT_LOG_WARN("Position rewind: zeroPosition failed on axis {} "
+                               "(counter {:.1f}°, {:.0f} counts) — the drive VDI 2017h "
+                               "'set origin' may not be configured; retrying later",
+                               axis, pos_drive, pos_drive * cpd);
+            }
+            return;
+        }
+
+        // Verify the zero actually took effect.  Some drives (STM42M with an
+        // unconfigured 2017h VDI) accept the SDO and report success but do NOT
+        // reset the counter.  If the counter is still far from zero, shifting
+        // home_offset would corrupt the telescope frame — exactly the runaway
+        // seen after the first rewind.
+        const auto after = enc->read();
+        if (!after.data_valid || !std::isfinite(after.position_deg) ||
+            std::abs(after.position_deg) > 360.0) {
+            const auto fail_now = std::chrono::steady_clock::now();
+            if (std::chrono::duration<double>(fail_now - last_rewind_fail_log_).count() >= 60.0) {
+                last_rewind_fail_log_ = fail_now;
+                MOUNT_LOG_WARN("Position rewind: axis {} zero did not take effect "
+                               "(counter still {:.1f}°) — drive VDI 2017h 'set origin' "
+                               "is likely not configured; leaving frame unchanged",
+                               axis,
+                               after.data_valid ? after.position_deg : pos_drive);
+            }
+            return;
+        }
+
+        // The drive counter is now ~0.  Shift the home offset and the active
+        // absolute target by the pre-zero value so the reported telescope
+        // position and any in-flight target stay exactly where they were.
+        {
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+            if (axis == 0) {
+                home_offset_axis1_ += pos_drive;
+                axis1_target_ -= pos_drive;
+            } else {
+                home_offset_axis2_ += pos_drive;
+                axis2_target_ -= pos_drive;
+            }
+        }
+        MOUNT_LOG_INFO("Position rewind: axis {} counter {:.1f}° → 0 "
+                       "(home offset adjusted by {:.1f}°)",
+                       axis, pos_drive, pos_drive);
+    }
+
     /**
      * @brief Read actual axis positions from CANopen drives and update cached state.
      *
@@ -3852,6 +4046,9 @@ public:
         // and causing instability when gRPC handlers compete for the bus.
         if (!hal_axis1_motor_->isEnabled() && !hal_axis2_motor_->isEnabled())
             return;
+
+        // Keep the drive counters within their safe multi-turn window.
+        maybeRewindDriveCounters();
 
         // ── Read positions OUTSIDE state_mutex_ to prevent timeouts ──
         // Reads can block for up to ~1 s per axis when a motor is
@@ -3882,8 +4079,17 @@ public:
             // This is the ground-truth position; getStatus() reports the
             // telescope position derived from these values regardless of
             // whether tracking is active.
-            raw_servo_axis1_position_ = pos0 + home_offset_axis1_;
-            raw_servo_axis2_position_ = pos1 + home_offset_axis2_;
+            //
+            // Only adopt the drive counter when it is a trusted source for the
+            // telescope frame.  Before Home on an incremental-encoder CANopen
+            // drive the counter is the persisted absolute multi-turn value
+            // (thousands of turns); adopting it here made the first absolute
+            // Dec target land ~14 turns from the drive and the mount ran away
+            // immediately after power-on.
+            if (drivePositionIsTrusted()) {
+                raw_servo_axis1_position_ = pos0 + home_offset_axis1_;
+                raw_servo_axis2_position_ = pos1 + home_offset_axis2_;
+            }
             MOUNT_LOG_DEBUG("refreshPositions: pos0={:.4f} pos1={:.4f} home_off1={:.2f} home_off2={:.2f} → raw1={:.2f} raw2={:.2f}",
                 pos0, pos1, home_offset_axis1_, home_offset_axis2_,
                 raw_servo_axis1_position_, raw_servo_axis2_position_);
@@ -3910,11 +4116,9 @@ public:
                 // offset-adjusted (homed) reference frame.  Without this,
                 // getStatus()'s fallback would override the home reference
                 // when raw_servo_axis* is near zero (e.g. after Home(0,0)).
-                if (halPositionIsAuthoritative() || std::abs(pos0) > 0.001 ||
-                    std::abs(axis1_position_) < 0.001)
+                if (drivePositionIsTrusted() || std::abs(axis1_position_) < 0.001)
                     axis1_position_ = pos0 + home_offset_axis1_;
-                if (halPositionIsAuthoritative() || std::abs(pos1) > 0.001 ||
-                    std::abs(axis2_position_) < 0.001)
+                if (drivePositionIsTrusted() || std::abs(axis2_position_) < 0.001)
                     axis2_position_ = pos1 + home_offset_axis2_;
             }
             // Store actual motor velocities in dedicated fields.
@@ -4211,15 +4415,31 @@ public:
                     if (measured_dec < 0.0) measured_dec += 360.0;
                     if (measured_dec > 270.0) measured_dec -= 360.0;
                     else if (measured_dec > 90.0) measured_dec = 180.0 - measured_dec;
-                    const double dec_err = m.observed_dec - measured_dec;
+                    double dec_err = m.observed_dec - measured_dec;
+                    // A Dec error is the difference of two Dec angles and must lie
+                    // within ±180°.  A client that sends mis-united fields (e.g. the
+                    // old web UI sending telescope.axis2 in [0°,360°) as observed_dec,
+                    // or raw servo degrees as mount_dec) can produce values up to
+                    // ~450°, which would corrupt home_offset_axis2_ by thousands of
+                    // servo degrees and make the Dec target land many turns from the
+                    // drive ("Dec-axis position desync").  Wrap to the legal range.
+                    while (dec_err > 180.0) dec_err -= 360.0;
+                    while (dec_err < -180.0) dec_err += 360.0;
 
                     sum_ha_err += ha_err;
                     sum_dec_err += dec_err;
                     ++n;
                 }
                 if (n > 0) {
-                    const double mean_ha_err = sum_ha_err / n;
-                    const double mean_dec_err = sum_dec_err / n;
+                    double mean_ha_err = sum_ha_err / n;
+                    double mean_dec_err = sum_dec_err / n;
+                    // Final sanity wrap: never apply more than half a turn of
+                    // correction in one bootstrap run, even if a bad measurement
+                    // slipped through the per-measurement wrap above.
+                    while (mean_ha_err > 180.0) mean_ha_err -= 360.0;
+                    while (mean_ha_err < -180.0) mean_ha_err += 360.0;
+                    while (mean_dec_err > 180.0) mean_dec_err -= 360.0;
+                    while (mean_dec_err < -180.0) mean_dec_err += 360.0;
                     home_offset_axis1_ += mean_ha_err * haGear();
                     home_offset_axis2_ += mean_dec_err * decGear();
                     MOUNT_LOG_INFO("Bootstrap (equatorial): applied home-offset correction "
@@ -4579,6 +4799,19 @@ public:
                 
                 MOUNT_LOG_INFO("TPOINT level0 fit (direct QR): IH={:.6f}°, ID={:.6f}°, NP={:.6f}",
                                ih, id, np);
+
+                // Install the fitted constants into the TPointModel so the
+                // controller's tracking/slew paths actually use them.  Without
+                // this, tpoint_calibrated_ was set true while the model stayed
+                // unfitted, and predictMountPosition() fell back to HA=0° —
+                // which made startTracking() command a high-speed slew to the
+                // meridian (the "axes spin after calibration" symptom).
+                // IH → index_error (RA constant), ID → polar_alt_error
+                // (Dec constant).  NP (linear-in-HA Dec term) has no exact
+                // TPoint basis term and is deliberately omitted for safety.
+                if (tpoint_model_) {
+                    tpoint_model_->setIndexCorrection(ih * 3600.0, id * 3600.0);
+                }
                 
                 // Compute residuals, RMS, max, chi-squared
                 Eigen::VectorXd residuals = b - A * params;
@@ -6081,16 +6314,43 @@ public:
             return false;
         }
         
-        // Zero the motor's internal position counter (e.g. MF7025v2 0x95 SetZeroRAM).
-        // Slew/tracking targets are adjusted by home_offset (axis_target = dec*gear − offset),
-        // so the coordinate mismatch is handled correctly regardless of zeroPoint result.
+        // Zero the motor's internal position counters where supported (e.g.
+        // MF7025v2 0x95 SetZeroRAM, STM42M 2031h:01h "set origin").  This is a
+        // best-effort operation; the home offset below is computed from a FRESH
+        // absolute read, so the result is correct whether or not the drive
+        // actually zeroes its counter.
         if (hal_axis1_motor_) hal_axis1_motor_->zeroPosition();
         if (hal_axis2_motor_) hal_axis2_motor_->zeroPosition();
 
-        // Read actual motor positions after zeroing and compute home offset.
-        // offset = desired_servo − actual_logical_motor
-        double actual1 = hal_axis1_motor_ ? applyAxis1Inversion(hal_axis1_motor_->getActualPosition()) : 0.0;
-        double actual2 = hal_axis2_motor_ ? applyAxis2Inversion(hal_axis2_motor_->getActualPosition()) : 0.0;
+        // Read the FRESH drive position from the encoder readers (direct SDO
+        // read), NOT the cached motor getActualPosition().  The cached value is
+        // updated by the HAL monitor thread and still holds the pre-zero /
+        // pre-motion counter when Home runs.  Using that stale value made
+        // home_offset_axisN = new_axis − stale_counter, so every later absolute
+        // Dec target landed many turns from the physical drive and the mount ran
+        // away on the next slew/track ("Dec-axis position desync").
+        double actual1 = 0.0, actual2 = 0.0;
+        bool have1 = false, have2 = false;
+        if (hal_axis1_encoder_) {
+            const auto enc1 = hal_axis1_encoder_->read();
+            if (enc1.data_valid && std::isfinite(enc1.position_deg)) {
+                actual1 = applyAxis1Inversion(enc1.position_deg);
+                have1 = true;
+            }
+        }
+        if (hal_axis2_encoder_) {
+            const auto enc2 = hal_axis2_encoder_->read();
+            if (enc2.data_valid && std::isfinite(enc2.position_deg)) {
+                actual2 = applyAxis2Inversion(enc2.position_deg);
+                have2 = true;
+            }
+        }
+        if (!have1 || !have2) {
+            MOUNT_LOG_ERROR("home() rejected: could not read fresh drive positions "
+                            "(axis1={}, axis2={})",
+                            have1, have2);
+            return false;
+        }
 
         home_offset_axis1_ = new_axis1 - actual1;
         home_offset_axis2_ = new_axis2 - actual2;
@@ -6131,6 +6391,7 @@ public:
         pier_side_ = 1;
         time_to_meridian_ = 24.0;
         
+        homed_ = true;
         MOUNT_LOG_INFO("Mount homed: axis1={:.4f}° axis2={:.4f}° (telescope) | "
                  "servo axis1={:.2f}° axis2={:.2f}° | "
                  "offset axis1={:.2f}° axis2={:.2f}°",
@@ -7794,12 +8055,95 @@ private:
                 hal_config_.type == hal::HALType::SIMULATED);
     }
 
+    // True when the raw drive counter is a trustworthy source for the telescope
+    // frame.  For incremental-encoder CANopen drives the counter is only
+    // meaningful AFTER a successful Home (which zeroes the counter and sets the
+    // home offset); before that the drive may report a large persisted
+    // multi-turn value (e.g. the STM42M absolute multi-turn counter at
+    // ~5,000 turns) that must NOT be adopted into axis*_position_/raw_servo —
+    // doing so made the first Dec target land thousands of turns from the drive
+    // and the mount ran away immediately after power-on.
+    bool drivePositionIsTrusted() const {
+        return halPositionIsAuthoritative() ||
+               config_.mount_config.encoders_absolute ||
+               homed_;
+    }
+
+    // True when an incremental-treated CANopen drive has not yet been Homed.
+    // In that state the drive's persisted absolute multi-turn counter is not
+    // zeroed, so any absolute move would send the axis thousands of turns away
+    // from the physical position.  Motion must be rejected until home() zeroes
+    // the counters and establishes home_offset.
+    bool motionRequiresHome() const {
+        return (hal_config_.type == hal::HALType::CANOPEN) &&
+               !config_.mount_config.encoders_absolute &&
+               !homed_;
+    }
+
     // Choose the physical Dec-axis target (telescope degrees) equivalent to the
     // requested astronomical Dec that is nearest to the current Dec axis
     // position.  Delegates to the free function in core/mount_coordinates.h so
     // the round-trip invariant is unit-testable.
     double resolveDecTarget(double dec, double current_dec_tel) const {
         return astro_mount::core::resolveDecTarget(dec, current_dec_tel);
+    }
+
+    // Fixed-point inversion of the TPOINT model for a requested sky position.
+    //
+    // Computes the mount HA (hours) and Dec (degrees, folded astronomical) whose
+    // model-corrected sky position equals (ra, dec).  This replaces
+    // TPointModel::predictMountPosition(), whose Newton iteration passes the
+    // target as the *observed* position and therefore degenerates to HA≈0 for a
+    // constant index-error model (the level-0/level-1 TPOINT fits) — which made
+    // startTracking() command a high-speed slew to the meridian ("axes spin
+    // after calibration" symptom).
+    //
+    // The model relation is: corrected_sky = applyCorrections(encoder_sky, mount)
+    // where encoder_sky = (LST - HA, Dec).  We iterate
+    //     HA  <- HA  + (corrected_ra - ra)
+    //     Dec <- Dec + (dec - corrected_dec)
+    // until convergence.  For an unfitted model applyCorrections() is the
+    // identity, so the iteration simply returns the uncorrected geometric target.
+    //
+    // On any non-finite iteration, returns false and leaves the outputs at the
+    // uncorrected geometric values so the caller can fall back safely.
+    bool computeTPointMountTarget(double ra, double dec, double lst,
+                                  double& out_ha_hours, double& out_dec_deg) {
+        out_ha_hours = lst - ra;
+        out_dec_deg = dec;
+        if (!tpoint_model_ || !tpoint_calibrated_) {
+            return true;
+        }
+
+        double ha = out_ha_hours;
+        double enc_dec = out_dec_deg;
+        for (int i = 0; i < 8; ++i) {
+            const double obs_ra = lst - ha;
+            auto [sky_ra, sky_dec] = tpoint_model_->applyCorrections(
+                obs_ra, enc_dec, ha, enc_dec);
+            if (!std::isfinite(sky_ra) || !std::isfinite(sky_dec)) {
+                out_ha_hours = lst - ra;
+                out_dec_deg = dec;
+                return false;
+            }
+
+            const double next_ha = ha + (sky_ra - ra);
+            const double next_dec = enc_dec + (dec - sky_dec);
+            const bool converged = std::abs(next_ha - ha) < 1e-9 &&
+                                   std::abs(next_dec - enc_dec) < 1e-9;
+            ha = next_ha;
+            enc_dec = next_dec;
+            if (converged) break;
+        }
+
+        if (!std::isfinite(ha) || !std::isfinite(enc_dec)) {
+            out_ha_hours = lst - ra;
+            out_dec_deg = dec;
+            return false;
+        }
+        out_ha_hours = ha;
+        out_dec_deg = enc_dec;
+        return true;
     }
 
     // Apply the configured per-axis direction inversion to the motor position
@@ -7909,6 +8253,13 @@ private:
     std::chrono::steady_clock::time_point last_pos_update_time_{};
     double snap_pos_target_axis1_{0.0};
     double snap_pos_target_axis2_{0.0};
+    // Position-rewind bookkeeping (see maybeRewindDriveCounters()).
+    std::chrono::steady_clock::time_point last_rewind_check_{};
+    std::chrono::steady_clock::time_point last_rewind_fail_log_{};
+    // True once home() has successfully zeroed the drive counters and
+    // established home_offset_axis1/2.  Until then the raw drive counter is not
+    // a trusted source for the telescope frame (see drivePositionIsTrusted()).
+    bool homed_{false};
 
     // Stored celestial target coordinates set by startTracking().
     // The tracking loop uses these to compute the advancing HA target
