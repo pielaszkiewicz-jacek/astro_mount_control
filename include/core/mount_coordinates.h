@@ -34,31 +34,32 @@ inline double foldDec(double dec_deg) {
  * no-op on the Dec axis.
  */
 inline double resolveDecTarget(double dec, double current_dec_tel) {
-    constexpr double kEps = 1e-9;
-    double best = dec;
-    double best_dist = std::abs(dec - current_dec_tel);
-    const double candidates[] = {
-        dec, 180.0 - dec,
-        dec - 360.0, dec + 360.0,
-        180.0 - dec - 360.0, 180.0 - dec + 360.0
-    };
-    for (double c : candidates) {
-        const double d = std::abs(c - current_dec_tel);
-        const bool c_in_range = (c >= -90.0 && c <= 90.0);
-        const bool best_in_range = (best >= -90.0 && best <= 90.0);
-        if (d < best_dist - kEps) {
-            best = c;
-            best_dist = d;
-        } else if (d <= best_dist + kEps && c_in_range && !best_in_range) {
-            // Floating-point near-tie (e.g. current Dec on the 90° fold
-            // boundary): prefer the candidate inside the astronomical range
-            // [-90, 90] so the target never lands on the opposite pier side
-            // and trips the Dec soft limit.
-            best = c;
-            best_dist = d;
-        }
-    }
-    return best;
+    // The same sky Dec is reachable at 'dec' and at '180° − dec' (opposite
+    // pier side), each wrapped by any whole number of turns.  The previous
+    // implementation only tried ±1 turn, which left the returned target up to
+    // ~180° away when the physical Dec axis sat at a large multi-turn value
+    // (e.g. −674° after a long session) — the drive then chased the distant
+    // target (the "Dec axis spins / slew timeout" symptom).  Round each
+    // pier-side equivalent to the nearest whole turn of the current position
+    // instead, which is exact for any accumulated turn count.
+    constexpr double kTurn = 360.0;
+    const double other = 180.0 - dec;
+    const double n1 = std::round((current_dec_tel - dec) / kTurn);
+    const double n2 = std::round((current_dec_tel - other) / kTurn);
+    const double c1 = dec + n1 * kTurn;
+    const double c2 = other + n2 * kTurn;
+    const double d1 = std::abs(c1 - current_dec_tel);
+    const double d2 = std::abs(c2 - current_dec_tel);
+    if (d1 < d2 - 1e-9) return c1;
+    if (d2 < d1 - 1e-9) return c2;
+    // Near-tie: prefer the candidate inside the astronomical range [-90°, 90°]
+    // so the target never lands on the opposite pier side and trips the Dec
+    // soft limit.
+    const bool in1 = (c1 >= -90.0 && c1 <= 90.0);
+    const bool in2 = (c2 >= -90.0 && c2 <= 90.0);
+    if (in1 && !in2) return c1;
+    if (in2 && !in1) return c2;
+    return c1;
 }
 
 } // namespace core

@@ -128,7 +128,7 @@
             "node_id": 1,
             "pdo_config_enabled": true,
             "pdo_update_rate": 100,
-            "position_rewind_enabled": true,
+            "position_rewind_enabled": false,
             "position_rewind_interval_seconds": 3600.0,
             "position_rewind_threshold_percent": 80.0,
             "sdo_timeout_ms": 100,

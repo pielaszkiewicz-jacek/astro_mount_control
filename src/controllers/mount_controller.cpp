@@ -2949,13 +2949,13 @@ public:
                                 continue;
                             }
                             
-                            // Closed-loop tracking velocity.  The velocity is NOT a fixed
-                            // constant — it is derived from the position error (target −
-                            // actual), so a slow/fast drive speed loop self-corrects
-                            // instead of drifting.  Feed-forward is the sidereal servo
-                            // rate; the proportional correction is added below once the
-                            // physical reference is known.
-                            double pos_vel = sidereal_servo_rate;
+                            // Feed-forward tracking velocity: a fixed sidereal servo rate
+                            // scaled by tracking_pos_velocity_factor.  The proportional
+                            // closed-loop term previously used here made the drive
+                            // overshoot the lead and clamp the velocity to zero, producing
+                            // the periodic stop-start ("RA axis stops and restarts")
+                            // sawtooth.
+                            double pos_vel = sidereal_servo_rate * pos_vel_factor;
                             // During the initial "Slew & Track" slew the drive may
                             // still be far from the target. Keep the configured slew
                             // velocity until it is close; switching to the slow tracking
@@ -3027,28 +3027,6 @@ public:
                                         std::round((new_axis2_target - ref2) / full_turn2);
                                     new_axis2_target -= turns2 * full_turn2;
                                 }
-
-                                // Position error (servo degrees): the actual gap to the
-                                // absolute target minus the intended lead.  Positive =
-                                // drive is behind (falling back), negative = ahead.
-                                const double lead_servo =
-                                    POS_LEAD_SECONDS * SIDEREAL_HOURS_PER_SEC * 15.0 * ha_gear;
-                                const double track_err1 =
-                                    (new_axis1_target - ref1) - lead_servo;
-
-                                // Closed-loop velocity: feed-forward sidereal plus a
-                                // proportional correction from the position error — the
-                                // "velocity derived from the distance the mount has to
-                                // cover" behaviour.  A slow drive speeds up, a fast drive
-                                // slows down, and a correctly tracking drive holds the
-                                // sidereal rate (smooth, no sawtooth).
-                                constexpr double TRACK_POS_KP = 0.5;  // 1/s
-                                pos_vel = sidereal_servo_rate + TRACK_POS_KP * track_err1;
-                                const double track_vel_max =
-                                    std::max(config_.mount_config.max_slew_rate,
-                                             sidereal_servo_rate * 3.0);
-                                if (pos_vel < 0.0) pos_vel = 0.0;
-                                else if (pos_vel > track_vel_max) pos_vel = track_vel_max;
 
                                 // During the initial "Slew & Track" the drive may still
                                 // be far from the target — keep the configured slew
@@ -3953,25 +3931,37 @@ public:
         auto* enc = (axis == 0) ? hal_axis1_encoder_.get() : hal_axis2_encoder_.get();
         if (!motor || !enc) return;
 
-        // Never rewind while a slew/park/flip/track is in progress — those moves
-        // hold absolute targets in the current counter frame.  Rewinding during
-        // tracking was especially dangerous: zeroing the counter while the split
-        // I/O thread still held the previous absolute target made the drive chase
-        // the stale target across the re-zeroed frame ("Dec-axis position desync").
-        {
-            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
-            if (state_ == MountStatus::State::SLEWING ||
-                state_ == MountStatus::State::PARKING ||
-                state_ == MountStatus::State::MERIDIAN_FLIP ||
-                state_ == MountStatus::State::TRACKING) return;
-        }
-
+        // Rewind only when the mount is IDLE.  The read→zero→verify→shift
+        // sequence runs under the EXCLUSIVE state lock so no slew/park/flip/
+        // track can start between reading the counter and shifting the frame.
+        // Such a race left home_offset/targets offset by however far the drive
+        // moved in between, and the next absolute Dec target landed far from the
+        // drive ("Dec-axis position desync" runaway).  The common (below
+        // threshold) case is checked first WITHOUT the lock so the controller
+        // is never blocked by the rewind's SDO reads during normal operation.
         double cpd = 10000.0;
         if (axis < static_cast<int>(config_.hal_config.axes.size())) {
             cpd = config_.hal_config.axes[axis].motor_config.encoder_counts_per_degree;
         }
         if (!(cpd > 0.0)) cpd = 10000.0;
 
+        // Fast path: skip the exclusive lock while the counter is still inside
+        // the safe window.
+        {
+            const auto reading = enc->read();
+            if (!reading.data_valid || !std::isfinite(reading.position_deg)) return;
+            const double pos = (axis == 0) ? applyAxis1Inversion(reading.position_deg)
+                                           : applyAxis2Inversion(reading.position_deg);
+            if (std::abs(pos) * cpd < max_counts) return;
+        }
+
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+        if (state_ == MountStatus::State::SLEWING ||
+            state_ == MountStatus::State::PARKING ||
+            state_ == MountStatus::State::MERIDIAN_FLIP ||
+            state_ == MountStatus::State::TRACKING) return;
+
+        // Re-read under the lock: the fast-path read may have raced with motion.
         const auto reading = enc->read();
         if (!reading.data_valid || !std::isfinite(reading.position_deg)) return;
         const double pos_drive = (axis == 0) ? applyAxis1Inversion(reading.position_deg)
@@ -4010,18 +4000,37 @@ public:
             return;
         }
 
+        // The STM42M "set origin" (2031h:01h) can be TRANSIENT: the counter
+        // reads ~0 immediately after the SDO but reverts to its previous value
+        // shortly afterwards (the origin is not persisted).  Shifting
+        // home_offset on a transient zero double-applies the correction and
+        // corrupts the telescope frame — the observed "Dec spins after
+        // calibration and the mount loses pointing" failure.  Re-read after a
+        // short delay and only shift when the zero actually held.
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        const auto after2 = enc->read();
+        if (!after2.data_valid || !std::isfinite(after2.position_deg) ||
+            std::abs(after2.position_deg) > 360.0) {
+            const auto fail_now = std::chrono::steady_clock::now();
+            if (std::chrono::duration<double>(fail_now - last_rewind_fail_log_).count() >= 60.0) {
+                last_rewind_fail_log_ = fail_now;
+                MOUNT_LOG_WARN("Position rewind: axis {} zero did not persist "
+                               "(counter reverted to {:.1f}°) — leaving frame unchanged",
+                               axis,
+                               after2.data_valid ? after2.position_deg : pos_drive);
+            }
+            return;
+        }
+
         // The drive counter is now ~0.  Shift the home offset and the active
         // absolute target by the pre-zero value so the reported telescope
         // position and any in-flight target stay exactly where they were.
-        {
-            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-            if (axis == 0) {
-                home_offset_axis1_ += pos_drive;
-                axis1_target_ -= pos_drive;
-            } else {
-                home_offset_axis2_ += pos_drive;
-                axis2_target_ -= pos_drive;
-            }
+        if (axis == 0) {
+            home_offset_axis1_ += pos_drive;
+            axis1_target_ -= pos_drive;
+        } else {
+            home_offset_axis2_ += pos_drive;
+            axis2_target_ -= pos_drive;
         }
         MOUNT_LOG_INFO("Position rewind: axis {} counter {:.1f}° → 0 "
                        "(home offset adjusted by {:.1f}°)",
@@ -4382,71 +4391,15 @@ public:
             // Apply estimated orientation to the mount
             mount_orientation_ = estimated_q;
 
-            // For EQUATORIAL mounts the tracking loop uses home_offset_axis1/2
-            // (simple encoder offsets), NOT the orientation quaternion above.
-            // Apply the bootstrap result as a mean offset so the home offsets
-            // actually get corrected — without this, bootstrap calibration was a
-            // no-op for equatorial mounts and a corrupted Dec offset could never
-            // be repaired (the "re-home required" loop).
-            if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
-                double sum_ha_err = 0.0, sum_dec_err = 0.0;
-                int n = 0;
-                for (const auto& m : bootstrap_measurements_) {
-                    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                        m.timestamp.time_since_epoch()).count();
-                    const double jd = 2440587.5 + ms / 86400000.0;
-                    const double lst = core::AstronomicalCalculations::calculateLST(
-                        jd, config_.mount_config.longitude);
-
-                    // True HA in telescope degrees, normalized to [0°, 360°).
-                    double true_ha_deg = (lst - m.observed_ra) * 15.0;
-                    true_ha_deg = std::fmod(true_ha_deg, 360.0);
-                    if (true_ha_deg < 0.0) true_ha_deg += 360.0;
-
-                    // Measured HA is telescope_axis1 in [0°, 360°); wrap the
-                    // difference to the shortest path (±180°).
-                    double ha_err = true_ha_deg - m.mount_ha;
-                    while (ha_err > 180.0) ha_err -= 360.0;
-                    while (ha_err < -180.0) ha_err += 360.0;
-
-                    // Measured Dec is telescope_axis2: folded Dec normalized to
-                    // [0°, 360°).  Unfold it back to the astronomical [-90°, 90°].
-                    double measured_dec = std::fmod(m.mount_dec, 360.0);
-                    if (measured_dec < 0.0) measured_dec += 360.0;
-                    if (measured_dec > 270.0) measured_dec -= 360.0;
-                    else if (measured_dec > 90.0) measured_dec = 180.0 - measured_dec;
-                    double dec_err = m.observed_dec - measured_dec;
-                    // A Dec error is the difference of two Dec angles and must lie
-                    // within ±180°.  A client that sends mis-united fields (e.g. the
-                    // old web UI sending telescope.axis2 in [0°,360°) as observed_dec,
-                    // or raw servo degrees as mount_dec) can produce values up to
-                    // ~450°, which would corrupt home_offset_axis2_ by thousands of
-                    // servo degrees and make the Dec target land many turns from the
-                    // drive ("Dec-axis position desync").  Wrap to the legal range.
-                    while (dec_err > 180.0) dec_err -= 360.0;
-                    while (dec_err < -180.0) dec_err += 360.0;
-
-                    sum_ha_err += ha_err;
-                    sum_dec_err += dec_err;
-                    ++n;
-                }
-                if (n > 0) {
-                    double mean_ha_err = sum_ha_err / n;
-                    double mean_dec_err = sum_dec_err / n;
-                    // Final sanity wrap: never apply more than half a turn of
-                    // correction in one bootstrap run, even if a bad measurement
-                    // slipped through the per-measurement wrap above.
-                    while (mean_ha_err > 180.0) mean_ha_err -= 360.0;
-                    while (mean_ha_err < -180.0) mean_ha_err += 360.0;
-                    while (mean_dec_err > 180.0) mean_dec_err -= 360.0;
-                    while (mean_dec_err < -180.0) mean_dec_err += 360.0;
-                    home_offset_axis1_ += mean_ha_err * haGear();
-                    home_offset_axis2_ += mean_dec_err * decGear();
-                    MOUNT_LOG_INFO("Bootstrap (equatorial): applied home-offset correction "
-                                   "dHA={:.4f}° dDec={:.4f}° (from {} measurements)",
-                                   mean_ha_err, mean_dec_err, n);
-                }
-            }
+            // EQUATORIAL mounts track in HA/Dec through home_offset_axis1/2,
+            // which are established by Home() and refined by Sync — NOT through
+            // the Wahba orientation quaternion computed above.  Applying a mean
+            // home-offset correction here proved unreliable: the "Slew & Measure"
+            // flow records measurements mid-slew (before the user re-centers the
+            // object), so the mean offset is garbage and the next track commands a
+            // large wrong slew ("mount spins on both axes after calibration").
+            // Keep the stable commit-6cf433a behaviour and leave the home offsets
+            // untouched here.
             
             // --- ALT_AZ caveat (plan §8.6) ---
             // For ALT_AZ mounts, the encoder altitude offset is a translation on the
@@ -4799,6 +4752,27 @@ public:
                 
                 MOUNT_LOG_INFO("TPOINT level0 fit (direct QR): IH={:.6f}°, ID={:.6f}°, NP={:.6f}",
                                ih, id, np);
+
+                // Sanity-check the fitted constants before installing them.
+                // The "Slew & Measure" flow records a measurement ~2 s after the
+                // slew STARTS, often while the axis is still moving and far from
+                // the target — so observed−expected is the remaining slew distance
+                // (degrees, not arcseconds), IH/ID come out huge, and after
+                // calibration computeTPointMountTarget() adds them straight back
+                // to the tracking target: the mount slews far away ("uncontrolled
+                // rotation after calibration").  A real index error is sub-degree;
+                // reject implausible fits instead of poisoning the model.
+                constexpr double MAX_INDEX_CORR_DEG = 2.0;
+                if (!std::isfinite(ih) || !std::isfinite(id) ||
+                    std::abs(ih) > MAX_INDEX_CORR_DEG ||
+                    std::abs(id) > MAX_INDEX_CORR_DEG) {
+                    MOUNT_LOG_WARN("TPOINT level0 fit rejected: IH={:.2f}°, ID={:.2f}° "
+                                   "exceeds ±{:.1f}° — measurements likely recorded "
+                                   "mid-slew. Re-center the object before adding the "
+                                   "measurement.",
+                                   ih, id, MAX_INDEX_CORR_DEG);
+                    return false;
+                }
 
                 // Install the fitted constants into the TPointModel so the
                 // controller's tracking/slew paths actually use them.  Without

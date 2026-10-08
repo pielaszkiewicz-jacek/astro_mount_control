@@ -398,6 +398,25 @@ const CalibrationComponent = (() => {
     if (section) section.removeAttribute('open');
   }
 
+  /**
+   * Poll the controller state until the active slew finishes (IDLE/ERROR) or
+   * the timeout expires.  Returns true when the mount is no longer slewing.
+   * @param {number} timeoutMs
+   * @returns {Promise<boolean>}
+   */
+  async function waitForSlewToFinish(timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const state = App.getLastState();
+      const status = state && state.status ? String(state.status).toUpperCase() : '';
+      if (status === 'IDLE' || status === 'ERROR' || status === 'TRACKING') {
+        return true;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    return false;
+  }
+
   // ─── Slew and Add Measurement ────────────────────────────────────────────
 
   /**
@@ -425,10 +444,16 @@ const CalibrationComponent = (() => {
       await Api.slewToCoordinates(ra, dec);
       App.showToast(I18n.t('cal.msg.slewing_to', { name: obj.name || 'object' }), 'info', 3000);
 
-      // Wait a moment for the slew to start, then add measurement
-      setTimeout(async () => {
-        await addMeasurement(type, obj, ra, dec);
-      }, 2000);
+      // Wait for the slew to COMPLETE before recording the measurement.
+      // Recording after a fixed 2 s delay captured the mount mid-slew (far from
+      // the target), which produced implausible IH/ID constants in the TPOINT
+      // fit and made tracking slew far away after calibration.
+      const finished = await waitForSlewToFinish(30000);
+      if (!finished) {
+        App.showToast(I18n.t('cal.msg.slew_failed', { message: 'slew did not finish' }), 'error');
+        return;
+      }
+      await addMeasurement(type, obj, ra, dec);
     } catch (err) {
       App.showToast(I18n.t('cal.msg.slew_failed', { message: err.message }), 'error');
     }

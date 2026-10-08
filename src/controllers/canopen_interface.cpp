@@ -20,9 +20,16 @@ constexpr uint16_t kCwDisableVoltage = 0x0000;
 constexpr uint16_t kCwShutdown       = 0x0006;
 constexpr uint16_t kCwSwitchOn       = 0x0007;
 constexpr uint16_t kCwEnableOp       = 0x000F;
-constexpr uint16_t kCwNewSetpoint    = 0x001F; // absolute, bit4=1
+// bit4 = "new setpoint", bit5 = "change setpoint immediately" (CiA 402).
+// With bit5=0 the drive FINISHES the current profile (decelerates to a stop at
+// the old target) before starting the new one.  During position-mode tracking a
+// new target is sent every ~100 ms, so bit5=0 made the axis decelerate/stop and
+// re-accelerate on every update — the periodic stop-start ("pulsation") seen on
+// the RA axis.  bit5=1 lets the drive re-plan the trajectory on the fly, so it
+// cruises smoothly at the profile velocity while the target advances.
+constexpr uint16_t kCwNewSetpoint    = 0x003F; // absolute, bit4=1, bit5=1
 constexpr uint16_t kCwRelEnableOp    = 0x004F; // relative (bit6=1), enable op
-constexpr uint16_t kCwRelNewSetpoint = 0x005F; // relative + new setpoint (bit4=1)
+constexpr uint16_t kCwRelNewSetpoint = 0x007F; // relative + new setpoint (bit4=1, bit5=1)
 constexpr uint16_t kCwFaultReset     = 0x0080;
 
 // Status-word bits.

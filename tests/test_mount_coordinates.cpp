@@ -57,6 +57,20 @@ TEST(MountCoordinatesTest, ResolveDecTargetFoldBoundaryTie)
     EXPECT_NEAR(resolveDecTarget(45.001, 90.0), 45.001, 1e-9);
 }
 
+// Multi-turn current position: the nearest equivalent must be found across
+// arbitrary whole-turn offsets, not just ±1 turn.  Regression: with the Dec
+// axis at a large accumulated value (−674°), a request for 46° must resolve to
+// 46°−720° = −674° (0.5° away), NOT ~−314° (360° away) — the latter made the
+// drive rotate a full turn ("Dec axis spins / slew timeout").
+TEST(MountCoordinatesTest, ResolveDecTargetMultiTurnNearest)
+{
+    EXPECT_NEAR(resolveDecTarget(46.02, -674.47), -673.98, 1e-9);
+
+    // Round-trip invariant must also hold many turns out.
+    EXPECT_NEAR(resolveDecTarget(foldDec(-674.47), -674.47), -674.47, 1e-9);
+    EXPECT_NEAR(resolveDecTarget(foldDec(846.0), 846.0), 846.0, 1e-9);
+}
+
 } // namespace test
 } // namespace core
 } // namespace astro_mount

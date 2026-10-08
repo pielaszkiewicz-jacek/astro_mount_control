@@ -131,7 +131,7 @@
             "pdo_fast_path": true,
             "pdo_update_rate": 100,
             "pdo_velocity_mapping": false,
-            "position_rewind_enabled": true,
+            "position_rewind_enabled": false,
             "position_rewind_interval_seconds": 3600.0,
             "position_rewind_threshold_percent": 80.0,
             "sdo_timeout_ms": 100,

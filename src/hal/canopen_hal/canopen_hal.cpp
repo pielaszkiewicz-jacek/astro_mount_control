@@ -295,7 +295,23 @@ void CanOpenHAL::CanOpenMotor::updateStatus(const CanOpenStatus& st) {
     const double cpd = config_.encoder_counts_per_degree > 0.0
                            ? config_.encoder_counts_per_degree : 1.0;
     if (st.position_valid) {
-        actual_position_ = static_cast<double>(st.actual_position) / cpd;
+        const double pos = static_cast<double>(st.actual_position) / cpd;
+        // Reject a single implausible position jump (PDO cache glitch or a
+        // multi-turn counter wrap).  The monitor runs every ~pdo_update_rate
+        // (100 ms); at max_slew_rate (8000°/s servo) a legitimate move is at
+        // most ~800° servo per cycle.  A read that jumps far beyond that would
+        // corrupt the reported position and make the tracking loop anchor its
+        // RA target to the wrong value — the observed "RA axis jumps away by
+        // tens of minutes and returns" glitch.  Keep the last good sample.
+        constexpr double kMaxServoJumpDeg = 2000.0;
+        if (last_good_position_valid_ &&
+            std::abs(pos - last_good_position_) > kMaxServoJumpDeg) {
+            // Ignore the glitched sample: do NOT update actual_position_.
+        } else {
+            actual_position_ = pos;
+            last_good_position_ = pos;
+            last_good_position_valid_ = true;
+        }
     }
     actual_velocity_ = static_cast<double>(st.actual_velocity) / cpd;
     actual_torque_ = static_cast<double>(st.actual_current) / 10.0;

@@ -80,6 +80,12 @@ private:
         std::atomic<bool> target_reached_{false};
         std::atomic<bool> error_state_{false};
         std::atomic<double> actual_position_{0.0};
+        // Position glitch filter (touched only by the monitor thread): last
+        // accepted motor position and a validity flag.  Used to reject a single
+        // implausible read (PDO cache corruption / counter wrap) so the
+        // tracking loop never commands a target a full turn away.
+        double last_good_position_{0.0};
+        bool   last_good_position_valid_{false};
         std::atomic<double> actual_velocity_{0.0};
         std::atomic<double> actual_torque_{0.0};
         std::atomic<double> temperature_{25.0};
