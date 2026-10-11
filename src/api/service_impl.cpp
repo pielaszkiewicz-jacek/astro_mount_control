@@ -869,6 +869,7 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_pdo_velocity_mapping(config.tracking_config.pdo_velocity_mapping);
         response->set_sdo_slow_control(config.tracking_config.sdo_slow_control);
         response->set_tracking_pos_update_hz(config.tracking_config.tracking_pos_update_hz);
+        response->set_tracking_pos_velocity_margin(config.mount_config.tracking_pos_velocity_margin);
 
         // Position/rate tolerances for slew operations
         response->set_position_tolerance(config.mount_config.position_tolerance);
@@ -1084,6 +1085,7 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->has_pdo_velocity_mapping()) config.tracking_config.pdo_velocity_mapping = request->pdo_velocity_mapping();
     if (request->has_sdo_slow_control()) config.tracking_config.sdo_slow_control = request->sdo_slow_control();
     if (request->tracking_pos_update_hz() != 0) config.tracking_config.tracking_pos_update_hz = request->tracking_pos_update_hz();
+    if (request->tracking_pos_velocity_margin() != 0.0) config.mount_config.tracking_pos_velocity_margin = request->tracking_pos_velocity_margin();
 
     
     // ── Equatorial tracking mode ─────────────────────────────────

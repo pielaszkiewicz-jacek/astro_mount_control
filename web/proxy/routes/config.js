@@ -182,6 +182,7 @@ function flattenConfig(proto) {
     pdo_velocity_mapping:         proto.pdo_velocity_mapping !== undefined ? proto.pdo_velocity_mapping : false,
     sdo_slow_control:             proto.sdo_slow_control !== undefined ? proto.sdo_slow_control : true,
     tracking_pos_update_hz:       proto.tracking_pos_update_hz || 0,
+    tracking_pos_velocity_margin: proto.tracking_pos_velocity_margin || 0,
 
     // Servo init
     servo_init_enabled:           proto.servo_init_enabled || false,

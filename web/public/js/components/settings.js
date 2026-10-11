@@ -360,6 +360,7 @@ const SettingsComponent = (() => {
         { key: 'pdo_velocity_mapping', label: 'PDO Velocity Mapping', type: 'checkbox', help: 'Map RPDO2 to controlword + target velocity (6040h + 60FFh) for velocity-mode tracking.' },
         { key: 'sdo_slow_control', label: 'SDO Slow Control Path', type: 'checkbox', help: 'Keep synchronous SDO for rare operations (mode switch, config, homing, fault clear).' },
         { key: 'tracking_pos_update_hz', label: 'Position Update (Hz)', type: 'number', min: 1, max: 100, step: 1, help: 'Cadence of position-mode target updates for EQUATORIAL tracking. Default 10 Hz.' },
+        { key: 'tracking_pos_velocity_margin', label: 'Position Velocity Margin', type: 'number', min: 1.0, max: 2.0, step: 0.05, help: 'Bounded scaling factor applied to the actual tracking rate when deriving the position-mode profile velocity. The result is clamped so it never exceeds max_tracking_rate.' },
       ],
     },
     {

@@ -1249,6 +1249,7 @@ const I18n = (() => {
       'cfg.field.pdo_velocity_mapping': 'Mapowanie PDO Prędkości',
       'cfg.field.sdo_slow_control': 'Wolna Ścieżka Sterowania SDO',
       'cfg.field.tracking_pos_update_hz': 'Częstotliwość Aktualizacji Pozycji (Hz)',
+      'cfg.field.tracking_pos_velocity_margin': 'Margines Prędkości Pozycyjnej',
       'cfg.help.split_tracking_loop': 'Konfiguracja podziału pętli śledzenia na wątek obliczeniowy (calc) oraz wątki komunikacyjne io (writer/reader) wraz z asynchroniczną ścieżką PDO. Zobacz docs/pl/propozycja_podzialu_watku_sledzenia.md i docs/pl/wyznaczanie_predkosci_sledzenia.md.',
 
       'cfg.help.label_type': 'Typ',

@@ -1214,7 +1214,7 @@ public:
         bool     stop_motors{false};
         double   rate1{0.0}, rate2{0.0};
         double   accel{0.0};
-        double   pos1{0.0}, pos2{0.0}, pos_vel{0.0};
+        double   pos1{0.0}, pos2{0.0}, pos_vel{0.0}, pos_vel2{0.0};
         double   flip1{0.0}, flip2{0.0};
     };
 
@@ -1239,14 +1239,15 @@ public:
         tracking_command_.accel = accel;
     }
 
-    void publishPositionCommand(double p1, double p2, double pos_vel) {
+    void publishPositionCommand(double p1, double p2, double pos_vel1, double pos_vel2) {
         std::unique_lock<std::shared_mutex> lk(command_mutex_);
         tracking_command_.seq++;
         tracking_command_.velocity_mode = false;
         tracking_command_.pos_update_pending = true;
         tracking_command_.pos1 = p1;
         tracking_command_.pos2 = p2;
-        tracking_command_.pos_vel = pos_vel;
+        tracking_command_.pos_vel = pos_vel1;
+        tracking_command_.pos_vel2 = pos_vel2;
     }
 
     void publishFlipCommand(double f1, double f2) {
@@ -1361,14 +1362,14 @@ public:
                     if (hal_axis1_motor_ && hal_axis2_motor_) {
                         const bool ok1 = hal_axis1_motor_->setPosition(cmd.pos1, cmd.pos_vel,
                                                       config_.mount_config.slew_acceleration);
-                        const bool ok2 = hal_axis2_motor_->setPosition(cmd.pos2, cmd.pos_vel,
+                        const bool ok2 = hal_axis2_motor_->setPosition(cmd.pos2, cmd.pos_vel2,
                                                       config_.mount_config.slew_acceleration);
                         if (!ok1 || !ok2) {
                             MOUNT_LOG_WARN("io thread: position command FAILED "
                                            "(axis1_ok={} axis2_ok={} pos1={:.2f}° "
-                                           "pos2={:.2f}° vel={:.2f}°/s) — the drive "
-                                           "may be executing a stale target",
-                                           ok1, ok2, cmd.pos1, cmd.pos2, cmd.pos_vel);
+                                           "pos2={:.2f}° vel1={:.2f} vel2={:.2f}°/s) — "
+                                           "the drive may be executing a stale target",
+                                           ok1, ok2, cmd.pos1, cmd.pos2, cmd.pos_vel, cmd.pos_vel2);
                         }
                     }
                 } catch (const std::exception& e) {
@@ -2865,6 +2866,8 @@ public:
                             const double sidereal_servo_rate = 0.004178074 * ha_gear;
                             const double pos_vel_factor = config_.mount_config.tracking_pos_velocity_factor > 0.0
                                 ? config_.mount_config.tracking_pos_velocity_factor : 1.0;
+                            const double pos_vel_margin = config_.mount_config.tracking_pos_velocity_margin > 0.0
+                                ? config_.mount_config.tracking_pos_velocity_margin : 1.0;
 
                             // The lead must exceed pos_vel × update_interval, otherwise the
                             // drive catches up to the fixed target and stalls between updates
@@ -2949,13 +2952,25 @@ public:
                                 continue;
                             }
                             
-                            // Feed-forward tracking velocity: a fixed sidereal servo rate
-                            // scaled by tracking_pos_velocity_factor.  The proportional
-                            // closed-loop term previously used here made the drive
-                            // overshoot the lead and clamp the velocity to zero, producing
-                            // the periodic stop-start ("RA axis stops and restarts")
-                            // sawtooth.
-                            double pos_vel = sidereal_servo_rate * pos_vel_factor;
+                            // Position-mode profile velocity, computed PER AXIS from
+                            // each axis' actual tracking rate and scaled by the
+                            // configurable margin.  Clamp to the configured
+                            // tracking-rate limit so the drive never overshoots the
+                            // required tracking speed.  Axis 2 falls back to 0 (Dec
+                            // stationary in equatorial mode) when its rate is ~0.
+                            const double tracking_rate_cap = config_.mount_config.max_tracking_rate > 0.0
+                                ? config_.mount_config.max_tracking_rate
+                                : sidereal_servo_rate;
+                            const double base_rate_axis1 = std::abs(axis1_rate_) > 1e-12
+                                ? std::abs(axis1_rate_)
+                                : sidereal_servo_rate;
+                            const double base_rate_axis2 = std::abs(axis2_rate_) > 1e-12
+                                ? std::abs(axis2_rate_)
+                                : 0.0;
+                            double pos_vel_axis1 = std::clamp(base_rate_axis1 * pos_vel_margin,
+                                                              0.0, tracking_rate_cap);
+                            double pos_vel_axis2 = std::clamp(base_rate_axis2 * pos_vel_margin,
+                                                              0.0, tracking_rate_cap);
                             // During the initial "Slew & Track" slew the drive may
                             // still be far from the target. Keep the configured slew
                             // velocity until it is close; switching to the slow tracking
@@ -3033,9 +3048,11 @@ public:
                                 // velocity until it is close.
                                 const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(ha_gear, 1.0) * 4.0;
                                 const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(dec_gear, 1.0) * 4.0;
-                                if (std::abs(new_axis1_target - ref1) > close1 ||
-                                    std::abs(new_axis2_target - ref2) > close2) {
-                                    pos_vel = config_.mount_config.max_slew_rate;
+                                if (std::abs(new_axis1_target - ref1) > close1) {
+                                    pos_vel_axis1 = config_.mount_config.max_slew_rate;
+                                }
+                                if (std::abs(new_axis2_target - ref2) > close2) {
+                                    pos_vel_axis2 = config_.mount_config.max_slew_rate;
                                 }
                             }
 
@@ -3121,11 +3138,11 @@ public:
                                 if (config_.tracking_config.split_tracking_loop) {
                                     // Publish the target; the io thread emits it at
                                     // io_update_hz (fire-and-forget PDO when enabled).
-                                    publishPositionCommand(new_axis1_target, new_axis2_target, pos_vel);
+                                    publishPositionCommand(new_axis1_target, new_axis2_target, pos_vel_axis1, pos_vel_axis2);
                                     pos_ok = true;
                                 } else if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel, config_.mount_config.slew_acceleration);
-                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel, config_.mount_config.slew_acceleration);
+                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel_axis1, config_.mount_config.slew_acceleration);
+                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel_axis2, config_.mount_config.slew_acceleration);
                                     pos_ok = ok1 && ok2;
                                 } else {
                                     // Simulated tracking — position targets are
@@ -3145,12 +3162,12 @@ public:
                                     MOUNT_LOG_INFO("Tracking target: axis1={:.2f}° axis2={:.2f}° "
                                                    "| Drive pos: axis1={:.2f}° axis2={:.2f}° "
                                                    "| Delta: axis1={:.2f}° axis2={:.2f}° "
-                                                   "| HA lead={:.1f}s pos_vel={:.4f}°/s OK={} "
+                                                   "| HA lead={:.1f}s vel1={:.4f} vel2={:.4f}°/s OK={} "
                                                    "| Drive: en={}/{} fault={}/{}",
                                                    new_axis1_target, new_axis2_target,
                                                    drv1, drv2,
                                                    new_axis1_target - drv1, new_axis2_target - drv2,
-                                                   POS_LEAD_SECONDS, pos_vel, pos_ok,
+                                                   POS_LEAD_SECONDS, pos_vel_axis1, pos_vel_axis2, pos_ok,
                                                    en0, en1, err0, err1);
                                 } else if (!pos_ok) {
                                     MOUNT_LOG_WARN("Tracking position target FAILED: "

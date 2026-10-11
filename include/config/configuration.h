@@ -134,8 +134,12 @@ public:
         //     1.5 = legacy catch-up behaviour producing stop-start motion).
         //   tracking_pos_lead_seconds — fixed target lead [s] for position-mode
         //     target updates (absorbs loop jitter without a large pointing offset).
+        //   tracking_pos_velocity_margin — bounded scaling factor applied to the
+        //     actual tracking rate in position-mode tracking (clamped to
+        //     max_tracking_rate).
         double tracking_pos_velocity_factor{1.0};
         double tracking_pos_lead_seconds{2.0};
+        double tracking_pos_velocity_margin{1.0};
         // Position-mode target update cadence [Hz] (EQUATORIAL position mode).
         int tracking_pos_update_hz{10};
 
