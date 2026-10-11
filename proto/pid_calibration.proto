@@ -6,8 +6,8 @@
  * selected coefficient the engine spins the axis at a commanded speed,
  * samples the actual velocity, and computes the arithmetic mean and the
  * standard deviation.  The winning combination is the one whose mean speed
- * is closest to the commanded speed AND whose standard deviation is the
- * smallest.
+ * is closest to the commanded speed.  The standard deviation is reported
+ * for diagnostics only and does not affect the winner selection.
  *
  * Gain writes are performed to the drive RAM only (volatile, lost on power
  * cycle) using the MF7025v2 "write control parameter" command (0xC1) with

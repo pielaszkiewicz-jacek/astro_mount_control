@@ -3292,3 +3292,93 @@ input[type="file"].form-input::file-selector-button:hover {
 .pulley-endstop.top { top: 2px; }
 .pulley-endstop.bottom { bottom: 2px; }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Splash Screen
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.splash-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg, #0f0f1a);
+  text-align: center;
+  transition: opacity 450ms ease, visibility 450ms ease;
+}
+
+.splash-screen.hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 24px;
+}
+
+.splash-logo {
+  color: var(--color-primary, #4fc3f7);
+  animation: splash-pulse 2s ease-in-out infinite;
+}
+
+.splash-logo svg {
+  display: block;
+  filter: drop-shadow(0 0 18px rgba(79, 195, 247, 0.45));
+}
+
+body.red-theme .splash-logo svg {
+  filter: drop-shadow(0 0 18px rgba(204, 41, 41, 0.55));
+}
+
+.splash-title {
+  margin: 20px 0 0;
+  font-family: var(--font-sans);
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-text, #e0e0e0);
+}
+
+.splash-spinner {
+  width: 44px;
+  height: 44px;
+  margin-top: 28px;
+  border: 3px solid var(--color-border, #2a2a4a);
+  border-top-color: var(--color-primary, #4fc3f7);
+  border-radius: 50%;
+  animation: splash-spin 0.9s linear infinite;
+}
+
+.splash-status {
+  margin-top: 18px;
+  font-size: 0.85rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted, #6c6c80);
+}
+
+@keyframes splash-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes splash-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.06); opacity: 0.72; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-logo,
+  .splash-spinner {
+    animation: none;
+  }
+
+  .splash-screen {
+    transition: none;
+  }
+}
+

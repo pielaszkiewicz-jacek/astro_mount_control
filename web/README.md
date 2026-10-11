@@ -106,6 +106,21 @@ The proxy serves the SPA at `http://localhost:8080` and provides the HTTP/JSON A
 
 ---
 
+## Splash Screen
+
+When the SPA opens, a full-screen splash overlay is shown while the application
+initializes. It displays the mount crosshair logo, the application title, a
+loading spinner and a "Loading…" label. The overlay stays visible for at least
+6 seconds and is hidden with a smooth fade-out once [`App.init()`](public/js/app.js)
+completes (with a 10-second hard safety timeout so the UI can never remain
+blocked).
+
+The splash screen follows the active theme (including the red night-vision
+theme) and honours the `prefers-reduced-motion` preference by disabling its
+animations.
+
+---
+
 ## User Interface — Tab Reference
 
 ### Status Tab

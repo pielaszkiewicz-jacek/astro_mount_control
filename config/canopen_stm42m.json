@@ -135,7 +135,7 @@
             "position_rewind_interval_seconds": 3600.0,
             "position_rewind_threshold_percent": 80.0,
             "sdo_timeout_ms": 100,
-            "speed_pid_adaptation_enabled": false,
+            "speed_pid_adaptation_enabled": true,
             "speed_pid_adaptation_update_ms": 50.0,
             "speed_pid_schedule": [
                 {

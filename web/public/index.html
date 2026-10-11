@@ -11,6 +11,26 @@
   <link rel="stylesheet" href="css/style.css?v=20260601">
 </head>
 <body>
+  <!-- ─── Splash Screen ───────────────────────────────────────────────── -->
+  <div id="splash-screen" class="splash-screen" role="status" aria-label="Loading Astro Mount Control">
+    <div class="splash-content">
+      <div class="splash-logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="72" height="72" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <circle cx="12" cy="12" r="6"/>
+          <circle cx="12" cy="12" r="2"/>
+          <line x1="12" y1="2" x2="12" y2="6"/>
+          <line x1="12" y1="18" x2="12" y2="22"/>
+          <line x1="2" y1="12" x2="6" y2="12"/>
+          <line x1="18" y1="12" x2="22" y2="12"/>
+        </svg>
+      </div>
+      <h1 class="splash-title">Astro Mount Control</h1>
+      <div class="splash-spinner" aria-hidden="true"></div>
+      <p class="splash-status">Loading&hellip;</p>
+    </div>
+  </div>
+
   <!-- ─── Header ──────────────────────────────────────────────────────── -->
   <header class="app-header" role="banner">
     <div class="header-left">

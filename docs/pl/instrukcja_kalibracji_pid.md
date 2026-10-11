@@ -11,8 +11,9 @@ wyznacza:
 - **odchylenie standardowe** zmierzonej prędkości.
 
 Jako optymalny zestaw wybierana jest kombinacja, dla której średnia prędkość jest
-**najbliższa prędkości zadanej**, a odchylenie standardowe jest **najmniejsze**
-(minimalizowana jest wartość `|średnia − zadana| + odchylenie`).
+**najbliższa prędkości zadanej** (minimalizowana jest wartość `|średnia − zadana|`).
+Odchylenie standardowe jest nadal obliczane i prezentowane w wynikach, ale wyłącznie
+w celach **diagnostycznych** — nie wpływa na wybór zwycięskiego zestawu.
 
 Nastawy PID są zapisywane wyłącznie do **pamięci RAM** napędu — po wyłączeniu
 zasilania wracają wartości domyślne. Kalibracja nie zapisuje niczego do ROM.

@@ -106,6 +106,20 @@ Serwer proxy udostępnia SPA pod adresem `http://localhost:8080` oraz API HTTP/J
 
 ---
 
+## Ekran startowy (splash screen)
+
+Po otwarciu SPA wyświetlana jest pełnoekranowa nakładka startowa na czas
+inicjalizacji aplikacji. Zawiera logo celownika montażu, tytuł aplikacji,
+spinner ładowania oraz napis „Loading…”. Nakładka pozostaje widoczna co najmniej
+6 sekund, a po zakończeniu [`App.init()`](public/js/app.js) znika z płynnym
+przejściem (z awaryjnym limitem 10 sekund, dzięki czemu UI nigdy nie pozostanie
+zablokowane).
+
+Ekran startowy respektuje aktywny motyw (w tym czerwony tryb nocny) oraz
+preferencję `prefers-reduced-motion`, wyłączając animacje.
+
+---
+
 ## Interfejs użytkownika — opis zakładek
 
 ### Zakładka Status

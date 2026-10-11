@@ -276,6 +276,34 @@ void PidCalibrationServiceImpl::runCalibration(
     const double acceleration = 2.0;   // deg/s²
     const int tested_axis = axis;
 
+    // Bring the axis to a complete stop before the next combination.  The
+    // MF7025v2 drive may reject the 0x31 PID write and the 0xA4 position
+    // command while the previous profile is still executing, so every
+    // measurement must start from rest.  A short initial sleep lets the HAL
+    // monitor thread refresh the velocity from 0x9C — stop() zeroes the
+    // cached value immediately, which would otherwise fool the wait loop.
+    const double kStopVelocityDps = 1.0;
+    auto waitForAxisStop = [this, tested_axis, &kStopVelocityDps]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(150));
+        const auto deadline =
+            std::chrono::steady_clock::now() + std::chrono::milliseconds(5000);
+        while (std::chrono::steady_clock::now() < deadline) {
+            if (stop_requested_) {
+                return false;
+            }
+            if (std::abs(controller_.getAxisVelocity(tested_axis)) <
+                kStopVelocityDps) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+        astro_mount::logging::Logger::get("pidcal")
+            ->warn("Axis {} did not report a full stop before the next "
+                   "combination — continuing anyway",
+                   tested_axis);
+        return false;
+    };
+
     for (double speed : speeds) {
         if (stop_requested_) {
             break;
@@ -348,7 +376,11 @@ void PidCalibrationServiceImpl::runCalibration(
             double mean = 0.0, stddev = 0.0;
             int sample_count = 0;
             computeStatistics(samples, mean, stddev, sample_count);
-            double score = std::abs(mean - speed) + stddev;
+            // Primary metric: the mean sampled velocity must be as close as
+            // possible to the commanded speed.  Standard deviation is still
+            // computed and reported for diagnostics, but it does not affect
+            // the winner selection.
+            double score = std::abs(mean - speed);
 
             astro_mount::PidCalibrationPoint point;
             point.set_kp(kp);
@@ -390,6 +422,11 @@ void PidCalibrationServiceImpl::runCalibration(
                     status_.set_message("Testing combinations");
                 }
             }
+
+            // Stop the axis and wait for it to come to rest before the next
+            // combination.  Each measurement must start from a known state.
+            controller_.stopAxis(tested_axis, false, 0.0);
+            waitForAxisStop();
         }
 
         if (have_winner) {

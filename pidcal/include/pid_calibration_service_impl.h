@@ -25,7 +25,10 @@ class MountController;
  * commands the axis to move, samples the actual velocity, and computes the
  * arithmetic mean and standard deviation.  The best combination minimises:
  *
- *     score = |mean_speed − target_speed| + stddev_speed
+ *     score = |mean_speed − target_speed|
+ *
+ * Standard deviation is computed and reported for diagnostics only and does
+ * not participate in the winner selection.
  */
 namespace astro_pidcal {
 

@@ -8,134 +8,1094 @@
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 1.0,
-      "mean_speed_dps": -0.1566265060240964,
-      "sample_count": 747,
-      "score": 2.6715806707419,
-      "stddev_speed_dps": 2.4149541647178037,
-      "target_speed_dps": 0.1
+      "kp": 0.0,
+      "mean_speed_dps": 0.9617228680317033,
+      "sample_count": 249,
+      "score": 0.03827713196829674,
+      "stddev_speed_dps": 0.4529282919524296,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 11.0,
-      "mean_speed_dps": -0.08155080213903744,
-      "sample_count": 748,
-      "score": 1.68568406382221,
-      "stddev_speed_dps": 1.5041332616831724,
-      "target_speed_dps": 0.1
+      "kp": 10.0,
+      "mean_speed_dps": 1.0693103027311124,
+      "sample_count": 250,
+      "score": 0.06931030273111238,
+      "stddev_speed_dps": 1.2734021727473195,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 21.0,
-      "mean_speed_dps": -0.06283422459893048,
-      "sample_count": 748,
-      "score": 0.8666646238063948,
-      "stddev_speed_dps": 0.7038303992074643,
-      "target_speed_dps": 0.1
+      "kp": 20.0,
+      "mean_speed_dps": 0.9522509765595927,
+      "sample_count": 250,
+      "score": 0.04774902344040732,
+      "stddev_speed_dps": 0.2614032919606764,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 31.0,
-      "mean_speed_dps": -0.07219251336898395,
-      "sample_count": 748,
-      "score": 1.0130036251375407,
-      "stddev_speed_dps": 0.8408111117685568,
-      "target_speed_dps": 0.1
+      "kp": 30.0,
+      "mean_speed_dps": 0.9413964843721272,
+      "sample_count": 250,
+      "score": 0.058603515627872804,
+      "stddev_speed_dps": 0.16113506470108938,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 41.0,
-      "mean_speed_dps": 0.0,
-      "sample_count": 748,
-      "score": 0.1,
-      "stddev_speed_dps": 0.0,
-      "target_speed_dps": 0.1
+      "kp": 40.0,
+      "mean_speed_dps": 0.9484277343721036,
+      "sample_count": 250,
+      "score": 0.05157226562789641,
+      "stddev_speed_dps": 0.14399786197872488,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 51.0,
-      "mean_speed_dps": -0.09090909090909091,
-      "sample_count": 748,
-      "score": 1.2625204848744236,
-      "stddev_speed_dps": 1.0716113939653327,
-      "target_speed_dps": 0.1
+      "kp": 50.0,
+      "mean_speed_dps": 0.9601124223427043,
+      "sample_count": 249,
+      "score": 0.03988757765729567,
+      "stddev_speed_dps": 0.1486597020299849,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 61.0,
-      "mean_speed_dps": -0.0481283422459893,
-      "sample_count": 748,
-      "score": 0.8170676209601351,
-      "stddev_speed_dps": 0.6689392787141458,
-      "target_speed_dps": 0.1
+      "kp": 60.0,
+      "mean_speed_dps": 0.942868652340874,
+      "sample_count": 250,
+      "score": 0.057131347659125975,
+      "stddev_speed_dps": 0.1346779625609795,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 71.0,
-      "mean_speed_dps": 0.0,
-      "sample_count": 748,
-      "score": 0.7056405992626603,
-      "stddev_speed_dps": 0.6056405992626603,
-      "target_speed_dps": 0.1
+      "kp": 70.0,
+      "mean_speed_dps": 0.9412207031221278,
+      "sample_count": 250,
+      "score": 0.0587792968778722,
+      "stddev_speed_dps": 0.13340370167660587,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 81.0,
-      "mean_speed_dps": -0.06684491978609626,
-      "sample_count": 748,
-      "score": 0.8750467776629899,
-      "stddev_speed_dps": 0.7082018578768936,
-      "target_speed_dps": 0.1
+      "kp": 80.0,
+      "mean_speed_dps": 0.9332226562471512,
+      "sample_count": 250,
+      "score": 0.06677734375284883,
+      "stddev_speed_dps": 0.1306897000921519,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 91.0,
-      "mean_speed_dps": -0.01606425702811245,
-      "sample_count": 747,
-      "score": 0.4263163142800264,
-      "stddev_speed_dps": 0.31025205725191396,
-      "target_speed_dps": 0.1
+      "kp": 90.0,
+      "mean_speed_dps": 0.9307067871065353,
+      "sample_count": 250,
+      "score": 0.06929321289346468,
+      "stddev_speed_dps": 0.12723097169217734,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
       "kp": 100.0,
-      "mean_speed_dps": 0.0,
-      "sample_count": 747,
-      "score": 0.1,
-      "stddev_speed_dps": 0.0,
-      "target_speed_dps": 0.1
+      "mean_speed_dps": 0.9234338378878071,
+      "sample_count": 250,
+      "score": 0.07656616211219291,
+      "stddev_speed_dps": 0.1258174669211357,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 1.0,
-      "mean_speed_dps": 0.0,
-      "sample_count": 747,
-      "score": 0.30000000000000004,
-      "stddev_speed_dps": 0.0,
-      "target_speed_dps": 0.30000000000000004
+      "kp": 110.0,
+      "mean_speed_dps": 0.9281359863252924,
+      "sample_count": 250,
+      "score": 0.07186401367470763,
+      "stddev_speed_dps": 0.1274892413732535,
+      "target_speed_dps": 1.0
     },
     {
       "kd": 10.0,
       "ki": 40.0,
-      "kp": 11.0,
-      "mean_speed_dps": -0.1927710843373494,
-      "sample_count": 747,
-      "score": 3.4245789345525885,
-      "stddev_speed_dps": 2.931807850215239,
-      "target_speed_dps": 0.30000000000000004
+      "kp": 120.0,
+      "mean_speed_dps": 0.9112829589815934,
+      "sample_count": 250,
+      "score": 0.0887170410184066,
+      "stddev_speed_dps": 0.12178554930159521,
+      "target_speed_dps": 1.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 130.0,
+      "mean_speed_dps": 0.9011865234347513,
+      "sample_count": 250,
+      "score": 0.09881347656524875,
+      "stddev_speed_dps": 0.12631817601687992,
+      "target_speed_dps": 1.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 140.0,
+      "mean_speed_dps": 0.9040100097628646,
+      "sample_count": 250,
+      "score": 0.09598999023713539,
+      "stddev_speed_dps": 0.12433438748172707,
+      "target_speed_dps": 1.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 150.0,
+      "mean_speed_dps": 0.8979016113253853,
+      "sample_count": 250,
+      "score": 0.10209838867461474,
+      "stddev_speed_dps": 0.12138530865045855,
+      "target_speed_dps": 1.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 0.0,
+      "mean_speed_dps": -0.0025598144531171875,
+      "sample_count": 250,
+      "score": 2.002559814453117,
+      "stddev_speed_dps": 0.013680796084498695,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 10.0,
+      "mean_speed_dps": 1.567309570307718,
+      "sample_count": 250,
+      "score": 0.432690429692282,
+      "stddev_speed_dps": 1.4984228961867785,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 20.0,
+      "mean_speed_dps": 1.7890905761664164,
+      "sample_count": 250,
+      "score": 0.21090942383358358,
+      "stddev_speed_dps": 0.5429651249450971,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 30.0,
+      "mean_speed_dps": 1.8429455125131993,
+      "sample_count": 249,
+      "score": 0.15705448748680073,
+      "stddev_speed_dps": 0.4294370615838397,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 40.0,
+      "mean_speed_dps": 1.7878161621039197,
+      "sample_count": 250,
+      "score": 0.2121838378960803,
+      "stddev_speed_dps": 0.4157435347862115,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 50.0,
+      "mean_speed_dps": 1.816479492181957,
+      "sample_count": 250,
+      "score": 0.18352050781804308,
+      "stddev_speed_dps": 0.41212022222745187,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 60.0,
+      "mean_speed_dps": 1.8376391601506392,
+      "sample_count": 250,
+      "score": 0.16236083984936078,
+      "stddev_speed_dps": 0.42986978541595067,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 70.0,
+      "mean_speed_dps": 1.8153149414007097,
+      "sample_count": 250,
+      "score": 0.1846850585992903,
+      "stddev_speed_dps": 0.4117514420369237,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 80.0,
+      "mean_speed_dps": 1.8185998535100756,
+      "sample_count": 250,
+      "score": 0.18140014648992442,
+      "stddev_speed_dps": 0.4144505646596143,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 90.0,
+      "mean_speed_dps": 1.8175122070257013,
+      "sample_count": 250,
+      "score": 0.18248779297429873,
+      "stddev_speed_dps": 0.41349038744988836,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 100.0,
+      "mean_speed_dps": 1.799165039057007,
+      "sample_count": 250,
+      "score": 0.2008349609429929,
+      "stddev_speed_dps": 0.4131806600149288,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 110.0,
+      "mean_speed_dps": 1.8058832007663226,
+      "sample_count": 249,
+      "score": 0.19411679923367742,
+      "stddev_speed_dps": 0.41251583955864035,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 120.0,
+      "mean_speed_dps": 1.7969238281195177,
+      "sample_count": 250,
+      "score": 0.20307617188048233,
+      "stddev_speed_dps": 0.41837224253904615,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 130.0,
+      "mean_speed_dps": 1.79803344726014,
+      "sample_count": 250,
+      "score": 0.20196655273985997,
+      "stddev_speed_dps": 0.41852514282570863,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 140.0,
+      "mean_speed_dps": 1.784608154291427,
+      "sample_count": 250,
+      "score": 0.21539184570857306,
+      "stddev_speed_dps": 0.4095550480895163,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 150.0,
+      "mean_speed_dps": 1.784406914763002,
+      "sample_count": 249,
+      "score": 0.21559308523699805,
+      "stddev_speed_dps": 0.4128169388816475,
+      "target_speed_dps": 2.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 0.0,
+      "mean_speed_dps": -0.002263183593743092,
+      "sample_count": 250,
+      "score": 3.002263183593743,
+      "stddev_speed_dps": 0.010644948509879792,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 10.0,
+      "mean_speed_dps": 2.01371704100948,
+      "sample_count": 250,
+      "score": 0.98628295899052,
+      "stddev_speed_dps": 1.7859522859814045,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 20.0,
+      "mean_speed_dps": 2.776761474600896,
+      "sample_count": 250,
+      "score": 0.22323852539910405,
+      "stddev_speed_dps": 1.0799063885205729,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 30.0,
+      "mean_speed_dps": 2.56517525178058,
+      "sample_count": 249,
+      "score": 0.4348247482194201,
+      "stddev_speed_dps": 0.7480079459810746,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 40.0,
+      "mean_speed_dps": 2.5744152831952714,
+      "sample_count": 250,
+      "score": 0.42558471680472865,
+      "stddev_speed_dps": 0.7585593193163149,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 50.0,
+      "mean_speed_dps": 2.577963867179632,
+      "sample_count": 250,
+      "score": 0.4220361328203679,
+      "stddev_speed_dps": 0.7542036478657265,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 60.0,
+      "mean_speed_dps": 2.6020349121014354,
+      "sample_count": 250,
+      "score": 0.39796508789856455,
+      "stddev_speed_dps": 0.7628782470454666,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 70.0,
+      "mean_speed_dps": 2.5885986328046005,
+      "sample_count": 250,
+      "score": 0.41140136719539955,
+      "stddev_speed_dps": 0.7601452405799665,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 80.0,
+      "mean_speed_dps": 2.5913671874920947,
+      "sample_count": 250,
+      "score": 0.4086328125079053,
+      "stddev_speed_dps": 0.7628881366613564,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 90.0,
+      "mean_speed_dps": 2.5808422851483708,
+      "sample_count": 250,
+      "score": 0.4191577148516292,
+      "stddev_speed_dps": 0.7674219985718869,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 100.0,
+      "mean_speed_dps": 2.5856323242108585,
+      "sample_count": 250,
+      "score": 0.41436767578914147,
+      "stddev_speed_dps": 0.7579655939778166,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 110.0,
+      "mean_speed_dps": 2.580545654288995,
+      "sample_count": 250,
+      "score": 0.41945434571100515,
+      "stddev_speed_dps": 0.769002783847473,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 120.0,
+      "mean_speed_dps": 2.581512451163995,
+      "sample_count": 250,
+      "score": 0.4184875488360049,
+      "stddev_speed_dps": 0.7614776030281893,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 130.0,
+      "mean_speed_dps": 2.575576966059533,
+      "sample_count": 249,
+      "score": 0.4244230339404669,
+      "stddev_speed_dps": 0.7782839015773938,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 140.0,
+      "mean_speed_dps": 2.5773706054608874,
+      "sample_count": 250,
+      "score": 0.42262939453911263,
+      "stddev_speed_dps": 0.7782004401743582,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 150.0,
+      "mean_speed_dps": 2.571481933585901,
+      "sample_count": 250,
+      "score": 0.42851806641409906,
+      "stddev_speed_dps": 0.7669446480926498,
+      "target_speed_dps": 3.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 0.0,
+      "mean_speed_dps": -0.0001538085937495306,
+      "sample_count": 250,
+      "score": 4.000153808593749,
+      "stddev_speed_dps": 0.0008017235748263709,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 10.0,
+      "mean_speed_dps": 3.056506347646925,
+      "sample_count": 250,
+      "score": 0.9434936523530748,
+      "stddev_speed_dps": 1.7885098933971306,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 20.0,
+      "mean_speed_dps": 3.3233752441304856,
+      "sample_count": 250,
+      "score": 0.6766247558695144,
+      "stddev_speed_dps": 1.3489582369737785,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 30.0,
+      "mean_speed_dps": 3.2794848632712386,
+      "sample_count": 250,
+      "score": 0.7205151367287614,
+      "stddev_speed_dps": 1.2057210288976017,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 40.0,
+      "mean_speed_dps": 3.2579846191306854,
+      "sample_count": 250,
+      "score": 0.7420153808693146,
+      "stddev_speed_dps": 1.1674166728564428,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 50.0,
+      "mean_speed_dps": 3.2457788085838395,
+      "sample_count": 250,
+      "score": 0.7542211914161605,
+      "stddev_speed_dps": 1.15390118231075,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 60.0,
+      "mean_speed_dps": 3.238352050771369,
+      "sample_count": 250,
+      "score": 0.7616479492286312,
+      "stddev_speed_dps": 1.1458114303194085,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 70.0,
+      "mean_speed_dps": 3.2630273437400503,
+      "sample_count": 250,
+      "score": 0.7369726562599497,
+      "stddev_speed_dps": 1.1414612464637512,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 80.0,
+      "mean_speed_dps": 3.250239257802582,
+      "sample_count": 250,
+      "score": 0.749760742197418,
+      "stddev_speed_dps": 1.1464186546113966,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 90.0,
+      "mean_speed_dps": 3.255556640615062,
+      "sample_count": 250,
+      "score": 0.7444433593849382,
+      "stddev_speed_dps": 1.1515694688104268,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 100.0,
+      "mean_speed_dps": 3.2612915038962935,
+      "sample_count": 250,
+      "score": 0.7387084961037065,
+      "stddev_speed_dps": 1.1531901712571422,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 110.0,
+      "mean_speed_dps": 3.2557983398338113,
+      "sample_count": 250,
+      "score": 0.7442016601661887,
+      "stddev_speed_dps": 1.1532947008180785,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 120.0,
+      "mean_speed_dps": 3.2568640136619313,
+      "sample_count": 250,
+      "score": 0.7431359863380687,
+      "stddev_speed_dps": 1.1491467788370657,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 130.0,
+      "mean_speed_dps": 3.2515339678929416,
+      "sample_count": 249,
+      "score": 0.7484660321070584,
+      "stddev_speed_dps": 1.159801894170397,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 140.0,
+      "mean_speed_dps": 3.2491076660057066,
+      "sample_count": 250,
+      "score": 0.7508923339942934,
+      "stddev_speed_dps": 1.1559127132785718,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 150.0,
+      "mean_speed_dps": 3.242922363271351,
+      "sample_count": 250,
+      "score": 0.7570776367286491,
+      "stddev_speed_dps": 1.1692977442376815,
+      "target_speed_dps": 4.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 0.0,
+      "mean_speed_dps": -0.0022302246093681894,
+      "sample_count": 250,
+      "score": 5.002230224609368,
+      "stddev_speed_dps": 0.005715251077868373,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 10.0,
+      "mean_speed_dps": 3.8447094726445195,
+      "sample_count": 250,
+      "score": 1.1552905273554805,
+      "stddev_speed_dps": 2.0149325322497105,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 20.0,
+      "mean_speed_dps": 3.8163977050664744,
+      "sample_count": 250,
+      "score": 1.1836022949335256,
+      "stddev_speed_dps": 1.7513852027556378,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 30.0,
+      "mean_speed_dps": 3.790922969209065,
+      "sample_count": 249,
+      "score": 1.2090770307909349,
+      "stddev_speed_dps": 1.546214187604569,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 40.0,
+      "mean_speed_dps": 3.809355468738376,
+      "sample_count": 250,
+      "score": 1.1906445312616238,
+      "stddev_speed_dps": 1.5345457099093043,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 50.0,
+      "mean_speed_dps": 3.84954981055866,
+      "sample_count": 249,
+      "score": 1.1504501894413401,
+      "stddev_speed_dps": 1.5388366217634553,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 60.0,
+      "mean_speed_dps": 3.8291418456914403,
+      "sample_count": 250,
+      "score": 1.1708581543085597,
+      "stddev_speed_dps": 1.5543999984702004,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 70.0,
+      "mean_speed_dps": 3.825340576160197,
+      "sample_count": 250,
+      "score": 1.174659423839803,
+      "stddev_speed_dps": 1.5311205398043835,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 80.0,
+      "mean_speed_dps": 3.820308837878966,
+      "sample_count": 250,
+      "score": 1.179691162121034,
+      "stddev_speed_dps": 1.5371589018213028,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 90.0,
+      "mean_speed_dps": 3.8260546874883272,
+      "sample_count": 250,
+      "score": 1.1739453125116728,
+      "stddev_speed_dps": 1.545412363536063,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 100.0,
+      "mean_speed_dps": 3.825944824207076,
+      "sample_count": 250,
+      "score": 1.1740551757929238,
+      "stddev_speed_dps": 1.5439348017698293,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 110.0,
+      "mean_speed_dps": 3.8247473144414514,
+      "sample_count": 250,
+      "score": 1.1752526855585486,
+      "stddev_speed_dps": 1.5540664061285916,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 120.0,
+      "mean_speed_dps": 3.8266369628789425,
+      "sample_count": 250,
+      "score": 1.1733630371210575,
+      "stddev_speed_dps": 1.5459018845694616,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 130.0,
+      "mean_speed_dps": 3.8270764160039437,
+      "sample_count": 250,
+      "score": 1.1729235839960563,
+      "stddev_speed_dps": 1.55482694039522,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 140.0,
+      "mean_speed_dps": 3.8209680175664684,
+      "sample_count": 250,
+      "score": 1.1790319824335316,
+      "stddev_speed_dps": 1.5578961133603262,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 150.0,
+      "mean_speed_dps": 3.8257250976445736,
+      "sample_count": 250,
+      "score": 1.1742749023554264,
+      "stddev_speed_dps": 1.5506763821107818,
+      "target_speed_dps": 5.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 0.0,
+      "mean_speed_dps": 4.522429316863083,
+      "sample_count": 249,
+      "score": 1.4775706831369169,
+      "stddev_speed_dps": 2.2884400103510196,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 10.0,
+      "mean_speed_dps": 4.2128723144402676,
+      "sample_count": 250,
+      "score": 1.7871276855597324,
+      "stddev_speed_dps": 3.4214445094546595,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 20.0,
+      "mean_speed_dps": 4.316033935533706,
+      "sample_count": 250,
+      "score": 1.6839660644662944,
+      "stddev_speed_dps": 2.229091791276586,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 30.0,
+      "mean_speed_dps": 4.283789062486924,
+      "sample_count": 250,
+      "score": 1.7162109375130763,
+      "stddev_speed_dps": 1.9466961063957988,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 40.0,
+      "mean_speed_dps": 4.334183349596145,
+      "sample_count": 250,
+      "score": 1.6658166504038547,
+      "stddev_speed_dps": 1.9580157763469115,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 50.0,
+      "mean_speed_dps": 4.306442871080607,
+      "sample_count": 250,
+      "score": 1.6935571289193927,
+      "stddev_speed_dps": 1.9471967462407798,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 60.0,
+      "mean_speed_dps": 4.3053881835806065,
+      "sample_count": 250,
+      "score": 1.6946118164193935,
+      "stddev_speed_dps": 1.9199840724878934,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 70.0,
+      "mean_speed_dps": 4.299724532884095,
+      "sample_count": 249,
+      "score": 1.7002754671159046,
+      "stddev_speed_dps": 1.920343672650746,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 80.0,
+      "mean_speed_dps": 4.303817138658746,
+      "sample_count": 250,
+      "score": 1.6961828613412537,
+      "stddev_speed_dps": 1.9251415954732303,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 90.0,
+      "mean_speed_dps": 4.303004150377498,
+      "sample_count": 250,
+      "score": 1.6969958496225024,
+      "stddev_speed_dps": 1.9192488265488215,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 100.0,
+      "mean_speed_dps": 4.3014342526224185,
+      "sample_count": 249,
+      "score": 1.6985657473775815,
+      "stddev_speed_dps": 1.9335538647818324,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 110.0,
+      "mean_speed_dps": 4.304750976549368,
+      "sample_count": 250,
+      "score": 1.695249023450632,
+      "stddev_speed_dps": 1.9237645433989048,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 120.0,
+      "mean_speed_dps": 4.303861083971242,
+      "sample_count": 250,
+      "score": 1.696138916028758,
+      "stddev_speed_dps": 1.931376933174123,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 130.0,
+      "mean_speed_dps": 4.296247558580636,
+      "sample_count": 250,
+      "score": 1.7037524414193639,
+      "stddev_speed_dps": 1.9261109541562076,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 140.0,
+      "mean_speed_dps": 4.299279785143126,
+      "sample_count": 250,
+      "score": 1.700720214856874,
+      "stddev_speed_dps": 1.9320864437720047,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 150.0,
+      "mean_speed_dps": 4.303223876939993,
+      "sample_count": 250,
+      "score": 1.6967761230600074,
+      "stddev_speed_dps": 1.9359801826303478,
+      "target_speed_dps": 6.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 0.0,
+      "mean_speed_dps": 0.0009044968938225408,
+      "sample_count": 249,
+      "score": 6.999095503106178,
+      "stddev_speed_dps": 0.005015548499618806,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 10.0,
+      "mean_speed_dps": 4.571894531236042,
+      "sample_count": 250,
+      "score": 2.428105468763958,
+      "stddev_speed_dps": 3.8988493481898554,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 20.0,
+      "mean_speed_dps": 4.799696044907235,
+      "sample_count": 250,
+      "score": 2.2003039550927648,
+      "stddev_speed_dps": 2.5874522492667507,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 30.0,
+      "mean_speed_dps": 4.706795654282503,
+      "sample_count": 250,
+      "score": 2.2932043457174967,
+      "stddev_speed_dps": 2.405961317117126,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 40.0,
+      "mean_speed_dps": 4.646722412095196,
+      "sample_count": 250,
+      "score": 2.3532775879048042,
+      "stddev_speed_dps": 2.295832536231179,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 50.0,
+      "mean_speed_dps": 4.660949707017027,
+      "sample_count": 250,
+      "score": 2.3390502929829733,
+      "stddev_speed_dps": 2.2701761764768937,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 60.0,
+      "mean_speed_dps": 4.675708449016222,
+      "sample_count": 249,
+      "score": 2.3242915509837783,
+      "stddev_speed_dps": 2.266903045398782,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 70.0,
+      "mean_speed_dps": 0.00047241210937355824,
+      "sample_count": 250,
+      "score": 6.9995275878906265,
+      "stddev_speed_dps": 0.0027609063241871307,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 80.0,
+      "mean_speed_dps": 4.668957813662328,
+      "sample_count": 249,
+      "score": 2.3310421863376716,
+      "stddev_speed_dps": 2.279372031790802,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 90.0,
+      "mean_speed_dps": 4.673726806626363,
+      "sample_count": 250,
+      "score": 2.3262731933736367,
+      "stddev_speed_dps": 2.2793895058775515,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 100.0,
+      "mean_speed_dps": 4.6746496581888595,
+      "sample_count": 250,
+      "score": 2.3253503418111405,
+      "stddev_speed_dps": 2.2650952105060624,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 110.0,
+      "mean_speed_dps": 4.678132324204471,
+      "sample_count": 250,
+      "score": 2.321867675795529,
+      "stddev_speed_dps": 2.2799623078871463,
+      "target_speed_dps": 7.0
+    },
+    {
+      "kd": 10.0,
+      "ki": 40.0,
+      "kp": 120.0,
+      "mean_speed_dps": 4.6648059081888915,
+      "sample_count": 250,
+      "score": 2.3351940918111085,
+      "stddev_speed_dps": 2.271588825209324,
+      "target_speed_dps": 7.0
     }
   ],
-  "started_at_unix_ms": 1788989165048,
+  "started_at_unix_ms": 1791745687270,
   "winners": []
 }

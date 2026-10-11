@@ -30,6 +30,15 @@ const App = (() => {
   // Cached mount type from config (0=EQUATORIAL, 1=ALT_AZ, 3=CASUAL)
   let cachedMountType = null;
 
+  // ─── Splash Screen ────────────────────────────────────────────────────
+  // The splash overlay is shown in index.html and hidden here once the app
+  // has finished initializing. A minimum visible time prevents flicker, and
+  // a maximum time guarantees it never gets stuck on slow networks.
+  const splashShownAt = Date.now();
+  const SPLASH_MIN_MS = 6000;
+  const SPLASH_MAX_MS = 10000;
+  let splashHidden = false;
+
   // ─── Initialization ───────────────────────────────────────────────────
 
   /**
@@ -65,7 +74,36 @@ const App = (() => {
     mountExtendedComponents();
     initTabScroll();
     startPolling();
+    hideSplashScreen();
   }
+
+  /**
+   * Hide the splash screen with a smooth fade-out.
+   * Ensures the overlay remains visible for at least SPLASH_MIN_MS to avoid
+   * a jarring flash, and is always dismissed after SPLASH_MAX_MS as a
+   * safety net in case initialization stalls.
+   */
+  function hideSplashScreen() {
+    if (splashHidden) return;
+    splashHidden = true;
+
+    const elapsed = Date.now() - splashShownAt;
+    const delay = Math.max(0, SPLASH_MIN_MS - elapsed);
+
+    setTimeout(() => {
+      const el = $('#splash-screen');
+      if (!el) return;
+      el.classList.add('hidden');
+      // Remove from the DOM once the fade-out transition has completed.
+      setTimeout(() => {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 500);
+    }, delay);
+  }
+
+  // Safety net: force-hide the splash after SPLASH_MAX_MS even if
+  // initialization never completes, so the UI never stays blocked.
+  setTimeout(hideSplashScreen, SPLASH_MAX_MS);
 
   /**
    * Initialize tab scroll buttons — show/hide based on scroll position
