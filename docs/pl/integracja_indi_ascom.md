@@ -16,6 +16,7 @@
 6. [Mapowanie funkcji (INDI ↔ ASCOM ↔ gRPC)](#6-mapowanie-funkcji)
 7. [Troubleshooting](#7-troubleshooting)
 8. [Pliki kluczowe](#8-pliki-kluczowe)
+9. [Sterownik INDI CCD (astro_mount_ccd)](#9-sterownik-indi-ccd-astro_mount_ccd)
 
 ---
 
@@ -442,3 +443,87 @@ Opcjonalne pola: `ssl=1` (lub `tls=1`) włącza TLS.
 - **INDI:** [`indi/astro_mount_driver.cpp`](../indi/astro_mount_driver.cpp), [`indi/astro_mount_driver.h`](../indi/astro_mount_driver.h), [`indi/MountGrpcClient.cpp`](../indi/MountGrpcClient.cpp), [`indi/IndiPropertyMapper.cpp`](../indi/IndiPropertyMapper.cpp), [`indi/CMakeLists.txt`](../indi/CMakeLists.txt)
 - **ASCOM:** [`ascom/AstroMountTelescope.cs`](../ascom/AstroMountTelescope.cs), [`ascom/SetupDialog.cs`](../ascom/SetupDialog.cs), [`ascom/GrpcClient.cs`](../ascom/GrpcClient.cs), [`ascom/StateCache.cs`](../ascom/StateCache.cs), [`ascom/ConversionHelper.cs`](../ascom/ConversionHelper.cs), [`ascom/AstroMountTelescope.csproj`](../ascom/AstroMountTelescope.csproj)
 - **Wspólne:** [`proto/mount_controller.proto`](../proto/mount_controller.proto), [`src/main.cpp`](../src/main.cpp) (hosting gRPC 50051)
+
+---
+
+## 9. Sterownik INDI CCD (astro_mount_ccd)
+
+Obok sterownika montażu dostępny jest **sterownik INDI CCD** — [`indi/astro_mount_ccd.cpp`](../indi/astro_mount_ccd.cpp).
+Łączy się przez gRPC z usługą `CameraService` (hostowaną w-procesie na porcie `50051`) i wystawia kamerę
+klientom INDI (KStars/Ekos) jako standardowe urządzenie CCD.
+
+### Wymagania dodatkowe
+
+- **cfitsio** — nagłówek `<fitsio.h>` jest wymagany przez INDI `indiccd.h`:
+  ```bash
+  # Debian/Ubuntu
+  sudo apt install libcfitsio-dev
+  # openSUSE
+  sudo zypper install cfitsio-devel
+  ```
+- Sterownik INDI SDK (jak dla montażu) oraz gRPC/protobuf.
+
+### Budowa
+
+```bash
+cmake -S indi -B indi/build
+cmake --build indi/build -j"$(nproc)"
+```
+
+Budowa tworzy dodatkowo binarkę `astro_mount_ccd` (cel CMake `astro_mount_ccd`).
+
+### Instalacja i rejestracja
+
+```bash
+sudo cmake --install indi/build
+```
+
+Instaluje binarkę do `/usr/bin`, plik [`astro_mount_ccd.xml`](../indi/astro_mount_ccd.xml) do
+`/usr/share/indi` oraz idempotentnie rejestruje urządzenie **„AstroMount CCD”** w grupie `CCDs`
+pliku `/usr/share/indi/drivers.xml` (patrz [`register_driver.cmake.in`](../indi/register_driver.cmake.in)).
+
+### Konfiguracja i użycie
+
+- Endpoint gRPC: zmienne środowiskowe `GRPC_HOST` / `GRPC_PORT` (domyślnie `localhost:50051`).
+- W profilu KStars/Ekos dodaj **CCD** → „AstroMount CCD”.
+- Po połączeniu sterownik pobiera parametry czujnika (`GetCameraInfo`) i wystawia właściwości CCD:
+  ekspozycja, binning, subframe, frame type, upload, temperatura, `CCD_GAIN`, `CCD_OFFSET`,
+  `FILTER_SLOT` / `FILTER_NAME`.
+
+> Kamera jest obecnie **symulowana** („Simulated Camera”). Sterownik INDI odbiera obraz (surowe
+> 16-bitowe piksele w `ExposureProgress.image`), ale obsługa fizycznego sprzętu ZWO/QHY wymaga
+> dokończenia warstwy HAL w `CameraService` (`camera/src/camera_service_impl.cpp`).
+
+Instrukcja dla openSUSE (pełny proces instalacji) znajduje się w
+[`docs/pl/instalacja_opensuse.md`](instalacja_opensuse.md).
+
+### Most INDI → gRPC (sterowanie rzeczywistą kamerą z kontrolera)
+
+`CameraService` może sterować **rzeczywistą kamerą INDI** (np. PlayerOne
+`indi_playerone`, ZWO `indi_asi`) jako klient indiserver. Gdy most jest włączony,
+zakładka Camera Control, plate-solver i sekwencer działają na prawdziwym obrazie
+zamiast na symulacji.
+
+Włączenie — zmienne środowiskowe kontrolera (`astro_mount_controller`):
+
+```bash
+CAMERA_INDI_DEVICE="PlayerOne"    # nazwa urządzenia INDI (wymagane, włącza most)
+CAMERA_INDI_HOST="localhost"      # host indiserver (domyślnie localhost)
+CAMERA_INDI_PORT=7624             # port indiserver (domyślnie 7624)
+```
+
+Przykład uruchomienia:
+
+```bash
+# 1. indiserver z driverem kamery (osobny proces)
+indiserver indi_playerone
+
+# 2. kontroler z mostem kamery
+CAMERA_INDI_DEVICE="PlayerOne" ./build/bin/astro_mount_controller config/default.json
+```
+
+Bez `CAMERA_INDI_DEVICE` kontroler pozostaje przy symulowanej kamerze.
+Implementacja mostu: [`camera/indi_camera_client.cpp`](../camera/indi_camera_client.cpp)
+(klient `INDI::BaseClient`) oraz [`CameraServiceImpl`](../camera/src/camera_service_impl.cpp)
+(przekierowanie ekspozycji/filtra/chłodzenia do INDI). Budowa kontrolera wymaga
+teraz pakietu `libindi` (wykrywany przez pkg-config).

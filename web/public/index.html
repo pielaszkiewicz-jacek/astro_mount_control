@@ -8,7 +8,7 @@
   <title>Astro Mount Control</title>
 
   <!-- Styles -->
-  <link rel="stylesheet" href="css/style.css?v=20260601">
+  <link rel="stylesheet" href="css/style.css?v=20261014">
 </head>
 <body>
   <!-- ─── Splash Screen ───────────────────────────────────────────────── -->
@@ -28,6 +28,7 @@
       <h1 class="splash-title">Astro Mount Control</h1>
       <div class="splash-spinner" aria-hidden="true"></div>
       <p class="splash-status">Loading&hellip;</p>
+      <p class="splash-countdown" id="splash-countdown" aria-hidden="true">4s</p>
     </div>
   </div>
 
@@ -799,6 +800,15 @@
                       <label class="checkbox-label" style="gap:6px; font-size:0.85rem;">
                         <input type="checkbox" id="auto-bs-proceed-tpoint" /> <span data-i18n="cal.proceed_tpoint">Proceed to TPOINT</span>
                       </label>
+                      <label class="checkbox-label" style="gap:6px; font-size:0.85rem;">
+                        <input type="checkbox" id="auto-bs-plate-solve" /> <span data-i18n="cal.plate_solve">Plate solve (full automation)</span>
+                      </label>
+                      <label class="checkbox-label" style="gap:6px; font-size:0.85rem;">
+                        <input type="checkbox" id="auto-bs-track-after-slew" /> <span data-i18n="cal.track_after_slew">Track after slew</span>
+                      </label>
+                      <label class="checkbox-label" style="gap:6px; font-size:0.85rem;">
+                        <input type="checkbox" id="auto-bs-track-after-calibration" /> <span data-i18n="cal.track_after_calibration">Track after calibration</span>
+                      </label>
                     </div>
                   </div>
 
@@ -821,6 +831,10 @@
                     </div>
                     <div id="auto-bs-state-message" style="margin-top:4px; font-size:0.82rem; color:var(--color-text-secondary);"></div>
                     <div id="auto-bs-error" style="margin-top:4px; font-size:0.82rem; color:var(--color-danger); display:none;"></div>
+                    <div style="display:flex; gap:8px; margin-top:8px;">
+                      <button id="btn-auto-bs-confirm" class="btn btn-sm btn-primary" style="display:none;" data-i18n="cal.confirm_measurement">Confirm Measurement</button>
+                      <button id="btn-auto-bs-cancel" class="btn btn-sm btn-danger" style="display:none;" data-i18n="cal.cancel_auto">Cancel</button>
+                    </div>
                   </div>
                 </div>
               </details>
@@ -2981,6 +2995,6 @@
   <script src="js/components/pidCalibration.js"></script>
   <script src="js/components/lx200.js"></script>
   <script src="js/components/notifications.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/app.js?v=20261014"></script>
 </body>
 </html>

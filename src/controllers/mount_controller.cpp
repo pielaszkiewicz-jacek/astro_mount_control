@@ -1755,9 +1755,15 @@ public:
                 time_to_meridian_ = 24.0;
                 pier_side_ = 1;
             }
-            
+
+            // Reset the once-per-session mode log flags so a changed tracking
+            // mode is reflected in the next session's logs.
+            pos_mode_logged_ = false;
+            vel_mode_logged_ = false;
+            alt_az_pos_mode_logged_ = false;
+
             if (config_.mount_config.mount_type == config::MountType::EQUATORIAL &&
-                config_.mount_config.equatorial_tracking_velocity_mode) {
+                !usePositionTrackingMode()) {
                 // ── EQUATORIAL velocity-mode tracking ──────────────────────
                 // User explicitly enabled velocity mode via config flag
                 // equatorial_tracking_velocity_mode.  The tracking loop will
@@ -1791,7 +1797,8 @@ public:
                 // sends the initial velocity command on its first iteration.
                 last_sent_rate_1_ = std::numeric_limits<double>::quiet_NaN();
                 last_sent_rate_2_ = std::numeric_limits<double>::quiet_NaN();
-            } else if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
+            } else if (usePositionTrackingMode()) {
+                if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                 // ── EQUATORIAL position-mode tracking (default) ────────────
                 // Robust position mode — we update the target position
                 // periodically in the tracking loop via setPosition().
@@ -1895,6 +1902,33 @@ public:
                 // operator sees as uncontrolled rotation.
                 last_pos_update_iter_ = tracking_iteration_count_;
                 last_pos_update_time_ = std::chrono::steady_clock::time_point{};
+                } else {
+                    // ── ALT_AZ / CASUAL position-mode tracking ─────────────
+                    // Initial slew uses the configured slew velocity; the loop
+                    // then advances both targets from the position-dependent
+                    // tracking rates.
+                    const double TRACK_POS_VEL = config_.mount_config.max_slew_rate > 0.0
+                        ? config_.mount_config.max_slew_rate
+                        : 2.0;
+                    bool pos_ok = false;
+                    if (hal_axis1_motor_ && hal_axis2_motor_) {
+                        bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
+                        bool ok2 = hal_axis2_motor_->setPosition(axis2_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
+                        pos_ok = ok1 && ok2;
+                    } else {
+                        // No HAL motors — simulated tracking.
+                        pos_ok = true;
+                    }
+                    if (!pos_ok) {
+                        MOUNT_LOG_ERROR("startTracking: failed to set position targets — aborting");
+                        axis1_rate_ = 0.0;
+                        axis2_rate_ = 0.0;
+                        state_ = MountStatus::State::IDLE;
+                        return false;
+                    }
+                    last_pos_update_iter_ = tracking_iteration_count_;
+                    last_pos_update_time_ = std::chrono::steady_clock::time_point{};
+                }
             } else {
                 // ALT_AZ / CASUAL: use velocity mode (unchanged).
                 bool velocity_set_ok = false;
@@ -2832,7 +2866,7 @@ public:
                 // ---- I/O Block 3: Motor control updates (outside state_mutex_) ----
                 if (is_tracking) {
                     if (config_.mount_config.mount_type == config::MountType::EQUATORIAL &&
-                        !config_.mount_config.equatorial_tracking_velocity_mode) {
+                        usePositionTrackingMode()) {
                         // ── EQUATORIAL position-mode tracking (default) ────
                         if (!pos_mode_logged_) {
                             MOUNT_LOG_INFO("Tracking mode: POSITION (equatorial_tracking_velocity_mode=false)");
@@ -3178,8 +3212,120 @@ public:
                                 MOUNT_LOG_WARN("Position update error during tracking: {}", e.what());
                             }
                         }
+                    } else if (usePositionTrackingMode()) {
+                        // ── ALT_AZ / CASUAL position-mode tracking ─────────
+                        if (!alt_az_pos_mode_logged_) {
+                            MOUNT_LOG_INFO("Tracking mode: POSITION (ALT_AZ/CASUAL)");
+                            alt_az_pos_mode_logged_ = true;
+                        }
+                        const int calc_hz = config_.tracking_config.split_tracking_loop
+                            ? std::max(1, config_.tracking_config.calc_update_hz)
+                            : 1000 / std::max(1, config_.tracking_config.tracking_update_ms);
+                        const int pos_update_hz = std::max(1, config_.tracking_config.tracking_pos_update_hz);
+                        const size_t POS_UPDATE_INTERVAL = std::max<size_t>(1, calc_hz / pos_update_hz);
+                        if (tracking_iteration_count_ - last_pos_update_iter_ >= POS_UPDATE_INTERVAL) {
+                            last_pos_update_iter_ = tracking_iteration_count_;
+
+                            const double nominal_update_s = static_cast<double>(POS_UPDATE_INTERVAL) / calc_hz;
+                            double measured_update_s = nominal_update_s;
+                            if (last_pos_update_time_.time_since_epoch().count() != 0) {
+                                measured_update_s = std::chrono::duration<double>(now - last_pos_update_time_).count();
+                            }
+                            measured_update_s = std::min(measured_update_s, nominal_update_s * 10.0);
+                            last_pos_update_time_ = now;
+
+                            const double configured_lead_s = config_.mount_config.tracking_pos_lead_seconds > 0.0
+                                ? config_.mount_config.tracking_pos_lead_seconds : 2.0;
+                            const double advance_s = measured_update_s + configured_lead_s;
+
+                            // Advance both mount-frame targets by the
+                            // position-dependent tracking rates.  Clamp the
+                            // rates used for advancing so a zenith singularity
+                            // (exploding azimuth rate) cannot jump the target.
+                            const double adv_rate_cap = config_.mount_config.max_tracking_rate > 0.0
+                                ? config_.mount_config.max_tracking_rate
+                                : 0.004178074 * std::max(haGear(), 1.0);
+                            const double adv_rate_1 = std::clamp(snap_rate_1, -adv_rate_cap, adv_rate_cap);
+                            const double adv_rate_2 = std::clamp(snap_rate_2, -adv_rate_cap, adv_rate_cap);
+                            axis1_target_ += adv_rate_1 * advance_s;
+                            axis2_target_ += adv_rate_2 * advance_s;
+                            double new_axis1_target = axis1_target_;
+                            double new_axis2_target = axis2_target_;
+
+                            // Re-wrap the azimuth-like axis (axis2 for ALT_AZ /
+                            // CASUAL) to the physical drive's multi-turn window.
+                            {
+                                const double dec_gear = std::max(decGear(), 1.0);
+                                const double full_turn = 360.0 * dec_gear;
+                                double ref = raw_servo_axis2_position_ - home_offset_axis2_;
+                                double diff = new_axis2_target - ref;
+                                diff = std::fmod(diff, full_turn);
+                                if (diff > full_turn / 2.0) diff -= full_turn;
+                                else if (diff < -full_turn / 2.0) diff += full_turn;
+                                new_axis2_target = ref + diff;
+                                axis2_target_ = new_axis2_target;
+                            }
+
+                            // Clamp the altitude-like axis to the configured soft
+                            // limits for ALT_AZ (axis1 = true altitude).
+                            if (config_.mount_config.mount_type == config::MountType::ALT_AZ &&
+                                config_.safety_config.soft_limits_enabled) {
+                                const double alt_gear = std::max(haGear(), 1.0);
+                                const double alt_tel = (new_axis1_target + home_offset_axis1_) / alt_gear;
+                                const double clamped_alt = std::clamp(
+                                    alt_tel,
+                                    config_.safety_config.soft_limit_axis1_min,
+                                    config_.safety_config.soft_limit_axis1_max);
+                                new_axis1_target = clamped_alt * alt_gear - home_offset_axis1_;
+                                axis1_target_ = new_axis1_target;
+                            }
+
+                            if (!std::isfinite(new_axis1_target) || !std::isfinite(new_axis2_target)) {
+                                MOUNT_LOG_ERROR("Non-finite ALT_AZ/CASUAL position target — update skipped");
+                                continue;
+                            }
+
+                            const double pos_vel_margin = config_.mount_config.tracking_pos_velocity_margin > 0.0
+                                ? config_.mount_config.tracking_pos_velocity_margin : 1.0;
+                            const double tracking_rate_cap = config_.mount_config.max_tracking_rate > 0.0
+                                ? config_.mount_config.max_tracking_rate
+                                : 0.004178074 * std::max(haGear(), 1.0);
+                            double pos_vel_axis1 = std::clamp(std::abs(snap_rate_1) * pos_vel_margin, 0.0, tracking_rate_cap);
+                            double pos_vel_axis2 = std::clamp(std::abs(snap_rate_2) * pos_vel_margin, 0.0, tracking_rate_cap);
+
+                            // Keep the configured slew velocity while still far
+                            // from the target (initial "Slew & Track").
+                            {
+                                const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(haGear(), 1.0) * 4.0;
+                                const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(decGear(), 1.0) * 4.0;
+                                double ref1 = raw_servo_axis1_position_ - home_offset_axis1_;
+                                double ref2 = raw_servo_axis2_position_ - home_offset_axis2_;
+                                if (std::abs(new_axis1_target - ref1) > close1) pos_vel_axis1 = config_.mount_config.max_slew_rate;
+                                if (std::abs(new_axis2_target - ref2) > close2) pos_vel_axis2 = config_.mount_config.max_slew_rate;
+                            }
+
+                            try {
+                                bool pos_ok = false;
+                                if (config_.tracking_config.split_tracking_loop) {
+                                    publishPositionCommand(new_axis1_target, new_axis2_target, pos_vel_axis1, pos_vel_axis2);
+                                    pos_ok = true;
+                                } else if (hal_axis1_motor_ && hal_axis2_motor_) {
+                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel_axis1, config_.mount_config.slew_acceleration);
+                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel_axis2, config_.mount_config.slew_acceleration);
+                                    pos_ok = ok1 && ok2;
+                                } else {
+                                    pos_ok = true;
+                                }
+                                if (!pos_ok) {
+                                    MOUNT_LOG_WARN("ALT_AZ/CASUAL position target FAILED: axis1={:.2f}° axis2={:.2f}°",
+                                                   new_axis1_target, new_axis2_target);
+                                }
+                            } catch (const std::exception& e) {
+                                MOUNT_LOG_WARN("ALT_AZ/CASUAL position update error: {}", e.what());
+                            }
+                        }
                     } else if (config_.mount_config.mount_type == config::MountType::EQUATORIAL &&
-                               config_.mount_config.equatorial_tracking_velocity_mode) {
+                               !usePositionTrackingMode()) {
                         // ── EQUATORIAL velocity-mode tracking (experimental) ─
                         if (!vel_mode_logged_) {
                             MOUNT_LOG_INFO("Tracking mode: VELOCITY (equatorial_tracking_velocity_mode=true)");
@@ -6099,6 +6245,11 @@ public:
                 j["tpoint"]["enabled_terms"] = config_.calibration_config.tpoint_enabled_terms;
             }
 
+            // ── calibration (auto-bootstrap orchestration options) ──
+            ensureSection("calibration");
+            j["calibration"]["auto_track_after_slew"] = config_.calibration_config.auto_track_after_slew;
+            j["calibration"]["auto_track_after_calibration"] = config_.calibration_config.auto_track_after_calibration;
+
             // ── Backup existing file before overwriting ────────────
             if (std::filesystem::exists(config_file_path_)) {
                 auto now = std::chrono::system_clock::now();
@@ -7476,6 +7627,18 @@ private:
             .trackingRates(mode, axis1_tel, axis2_tel,
                            custom_rate_ra_arcsec_s, custom_rate_dec_arcsec_s,
                            config_.mount_config.max_tracking_rate);
+    }
+
+    // True when the tracking loop should command Profile Position targets.
+    // "position" forces it for every mount type; "velocity" forces Profile
+    // Velocity; "auto" keeps the legacy behaviour (EQ → position,
+    // ALT_AZ/CASUAL → velocity).
+    bool usePositionTrackingMode() const {
+        const std::string& m = config_.mount_config.tracking_mode;
+        if (m == "position") return true;
+        if (m == "velocity") return false;
+        return config_.mount_config.mount_type == config::MountType::EQUATORIAL &&
+               !config_.mount_config.equatorial_tracking_velocity_mode;
     }
 
     // Position-dependent mount-frame tracking rates for ALT_AZ / CASUAL.
@@ -8873,6 +9036,7 @@ private:
     size_t diag_log_counter_{0};
     int dec_desync_count_{0};   // consecutive Dec-axis desync detections
     bool vel_mode_logged_{false};
+    bool alt_az_pos_mode_logged_{false};
     size_t drift_diag_counter_{0};
     int refresh_log_counter_{0};
     std::chrono::steady_clock::time_point last_bootstrap_{};

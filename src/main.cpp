@@ -263,6 +263,8 @@ int main(int argc, char* argv[]) {
         mount_cfg.tracking_pos_velocity_factor = cfg_mount.tracking_pos_velocity_factor;
         mount_cfg.tracking_pos_lead_seconds = cfg_mount.tracking_pos_lead_seconds;
         mount_cfg.tracking_pos_velocity_margin = cfg_mount.tracking_pos_velocity_margin;
+        mount_cfg.tracking_mode = cfg_mount.tracking_mode;
+        mount_cfg.auto_track_after_goto = cfg_mount.auto_track_after_goto;
         mount_cfg.position_tolerance = cfg_mount.position_tolerance;
         mount_cfg.rate_tolerance = cfg_mount.rate_tolerance;
         mount_cfg.slew_verify_tolerance_servo_deg = cfg_mount.slew_verify_tolerance_servo_deg;
@@ -320,6 +322,9 @@ int main(int argc, char* argv[]) {
         config::CalibrationConfig calib_cfg;
         auto tpoint_cfg = config.getTPointConfig();
         calib_cfg.tpoint_enabled_terms = tpoint_cfg.enabled_terms;
+        auto calib_auto_cfg = config.getCalibrationConfig();
+        calib_cfg.auto_track_after_slew = calib_auto_cfg.auto_track_after_slew;
+        calib_cfg.auto_track_after_calibration = calib_auto_cfg.auto_track_after_calibration;
         controller_config.calibration_config = calib_cfg;
         
         // --- HALConfig ---
@@ -471,10 +476,32 @@ int main(int argc, char* argv[]) {
             notification_engine);
         logger->info("Notification service hosted in-process (served on unified gRPC port)");
 
-        // Camera service (in-process) — R3. Simulated camera, always hosted so
-        // the web UI exposure/filter/cooler controls have a real backend.
-        camera_service_impl = std::make_unique<astro_camera::CameraServiceImpl>();
-        logger->info("Camera subsystem hosted in-process (simulated, served on unified gRPC port)");
+        // Camera service (in-process) — INDI bridge. Drives a real CCD through
+        // indiserver; the web UI can list/select the camera and control its INDI
+        // properties at runtime.
+        {
+            astro_camera::CameraServiceImpl::IndiCameraConfig indi_camera_cfg;
+            if (const char* host = std::getenv("CAMERA_INDI_HOST"))
+                indi_camera_cfg.host = host;
+            if (const char* port = std::getenv("CAMERA_INDI_PORT"))
+                indi_camera_cfg.port = std::atoi(port);
+            if (indi_camera_cfg.port <= 0)
+                indi_camera_cfg.port = 7624;
+
+            const char* indi_dev = std::getenv("CAMERA_INDI_DEVICE");
+            if (indi_dev && indi_dev[0] != '\0') {
+                indi_camera_cfg.enabled = true;
+                indi_camera_cfg.device = indi_dev;
+            }
+
+            camera_service_impl = std::make_unique<astro_camera::CameraServiceImpl>(indi_camera_cfg);
+
+            if (indi_camera_cfg.enabled)
+                logger->info("Camera subsystem hosted in-process (INDI bridge -> '{}' @ {}:{})",
+                             indi_camera_cfg.device, indi_camera_cfg.host, indi_camera_cfg.port);
+            else
+                logger->info("Camera subsystem hosted in-process (INDI bridge, no camera pre-selected)");
+        }
 
         // Pulley service (in-process) — R3. Simulated linear actuator, always
         // hosted so the web UI deploy/retract/home controls have a real backend.

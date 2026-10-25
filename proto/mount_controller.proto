@@ -747,6 +747,19 @@ message Configuration {
     optional bool sdo_slow_control = 106;     // keep SDO for mode switch / config / homing
     int32 tracking_pos_update_hz = 107;       // position-mode target update cadence [Hz] (EQ position mode)
     double tracking_pos_velocity_margin = 108; // bounded scaling factor applied to the actual tracking rate in position-mode tracking (clamped to max_tracking_rate)
+    string tracking_mode = 109;                 // "auto" | "position" | "velocity" — tracking command mode selector
+
+    // Auto-bootstrap orchestration options.
+    // When true, the proxy orchestrator starts tracking after each calibration
+    // slew and/or after the calibration finishes.
+    optional bool auto_track_after_slew = 110;
+    optional bool auto_track_after_calibration = 111;
+
+    // Auto-track after a normal Goto (SlewToCoordinates) completes.
+    // When true, the controller automatically starts sidereal tracking of the
+    // Goto target once the slew settles. Runtime-modifiable via
+    // UpdateConfiguration (no controller restart required).
+    optional bool auto_track_after_goto = 112;
 }
 
 // Health check messages

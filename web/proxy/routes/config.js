@@ -166,6 +166,13 @@ function flattenConfig(proto) {
     tpoint_max_residual:          proto.tpoint_max_residual || 0,
     tpoint_auto_calibrate:        proto.tpoint_auto_calibrate || false,
 
+    // Auto-bootstrap orchestration options
+    auto_track_after_slew:        proto.auto_track_after_slew || false,
+    auto_track_after_calibration: proto.auto_track_after_calibration || false,
+
+    // Auto-track after a normal Goto (SlewToCoordinates)
+    auto_track_after_goto:        proto.auto_track_after_goto !== undefined ? proto.auto_track_after_goto : true,
+
     // Loop timing
     controller_poll_ms:           proto.controller_poll_ms || 0,
     tracking_update_ms:           proto.tracking_update_ms || 0,
@@ -183,6 +190,7 @@ function flattenConfig(proto) {
     sdo_slow_control:             proto.sdo_slow_control !== undefined ? proto.sdo_slow_control : true,
     tracking_pos_update_hz:       proto.tracking_pos_update_hz || 0,
     tracking_pos_velocity_margin: proto.tracking_pos_velocity_margin || 0,
+    tracking_mode:               proto.tracking_mode || 'auto',
 
     // Servo init
     servo_init_enabled:           proto.servo_init_enabled || false,

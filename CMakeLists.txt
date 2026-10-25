@@ -39,6 +39,11 @@ find_package(Threads REQUIRED)
 # Find dependencies
 find_package(PkgConfig REQUIRED)
 
+# INDI (libindi) — required for the in-process camera bridge (INDI::BaseClient).
+# The camera service drives a real CCD (e.g. PlayerOne indi_playerone) through
+# indiserver when CAMERA_INDI_DEVICE is set.
+pkg_check_modules(INDI REQUIRED libindi)
+
 # Use SOFA library directly from the project (sofa directory)
 file(GLOB SOFA_SOURCES sofa/*.c)
 add_library(sofa_static STATIC ${SOFA_SOURCES})
@@ -216,10 +221,9 @@ set(DOME_SOURCES
     src/controllers/dome_controller.cpp
 )
 
+# The simulated camera HAL was removed — the camera service is now an INDI
+# bridge (camera/indi_camera_client.cpp) compiled with the in-process services.
 set(CAMERA_SOURCES
-    src/hal/camera_hal/camera_hal.cpp
-    src/hal/camera_hal/camera_zwo.cpp
-    src/hal/camera_hal/camera_simulated.cpp
 )
 
 set(FOCUSER_SOURCES
@@ -364,6 +368,7 @@ set(MERGED_SERVICE_SOURCES
     st4guider/src/st4_guider_service_impl.cpp
     pec/src/pec_service_impl.cpp
     camera/src/camera_service_impl.cpp
+    camera/indi_camera_client.cpp
     pulley/src/pulley_service_impl.cpp
     pidcal/src/pid_calibration_service_impl.cpp
 )
@@ -385,6 +390,11 @@ target_link_libraries(astro_mount_controller
     astro_mount_core
     gRPC::grpc++
     protobuf::libprotobuf
+    ${INDI_LIBRARIES}
+)
+
+target_include_directories(astro_mount_controller PRIVATE
+    ${INDI_INCLUDE_DIRS}
 )
 
 add_dependencies(astro_mount_controller generate_proto)

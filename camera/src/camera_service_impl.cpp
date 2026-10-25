@@ -1,90 +1,180 @@
 #include "camera/include/camera_service_impl.h"
-#include <chrono>
-#include <thread>
-#include <cmath>
-#include <algorithm>
+#include "camera/indi_camera_client.h"
+#include "logging/logger.h"
+#include <string>
 
 namespace astro_camera {
 
+namespace {
+std::shared_ptr<spdlog::logger> cameraLog()
+{
+    return astro_mount::logging::Logger::get("camera");
+}
+}
+
+CameraServiceImpl::CameraServiceImpl(IndiCameraConfig indi_config)
+    : indi_config_(std::move(indi_config))
+{
+    // The INDI client is always created so the web UI can list and select
+    // cameras at runtime. Connection is lazy; an immediate connection is only
+    // attempted when a device was pre-configured via environment.
+    indi_client_ = std::make_unique<IndiCameraClient>();
+    indi_client_->configure(indi_config_.host, indi_config_.port);
+
+    if (indi_config_.enabled && !indi_config_.device.empty()) {
+        try {
+            if (indi_client_->connectToServer())
+                indi_client_->connectCamera(indi_config_.device);
+        } catch (const std::exception&) {
+        }
+    }
+}
+
+CameraServiceImpl::~CameraServiceImpl() = default;
+
+void CameraServiceImpl::ensureIndiServerConnected()
+{
+    if (!indi_client_)
+        return;
+    try {
+        indi_client_->ensureConnected();
+    } catch (const std::exception&) {
+    }
+}
+
+bool CameraServiceImpl::indiCameraActive()
+{
+    return indi_client_ && !indi_client_->activeDevice().empty();
+}
+
 grpc::Status CameraServiceImpl::GetCameraInfo(
     grpc::ServerContext*, const google::protobuf::Empty*, astro_mount::CameraInfo* info) {
-    // R3: simulated camera — clearly reported as such.
-    info->set_name("Simulated Camera");
-    info->set_manufacturer("Simulation");
-    info->set_sensor_name("IMX571");
-    info->set_width(6248);
-    info->set_height(4176);
-    info->set_pixel_size_um(3.76);
+    ensureIndiServerConnected();
+    if (!indiCameraActive()) {
+        info->set_name("No camera selected");
+        info->set_connected(false);
+        info->set_driver_version("indi-bridge");
+        return grpc::Status::OK;
+    }
+
+    const auto cam = indi_client_->getInfo();
+    const std::string active = indi_client_->activeDevice();
+    const std::string display = cam.name.empty() ? active : cam.name;
+    info->set_name(display);
+    info->set_manufacturer("INDI");
+    info->set_sensor_name(display);
+    info->set_width(cam.width);
+    info->set_height(cam.height);
+    info->set_pixel_size_um(cam.pixel_size_um);
     info->set_max_bin(4);
-    info->set_has_filter_wheel(true);
-    info->set_num_filters(5);
-    for (const char* f : {"L", "R", "G", "B", "Ha"}) info->add_filter_names(f);
-    info->set_has_cooler(true);
-    info->set_min_cooling_c(35.0);
-    info->set_bit_depth(16.0);
+    info->set_has_filter_wheel(!cam.filter_names.empty());
+    info->set_num_filters(static_cast<int>(cam.filter_names.size()));
+    for (const auto& f : cam.filter_names) info->add_filter_names(f);
+    info->set_has_cooler(cam.has_cooler);
+    info->set_bit_depth(cam.bit_depth > 0 ? cam.bit_depth : 16.0);
     info->set_connected(true);
-    info->set_driver_version("simulated-1.0");
+    info->set_driver_version("indi-bridge");
     return grpc::Status::OK;
 }
 
 grpc::Status CameraServiceImpl::SetFilter(
     grpc::ServerContext*, const astro_mount::FilterRequest* req, google::protobuf::Empty*) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    filter_position_ = std::max(0, req->position());
+    ensureIndiServerConnected();
+    if (!indiCameraActive())
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "No INDI camera selected");
+
+    try {
+        indi_client_->setFilter(req->position());
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, e.what());
+    }
     return grpc::Status::OK;
 }
 
 grpc::Status CameraServiceImpl::GetFilterPosition(
     grpc::ServerContext*, const google::protobuf::Empty*, astro_mount::FilterPosition* pos) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    pos->set_current_position(filter_position_);
-    pos->set_num_filters(5);
-    for (const char* f : {"L", "R", "G", "B", "Ha"}) pos->add_filter_names(f);
+    ensureIndiServerConnected();
+    if (!indiCameraActive())
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "No INDI camera selected");
+
+    const auto cam = indi_client_->getInfo();
+    pos->set_num_filters(static_cast<int>(cam.filter_names.size()));
+    for (const auto& f : cam.filter_names) pos->add_filter_names(f);
+    pos->set_current_position(0);
     return grpc::Status::OK;
 }
 
 grpc::Status CameraServiceImpl::StartExposure(
-    grpc::ServerContext* context, const astro_mount::ExposureRequest* req,
+    grpc::ServerContext*, const astro_mount::ExposureRequest* req,
     grpc::ServerWriter<astro_mount::ExposureProgress>* writer) {
-    // Simulated exposure: stream progress to completion.
-    double total_s = std::max(0.1, req->exposure_time_s());
-    const int steps = 20;
-    for (int i = 0; i <= steps; ++i) {
-        if (context->IsCancelled()) return grpc::Status::CANCELLED;
-        astro_mount::ExposureProgress p;
-        p.set_elapsed_ms(static_cast<int>(i * total_s * 1000.0 / steps));
-        p.set_remaining_ms(static_cast<int>((steps - i) * total_s * 1000.0 / steps));
-        p.set_progress_percent(100.0 * i / steps);
-        p.set_status(i < steps ? "exposing" : "complete");
-        p.set_image_size_bytes(0);
-        if (!writer->Write(p)) return grpc::Status::CANCELLED;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    ensureIndiServerConnected();
+    cameraLog()->info("StartExposure: {:.3f}s (device='{}')", req->exposure_time_s(),
+                      indi_client_ ? indi_client_->activeDevice() : "");
+
+    if (!indiCameraActive()) {
+        cameraLog()->warn("StartExposure rejected: no INDI camera selected");
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "No INDI camera selected");
     }
-    return grpc::Status::OK;
+
+    const double total_s = std::max(0.1, req->exposure_time_s());
+    const int binning = std::max(1, req->binning());
+    const double gain = std::max(0.0, static_cast<double>(req->gain()));
+    try {
+        IndiCameraClient::Exposure capture = indi_client_->capture(
+            total_s, total_s + 60.0,
+            [writer, &total_s](double remaining_s) {
+                astro_mount::ExposureProgress p;
+                p.set_elapsed_ms(static_cast<int>((total_s - remaining_s) * 1000.0));
+                p.set_remaining_ms(static_cast<int>(remaining_s * 1000.0));
+                p.set_progress_percent(100.0 * (total_s - remaining_s) / total_s);
+                p.set_status("exposing");
+                writer->Write(p);
+            },
+            binning, gain);
+
+        astro_mount::ExposureProgress finalMsg;
+        finalMsg.set_elapsed_ms(static_cast<int>(total_s * 1000.0));
+        finalMsg.set_remaining_ms(0);
+        finalMsg.set_progress_percent(100.0);
+        if (capture.aborted) {
+            finalMsg.set_status("aborted");
+        } else {
+            finalMsg.set_status(capture.complete ? "complete" : "failed");
+            if (!capture.bytes.empty()) {
+                auto* img = finalMsg.mutable_image();
+                img->set_format(capture.format.empty() ? "fits" : capture.format);
+                img->set_data(capture.bytes);
+            }
+        }
+        writer->Write(finalMsg);
+        if (capture.aborted) {
+            cameraLog()->info("StartExposure aborted by operator");
+        } else {
+            cameraLog()->info("StartExposure complete: {} bytes", capture.bytes.size());
+        }
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        cameraLog()->error("StartExposure failed: {}", e.what());
+        astro_mount::ExposureProgress p;
+        p.set_status("failed");
+        p.set_remaining_ms(0);
+        writer->Write(p);
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                            std::string("INDI exposure failed: ") + e.what());
+    }
 }
 
 grpc::Status CameraServiceImpl::AbortExposure(
     grpc::ServerContext*, const google::protobuf::Empty*, google::protobuf::Empty*) {
+    if (indi_client_)
+        indi_client_->abortCapture();
     return grpc::Status::OK;
 }
 
 grpc::Status CameraServiceImpl::StartVideoPreview(
-    grpc::ServerContext* context, const astro_mount::VideoPreviewRequest*,
-    grpc::ServerWriter<astro_mount::VideoFrame>* writer) {
-    // Simulated preview: stream a few empty frames then end.
-    const int frames = 5;
-    for (int i = 1; i <= frames; ++i) {
-        if (context->IsCancelled()) return grpc::Status::CANCELLED;
-        astro_mount::VideoFrame frame;
-        frame.set_frame_number(i);
-        frame.set_width(640);
-        frame.set_height(480);
-        frame.set_format("jpeg");
-        frame.set_data("");  // simulated — no real image data
-        if (!writer->Write(frame)) return grpc::Status::CANCELLED;
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
-    return grpc::Status::OK;
+    grpc::ServerContext*, const astro_mount::VideoPreviewRequest*,
+    grpc::ServerWriter<astro_mount::VideoFrame>*) {
+    return grpc::Status(grpc::StatusCode::UNIMPLEMENTED, "Video preview not supported");
 }
 
 grpc::Status CameraServiceImpl::StopVideoPreview(
@@ -92,64 +182,127 @@ grpc::Status CameraServiceImpl::StopVideoPreview(
     return grpc::Status::OK;
 }
 
-// Simulated cooler: a simple 1st-order approach to the target temperature.
-// Power ramps toward 100% while the sensor is above target, then decays as the
-// sensor approaches it. When disabled the sensor drifts back toward ambient.
-static void updateCoolerSimulation(bool enabled, double target_c,
-                                   double& current_c, double& ambient_c,
-                                   double& power_percent) {
-    if (!enabled) {
-        power_percent = 0.0;
-        current_c += (ambient_c - current_c) * 0.05;
-        return;
-    }
-    double delta = target_c - current_c;  // negative when cooling is needed
-    if (delta < 0.0) {
-        // Cooling down: powered, most aggressive while far from target.
-        power_percent = std::min(100.0, std::abs(delta) * 8.0 + 25.0);
-        current_c += delta * 0.10;  // approaches target_c
-    } else {
-        // Warming toward target (passive, slower).
-        power_percent = std::max(0.0, 25.0 - std::abs(delta) * 3.0);
-        current_c += delta * 0.04;
-    }
-}
-
 grpc::Status CameraServiceImpl::SetCooler(
     grpc::ServerContext*, const astro_mount::SetCoolerRequest* req,
     astro_mount::CoolerStatus* status) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    cooler_enabled_ = req->enabled();
-    cooler_target_c_ = req->target_c();
-    if (cooler_enabled_) {
-        // A few simulated cooling steps toward the target.
-        for (int i = 0; i < 30 && std::abs(cooler_target_c_ - cooler_current_c_) > 0.3; ++i) {
-            updateCoolerSimulation(true, cooler_target_c_, cooler_current_c_,
-                                   cooler_ambient_c_, cooler_power_percent_);
-        }
+    ensureIndiServerConnected();
+    if (!indiCameraActive())
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "No INDI camera selected");
+
+    try {
+        indi_client_->setCooler(req->target_c(), req->enabled());
+        const auto cooler = indi_client_->getCooler();
+        status->set_enabled(cooler.enabled);
+        status->set_target_c(cooler.target_c);
+        status->set_current_c(cooler.current_c);
+        status->set_power_percent(cooler.power_percent);
+        status->set_reached_target(cooler.reached_target);
+        return grpc::Status::OK;
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL,
+                            std::string("SetCooler through INDI failed: ") + e.what());
     }
-    updateCoolerSimulation(cooler_enabled_, cooler_target_c_, cooler_current_c_,
-                           cooler_ambient_c_, cooler_power_percent_);
-    status->set_enabled(cooler_enabled_);
-    status->set_target_c(cooler_target_c_);
-    status->set_current_c(cooler_current_c_);
-    status->set_power_percent(cooler_power_percent_);
-    status->set_reached_target(std::abs(cooler_target_c_ - cooler_current_c_) < 0.5);
-    status->set_ambient_c(cooler_ambient_c_);
-    return grpc::Status::OK;
 }
 
 grpc::Status CameraServiceImpl::GetCoolerStatus(
     grpc::ServerContext*, const google::protobuf::Empty*, astro_mount::CoolerStatus* status) {
-    std::lock_guard<std::mutex> lock(mtx_);
-    updateCoolerSimulation(cooler_enabled_, cooler_target_c_, cooler_current_c_,
-                           cooler_ambient_c_, cooler_power_percent_);
-    status->set_enabled(cooler_enabled_);
-    status->set_target_c(cooler_target_c_);
-    status->set_current_c(cooler_current_c_);
-    status->set_power_percent(cooler_power_percent_);
-    status->set_reached_target(std::abs(cooler_target_c_ - cooler_current_c_) < 0.5);
-    status->set_ambient_c(cooler_ambient_c_);
+    ensureIndiServerConnected();
+    if (!indiCameraActive())
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "No INDI camera selected");
+
+    const auto cooler = indi_client_->getCooler();
+    status->set_enabled(cooler.enabled);
+    status->set_target_c(cooler.target_c);
+    status->set_current_c(cooler.current_c);
+    status->set_power_percent(cooler.power_percent);
+    status->set_reached_target(cooler.reached_target);
+    return grpc::Status::OK;
+}
+
+grpc::Status CameraServiceImpl::ListCameras(
+    grpc::ServerContext*, const google::protobuf::Empty*, astro_mount::CameraDeviceList* response) {
+    ensureIndiServerConnected();
+
+    if (indi_client_ && indi_client_->isServerConnected()) {
+        const auto cameras = indi_client_->listCameras();
+        cameraLog()->info("ListCameras: {} device(s) found on INDI server", cameras.size());
+        for (const auto& name : cameras) {
+            auto* dev = response->add_devices();
+            dev->set_name(name);
+            dev->set_label(name);
+        }
+        response->set_active_device(indi_client_->activeDevice());
+    } else {
+        cameraLog()->warn("ListCameras: not connected to INDI server");
+    }
+    return grpc::Status::OK;
+}
+
+grpc::Status CameraServiceImpl::SelectCamera(
+    grpc::ServerContext*, const astro_mount::CameraSelectRequest* request,
+    google::protobuf::Empty*) {
+    if (!indi_client_)
+        return grpc::Status(grpc::StatusCode::INTERNAL, "Camera service not initialised");
+
+    if (request->device().empty()) {
+        // Empty device → deselect the camera.
+        indi_client_->selectDevice(std::string{});
+        return grpc::Status::OK;
+    }
+
+    try {
+        cameraLog()->info("SelectCamera: connecting to device '{}'", request->device());
+        if (!indi_client_->selectDevice(request->device()))
+            return grpc::Status(grpc::StatusCode::UNAVAILABLE,
+                                "Camera driver did not connect (hardware may be busy or disconnected)");
+        cameraLog()->info("SelectCamera: device '{}' connected", request->device());
+    } catch (const std::exception& e) {
+        cameraLog()->error("SelectCamera failed: {}", e.what());
+        return grpc::Status(grpc::StatusCode::INTERNAL, e.what());
+    }
+    return grpc::Status::OK;
+}
+
+grpc::Status CameraServiceImpl::ListProperties(
+    grpc::ServerContext*, const google::protobuf::Empty*, astro_mount::CameraPropertyList* response) {
+    ensureIndiServerConnected();
+    if (!indiCameraActive())
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "No INDI camera selected");
+
+    for (const auto& prop : indi_client_->listProperties()) {
+        auto* p = response->add_properties();
+        p->set_name(prop.name);
+        p->set_label(prop.label);
+        p->set_group(prop.group);
+        p->set_type(prop.type);
+        p->set_writable(prop.writable);
+        for (const auto& el : prop.elements) {
+            auto* e = p->add_elements();
+            e->set_name(el.name);
+            e->set_label(el.label);
+            e->set_number_value(el.number_value);
+            e->set_number_min(el.number_min);
+            e->set_number_max(el.number_max);
+            e->set_number_step(el.number_step);
+            e->set_switch_state(el.switch_state);
+            e->set_text_value(el.text_value);
+        }
+    }
+    return grpc::Status::OK;
+}
+
+grpc::Status CameraServiceImpl::SetProperty(
+    grpc::ServerContext*, const astro_mount::SetCameraPropertyRequest* request,
+    google::protobuf::Empty*) {
+    ensureIndiServerConnected();
+    if (!indiCameraActive())
+        return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION, "No INDI camera selected");
+
+    try {
+        indi_client_->setProperty(request->property(), request->element(), request->value());
+    } catch (const std::exception& e) {
+        return grpc::Status(grpc::StatusCode::INTERNAL, e.what());
+    }
     return grpc::Status::OK;
 }
 

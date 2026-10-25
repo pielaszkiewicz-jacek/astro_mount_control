@@ -35,9 +35,37 @@ const App = (() => {
   // has finished initializing. A minimum visible time prevents flicker, and
   // a maximum time guarantees it never gets stuck on slow networks.
   const splashShownAt = Date.now();
-  const SPLASH_MIN_MS = 6000;
-  const SPLASH_MAX_MS = 10000;
+  const SPLASH_MIN_MS = 3500;
+  const SPLASH_MAX_MS = 5000;
   let splashHidden = false;
+  let splashCountdownInterval = null;
+
+  /**
+   * Update the splash-screen countdown so it counts down to zero in seconds.
+   * The splash stays visible for at least SPLASH_MIN_MS in the normal case,
+   * so the countdown targets that guaranteed duration.
+   */
+  function updateSplashCountdown() {
+    const el = $('#splash-countdown');
+    if (!el) return;
+    const remainingMs = SPLASH_MIN_MS - (Date.now() - splashShownAt);
+    const seconds = Math.max(0, Math.ceil(remainingMs / 1000));
+    el.textContent = seconds + 's';
+  }
+
+  function startSplashCountdown() {
+    updateSplashCountdown();
+    splashCountdownInterval = setInterval(updateSplashCountdown, 200);
+  }
+
+  function stopSplashCountdown() {
+    if (splashCountdownInterval) {
+      clearInterval(splashCountdownInterval);
+      splashCountdownInterval = null;
+    }
+  }
+
+  startSplashCountdown();
 
   // ─── Initialization ───────────────────────────────────────────────────
 
@@ -91,6 +119,8 @@ const App = (() => {
     const delay = Math.max(0, SPLASH_MIN_MS - elapsed);
 
     setTimeout(() => {
+      // Stop the countdown only when the splash actually begins fading out.
+      stopSplashCountdown();
       const el = $('#splash-screen');
       if (!el) return;
       el.classList.add('hidden');

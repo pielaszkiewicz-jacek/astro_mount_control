@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { grpcCall } = require('../grpc/client');
 const { formatCalibrationStatus, formatTPointStatus, errorResponse } = require('../grpc/converters');
+const autoBootstrap = require('../auto-bootstrap');
 
 // ─── Bootstrap Status ─────────────────────────────────────────────────────
 
@@ -159,21 +160,33 @@ router.post('/bootstrap/mode', async (req, res) => {
 /**
  * POST /api/calibration/bootstrap/auto-run
  * Start automatic bootstrap procedure.
- * Body: { target_star_names?, min_measurements?, max_alignment_error_arcsec?, proceed_to_tpoint? }
+ * Body: { target_star_names?, min_measurements?, max_alignment_error_arcsec?,
+ *         proceed_to_tpoint?, plate_solve? }
  */
 router.post('/bootstrap/auto-run', async (req, res) => {
   try {
-    const { target_star_names, min_measurements, max_alignment_error_arcsec, proceed_to_tpoint } = req.body;
+    const {
+      target_star_names,
+      min_measurements,
+      max_alignment_error_arcsec,
+      proceed_to_tpoint,
+      plate_solve,
+      auto_track_after_slew,
+      auto_track_after_calibration,
+    } = req.body;
 
-    await grpcCall('RunAutomaticBootstrap', {
+    const result = autoBootstrap.start({
       target_star_names: target_star_names || [],
       min_measurements: min_measurements || 3,
       max_alignment_error_arcsec: max_alignment_error_arcsec || 60.0,
-      proceed_to_tpoint: proceed_to_tpoint || false,
+      proceed_to_tpoint: !!proceed_to_tpoint,
+      plate_solve: !!plate_solve,
+      auto_track_after_slew: !!auto_track_after_slew,
+      auto_track_after_calibration: !!auto_track_after_calibration,
     });
-    res.json({ success: true, message: 'Automatic bootstrap started' });
+    res.json(result);
   } catch (err) {
-    errorResponse(res, 502, 'Automatic bootstrap failed', err.message);
+    errorResponse(res, 400, 'Automatic bootstrap failed', err.message);
   }
 });
 
@@ -181,20 +194,38 @@ router.post('/bootstrap/auto-run', async (req, res) => {
  * GET /api/calibration/bootstrap/auto-status
  * Returns current automatic bootstrap status and progress.
  */
-router.get('/bootstrap/auto-status', async (req, res) => {
+router.get('/bootstrap/auto-status', (req, res) => {
   try {
-    const status = await grpcCall('GetAutoBootstrapStatus', {});
-    res.json({
-      state: status.state || 'IDLE',
-      state_message: status.state_message || '',
-      current_step: status.current_step || 0,
-      total_steps: status.total_steps || 0,
-      current_star: status.current_star || '',
-      measurement_count: status.measurement_count || 0,
-      error_message: status.error_message || '',
-    });
+    res.json(autoBootstrap.getStatus());
   } catch (err) {
     errorResponse(res, 502, 'Failed to load auto-bootstrap status', err.message);
+  }
+});
+
+/**
+ * POST /api/calibration/bootstrap/auto-confirm
+ * Confirms that the current target star is centered. The orchestrator then
+ * reads the mount position and adds the measurement.
+ */
+router.post('/bootstrap/auto-confirm', (req, res) => {
+  try {
+    const result = autoBootstrap.confirmMeasurement();
+    res.json(result);
+  } catch (err) {
+    errorResponse(res, 409, 'Confirm failed', err.message);
+  }
+});
+
+/**
+ * POST /api/calibration/bootstrap/auto-cancel
+ * Cancels the running auto-bootstrap session.
+ */
+router.post('/bootstrap/auto-cancel', (req, res) => {
+  try {
+    const result = autoBootstrap.cancel();
+    res.json(result);
+  } catch (err) {
+    errorResponse(res, 502, 'Cancel failed', err.message);
   }
 });
 

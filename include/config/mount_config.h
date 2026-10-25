@@ -122,6 +122,11 @@ struct MountConfig {
     // a move when an axis did not reach its target. 10° servo ≈ 0.028°
     // telescope at gear_ratio 360:1.
     double slew_verify_tolerance_servo_deg{10.0};
+
+    // Auto-track after a normal Goto (SlewToCoordinates) completes. When true,
+    // the mount automatically starts sidereal tracking of the Goto target once
+    // the slew settles. Runtime-modifiable via UpdateConfiguration.
+    bool auto_track_after_goto{true};
     
     // Environmental defaults
     double default_temperature{15.0};
@@ -143,6 +148,12 @@ struct MountConfig {
     // true = Profile Velocity (experimental — 0x606C reports incorrect velocity
     // on some hardware, causing the velocity PID to misbehave).
     bool equatorial_tracking_velocity_mode{false};
+
+    // Tracking command mode selector:
+    //   "auto"     — EQUATORIAL → Profile Position, ALT_AZ/CASUAL → Profile Velocity
+    //   "position" — Profile Position for every mount type
+    //   "velocity" — Profile Velocity for every mount type
+    std::string tracking_mode{"auto"};
 
     // Position-mode tracking tuning:
     //   tracking_pos_velocity_factor — profile velocity multiplier over the

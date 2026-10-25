@@ -543,6 +543,20 @@ For CASUAL mounts, tracking rates are computed dynamically in the tracking loop:
 
 For an identity quaternion, CASUAL tracking rates are identical to ALT_AZ.
 
+Since 2026-10-11 a `mount.tracking_mode` selector controls how these rates are
+sent to the drives:
+
+| Value | Behaviour |
+|-------|-----------|
+| `auto` (default) | EQUATORIAL → Profile Position; ALT_AZ / CASUAL → Profile Velocity |
+| `position` | Profile Position (`setPosition`) for every mount type |
+| `velocity` | Profile Velocity (`setVelocity`) for every mount type |
+
+In position mode for ALT_AZ / CASUAL, both axis targets are advanced each
+update by `rate_i × (Δt + lead)`, with per-axis profile velocity
+`|rate_i| × margin` clamped to `max_tracking_rate`, and the azimuth-like axis
+is re-wrapped to the drive's multi-turn window.
+
 ## 8. Bootstrap Calibration
 
 > **Implementation**: [`src/controllers/mount_controller.cpp`](src/controllers/mount_controller.cpp) lines 2045–2146 — [`addBootstrapMeasurement()`](src/controllers/mount_controller.cpp:2045), [`runBootstrapCalibration()`](src/controllers/mount_controller.cpp:2069), [`clearBootstrapMeasurements()`](src/controllers/mount_controller.cpp:2139). Bootstrap messages defined in [`proto/mount_controller.proto`](proto/mount_controller.proto:765) — `BootstrapMeasurement`, `BootstrapCalibrationResult`, `BootstrapStatus`.

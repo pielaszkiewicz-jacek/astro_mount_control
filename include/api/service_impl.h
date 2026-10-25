@@ -3,6 +3,10 @@
 
 #include <grpcpp/grpcpp.h>
 #include "proto/mount_controller.grpc.pb.h"
+#include <atomic>
+#include <memory>
+#include <mutex>
+#include <thread>
 
 namespace astro_mount {
 namespace controllers {
@@ -24,6 +28,8 @@ public:
      * @param controller Reference to mount controller
      */
     explicit MountControllerServiceImpl(controllers::MountController& controller);
+
+    ~MountControllerServiceImpl() override;
     
     // Basic mount control
     grpc::Status SlewToCoordinates(grpc::ServerContext* context,
@@ -288,7 +294,18 @@ public:
     
 private:
     controllers::MountController& controller_;
-    
+
+    // Auto-track-after-Goto watcher thread.  SlewToCoordinates() schedules a
+    // watcher when the auto_track_after_goto configuration flag is enabled; the
+    // watcher waits for the slew to settle and then starts sidereal tracking.
+    std::thread auto_track_thread_;
+    std::mutex auto_track_mutex_;
+    std::shared_ptr<std::atomic<bool>> auto_track_cancel_;
+    std::atomic<bool> shutting_down_{false};
+
+    void scheduleAutoTrackAfterSlew(double ra, double dec);
+    void autoTrackWatcher(double ra, double dec, std::shared_ptr<std::atomic<bool>> cancel);
+
     // Helper methods
     astro_mount::Coordinates convertCoordinatesToProto(double ra, double dec) const;
     astro_mount::MountPosition convertMountPositionToProto(double axis1, double axis2) const;

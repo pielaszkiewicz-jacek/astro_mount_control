@@ -274,6 +274,8 @@ public:
         config.tracking_pos_lead_seconds = mount.value("tracking_pos_lead_seconds", 2.0);
         config.tracking_pos_velocity_margin = mount.value("tracking_pos_velocity_margin", 1.0);
         config.tracking_pos_update_hz = mount.value("tracking_pos_update_hz", 10);
+        config.tracking_mode = mount.value("tracking_mode", "auto");
+        config.auto_track_after_goto = mount.value("auto_track_after_goto", true);
         
         // Load environmental defaults from JSON
         config.default_temperature = mount.value("default_temperature", 15.0);
@@ -547,6 +549,8 @@ public:
         mount["tracking_pos_lead_seconds"] = config.tracking_pos_lead_seconds;
         mount["tracking_pos_velocity_margin"] = config.tracking_pos_velocity_margin;
         mount["tracking_pos_update_hz"] = config.tracking_pos_update_hz;
+        mount["tracking_mode"] = config.tracking_mode;
+        mount["auto_track_after_goto"] = config.auto_track_after_goto;
 
         // Mount orientation quaternion
         mount["orientation_quaternion"] = {config.orientation_quaternion[0],
@@ -664,6 +668,25 @@ public:
         tpoint["auto_calibrate"] = config.auto_calibrate;
         
         config_["tpoint"] = tpoint;
+        modified_ = true;
+    }
+
+    CalibrationConfig getCalibrationConfig() const {
+        CalibrationConfig config;
+        auto calibration = config_.value("calibration", json::object());
+
+        config.auto_track_after_slew = calibration.value("auto_track_after_slew", false);
+        config.auto_track_after_calibration = calibration.value("auto_track_after_calibration", false);
+
+        return config;
+    }
+
+    void setCalibrationConfig(const CalibrationConfig& config) {
+        json calibration;
+        calibration["auto_track_after_slew"] = config.auto_track_after_slew;
+        calibration["auto_track_after_calibration"] = config.auto_track_after_calibration;
+
+        config_["calibration"] = calibration;
         modified_ = true;
     }
     
@@ -920,6 +943,8 @@ private:
         mount_default.tracking_pos_lead_seconds = 2.0;
         mount_default.tracking_pos_velocity_margin = 1.0;
         mount_default.tracking_pos_update_hz = 10;
+        mount_default.tracking_mode = "auto";
+        mount_default.auto_track_after_goto = true;
         
         // Mount orientation quaternion (default unit quaternion for standard mounts)
         mount_default.orientation_quaternion = {0.0, 0.0, 0.0, 1.0};
@@ -1002,6 +1027,11 @@ private:
         tpoint_default.max_residual = 30.0;
         tpoint_default.auto_calibrate = true;
         setTPointConfig(tpoint_default);
+
+        CalibrationConfig calibration_default;
+        calibration_default.auto_track_after_slew = false;
+        calibration_default.auto_track_after_calibration = false;
+        setCalibrationConfig(calibration_default);
         
         modified_ = false;
     }
@@ -1094,6 +1124,10 @@ Configuration::TPointConfig Configuration::getTPointConfig() const {
     return pimpl->getTPointConfig();
 }
 
+Configuration::CalibrationConfig Configuration::getCalibrationConfig() const {
+    return pimpl->getCalibrationConfig();
+}
+
 Configuration::ExternalIntegrationConfig Configuration::getExternalIntegrationConfig() const {
     return pimpl->getExternalIntegrationConfig();
 }
@@ -1132,6 +1166,10 @@ void Configuration::setKalmanConfig(const KalmanConfig& config) {
 
 void Configuration::setTPointConfig(const TPointConfig& config) {
     pimpl->setTPointConfig(config);
+}
+
+void Configuration::setCalibrationConfig(const CalibrationConfig& config) {
+    pimpl->setCalibrationConfig(config);
 }
 
 void Configuration::setFieldRotationParams(const FieldRotationParams& config) {

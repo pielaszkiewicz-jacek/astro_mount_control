@@ -3362,6 +3362,15 @@ body.red-theme .splash-logo svg {
   color: var(--color-text-muted, #6c6c80);
 }
 
+.splash-countdown {
+  margin-top: 14px;
+  font-size: 1.7rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.05em;
+  color: var(--color-primary, #4fc3f7);
+}
+
 @keyframes splash-spin {
   to { transform: rotate(360deg); }
 }
@@ -3380,5 +3389,16 @@ body.red-theme .splash-logo svg {
   .splash-screen {
     transition: none;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Progress bar (camera exposure)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.progress-bar {
+  height: 10px;
+  background: var(--color-border, #2a2a2a);
+  border-radius: 6px;
+  overflow: hidden;
 }
 

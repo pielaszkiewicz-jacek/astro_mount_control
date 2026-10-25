@@ -128,6 +128,17 @@ public:
         // true = Profile Velocity (experimental)
         bool equatorial_tracking_velocity_mode{false};
 
+        // Tracking command mode selector:
+        //   "auto"     — EQUATORIAL → Profile Position, ALT_AZ/CASUAL → Profile Velocity
+        //   "position" — Profile Position for every mount type
+        //   "velocity" — Profile Velocity for every mount type
+        std::string tracking_mode{"auto"};
+
+        // Auto-track after a normal Goto (SlewToCoordinates) completes.
+        // When true, the controller starts sidereal tracking of the Goto target
+        // once the slew settles. Runtime-modifiable via UpdateConfiguration.
+        bool auto_track_after_goto{true};
+
         // Position-mode tracking tuning:
         //   tracking_pos_velocity_factor — profile velocity multiplier over the
         //     sidereal servo rate (1.0 = exact sidereal, continuous motion;
@@ -212,6 +223,14 @@ public:
         int min_measurements;
         double max_residual;
         bool auto_calibrate;
+    };
+
+    struct CalibrationConfig {
+        /// After each auto-bootstrap slew the mount starts tracking the target.
+        bool auto_track_after_slew{false};
+        /// After the bootstrap/TPOINT calibration finishes the mount starts
+        /// tracking the last measured target.
+        bool auto_track_after_calibration{false};
     };
 
     struct FieldRotationParams {
@@ -403,6 +422,18 @@ public:
      * @param config TPOINT configuration
      */
     void setTPointConfig(const TPointConfig& config);
+
+    /**
+     * @brief Get calibration (auto-bootstrap) configuration
+     * @return Calibration configuration
+     */
+    CalibrationConfig getCalibrationConfig() const;
+
+    /**
+     * @brief Set calibration (auto-bootstrap) configuration
+     * @param config Calibration configuration
+     */
+    void setCalibrationConfig(const CalibrationConfig& config);
 
     /**
      * @brief Set field rotation parameters

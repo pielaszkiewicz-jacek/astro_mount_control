@@ -5,8 +5,9 @@
 
 const express = require('express');
 const router = express.Router();
-const { grpcCall } = require('../grpc/client');
+const { grpcCall, dbGrpcCall } = require('../grpc/client');
 const { errorResponse } = require('../grpc/converters');
+const builtinCatalog = require('../builtin-catalog');
 
 /**
  * GET /api/tracking/status
@@ -35,6 +36,30 @@ router.get('/metrics', async (req, res) => {
 });
 
 /**
+ * Resolve a fixed celestial object (star/DSO) to { ra [hours], dec [degrees] }
+ * by looking it up in the object database and the built-in catalog. Returns
+ * null when the object cannot be resolved.
+ */
+async function resolveFixedObject(objectId) {
+  try {
+    const result = await dbGrpcCall('SearchObjects', { query: objectId, limit: 1 }, 5);
+    const obj = result && result.objects && result.objects[0];
+    if (obj && typeof obj.ra_hours === 'number' && typeof obj.dec_degrees === 'number') {
+      return { ra: obj.ra_hours, dec: obj.dec_degrees, name: obj.name || objectId };
+    }
+  } catch (_) {
+    // Database unavailable — fall through to the built-in catalog.
+  }
+
+  const builtin = builtinCatalog.searchObjects({ name: objectId, limit: 1 });
+  const obj = builtin && builtin.objects && builtin.objects[0];
+  if (obj && typeof obj.ra_hours === 'number' && typeof obj.dec_degrees === 'number') {
+    return { ra: obj.ra_hours, dec: obj.dec_degrees, name: obj.name || objectId };
+  }
+  return null;
+}
+
+/**
  * POST /api/tracking/start
  * Start ephemeris tracking for an object.
  * Body: { object_id, start_time?, lead_time_seconds?, wait_at_start?, enable_prediction?, tracking_mode? }
@@ -47,14 +72,58 @@ router.post('/start', async (req, res) => {
       return errorResponse(res, 400, 'Missing required field: object_id');
     }
 
-    const result = await grpcCall('StartEphemerisTracking', {
-      object_id,
-      start_time: start_time || new Date().toISOString(),
-      lead_time_seconds: lead_time_seconds || 30.0,
-      wait_at_start: wait_at_start !== undefined ? wait_at_start : true,
-      enable_prediction: enable_prediction || false,
-      tracking_mode: tracking_mode || 'continuous',
-    });
+    // start_time is a google.protobuf.Timestamp { seconds, nanos }. Accept an
+    // ISO-8601 string, epoch milliseconds (number or numeric string), or a
+    // pre-formatted timestamp object from the caller.
+    let startTimestamp;
+    if (start_time && typeof start_time === 'object' && 'seconds' in start_time) {
+      startTimestamp = {
+        seconds: Math.floor(Number(start_time.seconds) || 0),
+        nanos: Math.floor(Number(start_time.nanos) || 0),
+      };
+    } else {
+      let startMs = Date.now();
+      if (start_time !== undefined && start_time !== null && start_time !== '') {
+        const parsed = Date.parse(start_time);
+        if (!Number.isNaN(parsed)) {
+          startMs = parsed;
+        } else if (!Number.isNaN(Number(start_time))) {
+          startMs = Number(start_time);
+        }
+      }
+      startTimestamp = {
+        seconds: Math.floor(startMs / 1000),
+        nanos: (startMs % 1000) * 1000000,
+      };
+    }
+
+    let result;
+    try {
+      result = await grpcCall('StartEphemerisTracking', {
+        object_id,
+        start_time: startTimestamp,
+        lead_time_seconds: lead_time_seconds || 30.0,
+        wait_at_start: wait_at_start !== undefined ? wait_at_start : true,
+        enable_prediction: enable_prediction || false,
+        tracking_mode: tracking_mode || 'continuous',
+      });
+    } catch (err) {
+      // NOT_FOUND (5) means the object is not in the ephemeris cache. For a
+      // fixed celestial object (star/DSO) fall back to sidereal tracking.
+      if (err && err.code === 5) {
+        const fixed = await resolveFixedObject(object_id);
+        if (fixed) {
+          await grpcCall('TrackObject', { ra: fixed.ra, dec: fixed.dec });
+          return res.json({
+            success: true,
+            trackingId: `sidereal-${object_id}`,
+            message: `Tracking ${fixed.name} (sidereal)`,
+          });
+        }
+      }
+      return errorResponse(res, 502, 'Failed to start ephemeris tracking', err.message);
+    }
+
     res.json({ success: true, trackingId: result.tracking_id, message: `Tracking ${object_id}` });
   } catch (err) {
     errorResponse(res, 502, 'Failed to start ephemeris tracking', err.message);

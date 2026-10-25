@@ -753,6 +753,25 @@ const Api = (() => {
   }
 
   /**
+   * Confirm that the current target star is centered. The orchestrator will
+   * read the mount position and add the measurement.
+   * POST /api/calibration/bootstrap/auto-confirm
+   * @returns {Promise<{success: boolean}>}
+   */
+  async function confirmAutoBootstrapMeasurement() {
+    return request('/calibration/bootstrap/auto-confirm', { method: 'POST' });
+  }
+
+  /**
+   * Cancel the running auto-bootstrap session.
+   * POST /api/calibration/bootstrap/auto-cancel
+   * @returns {Promise<{success: boolean}>}
+   */
+  async function cancelAutoBootstrap() {
+    return request('/calibration/bootstrap/auto-cancel', { method: 'POST' });
+  }
+
+  /**
    * Get TPOINT calibration parameters and status.
    * GET /api/calibration/tpoint/parameters
    * @returns {Promise<object>}
@@ -1038,10 +1057,16 @@ const Api = (() => {
     createCategory,
     getTonightBest,
     // Calibration methods
+    getBootstrapMode,
+    setBootstrapMode,
     getBootstrapStatus,
     addBootstrapMeasurement,
     runBootstrapCalibration,
     clearBootstrapMeasurements,
+    runAutomaticBootstrap,
+    getAutoBootstrapStatus,
+    confirmAutoBootstrapMeasurement,
+    cancelAutoBootstrap,
     getTPointParameters,
     addTPointMeasurement,
     runTPointCalibration,

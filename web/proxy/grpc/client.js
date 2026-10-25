@@ -291,7 +291,7 @@ const EXT_PROTO_PATH = {
   notifications: path.join(__dirname, '../../../proto/notification.proto'),
 };
 
-function makeServiceClient(name, protoPath, serviceName, address) {
+function makeServiceClient(name, protoPath, serviceName, address, channelOptions = {}) {
   const pkgDef = protoLoader.loadSync(protoPath, {
     keepCase: true,
     longs: String,
@@ -309,7 +309,7 @@ function makeServiceClient(name, protoPath, serviceName, address) {
     const creds = config.ssl.enabled
       ? grpc.credentials.createSsl()
       : grpc.credentials.createInsecure();
-    client = new Svc(address, creds);
+    client = new Svc(address, creds, channelOptions);
     console.log(`[gRPC] Connected to ${name} service at ${address}`);
     return client;
   }
@@ -368,9 +368,16 @@ const pecClient = makeServiceClient(
   'PEC', EXT_PROTO_PATH.pec, 'PECService',
   `${config.pec.host}:${config.pec.port}`);
 
+// Camera frames (16-bit FITS images) can exceed the default 4 MB gRPC receive
+// limit — a 16 MP sensor produces ~16 MB per frame, which would otherwise fail
+// with RESOURCE_EXHAUSTED during /api/camera/expose.
 const cameraClient = makeServiceClient(
   'Camera', EXT_PROTO_PATH.camera, 'CameraService',
-  `${config.camera.host}:${config.camera.port}`);
+  `${config.camera.host}:${config.camera.port}`,
+  {
+    'grpc.max_receive_message_length': 64 * 1024 * 1024,
+    'grpc.max_send_message_length': 64 * 1024 * 1024,
+  });
 
 const pulleyClient = makeServiceClient(
   'Pulley', EXT_PROTO_PATH.pulley, 'PulleyService',

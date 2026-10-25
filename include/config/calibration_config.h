@@ -32,6 +32,13 @@ struct CalibrationConfig {
     
     // Bootstrap mode
     BootstrapMode bootstrap_mode{BootstrapMode::BOOTSTRAP_MANUAL};
+
+    // Auto-bootstrap orchestration options.
+    /// After each auto-bootstrap slew the mount starts tracking the target.
+    bool auto_track_after_slew{false};
+    /// After the bootstrap/TPOINT calibration finishes the mount starts
+    /// tracking the last measured target.
+    bool auto_track_after_calibration{false};
 };
 
 } // namespace config

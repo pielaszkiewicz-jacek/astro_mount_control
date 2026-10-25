@@ -30,12 +30,90 @@ using json = nlohmann::json;
 MountControllerServiceImpl::MountControllerServiceImpl(controllers::MountController& controller)
     : controller_(controller) {}
 
+MountControllerServiceImpl::~MountControllerServiceImpl() {
+    shutting_down_ = true;
+    std::thread watcher;
+    {
+        std::lock_guard<std::mutex> lock(auto_track_mutex_);
+        if (auto_track_thread_.joinable()) {
+            watcher = std::move(auto_track_thread_);
+        }
+    }
+    if (watcher.joinable()) {
+        watcher.join();
+    }
+}
+
+void MountControllerServiceImpl::scheduleAutoTrackAfterSlew(double ra, double dec) {
+    std::lock_guard<std::mutex> lock(auto_track_mutex_);
+    if (shutting_down_) return;
+
+    // A new Goto supersedes any pending auto-track for the previous target.
+    // Without this, the stale watcher would start tracking the previous object
+    // once the new slew settles, making the mount "return to the previous
+    // object" after the operator selected a new one.
+    if (auto_track_cancel_) {
+        *auto_track_cancel_ = true;
+    }
+    if (auto_track_thread_.joinable()) {
+        // Bounded wait — the old watcher exits as soon as it observes the
+        // cancellation flag (at most one kPollMs tick).
+        auto_track_thread_.join();
+    }
+
+    auto cancel = std::make_shared<std::atomic<bool>>(false);
+    auto_track_cancel_ = cancel;
+    auto_track_thread_ = std::thread([this, ra, dec, cancel]() {
+        autoTrackWatcher(ra, dec, cancel);
+    });
+}
+
+void MountControllerServiceImpl::autoTrackWatcher(
+    double ra, double dec, std::shared_ptr<std::atomic<bool>> cancel) {
+    const auto started = std::chrono::steady_clock::now();
+    constexpr int kPollMs = 200;
+    constexpr int kTimeoutMs = 15 * 60 * 1000;  // generous bound; the slew watchdog also fires
+
+    while (!shutting_down_ && !cancel->load()) {
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - started).count() > kTimeoutMs) {
+            API_LOG_WARN("SlewToCoordinates: auto-track watcher timed out waiting for slew completion");
+            return;
+        }
+
+        auto status = controller_.getStatus();
+        const auto state = status.state;
+        if (state == controllers::MountController::MountStatus::State::ERROR) {
+            API_LOG_WARN("SlewToCoordinates: mount entered ERROR during slew; auto-track aborted");
+            return;
+        }
+        if (state != controllers::MountController::MountStatus::State::SLEWING &&
+            state != controllers::MountController::MountStatus::State::UNINITIALIZED &&
+            state != controllers::MountController::MountStatus::State::INITIALIZING) {
+            // Slew finished. Only auto-track when it settled into IDLE normally
+            // and this watcher has not been superseded by a newer Goto.
+            if (state == controllers::MountController::MountStatus::State::IDLE &&
+                !cancel->load()) {
+                if (!controller_.startTracking(ra, dec)) {
+                    API_LOG_WARN("SlewToCoordinates: auto-track failed to start tracking "
+                                 "(RA={:.6f}h Dec={:.4f}°)", ra, dec);
+                }
+            }
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(kPollMs));
+    }
+}
+
 // Basic mount control
 grpc::Status MountControllerServiceImpl::SlewToCoordinates(grpc::ServerContext* context,
                                                           const astro_mount::Coordinates* request,
                                                           google::protobuf::Empty* response) {
     try {
         if (controller_.slewToEquatorial(request->ra(), request->dec())) {
+            if (controller_.getConfiguration().mount_config.auto_track_after_goto) {
+                scheduleAutoTrackAfterSlew(request->ra(), request->dec());
+            }
             return grpc::Status::OK;
         } else {
             return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to start slew");
@@ -526,7 +604,8 @@ grpc::Status MountControllerServiceImpl::RunAutomaticBootstrap(
         }
         
         // Verify absolute encoders or reference position for automatic mode
-        bool has_reference = status.encoders_absolute;
+        // (a previous calibration provides the reference position as well)
+        bool has_reference = status.encoders_absolute || status.bootstrap_calibrated;
         if (!has_reference && status.bootstrap_mode == static_cast<int>(
                 config::BootstrapMode::BOOTSTRAP_AUTOMATIC)) {
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
@@ -832,6 +911,10 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         
         // TPOINT configuration
         response->set_tpoint_enabled_terms(config.calibration_config.tpoint_enabled_terms);
+
+        // Auto-bootstrap orchestration options
+        response->set_auto_track_after_slew(config.calibration_config.auto_track_after_slew);
+        response->set_auto_track_after_calibration(config.calibration_config.auto_track_after_calibration);
         
         // Guider configuration
         response->set_enable_guider(config.tracking_config.enable_guider);
@@ -870,6 +953,8 @@ grpc::Status MountControllerServiceImpl::SendGuiderCorrection(grpc::ServerContex
         response->set_sdo_slow_control(config.tracking_config.sdo_slow_control);
         response->set_tracking_pos_update_hz(config.tracking_config.tracking_pos_update_hz);
         response->set_tracking_pos_velocity_margin(config.mount_config.tracking_pos_velocity_margin);
+        response->set_tracking_mode(config.mount_config.tracking_mode);
+        response->set_auto_track_after_goto(config.mount_config.auto_track_after_goto);
 
         // Position/rate tolerances for slew operations
         response->set_position_tolerance(config.mount_config.position_tolerance);
@@ -1047,6 +1132,13 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     
     // ── TPOINT configuration ─────────────────────────────────────
     if (request->tpoint_enabled_terms() != 0) config.calibration_config.tpoint_enabled_terms = request->tpoint_enabled_terms();
+
+    // ── Auto-bootstrap orchestration options ─────────────────────
+    if (request->has_auto_track_after_slew()) config.calibration_config.auto_track_after_slew = request->auto_track_after_slew();
+    if (request->has_auto_track_after_calibration()) config.calibration_config.auto_track_after_calibration = request->auto_track_after_calibration();
+
+    // ── Auto-track after a normal Goto ────────────────────────────
+    if (request->has_auto_track_after_goto()) config.mount_config.auto_track_after_goto = request->auto_track_after_goto();
     
     // ── Guider configuration ─────────────────────────────────────
     if (request->has_enable_guider()) config.tracking_config.enable_guider = request->enable_guider();
@@ -1086,6 +1178,7 @@ grpc::Status MountControllerServiceImpl::UpdateConfiguration(grpc::ServerContext
     if (request->has_sdo_slow_control()) config.tracking_config.sdo_slow_control = request->sdo_slow_control();
     if (request->tracking_pos_update_hz() != 0) config.tracking_config.tracking_pos_update_hz = request->tracking_pos_update_hz();
     if (request->tracking_pos_velocity_margin() != 0.0) config.mount_config.tracking_pos_velocity_margin = request->tracking_pos_velocity_margin();
+    if (!request->tracking_mode().empty()) config.mount_config.tracking_mode = request->tracking_mode();
 
     
     // ── Equatorial tracking mode ─────────────────────────────────

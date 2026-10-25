@@ -14,6 +14,7 @@
 10. [System konfiguracji](#9-configuration-system)
 11. [Przykłady użycia](#przykłady-użycia)
 12. [Instalacja i budowanie](#instalacja-i-budowanie)
+    - [Instalacja na openSUSE](instalacja_opensuse.md)
 13. [Testowanie](#testowanie)
 14. [Parametry fizyczne osi](#parametry-fizyczne-osi)
 15. [Sterowniki ASCOM i INDI](#ascom-i-indi-drivers)

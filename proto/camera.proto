@@ -40,6 +40,18 @@ service CameraService {
 
     /** Get current cooler status (R3) */
     rpc GetCoolerStatus(google.protobuf.Empty) returns (CoolerStatus);
+
+    /** List camera devices available on the connected INDI server */
+    rpc ListCameras(google.protobuf.Empty) returns (CameraDeviceList);
+
+    /** Select which INDI camera device to manage (empty = simulated camera) */
+    rpc SelectCamera(CameraSelectRequest) returns (google.protobuf.Empty);
+
+    /** List all INDI properties exposed by the active camera device */
+    rpc ListProperties(google.protobuf.Empty) returns (CameraPropertyList);
+
+    /** Set a single INDI property element on the active camera device */
+    rpc SetProperty(SetCameraPropertyRequest) returns (google.protobuf.Empty);
 }
 
 // ─── Messages ───────────────────────────────────────────────────────────────
@@ -159,4 +171,48 @@ message VideoFrame {
     double exposure_time_s = 6;
     double temperature_c = 7;
     google.protobuf.Timestamp timestamp = 8;
+}
+
+message CameraDevice {
+    string name = 1;   // INDI device name (e.g. "PlayerOne")
+    string label = 2;  // human-readable label (if available)
+}
+
+message CameraDeviceList {
+    repeated CameraDevice devices = 1;
+    string active_device = 2;  // currently selected device (empty = simulated)
+}
+
+message CameraSelectRequest {
+    string device = 1;   // INDI device name; empty string selects the simulated camera
+}
+
+message CameraPropertyElement {
+    string name = 1;
+    string label = 2;
+    double number_value = 3;
+    double number_min = 4;
+    double number_max = 5;
+    double number_step = 6;
+    string switch_state = 7;   // "ON" or "OFF"
+    string text_value = 8;
+}
+
+message CameraProperty {
+    string name = 1;
+    string label = 2;
+    string group = 3;
+    string type = 4;           // "number" | "switch" | "text"
+    bool writable = 5;
+    repeated CameraPropertyElement elements = 6;
+}
+
+message CameraPropertyList {
+    repeated CameraProperty properties = 1;
+}
+
+message SetCameraPropertyRequest {
+    string property = 1;
+    string element = 2;
+    string value = 3;   // number as string; switch "ON"/"OFF"; text as-is
 }

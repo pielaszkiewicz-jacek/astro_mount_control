@@ -11,8 +11,47 @@
 
 const express = require('express');
 const router = express.Router();
+const grpc = require('@grpc/grpc-js');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { execFile } = require('child_process');
 const { getCameraGrpcClient, cameraGrpcCall } = require('../grpc/client');
 const { errorResponse } = require('../grpc/converters');
+
+/**
+ * Convert an image buffer into a small base64-encoded PNG thumbnail for the
+ * inline preview. Uses ImageMagick (`magick`) when available. Resolves to null
+ * when the conversion fails so callers can fall back to a text confirmation.
+ */
+function generateThumbnail(imageBuffer) {
+  return new Promise((resolve) => {
+    let tmpDir;
+    try {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'astro-cam-'));
+      const srcPath = path.join(tmpDir, 'frame.img');
+      fs.writeFileSync(srcPath, imageBuffer);
+
+      const magickBin = process.env.IMAGEMAGICK_BIN || 'magick';
+      execFile(
+        magickBin,
+        [srcPath, '-auto-level', '-depth', '8', '-resize', '1024x1024>', 'png:-'],
+        { timeout: 30000, maxBuffer: 64 * 1024 * 1024, encoding: 'buffer' },
+        (err, stdout) => {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+          if (err || !stdout || stdout.length === 0) {
+            resolve(null);
+          } else {
+            resolve(stdout.toString('base64'));
+          }
+        }
+      );
+    } catch (err) {
+      if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+      resolve(null);
+    }
+  });
+}
 
 /**
  * GET /api/camera/info
@@ -101,12 +140,46 @@ router.post('/expose', async (req, res) => {
       stream.on('end', resolve);
       stream.on('error', reject);
     });
+    // Include the final image so clients (web UI) can download it. The camera
+    // service streams the image bytes in the final progress message.
+    let image = null;
+    if (last && last.image && last.image.data && last.image.data.length) {
+      const imageBuffer = Buffer.from(last.image.data);
+      const format = String(last.image.format || 'fits').toLowerCase();
+      // Inline preview is only meaningful for already-displayable formats.
+      // FITS stays as a downloadable file with the text confirmation.
+      const displayable = format === 'jpeg' || format === 'jpg' || format === 'png';
+      const thumbnailBase64 = displayable ? await generateThumbnail(imageBuffer) : null;
+      image = {
+        format: last.image.format || 'fits',
+        size_bytes: imageBuffer.length,
+        data_base64: imageBuffer.toString('base64'),
+        thumbnail_base64: thumbnailBase64,
+        thumbnail_format: thumbnailBase64 ? 'png' : '',
+      };
+    }
+
+    const finalStatus = last ? last.status : 'failed';
+    const message = finalStatus === 'complete' ? 'Exposure complete'
+                  : finalStatus === 'aborted' ? 'Exposure aborted'
+                  : 'Exposure finished';
     res.json({
-      success: last ? last.status === 'complete' : false,
-      message: last && last.status === 'complete' ? 'Exposure complete' : 'Exposure finished',
+      success: finalStatus === 'complete',
+      message,
       progress,
+      image,
     });
   } catch (err) {
+    if (err && err.code === grpc.status.FAILED_PRECONDITION) {
+      return errorResponse(
+        res, 409, 'Camera not connected',
+        'No INDI camera is connected. Select a camera in the Camera Device list and check the USB/power connection.');
+    }
+    if (err && err.code === grpc.status.UNAVAILABLE) {
+      return errorResponse(
+        res, 503, 'INDI server unreachable',
+        'The controller could not reach the INDI server (indiserver) that drives the camera.');
+    }
     errorResponse(res, 503, 'Camera service unavailable', err.message);
   }
 });
@@ -200,6 +273,86 @@ router.get('/filter', async (req, res) => {
     });
   } catch (err) {
     errorResponse(res, 503, 'Camera service unavailable', err.message);
+  }
+});
+
+/**
+ * GET /api/camera/devices
+ * List camera devices available on the INDI server + the active selection.
+ */
+router.get('/devices', async (req, res) => {
+  try {
+    const list = await cameraGrpcCall('ListCameras', {});
+    res.json({
+      devices: (list.devices || []).map((d) => ({ name: d.name || '', label: d.label || d.name || '' })),
+      active_device: list.active_device || '',
+    });
+  } catch (err) {
+    errorResponse(res, 503, 'Camera service unavailable', err.message);
+  }
+});
+
+/**
+ * POST /api/camera/select
+ * Select which INDI camera device to manage.
+ * Body: { device: string }  (empty string = simulated camera)
+ */
+router.post('/select', async (req, res) => {
+  try {
+    const device = (req.body && req.body.device) || '';
+    await cameraGrpcCall('SelectCamera', { device });
+    res.json({ success: true, message: device ? `Camera '${device}' selected` : 'Switched to simulated camera' });
+  } catch (err) {
+    errorResponse(res, 502, 'Failed to select camera', err.message);
+  }
+});
+
+/**
+ * GET /api/camera/properties
+ * List all INDI properties exposed by the active camera device.
+ */
+router.get('/properties', async (req, res) => {
+  try {
+    const list = await cameraGrpcCall('ListProperties', {});
+    res.json({
+      properties: (list.properties || []).map((p) => ({
+        name: p.name || '',
+        label: p.label || p.name || '',
+        group: p.group || '',
+        type: p.type || '',
+        writable: !!p.writable,
+        elements: (p.elements || []).map((e) => ({
+          name: e.name || '',
+          label: e.label || e.name || '',
+          number_value: e.number_value || 0,
+          number_min: e.number_min || 0,
+          number_max: e.number_max || 0,
+          number_step: e.number_step || 0,
+          switch_state: e.switch_state || 'OFF',
+          text_value: e.text_value || '',
+        })),
+      })),
+    });
+  } catch (err) {
+    errorResponse(res, 503, 'Camera service unavailable', err.message);
+  }
+});
+
+/**
+ * POST /api/camera/property
+ * Set a single INDI property element on the active camera device.
+ * Body: { property, element, value }
+ */
+router.post('/property', async (req, res) => {
+  try {
+    const { property, element, value } = req.body || {};
+    if (!property || !element) {
+      return errorResponse(res, 400, 'Missing required fields: property, element');
+    }
+    await cameraGrpcCall('SetProperty', { property, element, value: String(value ?? '') });
+    res.json({ success: true, message: `Set ${property}.${element}` });
+  } catch (err) {
+    errorResponse(res, 502, 'Failed to set camera property', err.message);
   }
 });
 

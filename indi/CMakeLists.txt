@@ -91,6 +91,21 @@ endif()
 # libnova runtime library (some distributions ship headers without a .pc file).
 find_library(LIBNOVA_LIBRARY NAMES nova libnova)
 
+# cfitsio — INDI's CCD header (indiccd.h) includes <fitsio.h>, so the CCD
+# driver needs the development headers in addition to the runtime library.
+pkg_check_modules(CFITSIO QUIET cfitsio)
+if(NOT CFITSIO_FOUND)
+    find_path(CFITSIO_INCLUDE_DIR NAMES fitsio.h)
+    find_library(CFITSIO_LIBRARY NAMES cfitsio)
+    if(NOT CFITSIO_INCLUDE_DIR OR NOT CFITSIO_LIBRARY)
+        message(FATAL_ERROR
+            "cfitsio development files not found.\n"
+            "Install them, e.g.:  sudo apt install libcfitsio-dev")
+    endif()
+    set(CFITSIO_INCLUDE_DIRS ${CFITSIO_INCLUDE_DIR})
+    set(CFITSIO_LIBRARIES ${CFITSIO_LIBRARY})
+endif()
+
 # The gRPC C++ plugin path — the imported target is the reliable way to locate
 # it (some gRPC builds do not set the GRPC_CPP_PLUGIN variable).
 get_target_property(GRPC_CPP_PLUGIN gRPC::grpc_cpp_plugin LOCATION)
@@ -102,31 +117,43 @@ endif()
 # Proto generation
 # ============================================
 
-set(PROTO_FILE ${CMAKE_CURRENT_SOURCE_DIR}/../proto/mount_controller.proto)
+set(PROTO_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../proto)
 set(PROTO_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/proto)
 
 file(MAKE_DIRECTORY ${PROTO_BINARY_DIR})
 
-# Generate protobuf sources
+# Protos needed by the INDI drivers (mount + camera).
+set(PROTO_FILES
+    ${PROTO_DIR}/mount_controller.proto
+    ${PROTO_DIR}/camera.proto
+)
+
 set(PROTO_SOURCES
     ${PROTO_BINARY_DIR}/mount_controller.pb.cc
     ${PROTO_BINARY_DIR}/mount_controller.grpc.pb.cc
+    ${PROTO_BINARY_DIR}/camera.pb.cc
+    ${PROTO_BINARY_DIR}/camera.grpc.pb.cc
 )
 
-add_custom_command(
-    OUTPUT ${PROTO_SOURCES}
-    COMMAND ${INDI_PROTOC_EXECUTABLE}
-        --proto_path=${CMAKE_CURRENT_SOURCE_DIR}/../proto
-        --cpp_out=${PROTO_BINARY_DIR}
-        --grpc_out=${PROTO_BINARY_DIR}
-        --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN}
-        ${PROTO_FILE}
-    # Depending on the protoc binary forces regeneration whenever protobuf is
-    # upgraded, preventing stale generated sources from being compiled against
-    # a newer runtime (the cross-version compile error).
-    DEPENDS ${PROTO_FILE} ${INDI_PROTOC_EXECUTABLE}
-    COMMENT "Generating protobuf/gRPC sources from mount_controller.proto"
-)
+foreach(_proto ${PROTO_FILES})
+    get_filename_component(_name ${_proto} NAME_WE)
+    add_custom_command(
+        OUTPUT
+            ${PROTO_BINARY_DIR}/${_name}.pb.cc
+            ${PROTO_BINARY_DIR}/${_name}.grpc.pb.cc
+        COMMAND ${INDI_PROTOC_EXECUTABLE}
+            --proto_path=${PROTO_DIR}
+            --cpp_out=${PROTO_BINARY_DIR}
+            --grpc_out=${PROTO_BINARY_DIR}
+            --plugin=protoc-gen-grpc=${GRPC_CPP_PLUGIN}
+            ${_proto}
+        # Depending on the protoc binary forces regeneration whenever protobuf is
+        # upgraded, preventing stale generated sources from being compiled against
+        # a newer runtime (the cross-version compile error).
+        DEPENDS ${_proto} ${INDI_PROTOC_EXECUTABLE}
+        COMMENT "Generating protobuf/gRPC sources from ${_proto}"
+    )
+endforeach()
 
 # ============================================
 # Library: MountGrpcClient (standalone, reusable)
@@ -160,6 +187,31 @@ add_executable(astro_mount_indi_driver
     IndiPropertyMapper.cpp
 )
 
+add_library(camera_grpc_client STATIC
+    CameraGrpcClient.cpp
+    ${PROTO_BINARY_DIR}/camera.pb.cc
+    ${PROTO_BINARY_DIR}/camera.grpc.pb.cc
+)
+
+target_include_directories(camera_grpc_client PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${PROTO_BINARY_DIR}
+    ${PROTOBUF_INCLUDE_DIRS}
+    ${GRPC_INCLUDE_DIRS}
+)
+
+target_link_libraries(camera_grpc_client PUBLIC
+    ${PROTOBUF_LIBRARIES}
+    ${GRPC_LIBRARIES}
+    grpc++
+    protobuf::libprotobuf
+)
+
+# INDI CCD driver exposing the CameraService over the INDI CCD interface.
+add_executable(astro_mount_ccd
+    astro_mount_ccd.cpp
+)
+
 target_link_directories(astro_mount_indi_driver PRIVATE
     ${INDI_LIBRARY_DIRS}
 )
@@ -179,6 +231,26 @@ target_include_directories(astro_mount_indi_driver PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${INDI_INCLUDE_DIRS}
     ${LIBNOVA_INCLUDE_DIRS}
+)
+
+target_link_directories(astro_mount_ccd PRIVATE
+    ${INDI_LIBRARY_DIRS}
+)
+
+target_link_libraries(astro_mount_ccd
+    camera_grpc_client
+    indidriver
+    ${INDI_LIBRARIES}
+    ${CFITSIO_LIBRARIES}
+    ${GRPCXX_PKG_LIBRARIES}
+    pthread
+)
+
+target_include_directories(astro_mount_ccd PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../include
+    ${INDI_INCLUDE_DIRS}
+    ${CFITSIO_INCLUDE_DIRS}
 )
 
 # ============================================
@@ -226,12 +298,12 @@ endif()
 
 # Main binary — must land in ${CMAKE_INSTALL_BINDIR} (= /usr/bin with the default
 # prefix) so indiserver can exec it from the KStars GUI session.
-install(TARGETS astro_mount_indi_driver
+install(TARGETS astro_mount_indi_driver astro_mount_ccd
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 # Driver metadata XML — kept alongside the standard INDI driver XML files.
-install(FILES astro_mount_indi_driver.xml
+install(FILES astro_mount_indi_driver.xml astro_mount_ccd.xml
     DESTINATION ${INDI_DATA_DIR}
 )
 

@@ -30,6 +30,27 @@ Wszystkie prędkości w kodzie są w **stopniach serwo/s** (telescope °/s × `g
   - EQUATORIAL‑position → `setPosition` celów (napęd generuje ruch własnym
     generatorem trajektorii).
 
+### 2.1 Selektor trybu śledzenia (`tracking_mode`)
+
+Od zmian 2026-10-11 dostępny jest selektor `mount.tracking_mode`:
+
+| Wartość | Zachowanie |
+|---------|------------|
+| `auto` (domyślnie) | EQUATORIAL → tryb pozycyjny; ALT_AZ / CASUAL → tryb prędkościowy |
+| `position` | tryb pozycyjny (`setPosition`) dla wszystkich typów montażu |
+| `velocity` | tryb prędkościowy (`setVelocity`) dla wszystkich typów montażu |
+
+Tryb pozycyjny dla ALT_AZ / CASUAL:
+- cel obu osi jest przesuwany co interwał aktualizacji o
+  `snap_rate_i × (Δt + tracking_pos_lead_seconds)`,
+- prędkość profilowa `pos_vel_axis_i` = `|snap_rate_i| × tracking_pos_velocity_margin`
+  (przycięta do `max_tracking_rate`),
+- oś azymutalna (axis2) jest przewijana do okna wieloobrotowego napędu
+  (najkrótsza droga względem pozycji fizycznej).
+
+Prędkości `snap_rate_1/2` dla ALT_AZ / CASUAL są pozycyjnie zależne i liczone
+przez `MountKinematics::trackingRates()` (sekcja 3.3).
+
 ## 3. Prędkości per typ montażu
 
 ### 3.1 EQUATORIAL — prędkości stałe

@@ -39,6 +39,21 @@ const CalibrationComponent = (() => {
     return key ? I18n.t(key, String(mode)) : String(mode);
   }
 
+  /**
+   * Normalize a bootstrap mode value from the API into its numeric form.
+   * The proxy serializes protobuf enums as their name (e.g. "BOOTSTRAP_AUTOMATIC"),
+   * so accept names, numbers and numeric strings and return 0/1/2, or null when unknown.
+   */
+  function normalizeBootstrapMode(mode) {
+    if (mode === null || mode === undefined) return null;
+    if (typeof mode === 'number') return (mode >= 0 && mode <= 2) ? mode : null;
+    const s = String(mode).trim().toUpperCase();
+    if (s === '0' || s === 'MANUAL' || s === 'BOOTSTRAP_MANUAL') return 0;
+    if (s === '1' || s === 'HYBRID' || s === 'BOOTSTRAP_HYBRID') return 1;
+    if (s === '2' || s === 'AUTOMATIC' || s === 'BOOTSTRAP_AUTOMATIC') return 2;
+    return null;
+  }
+
   function getAutoBootstrapStateLabel(state) {
     return I18n.t('cal.auto_state.' + state, String(state));
   }
@@ -53,6 +68,8 @@ const CalibrationComponent = (() => {
   let lastUsedObject = null;
   /** Current bootstrap mode value (0=MANUAL, 1=HYBRID, 2=AUTOMATIC) */
   let currentBootstrapMode = 0;
+  /** Whether the mount has absolute encoders (AUTOMATIC mode prerequisite) */
+  let encoderTypeAbsolute = false;
 
   // ─── Polling ─────────────────────────────────────────────────────────────
 
@@ -65,6 +82,7 @@ const CalibrationComponent = (() => {
   function init() {
     bindEvents();
     buildHelpContent();
+    loadAutoBootstrapPreferences();
     // Re-render help content when language changes
     document.addEventListener('i18n:applied', buildHelpContent);
   }
@@ -210,6 +228,24 @@ const CalibrationComponent = (() => {
     // Auto-bootstrap
     const runAutoBsBtn = $('#btn-run-auto-bootstrap');
     if (runAutoBsBtn) runAutoBsBtn.addEventListener('click', handleRunAutoBootstrap);
+
+    const confirmAutoBsBtn = $('#btn-auto-bs-confirm');
+    if (confirmAutoBsBtn) confirmAutoBsBtn.addEventListener('click', handleConfirmAutoMeasurement);
+
+    const cancelAutoBsBtn = $('#btn-auto-bs-cancel');
+    if (cancelAutoBsBtn) cancelAutoBsBtn.addEventListener('click', handleCancelAutoBootstrap);
+
+    // Auto-bootstrap preferences — persisted to the controller configuration.
+    const trackAfterSlewChk = $('#auto-bs-track-after-slew');
+    if (trackAfterSlewChk) {
+      trackAfterSlewChk.addEventListener('change', () =>
+        saveAutoBootstrapPreference('auto_track_after_slew', trackAfterSlewChk.checked));
+    }
+    const trackAfterCalChk = $('#auto-bs-track-after-calibration');
+    if (trackAfterCalChk) {
+      trackAfterCalChk.addEventListener('change', () =>
+        saveAutoBootstrapPreference('auto_track_after_calibration', trackAfterCalChk.checked));
+    }
 
     // TPOINT buttons
     const runTpBtn = $('#btn-run-tpoint');
@@ -595,10 +631,11 @@ const CalibrationComponent = (() => {
     setText('#bootstrap-last-calibration', status.last_calibration ? formatTimestamp(status.last_calibration) : '—');
 
     // New BootstrapStatus fields
-    const mode = status.bootstrap_mode;
-    currentBootstrapMode = mode != null ? mode : currentBootstrapMode;
+    const mode = normalizeBootstrapMode(status.bootstrap_mode);
+    if (mode != null) currentBootstrapMode = mode;
     const modeSelect = $('#bootstrap-mode-select');
     if (modeSelect) modeSelect.value = String(currentBootstrapMode);
+    encoderTypeAbsolute = !!status.encoder_type_absolute;
     setText('#bootstrap-encoder-type', status.encoder_type_absolute ? I18n.t('cal.absolute', 'Absolute') : I18n.t('cal.incremental', 'Incremental'));
     setText('#bootstrap-ref-position-known', status.reference_position_known ? I18n.t('cal.yes', 'Yes') : I18n.t('cal.no', 'No'));
     setText('#bootstrap-manual-meas-needed', status.manual_measurements_needed != null ? String(status.manual_measurements_needed) : '—');
@@ -690,6 +727,31 @@ const CalibrationComponent = (() => {
 
   // ─── Automatic Bootstrap ─────────────────────────────────────────────────
 
+  async function loadAutoBootstrapPreferences() {
+    try {
+      const config = await Api.getConfig();
+      if (!config) return;
+      const trackAfterSlewChk = $('#auto-bs-track-after-slew');
+      if (trackAfterSlewChk) {
+        trackAfterSlewChk.checked = !!config.auto_track_after_slew;
+      }
+      const trackAfterCalChk = $('#auto-bs-track-after-calibration');
+      if (trackAfterCalChk) {
+        trackAfterCalChk.checked = !!config.auto_track_after_calibration;
+      }
+    } catch (err) {
+      // Silently ignore — preferences load is best-effort.
+    }
+  }
+
+  async function saveAutoBootstrapPreference(key, value) {
+    try {
+      await Api.updateConfig({ [key]: value });
+    } catch (err) {
+      App.showToast(I18n.t('cal.msg.auto_pref_save_failed', { message: err.message }), 'error');
+    }
+  }
+
   async function handleRunAutoBootstrap() {
     const btn = $('#btn-run-auto-bootstrap');
     const resultDiv = $('#bootstrap-result');
@@ -699,6 +761,9 @@ const CalibrationComponent = (() => {
     const maxErrorInput = $('#auto-bs-max-error');
     const targetStarsInput = $('#auto-bs-target-stars');
     const proceedCheckbox = $('#auto-bs-proceed-tpoint');
+    const plateSolveCheckbox = $('#auto-bs-plate-solve');
+    const trackAfterSlewCheckbox = $('#auto-bs-track-after-slew');
+    const trackAfterCalibrationCheckbox = $('#auto-bs-track-after-calibration');
 
     const options = {};
     if (minMeasInput) {
@@ -718,6 +783,41 @@ const CalibrationComponent = (() => {
     if (proceedCheckbox && proceedCheckbox.checked) {
       options.proceed_to_tpoint = true;
     }
+    if (plateSolveCheckbox && plateSolveCheckbox.checked) {
+      options.plate_solve = true;
+    }
+    if (trackAfterSlewCheckbox && trackAfterSlewCheckbox.checked) {
+      options.auto_track_after_slew = true;
+    }
+    if (trackAfterCalibrationCheckbox && trackAfterCalibrationCheckbox.checked) {
+      options.auto_track_after_calibration = true;
+    }
+
+    // The backend requires bootstrap mode to be HYBRID or AUTOMATIC before
+    // starting auto-bootstrap. Ensure the selected mode is applied, falling
+    // back to a valid automatic mode when the user left it at MANUAL.
+    const modeSelect = $('#bootstrap-mode-select');
+    let targetMode = currentBootstrapMode;
+    if (modeSelect) {
+      const selectedMode = parseInt(modeSelect.value, 10);
+      if (!isNaN(selectedMode)) targetMode = selectedMode;
+    }
+    if (targetMode !== 1 && targetMode !== 2) {
+      // MANUAL selected — pick a valid automatic mode. AUTOMATIC requires
+      // absolute encoders; fall back to HYBRID when they are unavailable.
+      targetMode = encoderTypeAbsolute ? 2 : 1;
+    }
+    try {
+      await Api.setBootstrapMode(targetMode);
+      currentBootstrapMode = targetMode;
+      if (modeSelect) modeSelect.value = String(targetMode);
+    } catch (modeErr) {
+      resultDiv.className = 'calibration-result error';
+      resultDiv.textContent = I18n.t('cal.msg.mode_set_failed', { message: modeErr.message });
+      resultDiv.style.display = 'block';
+      App.showToast(I18n.t('cal.msg.mode_set_failed_toast', { message: modeErr.message }), 'error');
+      return;
+    }
 
     btn.disabled = true;
     resultDiv.style.display = 'none';
@@ -736,6 +836,29 @@ const CalibrationComponent = (() => {
       App.showToast(I18n.t('cal.msg.auto_failed_toast', { message: err.message }), 'error');
     } finally {
       btn.disabled = false;
+    }
+  }
+
+  async function handleConfirmAutoMeasurement() {
+    const btn = $('#btn-auto-bs-confirm');
+    if (btn) btn.disabled = true;
+    try {
+      await Api.confirmAutoBootstrapMeasurement();
+      await loadAutoBootstrapStatus();
+    } catch (err) {
+      App.showToast(I18n.t('cal.msg.auto_confirm_failed', { message: err.message }), 'error');
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+  async function handleCancelAutoBootstrap() {
+    try {
+      await Api.cancelAutoBootstrap();
+      App.showToast(I18n.t('cal.msg.auto_cancelled'), 'info');
+      await loadAutoBootstrapStatus();
+    } catch (err) {
+      App.showToast(I18n.t('cal.msg.auto_cancel_failed', { message: err.message }), 'error');
     }
   }
 
@@ -791,10 +914,24 @@ const CalibrationComponent = (() => {
     }
 
     // Update badge if completed or in error
-    if (stateVal === 3) {
+    if (stateVal === 5) {
       App.showToast(I18n.t('cal.msg.auto_completed'), 'success');
-    } else if (stateVal === 4) {
+    } else if (stateVal === 6) {
       App.showToast(I18n.t('cal.msg.auto_error', { message: status.error_message || 'Unknown error' }), 'error');
+    } else if (stateVal === 7) {
+      App.showToast(I18n.t('cal.msg.auto_cancelled'), 'info');
+    }
+
+    // Show the confirm button only while awaiting operator confirmation;
+    // show the cancel button while any session is active.
+    const confirmBtn = $('#btn-auto-bs-confirm');
+    if (confirmBtn) {
+      confirmBtn.style.display = (stateVal === 2) ? 'inline-block' : 'none';
+    }
+    const cancelBtn = $('#btn-auto-bs-cancel');
+    if (cancelBtn) {
+      const terminal = stateVal === 0 || stateVal === 5 || stateVal === 6 || stateVal === 7;
+      cancelBtn.style.display = (stateVal !== undefined && !terminal) ? 'inline-block' : 'none';
     }
   }
 

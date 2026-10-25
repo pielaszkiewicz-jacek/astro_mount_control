@@ -154,7 +154,6 @@ bool CanOpenHAL::CanOpenMotor::home() {
 }
 
 bool CanOpenHAL::CanOpenMotor::writePidLoopRam(int loop, double kp, double ki, double kd) {
-    (void)ki;
     (void)kd;
     auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
     if (!iface) return false;
@@ -162,6 +161,7 @@ bool CanOpenHAL::CanOpenMotor::writePidLoopRam(int loop, double kp, double ki, d
     // STMP42SXI gain set:
     //   loop 1 (current)  -> 2001h:1Ch CurrentLoopCutoffFreq (Hz)
     //   loop 2 (speed)    -> 2008h:01h SpeedLoopGain          (scale 0.1Hz)
+    //                        2008h:02h SpeedLoopIntegral       (scale 1)
     //   loop 3 (position) -> 2008h:03h PositionLoopGain       (scale 1)
     uint16_t index = 0;
     uint16_t value = 0;
@@ -173,7 +173,11 @@ bool CanOpenHAL::CanOpenMotor::writePidLoopRam(int loop, double kp, double ki, d
         case 2:
             index = 0x2008;
             value = static_cast<uint16_t>(kp * 10.0);
-            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x01, value, 2);
+            if (!iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x01, value, 2)) {
+                return false;
+            }
+            value = static_cast<uint16_t>(ki);
+            return iface->sendSDO(static_cast<uint8_t>(axis_id_), index, 0x02, value, 2);
         case 3:
             index = 0x2008;
             value = static_cast<uint16_t>(kp);

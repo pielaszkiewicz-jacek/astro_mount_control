@@ -80,6 +80,7 @@ const SettingsComponent = (() => {
         { key: 'max_tracking_rate', label: 'Max Tracking Rate (°/s)', type: 'number', min: 0.0001, max: 0.1, step: 0.000001 },
         { key: 'slew_acceleration', label: 'Slew Acceleration (°/s²)', type: 'number', min: 0.01, max: 20, step: 0.1 },
         { key: 'tracking_acceleration', label: 'Tracking Acceleration (°/s²)', type: 'number', min: 0.0001, max: 1, step: 0.0001 },
+        { key: 'auto_track_after_goto', label: 'Auto-Track After Goto', type: 'checkbox', help: 'Automatically start sidereal tracking of the Goto target once the slew settles.' },
       ],
     },
     {
@@ -337,6 +338,14 @@ const SettingsComponent = (() => {
       ],
     },
     {
+      id: 'calibration',
+      label: 'Calibration / Auto-Bootstrap',
+      fields: [
+        { key: 'auto_track_after_slew', label: 'Track After Slew', type: 'checkbox', help: 'Start tracking automatically after each auto-bootstrap slew.' },
+        { key: 'auto_track_after_calibration', label: 'Track After Calibration', type: 'checkbox', help: 'Start tracking the last target automatically after the calibration finishes.' },
+      ],
+    },
+    {
       id: 'loop_timing',
       label: 'Loop Timing',
       fields: [
@@ -361,6 +370,7 @@ const SettingsComponent = (() => {
         { key: 'sdo_slow_control', label: 'SDO Slow Control Path', type: 'checkbox', help: 'Keep synchronous SDO for rare operations (mode switch, config, homing, fault clear).' },
         { key: 'tracking_pos_update_hz', label: 'Position Update (Hz)', type: 'number', min: 1, max: 100, step: 1, help: 'Cadence of position-mode target updates for EQUATORIAL tracking. Default 10 Hz.' },
         { key: 'tracking_pos_velocity_margin', label: 'Position Velocity Margin', type: 'number', min: 1.0, max: 2.0, step: 0.05, help: 'Bounded scaling factor applied to the actual tracking rate when deriving the position-mode profile velocity. The result is clamped so it never exceeds max_tracking_rate.' },
+        { key: 'tracking_mode', label: 'Tracking Mode', type: 'select', options: ['auto', 'position', 'velocity'], help: 'auto: EQUATORIAL uses position, ALT_AZ/CASUAL use velocity. position/velocity force the command mode for every mount type.' },
       ],
     },
     {
