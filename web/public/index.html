@@ -8,7 +8,7 @@
   <title>Astro Mount Control</title>
 
   <!-- Styles -->
-  <link rel="stylesheet" href="css/style.css?v=20261029-rho4">
+  <link rel="stylesheet" href="css/style.css?v=20261029-rho5">
 </head>
 <body>
   <!-- ─── Splash Screen ───────────────────────────────────────────────── -->
@@ -266,7 +266,7 @@
           <!-- Position Card -->
           <div id="card-position" class="card">
             <div class="card-header">
-              <h2 class="card-title" data-i18n="card.position">Position</h2>
+              <h2 class="card-title" data-i18n="card.position">Physical Coordinates</h2>
             </div>
             <div class="card-body" id="position-content">
               <div class="status-placeholder" data-i18n="status.waiting">Waiting for data...</div>
@@ -283,8 +283,28 @@
             </div>
           </div>
 
+          <!-- Location Card -->
+          <div id="card-location" class="card">
+            <div class="card-header">
+              <h2 class="card-title" data-i18n="card.location">Location</h2>
+            </div>
+            <div class="card-body" id="location-content">
+              <div class="status-placeholder" data-i18n="status.waiting">Waiting for data...</div>
+            </div>
+          </div>
+
+          <!-- Tracking Card -->
+          <div id="card-tracking" class="card">
+            <div class="card-header">
+              <h2 class="card-title" data-i18n="card.tracking">Tracking</h2>
+            </div>
+            <div class="card-body" id="tracking-content">
+              <div class="status-placeholder" data-i18n="status.waiting">Waiting for data...</div>
+            </div>
+          </div>
+
           <!-- Axis Velocity Chart Card -->
-          <div id="card-velocity-chart" class="card full-width">
+          <div id="card-velocity-chart" class="card full-width card-collapsible">
             <div class="card-header">
               <h2 class="card-title" data-i18n="card.axis_velocity">Axis Velocity</h2>
               <span id="velocity-legend" class="chart-legend">
@@ -307,19 +327,10 @@
                   <span>~</span>
                 </label>
               </span>
+              <button class="card-toggle-btn" type="button" title="Collapse/Expand" aria-label="Toggle velocity chart">−</button>
             </div>
             <div class="card-body" id="velocity-chart-content">
               <canvas id="velocity-canvas" class="velocity-canvas" width="600" height="200"></canvas>
-              <div class="status-placeholder" data-i18n="status.waiting">Waiting for data...</div>
-            </div>
-          </div>
-
-          <!-- Tracking Card -->
-          <div id="card-tracking" class="card">
-            <div class="card-header">
-              <h2 class="card-title" data-i18n="card.tracking">Tracking</h2>
-            </div>
-            <div class="card-body" id="tracking-content">
               <div class="status-placeholder" data-i18n="status.waiting">Waiting for data...</div>
             </div>
           </div>

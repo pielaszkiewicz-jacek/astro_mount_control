@@ -3165,6 +3165,10 @@ input[type="file"].form-input::file-selector-button:hover {
   min-height: 220px;
 }
 
+.card-collapsible.card-collapsed #velocity-chart-content {
+  min-height: 0;
+}
+
 #velocity-chart-content .status-placeholder {
   display: none;
   padding: 24px 8px;

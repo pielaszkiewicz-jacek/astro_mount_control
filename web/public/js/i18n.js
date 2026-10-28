@@ -33,8 +33,9 @@ const I18n = (() => {
 
       // Status Panel
       'card.mount_status': 'Mount Status',
-      'card.position': 'Position',
+      'card.position': 'Physical Coordinates',
       'card.environment': 'Environment',
+      'card.location': 'Location',
       'card.tracking': 'Tracking',
       'card.axis_velocity': 'Axis Velocity',
       'card.axis_position_chart': 'Position (HA / Dec)',
@@ -696,8 +697,9 @@ const I18n = (() => {
 
       // Panel Statusu
       'card.mount_status': 'Status Montażu',
-      'card.position': 'Pozycja',
+      'card.position': 'Współrzędne fizyczne',
       'card.environment': 'Środowisko',
+      'card.location': 'Lokalizacja',
       'card.tracking': 'Śledzenie',
       'card.axis_velocity': 'Prędkość osi',
       'card.axis_position_chart': 'Pozycja (HA / Dec)',

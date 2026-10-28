@@ -8,6 +8,31 @@ const router = express.Router();
 const { grpcCall } = require('../grpc/client');
 const { formatState, errorResponse } = require('../grpc/converters');
 
+// Mount geographic location (latitude/longitude/altitude) rarely changes, so
+// cache the value from GetConfiguration to avoid an extra gRPC call on every
+// /api/status poll.
+let locationCache = { value: null, expiresAt: 0 };
+const LOCATION_CACHE_TTL_MS = 60000;
+
+async function getMountLocation() {
+  const now = Date.now();
+  if (locationCache.value && now < locationCache.expiresAt) {
+    return locationCache.value;
+  }
+  try {
+    const cfg = await grpcCall('GetConfiguration', {});
+    const location = {
+      latitude: Number(cfg.latitude || 0),
+      longitude: Number(cfg.longitude || 0),
+      altitude: Number(cfg.altitude || 0),
+    };
+    locationCache = { value: location, expiresAt: now + LOCATION_CACHE_TTL_MS };
+    return location;
+  } catch (_) {
+    return locationCache.value || null;
+  }
+}
+
 /**
  * GET /api/status
  * Returns the current mount controller state.
@@ -15,6 +40,8 @@ const { formatState, errorResponse } = require('../grpc/converters');
 router.get('/status', async (req, res) => {
   try {
     const state = await grpcCall('GetState', {});
+    const formatted = formatState(state);
+    formatted.location = await getMountLocation();
     // DEBUG: log raw gRPC position data
     const cp = state.current_position;
     console.log('[DEBUG /api/status] current_position:', cp ? JSON.stringify(cp) : 'MISSING',
@@ -22,7 +49,7 @@ router.get('/status', async (req, res) => {
                 '| telescope_axis2:', state.telescope_axis2,
                 '| actual_rate_axis1:', state.actual_rate_axis1,
                 '| actual_rate_axis2:', state.actual_rate_axis2);
-    res.json(formatState(state));
+    res.json(formatted);
   } catch (err) {
     errorResponse(res, 503, 'Mount controller unreachable', err.message);
   }

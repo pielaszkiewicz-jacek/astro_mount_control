@@ -70,6 +70,37 @@ const MountStatusComponent = (() => {
         redrawVelocityChart();
       });
     }
+    bindVelocityChartToggle();
+  }
+
+  /**
+   * Bind the collapse/expand toggle for the velocity chart card.
+   * Clicking the header (outside interactive controls) or the toggle button
+   * collapses the card body; expanding it redraws the chart after the CSS
+   * max-height transition has settled.
+   */
+  function bindVelocityChartToggle() {
+    const card = $('#card-velocity-chart');
+    if (!card) return;
+    const toggleBtn = card.querySelector('.card-toggle-btn');
+    const header = card.querySelector('.card-header');
+    const doToggle = function() {
+      const collapsed = card.classList.toggle('card-collapsed');
+      if (toggleBtn) toggleBtn.textContent = collapsed ? '+' : '−';
+      if (!collapsed) {
+        // Canvas may have collapsed to zero size; redraw once expanded.
+        setTimeout(redrawVelocityChart, 350);
+      }
+    };
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', function(e) { e.stopPropagation(); doToggle(); });
+    }
+    if (header) {
+      header.addEventListener('click', function(e) {
+        if (e.target.closest('button, input, select, a, label')) return;
+        doToggle();
+      });
+    }
   }
 
   /**
@@ -540,6 +571,7 @@ const MountStatusComponent = (() => {
       showPlaceholder('mount-status-content', 'Connecting to mount controller...');
       showPlaceholder('position-content', 'Waiting for data...');
       showPlaceholder('environment-content', 'Waiting for data...');
+      showPlaceholder('location-content', 'Waiting for data...');
       showPlaceholder('tracking-content', 'Waiting for data...');
       return;
     }
@@ -626,15 +658,6 @@ const MountStatusComponent = (() => {
           <span class="stat-label">Axis 2</span>
           <span class="stat-value highlight">${formatAngleDeg(state.telescope?.axis2, true)}</span>
         </div>
-        <div class="stat-section-label">Current Sky Position (corrected)</div>
-        <div class="stat-row">
-          <span class="stat-label">RA</span>
-          <span class="stat-value highlight">${formatRA(state.current_ra || 0)}</span>
-        </div>
-        <div class="stat-row">
-          <span class="stat-label">Dec</span>
-          <span class="stat-value highlight">${formatDec(state.current_dec || 0)}</span>
-        </div>
         <div class="stat-section-label">Tracking Rates</div>
         <div class="stat-row">
           <span class="stat-label">RA</span>
@@ -663,6 +686,28 @@ const MountStatusComponent = (() => {
           <span class="stat-label">Humidity</span>
           <span class="stat-value">${formatNumber((state.humidity || 0) * 100, 1)} %</span>
         </div>
+      `;
+    }
+
+    // Location card
+    const locEl = $('#location-content');
+    if (locEl) {
+      const loc = state.location;
+      locEl.innerHTML = loc ? `
+        <div class="stat-row">
+          <span class="stat-label">Latitude</span>
+          <span class="stat-value highlight">${formatNumber(loc.latitude, 4)} °</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Longitude</span>
+          <span class="stat-value highlight">${formatNumber(loc.longitude, 4)} °</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">Altitude</span>
+          <span class="stat-value highlight">${formatNumber(loc.altitude, 0)} m</span>
+        </div>
+      ` : `
+        <div class="status-placeholder">Location unavailable</div>
       `;
     }
 
