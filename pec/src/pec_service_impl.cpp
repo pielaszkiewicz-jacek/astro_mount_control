@@ -14,7 +14,7 @@ using astro_mount::models::PECModel;
 
 PecServiceImpl::PecServiceImpl(const std::string& config_path)
     : config_path_(config_path),
-      data_path_("config/pec_data.json") {
+      data_path_("config/pec/pec_data.json") {
     pec_ = std::make_unique<PECModel>();
 
     try {

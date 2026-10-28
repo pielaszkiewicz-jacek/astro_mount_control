@@ -6259,9 +6259,15 @@ public:
                 char ts_buf[32];
                 std::strftime(ts_buf, sizeof(ts_buf), "%Y-%m-%d_%H-%M-%S", &tm_now);
                 // Backup format: {stem}_{timestamp}{ext}
-                // e.g. config/default_2026-06-14_10-05-08.json
+                // Backups are kept in the config root's `backup/` subdirectory so
+                // that module directories contain only current config files.
+                // e.g. config/mount/default.json -> config/backup/default_2026-06-14_10-05-08.json
                 std::filesystem::path cfg_path(config_file_path_);
-                std::string backup_path = (cfg_path.parent_path() /
+                std::filesystem::path backup_dir =
+                    cfg_path.parent_path().parent_path() / "backup";
+                std::error_code ec;
+                std::filesystem::create_directories(backup_dir, ec);
+                std::string backup_path = (backup_dir /
                     (cfg_path.stem().string() + "_" + ts_buf + cfg_path.extension().string())).string();
                 try {
                     std::filesystem::copy_file(config_file_path_, backup_path,

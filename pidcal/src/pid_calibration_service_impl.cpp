@@ -531,7 +531,7 @@ std::string PidCalibrationServiceImpl::saveResultToFile(
 
     std::string path = requested_path;
     if (path.empty()) {
-        path = "config/pid_calibration_results.json";
+        path = "config/pidcal/pid_calibration_results.json";
     }
 
     std::ofstream file(path);

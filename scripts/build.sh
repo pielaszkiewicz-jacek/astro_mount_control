@@ -62,7 +62,7 @@ sudo mkdir -p /var/log/astro-mount
 
 # Copy configuration
 echo -e "${YELLOW}Copying configuration files...${NC}"
-sudo cp ../config/default.json /etc/astro-mount-controller/
+sudo cp ../config/mount/default.json /etc/astro-mount-controller/
 
 # Copy systemd service
 echo -e "${YELLOW}Installing systemd service...${NC}"

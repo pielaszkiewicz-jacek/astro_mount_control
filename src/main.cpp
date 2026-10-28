@@ -185,7 +185,7 @@ int main(int argc, char* argv[]) {
     try {
         // Load configuration
         config::Configuration config;
-        std::string config_file = "config/default.json";
+        std::string config_file = "config/mount/default.json";
         
         if (argc > 1) {
             config_file = argv[1];
@@ -399,7 +399,7 @@ int main(int argc, char* argv[]) {
         if (ext_config.dome_enabled) {
             try {
                 dome_service_impl = std::make_unique<astro_dome::DomeServiceImpl>(
-                    "config/dome_config.json");
+                    "config/dome/dome_config.json");
                 logger->info("Dome subsystem hosted in-process (served on unified gRPC port)");
             } catch (const std::exception& e) {
                 logger->warn("Failed to initialise in-process dome service: {}", e.what());
@@ -410,7 +410,7 @@ int main(int argc, char* argv[]) {
         if (ext_config.derotator_enabled) {
             try {
                 derotator_service_impl = std::make_unique<astro_derotator::DerotatorServiceImpl>(
-                    "config/derotator_config.json");
+                    "config/derotator/derotator_config.json");
                 logger->info("Derotator subsystem hosted in-process (served on unified gRPC port)");
             } catch (const std::exception& e) {
                 logger->warn("Failed to initialise in-process derotator service: {}", e.what());
@@ -421,7 +421,7 @@ int main(int argc, char* argv[]) {
         if (ext_config.focuser_enabled) {
             try {
                 focuser_service_impl = std::make_unique<astro_focuser::FocuserServiceImpl>(
-                    "config/focuser_config.json");
+                    "config/focuser/focuser_config.json");
                 logger->info("Focuser subsystem hosted in-process (served on unified gRPC port)");
             } catch (const std::exception& e) {
                 logger->warn("Failed to initialise in-process focuser service: {}", e.what());
@@ -432,7 +432,7 @@ int main(int argc, char* argv[]) {
         if (ext_config.st4_guider_enabled) {
             try {
                 st4_guider_service_impl = std::make_unique<astro_st4guider::St4GuiderServiceImpl>(
-                    "config/st4_guider_config.json");
+                    "config/st4guider/st4_guider_config.json");
                 logger->info("ST4 guider subsystem hosted in-process (served on unified gRPC port)");
             } catch (const std::exception& e) {
                 logger->warn("Failed to initialise in-process ST4 guider service: {}", e.what());
@@ -443,7 +443,7 @@ int main(int argc, char* argv[]) {
         if (ext_config.pec_enabled) {
             try {
                 pec_service_impl = std::make_unique<astro_pec::PecServiceImpl>(
-                    "config/pec_config.json");
+                    "config/pec/pec_config.json");
                 logger->info("PEC subsystem hosted in-process (served on unified gRPC port)");
             } catch (const std::exception& e) {
                 logger->warn("Failed to initialise in-process PEC service: {}", e.what());

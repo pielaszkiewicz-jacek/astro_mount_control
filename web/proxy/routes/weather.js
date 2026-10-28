@@ -102,7 +102,7 @@ router.post('/rules', async (req, res) => {
 router.get('/rules', async (req, res) => {
   try {
     const configPath = process.env.WEATHER_CONFIG_PATH ||
-      path.join(__dirname, '../../../config/weather_config.json');
+      path.join(__dirname, '../../../config/weather/weather_config.json');
     const raw = fs.readFileSync(configPath, 'utf8');
     const config = JSON.parse(raw);
     res.json({ rules: config.rules || {} });

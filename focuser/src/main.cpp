@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signal_handler);
 
     std::string server_address = "0.0.0.0:50058";
-    std::string focuser_config = "config/focuser_config.json";
+    std::string focuser_config = "config/focuser/focuser_config.json";
     bool enable_ssl = false;
     std::string ssl_cert, ssl_key;
 
@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--help") {
             std::cout << "Usage: " << argv[0] << " [options]\n";
             std::cout << "  --address HOST:PORT  (default: 0.0.0.0:50058)\n";
-            std::cout << "  --config PATH        (default: config/focuser_config.json)\n";
+            std::cout << "  --config PATH        (default: config/focuser/focuser_config.json)\n";
             std::cout << "  --ssl CERT KEY\n"; return 0;
         }
     }

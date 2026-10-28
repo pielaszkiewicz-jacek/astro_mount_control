@@ -30,7 +30,7 @@ int main(int argc, char* argv[]) {
 
     // Default configuration
     std::string server_address = "0.0.0.0:50055";
-    std::string weather_config = "config/weather_config.json";
+    std::string weather_config = "config/weather/weather_config.json";
     bool enable_ssl = false;
     std::string ssl_cert;
     std::string ssl_key;
@@ -52,7 +52,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Usage: " << argv[0] << " [options]\n";
             std::cout << "Options:\n";
             std::cout << "  --address HOST:PORT  Server address (default: 0.0.0.0:50055)\n";
-            std::cout << "  --config PATH        Weather config file (default: config/weather_config.json)\n";
+            std::cout << "  --config PATH        Weather config file (default: config/weather/weather_config.json)\n";
             std::cout << "  --ssl CERT KEY       Enable TLS with cert and key files\n";
             std::cout << "  --help               Show this help message\n";
             return 0;

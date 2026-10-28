@@ -194,7 +194,7 @@ public:
      * @param config_file Path to configuration file
      * @param check_interval_ms Interval to check for changes (in milliseconds)
      */
-    ConfigManager(const std::string& config_file = "config/default.json",
+    ConfigManager(const std::string& config_file = "config/mount/default.json",
                   int check_interval_ms = 1000);
 
     /**

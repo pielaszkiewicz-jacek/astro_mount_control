@@ -9,7 +9,7 @@ Connects to the astro_mount_controller gRPC server and provides:
   - Safety: soft limit checks, emergency stop
 
 Usage:
-  1. Start the server:  ./build/bin/astro_mount_controller config/default.json
+  1. Start the server:  ./build/bin/astro_mount_controller config/mount/default.json
   2. Run this script:   python3 scripts/axis_control_test.py [--host HOST] [--port PORT]
 """
 
@@ -470,7 +470,7 @@ def main():
     print(f"Connecting to {args.host}:{args.port}...")
     if not ctrl.check_health():
         print(f"{Colors.RED}Cannot connect — is the server running?{Colors.RESET}")
-        print(f"  Start with:  ./build/bin/astro_mount_controller config/default.json")
+        print(f"  Start with:  ./build/bin/astro_mount_controller config/mount/default.json")
         sys.exit(1)
     print(f"{Colors.GREEN}Connected. Server is SERVING.{Colors.RESET}")
 

@@ -25,7 +25,7 @@ int main(int argc, char* argv[]) {
 
     // Default configuration
     std::string server_address = "0.0.0.0:50053";
-    std::string dome_config = "config/dome_config.json";
+    std::string dome_config = "config/dome/dome_config.json";
     bool enable_ssl = false;
     std::string ssl_cert;
     std::string ssl_key;
@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
             std::cout << "Usage: " << argv[0] << " [options]\n";
             std::cout << "Options:\n";
             std::cout << "  --address HOST:PORT  Server address (default: 0.0.0.0:50053)\n";
-            std::cout << "  --config PATH        Dome HAL config file (default: config/dome_config.json)\n";
+            std::cout << "  --config PATH        Dome HAL config file (default: config/dome/dome_config.json)\n";
             std::cout << "  --ssl CERT KEY       Enable TLS with cert and key files\n";
             std::cout << "  --help               Show this help message\n";
             return 0;

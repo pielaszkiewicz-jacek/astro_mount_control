@@ -13,7 +13,7 @@
 #
 # Opcje:
 #   --config PATH   Ścieżka do pliku konfiguracyjnego JSON
-#                   (domyślnie: config/default.json z katalogu projektu)
+#                   (domyślnie: config/mount/default.json z katalogu projektu)
 #   --build         Wymuś przebudowanie przed uruchomieniem
 #   --help          Wyświetl tę pomoc
 #
@@ -31,7 +31,7 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="${PROJECT_DIR}/build"
 BINARY="${BUILD_DIR}/bin/astro_mount_controller"
-CONFIG_FILE="${PROJECT_DIR}/config/default.json"
+CONFIG_FILE="${PROJECT_DIR}/config/mount/default.json"
 LOG_DIR="/var/log/astro-mount"
 FORCE_BUILD=false
 

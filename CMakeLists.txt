@@ -837,6 +837,34 @@ if(GTest_FOUND)
 
 endif()
 
+# ============================================
+# Per-user local deployment helpers.
+# Delegate to the hand-written Makefile in the source tree so that
+# `make localuser` works both at the project root and inside build/.
+# ============================================
+# Alias `build` so `make build` works inside build/ as well.
+add_custom_target(build
+    COMMAND ${CMAKE_COMMAND} --build . --parallel
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+    COMMENT "Building the project"
+    VERBATIM
+)
+
+add_custom_target(localuser
+    COMMAND ${CMAKE_COMMAND} -E echo "Deploying controller to the user's home directory..."
+    COMMAND make -C "${CMAKE_SOURCE_DIR}" localuser
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Deploy controller to the user's home directory"
+    VERBATIM
+)
+
+add_custom_target(localuser-clean
+    COMMAND make -C "${CMAKE_SOURCE_DIR}" localuser-clean
+    WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    COMMENT "Remove the per-user controller directory"
+    VERBATIM
+)
+
 # Install targets
 install(TARGETS astro_mount_controller
     RUNTIME DESTINATION bin

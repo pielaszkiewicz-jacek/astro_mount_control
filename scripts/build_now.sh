@@ -57,4 +57,4 @@ make -j$(nproc) 2>&1
 echo ""
 echo "=== DONE ==="
 echo "Binaries: $LIN_PATH/build/bin/"
-echo "Run:      $LIN_PATH/build/bin/astro_mount_controller $LIN_PATH/config/default.json"
+echo "Run:      $LIN_PATH/build/bin/astro_mount_controller $LIN_PATH/config/mount/default.json"

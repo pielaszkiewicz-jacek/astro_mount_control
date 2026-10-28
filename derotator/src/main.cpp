@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
     signal(SIGTERM, signal_handler);
 
     std::string server_address = "0.0.0.0:50054";
-    std::string config_path = "config/derotator_config.json";
+    std::string config_path = "config/derotator/derotator_config.json";
     bool enable_ssl = false;
     std::string ssl_cert;
     std::string ssl_key;
