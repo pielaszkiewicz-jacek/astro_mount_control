@@ -15,7 +15,7 @@ The mount controller supports auxiliary subsystems that are enabled via the `ext
 | **Weather** | stand-alone (`astro_weather_server`) | 50055 | Weather monitoring, alerts, auto-park |
 | **Power** | stand-alone (`astro_power_server`) | 50056 | Battery/power monitoring, low-voltage auto-park |
 
-All integrations are **disabled by default**. Each must be explicitly enabled in the mount controller's configuration file (`config/default.json`) under the `external_services` section.
+All integrations are **disabled by default**. Each must be explicitly enabled in the mount controller's configuration file (`config/mount/default.json`) under the `external_services` section.
 
 ---
 
@@ -65,7 +65,7 @@ Integration is configured in the mount controller's JSON config file under the `
 
 ## 2. Weather Service (`astro_weather_server`)
 
-### 2.1 Configuration File: `config/weather_config.json`
+### 2.1 Configuration File: `config/weather/weather_config.json`
 
 ```json
 {
@@ -145,12 +145,12 @@ Integration is configured in the mount controller's JSON config file under the `
 # Custom address and config
 ./build/bin/astro_weather_server \
     --address 0.0.0.0:50055 \
-    --config config/weather_config.json
+    --config config/weather/weather_config.json
 
 # Enable SSL
 ./build/bin/astro_weather_server \
     --address 0.0.0.0:50055 \
-    --config config/weather_config.json \
+    --config config/weather/weather_config.json \
     --ssl /path/to/cert.pem /path/to/key.pem
 
 # Systemd
@@ -172,7 +172,7 @@ When enabled (`weather.enabled: true`), the mount controller:
 
 ## 3. Power Service (`astro_power_server`)
 
-### 3.1 Configuration File: `config/power_config.json`
+### 3.1 Configuration File: `config/power/power_config.json`
 
 ```json
 {
@@ -199,7 +199,7 @@ When enabled (`weather.enabled: true`), the mount controller:
 # Custom address and config
 ./build/bin/astro_power_server \
     --address 0.0.0.0:50056 \
-    --config config/power_config.json
+    --config config/power/power_config.json
 
 # Systemd
 sudo systemctl enable astro-power-server
@@ -238,7 +238,7 @@ When enabled (`power.enabled: true`), the mount controller:
 
 ### 4.1 Enabling Everything
 
-In `config/default.json`:
+In `config/mount/default.json`:
 
 ```json
 {
@@ -276,13 +276,13 @@ In `config/default.json`:
 
 ```bash
 # Start the external (stand-alone) weather and power services
-./build/bin/astro_weather_server --config config/weather_config.json &
-./build/bin/astro_power_server --config config/power_config.json &
+./build/bin/astro_weather_server --config config/weather/weather_config.json &
+./build/bin/astro_power_server --config config/power/power_config.json &
 
 # Start the mount controller.
 # Dome, derotator and focuser are hosted IN-PROCESS and served on the
 # unified gRPC port 50051 — no separate processes or ports are needed.
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 ```
 
 ### 4.3 Verification

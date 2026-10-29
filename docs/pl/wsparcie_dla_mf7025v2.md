@@ -615,7 +615,7 @@ Procedura clear error:
 
 ### 8.1 Domyślna konfiguracja
 
-Domyślna konfiguracja projektu znajduje się w [`config/default.json`](../config/default.json) i używa typu `"mf7025v2"`:
+Domyślna konfiguracja projektu znajduje się w [`config/mount/default.json`](../config/mount/default.json) i używa typu `"mf7025v2"`:
 
 ```json
 {
@@ -717,8 +717,8 @@ struct {
 | Klasa`Mf7025v2Hal` + wewnętrzne | [`include/hal/mf7025v2_hal/mf7025v2_hal.h`](../include/hal/mf7025v2_hal/mf7025v2_hal.h) + [`src/hal/mf7025v2_hal/mf7025v2_hal.cpp`](../src/hal/mf7025v2_hal/mf7025v2_hal.cpp) | ~255 + ~720           | ✅     |
 | Rejestracja w`HALFactory`        | [`include/hal/hal_factory.h`](../include/hal/hal_factory.h) + [`src/hal/hal_factory.cpp`](../src/hal/hal_factory.cpp)                                                         | ~60 + ~315            | ✅     |
 | Rozszerzenie`HALConfig`          | [`include/hal/hal_config.h`](../include/hal/hal_config.h)                                                                                                                      | ~700                  | ✅     |
-| Konfiguracja domyślna             | [`config/default.json`](../config/default.json)                                                                                                                                | ~447                  | ✅     |
-| Przykład konfiguracji             | [`config/mf7025v2_config.json`](../config/mf7025v2_config.json)                                                                                                                | ~120                  | ✅     |
+| Konfiguracja domyślna             | [`config/mount/default.json`](../config/mount/default.json)                                                                                                                                | ~447                  | ✅     |
+| Przykład konfiguracji             | [`config/mount/mf7025v2_config.json`](../config/mount/mf7025v2_config.json)                                                                                                                | ~120                  | ✅     |
 | Integracja CMake                   | [`CMakeLists.txt`](../CMakeLists.txt)                                                                                                                                          | ~543                  | ✅     |
 | **Razem**                    | **~9 plików**                                                                                                                                                            | **~2835 linii** | ✅     |
 
@@ -824,10 +824,10 @@ W ramach weryfikacji kodu [`Mf7025v2Hal`](../../src/hal/mf7025v2_hal/mf7025v2_ha
 
 ### 📋 Konfiguracja
 
-Samodzielny plik konfiguracyjny: [`config/mf7025v2.json`](../../config/mf7025v2.json)
+Samodzielny plik konfiguracyjny: [`config/mount/mf7025v2.json`](../../config/mount/mf7025v2.json)
 
 ```bash
-./astro_mount_control config/mf7025v2.json
+./astro_mount_control config/mount/mf7025v2.json
 ```
 
 Obsługa w Web UI: zakładka Ustawienia → grupa **HAL - MF7025v2 (LingKong BLDC)**.

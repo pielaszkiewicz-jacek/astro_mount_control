@@ -70,7 +70,7 @@ Kalibracja **nie zmienia** fizycznej pozycji montażu — jedynie oblicza popraw
 
 Przed rozpoczęciem kalibracji:
 
-1. **Uruchom kontroler** — `./build/bin/astro_mount_controller config/default.json`
+1. **Uruchom kontroler** — `./build/bin/astro_mount_controller config/mount/default.json`
 2. **Uruchom interfejs webowy** — otwórz `http://localhost:8080` w przeglądarce
 3. **Sprawdź połączenie** — wskaźnik w prawym górnym rogu powinien pokazywać "Connected"
 4. **Skonfiguruj lokalizację** — przejdź do zakładki **Settings**, rozwiń "Mount Location" i ustaw:

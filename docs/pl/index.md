@@ -69,7 +69,7 @@ flowchart TB
     subgraph API["🌐 API gRPC"]
         GRPC["MountControllerServiceImpl<br/>proto/mount_controller.proto"]
         DB_GRPC["ObjectDatabaseServiceImpl<br/>proto/object_database.proto"]
-        INPROC["Usługi w procesie:<br/>DomeService · DerotatorService · FocuserService<br/>(wspólne API :50051)"]
+        INPROC["Usługi w procesie:<br/>Dome · Derotator · Focuser · Camera · PEC · ST4<br/>Pulley · PIDCal · Notification (wspólne API :50051)"]
     end
 
     subgraph CORE["⚙️ Rdzeń kontrolera"]
@@ -85,7 +85,7 @@ flowchart TB
 
     subgraph COMM["📡 Komunikacja i konfiguracja"]
         CAN["CanOpenInterface<br/>CiA 301 · CiA 402<br/>PDO · SDO · NMT"]
-        CONFIG["System konfiguracji<br/>JSON · 25+ walidacji<br/>config/default.json"]
+        CONFIG["System konfiguracji<br/>JSON · 25+ walidacji<br/>config/mount/default.json"]
     end
 
     subgraph DB_SVC["🗄️ Baza obiektów"]
@@ -97,6 +97,7 @@ flowchart TB
         ASCOM_ROT["ASCOM Rotator Driver<br/>ascom_rotator/AstroMountRotator.cs<br/>IRotatorV3 · Alpaca REST → gRPC"]:::driver
         INDI_TEL["INDI Telescope Driver<br/>indi/astro_mount_driver.cpp<br/>INDI Protocol → gRPC"]:::driver
         INDI_ROT["INDI Rotator Driver<br/>indi_rotator/astro_mount_rotator_driver.cpp<br/>INDI Rotator → gRPC"]:::driver
+        INDI_CCD["INDI CCD Driver<br/>indi/astro_mount_ccd.cpp<br/>INDI CCD → gRPC"]:::driver
     end
 
     subgraph HW["🔧 Sprzęt"]
@@ -127,6 +128,7 @@ flowchart TB
     ASCOM_ROT -.->|"gRPC (local/network)"| GRPC
     INDI_TEL -.->|"gRPC (local/network)"| GRPC
     INDI_ROT -.->|"gRPC (local/network)"| GRPC
+    INDI_CCD -.->|"gRPC (local/network)"| GRPC
 
     class SPA,PROXY client
     class PY,CPP client
@@ -186,13 +188,20 @@ Oddziela logikę biznesową od sprzętu przez [`HALInterface`](include/hal/hal_i
 - HAL-e urządzeń: kopuła, derotator (TMC5160), kamera (ZWO), focuser (ZWO/MoonLite/Pegasus), zasilanie (I²C), ST4
 
 #### 8. **Usługi podsystemów** (konfigurowalne, domyślnie wyłączone)
-Kopuła, derotator i focuser są **hostowane w procesie** wewnątrz `astro_mount_controller` (bez osobnego procesu); pogoda, zasilanie i sekwencer pozostają niezależnymi procesami gRPC linkowanymi z `astro_mount_core`:
+Kontroler montażu hostuje **w procesie** większość podsystemów i serwuje je na wspólnym porcie gRPC :50051; pogoda, zasilanie, sekwencer i baza obiektów pozostają niezależnymi procesami gRPC linkowanymi z `astro_mount_core`:
 - **Kopuła** ([`dome/`](dome/)) :50051 (wspólny) — żaluzje, obrót, auto-sync z montażem (w procesie)
 - **Derotator** ([`derotator/`](derotator/)) :50051 (wspólny) — derotacja pola (w procesie)
 - **Focuser** ([`focuser/`](focuser/)) :50051 (wspólny) — sterowanie focuserem, autofokus (w procesie)
+- **Kamera** ([`camera/`](camera/)) :50051 (wspólny) — most INDI do `indiserver` (ZWO/QHY/PlayerOne) (w procesie)
+- **ST4 guider** ([`st4guider/`](st4guider/)) :50051 (wspólny) — autoguiding ST4 (w procesie)
+- **PEC** ([`pec/`](pec/)) :50051 (wspólny) — korekcja błędu okresowego (w procesie)
+- **Pulley** ([`pulley/`](pulley/)) :50051 (wspólny) — symulowany aktuator liniowy (w procesie)
+- **Kalibracja PID** ([`pidcal/`](pidcal/)) :50051 (wspólny) — strojenie pętli PID (w procesie)
+- **Powiadomienia** ([`src/notifications/`](src/notifications/)) :50051 (wspólny) — email/webhook/MQTT/log (w procesie)
 - **Pogoda** ([`weather/`](weather/)) :50055 — monitorowanie, alerty, auto-park (samodzielna)
 - **Zasilanie** ([`power/`](power/)) :50056 — monitorowanie baterii, przełączanie wyjść (samodzielna)
 - **Sekwencer** ([`sequencer/`](sequencer/)) :50057 — plany obserwacji (samodzielna)
+- **Baza obiektów** ([`db/`](db/)) :50052 — katalog SQLite (samodzielna)
 
 #### 9. **Web Proxy (HTTP/JSON → gRPC)** ([`web/proxy/`](web/proxy/))
 Serwer proxy Node.js Express łączący przeglądarkę z backendami gRPC:
@@ -226,8 +235,8 @@ Katalog obiektów astronomicznych oparty na SQLite:
 
 #### 13. **System konfiguracji** ([`src/config/configuration.cpp`](src/config/configuration.cpp))
 System zarządzania konfiguracją:
-- Ładowanie/zapisywanie konfiguracji JSON z ponad 25 walidacjami
-- Monitor konfiguracji do przeładowania na gorąco
+- Ładowanie/zapisywanie konfiguracji JSON z ponad 25 walidacjami; konfiguracja podzielona na podkatalogi według podsystemów ([`config/mount/`](config/mount/), [`config/dome/`](config/dome/), [`config/weather/`](config/weather/) itd.), domyślny plik: [`config/mount/default.json`](config/mount/default.json)
+- Monitor konfiguracji informujący o konieczności restartu po zmianie pliku
 - Sekcja integracji usług zewnętrznych (`external_services`)
 
 #### 14. **Silnik powiadomień** ([`src/notifications/`](src/notifications/))
@@ -242,6 +251,7 @@ Scentralizowane dostarczanie zdarzeń/alertów:
 #### 16. **Sterowniki INDI** (C++)
 - **Teleskop** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp)) — `INDI::Telescope` dla Ekos/KStars: MoveNS/MoveWE, `TPOINT_STATUS`, `EnvironmentNP`, park/sync/abort
 - **Rotator** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp)) — `INDI::Rotator`: MoveRotator, HomeRotator, AbortRotator
+- **Kamera (CCD)** ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp)) — `INDI::CCD` dla Ekos/KStars: ekspozycje, chłodzenie, filtr; most gRPC do `CameraService` (w procesie)
 
 ## Modele matematyczne
 
@@ -564,7 +574,7 @@ stub->TrackObject(&context, coords, &response);
 
 ## Konfiguracja
 
-### Plik konfiguracyjny (config/default.json)
+### Plik konfiguracyjny (config/mount/default.json)
 
 ```json
 {
@@ -798,7 +808,7 @@ Wszyscy strażnicy przechodzą do stanu `ERROR` z opisowym komunikatem; odzyskiw
 ### Testy integracyjne
 ```bash
 # Uruchom kontroler
-./build/src/astro-mount-controller config/default.json
+./build/src/astro-mount-controller config/mount/default.json
 
 # Test komunikacji gRPC
 grpc_cli call localhost:50051 GetState ""
@@ -846,10 +856,12 @@ Poniższa tabela podsumowuje cztery sterowniki zewnętrzne:
 |-----------|-------|---------------------|-----------|---------------|
 | ASCOM Telescope | C# | Alpaca REST (HTTP/JSON) | `ITelescopeV3` | [`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) |
 | INDI Telescope | C++ | INDI Protocol (XML/TCP) | `INDI::Telescope` | [`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) |
+| INDI Camera (CCD) | C++ | INDI Protocol (XML/TCP) | `INDI::CCD` | [`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp) |
 
-Wszystkie sterowniki używają warstwy klienta gRPC do komunikacji z `MountControllerService`:
+Wszystkie sterowniki używają warstwy klienta gRPC do komunikacji z usługami kontrolera:
 - **C#**: [`ascom/GrpcClient.cs`](ascom/GrpcClient.cs) (378 linii)
 - **C++**: [`indi/MountGrpcClient.h`](indi/MountGrpcClient.h) (221 linii)
+- **C++ (kamera)**: [`indi/CameraGrpcClient.h`](indi/CameraGrpcClient.h) — most do `CameraService`
 
 ## Interfejs Web
 
@@ -864,21 +876,23 @@ npm install
 npm start                   # Uruchamia na http://localhost:8080
 ```
 
-## Nowe pliki konfiguracyjne
+## Pliki konfiguracyjne
 
-Projekt zawiera gotowe pliki konfiguracyjne dla wspieranych typów HAL:
+Konfiguracja jest podzielona na podkatalogi według podsystemów. Gotowe pliki konfiguracyjne dla wspieranych typów HAL znajdują się w katalogu [`config/mount/`](../config/mount/):
 
 | Plik | Typ HAL | Użycie |
 |------|---------|--------|
-| [`config/canopen.json`](../config/canopen.json) | CANopen/CiA 402 | `./astro_mount_control config/canopen.json` |
-| [`config/mf7025v2.json`](../config/mf7025v2.json) | LingKong MF7025v2 BLDC | `./astro_mount_control config/mf7025v2.json` |
-| [`config/default.json`](../config/default.json) | Domyślna (MF7025v2) | `./astro_mount_control` |
-| [`config/test_no_hardware.json`](../config/test_no_hardware.json) | Testowa (bez sprzętu) | `./astro_mount_control config/test_no_hardware.json` |
+| [`config/mount/canopen.json`](../config/mount/canopen.json) | CANopen/CiA 402 | `./astro_mount_control config/mount/canopen.json` |
+| [`config/mount/canopen_stm42m.json`](../config/mount/canopen_stm42m.json) | CANopen STM42M (serwo krokowe) | `./astro_mount_control config/mount/canopen_stm42m.json` |
+| [`config/mount/mf7025v2.json`](../config/mount/mf7025v2.json) | LingKong MF7025v2 BLDC | `./astro_mount_control config/mount/mf7025v2.json` |
+| [`config/mount/default.json`](../config/mount/default.json) | Domyślna | `./astro_mount_control` |
+| [`config/mount/emulation.json`](../config/mount/emulation.json) | Emulacja (bez sprzętu) | `./astro_mount_control config/mount/emulation.json` |
+| [`config/mount/test_no_hardware.json`](../config/mount/test_no_hardware.json) | Testowa (bez sprzętu) | `./astro_mount_control config/mount/test_no_hardware.json` |
 
 ## Raport weryfikacji
 
 Pełny raport stabilności i poprawności numerycznej: [`VERIFICATION_REPORT.md`](../VERIFICATION_REPORT.md)
 
-*Ostatnia aktualizacja: 19 lipca 2026*
+*Ostatnia aktualizacja: 29 października 2026*
 
 *Szczegółowe informacje o poszczególnych komponentach znajdują się w dedykowanych plikach dokumentacji.*

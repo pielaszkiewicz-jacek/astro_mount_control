@@ -44,7 +44,7 @@ Najważniejsze pliki:
 ## 2. Konfiguracja
 
 Główny plik konfiguracyjny sekwencjonera:
-[`config/sequencer_config.json`](../../config/sequencer_config.json:1).
+[`config/sequencer/sequencer_config.json`](../../config/sequencer/sequencer_config.json:1).
 
 | Klucz            | Typ    | Domyślnie           | Opis                                                                 |
 |------------------|--------|---------------------|----------------------------------------------------------------------|
@@ -70,7 +70,7 @@ Przykład (tryb rzeczywisty):
 
 Aby zakładka **Sequencer** była widoczna w SPA, serwis musi być włączony
 w konfiguracji zewnętrznej. W
-[`config/default.json`](../../config/default.json:488) ustaw:
+[`config/mount/default.json`](../../config/mount/default.json:488) ustaw:
 
 ```json
 "sequencer": {
@@ -101,7 +101,7 @@ Uruchamianie:
 ```bash
 ./build/bin/astro_sequencer_server \
     --address 0.0.0.0:50057 \
-    --config config/sequencer_config.json
+    --config config/sequencer/sequencer_config.json
 ```
 
 Dostępne opcje wiersza poleceń

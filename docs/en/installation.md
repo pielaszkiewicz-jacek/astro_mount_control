@@ -27,7 +27,7 @@ flowchart TD
 
     subgraph INST["📋 Installation"]
         INSTALL["📄 sudo make install<br/>/usr/local/bin/"]:::install
-        CONF["⚙️ Configure<br/>Edit config/default.json<br/>Set location, mount params, CAN"]:::install
+        CONF["⚙️ Configure<br/>Edit config/mount/default.json<br/>Set location, mount params, CAN"]:::install
         SERVICE["🔄 Install systemd service<br/>sudo systemctl enable astro-mount"]:::install
     end
 
@@ -132,7 +132,7 @@ make -j$(nproc)
 
 ```bash
 # Start the controller
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 
 # Start the web proxy (in another terminal)
 cd web/proxy
@@ -1030,14 +1030,14 @@ Then build only the missing ones (e.g., only gRPC if `grpc-devel` is unavailable
 
 ### Configuration File
 
-The main configuration file is located at `config/default.json`. You can copy and modify it:
+The main configuration file is located at `config/mount/default.json`. You can copy and modify it:
 
 ```bash
 # Copy default configuration
-cp config/default.json config/my-config.json
+cp config/mount/default.json config/mount/my-config.json
 
 # Edit configuration
-nano config/my-config.json
+nano config/mount/my-config.json
 ```
 
 ### Example Configuration
@@ -1238,7 +1238,7 @@ iface can0 inet manual
 ./build/src/astro-mount-controller
 
 # Start with custom configuration
-./build/src/astro-mount-controller config/my-config.json
+./build/src/astro-mount-controller config/mount/my-config.json
 
 # Start in background
 nohup ./build/src/astro-mount-controller > mount.log 2>&1 &

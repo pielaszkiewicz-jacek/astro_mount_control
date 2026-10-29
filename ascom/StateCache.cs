@@ -18,6 +18,7 @@ namespace AstroMount
         private readonly int _pollIntervalMs;
         private ControllerState _cachedState;
         private readonly object _lock = new object();
+        private DateTime _lastErrorRecovery = DateTime.MinValue;
         private bool _disposed;
 
         /// <summary>
@@ -79,6 +80,30 @@ namespace AstroMount
                 lock (_lock)
                 {
                     _cachedState = fresh;
+                }
+
+                // Auto-recover a transient controller ERROR so ASCOM clients stay
+                // responsive (mirrors the INDI driver's ClearErrors recovery).
+                // Rate-limit to one attempt per 10 s so a real hardware fault is
+                // not masked by an endless retry loop.
+                if (fresh.Status == ControllerState.Types.MountStatus.Error)
+                {
+                    DateTime now = DateTime.UtcNow;
+                    lock (_lock)
+                    {
+                        if ((now - _lastErrorRecovery).TotalSeconds < 10)
+                            return;
+                        _lastErrorRecovery = now;
+                    }
+
+                    try
+                    {
+                        _grpc.ClearErrors();
+                    }
+                    catch
+                    {
+                        // Recovery is best-effort; a later tick will retry.
+                    }
                 }
             }
             catch

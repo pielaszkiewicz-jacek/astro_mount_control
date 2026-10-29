@@ -26,497 +26,558 @@ namespace AstroMount {
           string.Concat(
             "ChZtb3VudF9jb250cm9sbGVyLnByb3RvEgthc3Ryb19tb3VudBofZ29vZ2xl",
             "L3Byb3RvYnVmL3RpbWVzdGFtcC5wcm90bxobZ29vZ2xlL3Byb3RvYnVmL2Vt",
-            "cHR5LnByb3RvIuoECgtDb29yZGluYXRlcxIKCgJyYRgBIAEoARILCgNkZWMY",
-            "AiABKAESDQoFcG1fcmEYAyABKAESDgoGcG1fZGVjGAQgASgBEhAKCHBhcmFs",
-            "bGF4GAUgASgBEhcKD3JhZGlhbF92ZWxvY2l0eRgGIAEoARINCgVlcG9jaBgH",
-            "IAEoARISCgpjYXRhbG9nX2lkGAggASgJEhEKCW9iamVjdF9pZBgJIAEoCRIR",
-            "CgltYWduaXR1ZGUYCiABKAESFQoNc3BlY3RyYWxfdHlwZRgLIAEoCRIQCghl",
-            "cG9jaF9yYRgMIAEoARIRCgllcG9jaF9kZWMYDSABKAESFgoOcG9zaXRpb25f",
-            "YW5nbGUYDiABKAESEgoKc2VwYXJhdGlvbhgPIAEoARIYChBhcHBseV9yZWZy",
-            "YWN0aW9uGBAgASgIEhMKC3RlbXBlcmF0dXJlGBEgASgBEhAKCHByZXNzdXJl",
-            "GBIgASgBEhAKCGh1bWlkaXR5GBMgASgBEhgKEGFwcGx5X3ByZWNlc3Npb24Y",
-            "FCABKAgSFgoOYXBwbHlfbnV0YXRpb24YFSABKAgSGAoQYXBwbHlfYWJlcnJh",
-            "dGlvbhgWIAEoCBIYChBhcHBseV9saWdodF90aW1lGBcgASgIEh0KFWFwcGx5",
-            "X2dyYXZfZGVmbGVjdGlvbhgYIAEoCBIQCghhbHRpdHVkZRgZIAEoARIPCgdh",
-            "emltdXRoGBogASgBEhMKC2FwcGFyZW50X3JhGBsgASgBEhQKDGFwcGFyZW50",
-            "X2RlYxgcIAEoARIPCgd0b3BvX3JhGB0gASgBEhAKCHRvcG9fZGVjGB4gASgB",
-            "IlwKDU1vdW50UG9zaXRpb24SDQoFYXhpczEYASABKAESDQoFYXhpczIYAiAB",
+            "cHR5LnByb3RvIr4FCgtDb29yZGluYXRlcxIKCgJyYRgBIAEoARILCgNkZWMY",
+            "AiABKAESFQoNdHJhY2tpbmdfbW9kZRgfIAEoBRIcChRjdXN0b21fdHJhY2tf",
+            "cmF0ZV9yYRggIAEoARIdChVjdXN0b21fdHJhY2tfcmF0ZV9kZWMYISABKAES",
+            "DQoFcG1fcmEYAyABKAESDgoGcG1fZGVjGAQgASgBEhAKCHBhcmFsbGF4GAUg",
+            "ASgBEhcKD3JhZGlhbF92ZWxvY2l0eRgGIAEoARINCgVlcG9jaBgHIAEoARIS",
+            "CgpjYXRhbG9nX2lkGAggASgJEhEKCW9iamVjdF9pZBgJIAEoCRIRCgltYWdu",
+            "aXR1ZGUYCiABKAESFQoNc3BlY3RyYWxfdHlwZRgLIAEoCRIQCghlcG9jaF9y",
+            "YRgMIAEoARIRCgllcG9jaF9kZWMYDSABKAESFgoOcG9zaXRpb25fYW5nbGUY",
+            "DiABKAESEgoKc2VwYXJhdGlvbhgPIAEoARIYChBhcHBseV9yZWZyYWN0aW9u",
+            "GBAgASgIEhMKC3RlbXBlcmF0dXJlGBEgASgBEhAKCHByZXNzdXJlGBIgASgB",
+            "EhAKCGh1bWlkaXR5GBMgASgBEhgKEGFwcGx5X3ByZWNlc3Npb24YFCABKAgS",
+            "FgoOYXBwbHlfbnV0YXRpb24YFSABKAgSGAoQYXBwbHlfYWJlcnJhdGlvbhgW",
+            "IAEoCBIYChBhcHBseV9saWdodF90aW1lGBcgASgIEh0KFWFwcGx5X2dyYXZf",
+            "ZGVmbGVjdGlvbhgYIAEoCBIQCghhbHRpdHVkZRgZIAEoARIPCgdhemltdXRo",
+            "GBogASgBEhMKC2FwcGFyZW50X3JhGBsgASgBEhQKDGFwcGFyZW50X2RlYxgc",
+            "IAEoARIPCgd0b3BvX3JhGB0gASgBEhAKCHRvcG9fZGVjGB4gASgBIlwKDU1v",
+            "dW50UG9zaXRpb24SDQoFYXhpczEYASABKAESDQoFYXhpczIYAiABKAESLQoJ",
+            "dGltZXN0YW1wGAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKB",
+            "AgoLTWVhc3VyZW1lbnQSKgoIb2JzZXJ2ZWQYASABKAsyGC5hc3Ryb19tb3Vu",
+            "dC5Db29yZGluYXRlcxIqCghleHBlY3RlZBgCIAEoCzIYLmFzdHJvX21vdW50",
+            "LkNvb3JkaW5hdGVzEjIKDm1vdW50X3Bvc2l0aW9uGAMgASgLMhouYXN0cm9f",
+            "bW91bnQuTW91bnRQb3NpdGlvbhITCgt0ZW1wZXJhdHVyZRgEIAEoARIQCghw",
+            "cmVzc3VyZRgFIAEoARIQCghodW1pZGl0eRgGIAEoARItCgl0aW1lc3RhbXAY",
+            "ByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIoIBChBUUG9pbnRQ",
+            "YXJhbWV0ZXJzEhQKDGNvZWZmaWNpZW50cxgBIAMoARITCgtjaGlfc3F1YXJl",
+            "ZBgCIAEoARIvCgtsYXN0X3VwZGF0ZRgDIAEoCzIaLmdvb2dsZS5wcm90b2J1",
+            "Zi5UaW1lc3RhbXASEgoKY2FsaWJyYXRlZBgEIAEoCCJwCg5Sb3RhdGlvbk1h",
+            "dHJpeBIKCgJxMBgBIAEoARIKCgJxMRgCIAEoARIKCgJxMhgDIAEoARIKCgJx",
+            "MxgEIAEoARIuCgp2YWxpZF9mcm9tGAUgASgLMhouZ29vZ2xlLnByb3RvYnVm",
+            "LlRpbWVzdGFtcCLFAQoQVHJhamVjdG9yeVBhcmFtcxIpCgR0eXBlGAEgASgO",
+            "MhsuYXN0cm9fbW91bnQuVHJhamVjdG9yeVR5cGUSFAoMbWF4X3ZlbG9jaXR5",
+            "GAIgASgBEhgKEG1heF9hY2NlbGVyYXRpb24YAyABKAESEAoIbWF4X2plcmsY",
+            "BCABKAESFgoOc3RhcnRfcG9zaXRpb24YBSABKAESFwoPdGFyZ2V0X3Bvc2l0",
+            "aW9uGAYgASgBEhMKC3VwZGF0ZV9yYXRlGAcgASgBImcKD1RyYWplY3RvcnlQ",
+            "b2ludBIQCghwb3NpdGlvbhgBIAEoARIQCgh2ZWxvY2l0eRgCIAEoARIUCgxh",
+            "Y2NlbGVyYXRpb24YAyABKAESDAoEamVyaxgEIAEoARIMCgR0aW1lGAUgASgB",
+            "IpsBCgpUcmFqZWN0b3J5Ei0KBnBhcmFtcxgBIAEoCzIdLmFzdHJvX21vdW50",
+            "LlRyYWplY3RvcnlQYXJhbXMSLAoGcG9pbnRzGAIgAygLMhwuYXN0cm9fbW91",
+            "bnQuVHJhamVjdG9yeVBvaW50EjAKDGdlbmVyYXRlZF9hdBgDIAEoCzIaLmdv",
+            "b2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi2QYKDVRyYWNrZWRPYmplY3QSLQoL",
+            "Y29vcmRpbmF0ZXMYASABKAsyGC5hc3Ryb19tb3VudC5Db29yZGluYXRlcxIX",
+            "Cg9zZW1pX21ham9yX2F4aXMYAiABKAESFAoMZWNjZW50cmljaXR5GAMgASgB",
+            "EhMKC2luY2xpbmF0aW9uGAQgASgBEhoKEmxvbmdpdHVkZV9hc2Nfbm9kZRgF",
+            "IAEoARIbChNhcmd1bWVudF9wZXJpaGVsaW9uGAYgASgBEhQKDG1lYW5fYW5v",
+            "bWFseRgHIAEoARIZChFlcG9jaF9vZl9lbGVtZW50cxgIIAEoARIQCghkaWFt",
+            "ZXRlchgJIAEoARIOCgZhbGJlZG8YCiABKAESFwoPcm90YXRpb25fcGVyaW9k",
+            "GAsgASgBEg8KB3BvbGVfcmEYDCABKAESEAoIcG9sZV9kZWMYDSABKAESEwoL",
+            "cGhhc2VfYW5nbGUYDiABKAESFgoOc29sYXJfZGlzdGFuY2UYDyABKAESFgoO",
+            "ZWFydGhfZGlzdGFuY2UYECABKAESEgoKZWxvbmdhdGlvbhgRIAEoARIaChJh",
+            "YnNvbHV0ZV9tYWduaXR1ZGUYEiABKAESFwoPc2xvcGVfcGFyYW1ldGVyGBMg",
+            "ASgBEhkKEXBoYXNlX2NvZWZmaWNpZW50GBQgASgBEg8KB2Fpcm1hc3MYFSAB",
+            "KAESEgoKZXh0aW5jdGlvbhgWIAEoARIOCgZzZWVpbmcYFyABKAESFgoOc2t5",
+            "X2JyaWdodG5lc3MYGCABKAESDwoHcmFfcmF0ZRgZIAEoARIQCghkZWNfcmF0",
+            "ZRgaIAEoARIVCg1hbHRpdHVkZV9yYXRlGBsgASgBEhQKDGF6aW11dGhfcmF0",
+            "ZRgcIAEoARIZChF0cmFja2luZ19lcnJvcl9yYRgdIAEoARIaChJ0cmFja2lu",
+            "Z19lcnJvcl9kZWMYHiABKAESGAoQZ3VpZGluZ19lcnJvcl9yYRgfIAEoARIZ",
+            "ChFndWlkaW5nX2Vycm9yX2RlYxggIAEoARIvCgtjb21wdXRlZF9hdBghIAEo",
+            "CzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEwoLanVsaWFuX2RhdGUY",
+            "IiABKAESFQoNc2lkZXJlYWxfdGltZRgjIAEoASKbCAoPQ29udHJvbGxlclN0",
+            "YXRlEjgKBnN0YXR1cxgBIAEoDjIoLmFzdHJvX21vdW50LkNvbnRyb2xsZXJT",
+            "dGF0ZS5Nb3VudFN0YXR1cxIyCg50cmFja2VkX29iamVjdBgCIAEoCzIaLmFz",
+            "dHJvX21vdW50LlRyYWNrZWRPYmplY3QSNAoQY3VycmVudF9wb3NpdGlvbhgD",
+            "IAEoCzIaLmFzdHJvX21vdW50Lk1vdW50UG9zaXRpb24SNAoPcm90YXRpb25f",
+            "bWF0cml4GAQgASgLMhsuYXN0cm9fbW91bnQuUm90YXRpb25NYXRyaXgSNAoN",
+            "dHBvaW50X3BhcmFtcxgFIAEoCzIdLmFzdHJvX21vdW50LlRQb2ludFBhcmFt",
+            "ZXRlcnMSGAoQZW5jb2RlcnNfZW5hYmxlZBgGIAEoCBIVCg1ndWlkZXJfYWN0",
+            "aXZlGAcgASgIEi4KCnN0YXRlX3RpbWUYCCABKAsyGi5nb29nbGUucHJvdG9i",
+            "dWYuVGltZXN0YW1wEhgKEHRyYWNraW5nX3JhdGVfcmEYCSABKAESGQoRdHJh",
+            "Y2tpbmdfcmF0ZV9kZWMYCiABKAESEQoJcGllcl9zaWRlGAsgASgBEhgKEG1l",
+            "cmlkaWFuX2ZsaXBwZWQYDCABKAgSGAoQdGltZV90b19tZXJpZGlhbhgNIAEo",
+            "ARITCgt0aW1lX3RvX3NldBgOIAEoARIUCgx0aW1lX3RvX3Jpc2UYDyABKAES",
+            "EwoLdGVtcGVyYXR1cmUYECABKAESEAoIcHJlc3N1cmUYESABKAESEAoIaHVt",
+            "aWRpdHkYEiABKAESEgoKd2luZF9zcGVlZBgTIAEoARIWCg53aW5kX2RpcmVj",
+            "dGlvbhgUIAEoARIWCg5wb2ludGluZ19lcnJvchgVIAEoARIcChR0cmFja2lu",
+            "Z19wZXJmb3JtYW5jZRgWIAEoARIbChNndWlkaW5nX3BlcmZvcm1hbmNlGBcg",
+            "ASgBEhcKD21vdW50X3ZpYnJhdGlvbhgYIAEoARI2ChBib290c3RyYXBfc3Rh",
+            "dHVzGBkgASgLMhwuYXN0cm9fbW91bnQuQm9vdHN0cmFwU3RhdHVzEhcKD3Rl",
+            "bGVzY29wZV9heGlzMRgaIAEoARIXCg90ZWxlc2NvcGVfYXhpczIYGyABKAES",
+            "GQoRYWN0dWFsX3JhdGVfYXhpczEYHCABKAESGQoRYWN0dWFsX3JhdGVfYXhp",
+            "czIYHSABKAESEgoKY3VycmVudF9yYRgeIAEoARITCgtjdXJyZW50X2RlYxgf",
+            "IAEoASJWCgtNb3VudFN0YXR1cxILCgdVTktOT1dOEAASCAoESURMRRABEgsK",
+            "B1NMRVdJTkcQAhIMCghUUkFDS0lORxADEgoKBlBBUktFRBAEEgkKBUVSUk9S",
+            "EAUiigEKDFBvbGVQb3NpdGlvbhIQCghsYXRpdHVkZRgBIAEoARIRCglsb25n",
+            "aXR1ZGUYAiABKAESEAoIYWx0aXR1ZGUYAyABKAESEAoIYWNjdXJhY3kYBCAB",
+            "KAESMQoNZGV0ZXJtaW5lZF9hdBgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5U",
+            "aW1lc3RhbXAiaQoVSG9yaXpvbnRhbENvb3JkaW5hdGVzEhAKCGFsdGl0dWRl",
+            "GAEgASgBEg8KB2F6aW11dGgYAiABKAESLQoJdGltZXN0YW1wGAMgASgLMhou",
+            "Z29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCLBAQoSQXhpc0NvbnRyb2xSZXF1",
+            "ZXN0Eg8KB2F4aXNfaWQYASABKAUSKgoEbW9kZRgCIAEoDjIcLmFzdHJvX21v",
+            "dW50LkF4aXNDb250cm9sTW9kZRIXCg90YXJnZXRfcG9zaXRpb24YAyABKAES",
+            "FAoMbWF4X3ZlbG9jaXR5GAQgASgBEhQKDGFjY2VsZXJhdGlvbhgFIAEoARIX",
+            "Cg90YXJnZXRfdmVsb2NpdHkYBiABKAESEAoIcmVsYXRpdmUYByABKAgiTAoP",
+            "QXhpc1N0b3BSZXF1ZXN0Eg8KB2F4aXNfaWQYASABKAUSEgoKZGVjZWxlcmF0",
+            "ZRgCIAEoCBIUCgxkZWNlbGVyYXRpb24YAyABKAEiPAoURW1lcmdlbmN5U3Rv",
+            "cFJlcXVlc3QSDwoHYXhpc19pZBgBIAEoBRITCgtyZXNldF9hZnRlchgCIAEo",
+            "CCKAAgoKQXhpc1N0YXR1cxIPCgdheGlzX2lkGAEgASgFEhgKEGN1cnJlbnRf",
+            "cG9zaXRpb24YAiABKAESGAoQY3VycmVudF92ZWxvY2l0eRgDIAEoARIXCg90",
+            "YXJnZXRfcG9zaXRpb24YBCABKAESFwoPdGFyZ2V0X3ZlbG9jaXR5GAUgASgB",
+            "Eg4KBm1vdmluZxgGIAEoCBIWCg50YXJnZXRfcmVhY2hlZBgHIAEoCBINCgVl",
+            "cnJvchgIIAEoCBIVCg1lcnJvcl9tZXNzYWdlGAkgASgJEi0KCXRpbWVzdGFt",
+            "cBgKIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiUAoLTHgyMDBT",
+            "dGF0dXMSDwoHZW5hYmxlZBgBIAEoCBIPCgdydW5uaW5nGAIgASgIEgwKBHBv",
+            "cnQYAyABKAkSEQoJYmF1ZF9yYXRlGAQgASgFIkMKEFN0YXRlU2F2ZVJlcXVl",
+            "c3QSEQoJZmlsZV9wYXRoGAEgASgJEhwKFGluY2x1ZGVfbWVhc3VyZW1lbnRz",
+            "GAIgASgIIjkKEVN0YXRlU2F2ZVJlc3BvbnNlEhEKCWZpbGVfcGF0aBgBIAEo",
+            "CRIRCglmaWxlX3NpemUYAiABKAMiJQoQU3RhdGVMb2FkUmVxdWVzdBIRCglm",
+            "aWxlX3BhdGgYASABKAkiTQoYUG9sZURldGVybWluYXRpb25SZXF1ZXN0EhkK",
+            "EW1lYXN1cmVtZW50X2NvdW50GAEgASgFEhYKDmR1cmF0aW9uX2hvdXJzGAIg",
+            "ASgBIp0BCg1FbmNvZGVyQ29uZmlnEjQKBHR5cGUYASABKA4yJi5hc3Ryb19t",
+            "b3VudC5FbmNvZGVyQ29uZmlnLkVuY29kZXJUeXBlEhIKCnJlc29sdXRpb24Y",
+            "AiABKAESFAoMdXNlX2ZlZWRiYWNrGAMgASgIIiwKC0VuY29kZXJUeXBlEgwK",
+            "CEFCU09MVVRFEAASDwoLSU5DUkVNRU5UQUwQASJVCgxHdWlkZXJDb25maWcS",
+            "GQoRY29ubmVjdGlvbl9zdHJpbmcYASABKAkSFgoObWF4X2NvcnJlY3Rpb24Y",
+            "AiABKAESEgoKYWdncmVzc2lvbhgDIAEoASJwChBHdWlkZXJDb3JyZWN0aW9u",
+            "EhUKDXJhX2NvcnJlY3Rpb24YASABKAESFgoOZGVjX2NvcnJlY3Rpb24YAiAB",
             "KAESLQoJdGltZXN0YW1wGAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVz",
-            "dGFtcCKBAgoLTWVhc3VyZW1lbnQSKgoIb2JzZXJ2ZWQYASABKAsyGC5hc3Ry",
-            "b19tb3VudC5Db29yZGluYXRlcxIqCghleHBlY3RlZBgCIAEoCzIYLmFzdHJv",
-            "X21vdW50LkNvb3JkaW5hdGVzEjIKDm1vdW50X3Bvc2l0aW9uGAMgASgLMhou",
-            "YXN0cm9fbW91bnQuTW91bnRQb3NpdGlvbhITCgt0ZW1wZXJhdHVyZRgEIAEo",
-            "ARIQCghwcmVzc3VyZRgFIAEoARIQCghodW1pZGl0eRgGIAEoARItCgl0aW1l",
-            "c3RhbXAYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIoIBChBU",
-            "UG9pbnRQYXJhbWV0ZXJzEhQKDGNvZWZmaWNpZW50cxgBIAMoARITCgtjaGlf",
-            "c3F1YXJlZBgCIAEoARIvCgtsYXN0X3VwZGF0ZRgDIAEoCzIaLmdvb2dsZS5w",
-            "cm90b2J1Zi5UaW1lc3RhbXASEgoKY2FsaWJyYXRlZBgEIAEoCCJwCg5Sb3Rh",
-            "dGlvbk1hdHJpeBIKCgJxMBgBIAEoARIKCgJxMRgCIAEoARIKCgJxMhgDIAEo",
-            "ARIKCgJxMxgEIAEoARIuCgp2YWxpZF9mcm9tGAUgASgLMhouZ29vZ2xlLnBy",
-            "b3RvYnVmLlRpbWVzdGFtcCLFAQoQVHJhamVjdG9yeVBhcmFtcxIpCgR0eXBl",
-            "GAEgASgOMhsuYXN0cm9fbW91bnQuVHJhamVjdG9yeVR5cGUSFAoMbWF4X3Zl",
-            "bG9jaXR5GAIgASgBEhgKEG1heF9hY2NlbGVyYXRpb24YAyABKAESEAoIbWF4",
-            "X2plcmsYBCABKAESFgoOc3RhcnRfcG9zaXRpb24YBSABKAESFwoPdGFyZ2V0",
-            "X3Bvc2l0aW9uGAYgASgBEhMKC3VwZGF0ZV9yYXRlGAcgASgBImcKD1RyYWpl",
-            "Y3RvcnlQb2ludBIQCghwb3NpdGlvbhgBIAEoARIQCgh2ZWxvY2l0eRgCIAEo",
-            "ARIUCgxhY2NlbGVyYXRpb24YAyABKAESDAoEamVyaxgEIAEoARIMCgR0aW1l",
-            "GAUgASgBIpsBCgpUcmFqZWN0b3J5Ei0KBnBhcmFtcxgBIAEoCzIdLmFzdHJv",
-            "X21vdW50LlRyYWplY3RvcnlQYXJhbXMSLAoGcG9pbnRzGAIgAygLMhwuYXN0",
-            "cm9fbW91bnQuVHJhamVjdG9yeVBvaW50EjAKDGdlbmVyYXRlZF9hdBgDIAEo",
-            "CzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAi2QYKDVRyYWNrZWRPYmpl",
-            "Y3QSLQoLY29vcmRpbmF0ZXMYASABKAsyGC5hc3Ryb19tb3VudC5Db29yZGlu",
-            "YXRlcxIXCg9zZW1pX21ham9yX2F4aXMYAiABKAESFAoMZWNjZW50cmljaXR5",
-            "GAMgASgBEhMKC2luY2xpbmF0aW9uGAQgASgBEhoKEmxvbmdpdHVkZV9hc2Nf",
-            "bm9kZRgFIAEoARIbChNhcmd1bWVudF9wZXJpaGVsaW9uGAYgASgBEhQKDG1l",
-            "YW5fYW5vbWFseRgHIAEoARIZChFlcG9jaF9vZl9lbGVtZW50cxgIIAEoARIQ",
-            "CghkaWFtZXRlchgJIAEoARIOCgZhbGJlZG8YCiABKAESFwoPcm90YXRpb25f",
-            "cGVyaW9kGAsgASgBEg8KB3BvbGVfcmEYDCABKAESEAoIcG9sZV9kZWMYDSAB",
-            "KAESEwoLcGhhc2VfYW5nbGUYDiABKAESFgoOc29sYXJfZGlzdGFuY2UYDyAB",
-            "KAESFgoOZWFydGhfZGlzdGFuY2UYECABKAESEgoKZWxvbmdhdGlvbhgRIAEo",
-            "ARIaChJhYnNvbHV0ZV9tYWduaXR1ZGUYEiABKAESFwoPc2xvcGVfcGFyYW1l",
-            "dGVyGBMgASgBEhkKEXBoYXNlX2NvZWZmaWNpZW50GBQgASgBEg8KB2Fpcm1h",
-            "c3MYFSABKAESEgoKZXh0aW5jdGlvbhgWIAEoARIOCgZzZWVpbmcYFyABKAES",
-            "FgoOc2t5X2JyaWdodG5lc3MYGCABKAESDwoHcmFfcmF0ZRgZIAEoARIQCghk",
-            "ZWNfcmF0ZRgaIAEoARIVCg1hbHRpdHVkZV9yYXRlGBsgASgBEhQKDGF6aW11",
-            "dGhfcmF0ZRgcIAEoARIZChF0cmFja2luZ19lcnJvcl9yYRgdIAEoARIaChJ0",
-            "cmFja2luZ19lcnJvcl9kZWMYHiABKAESGAoQZ3VpZGluZ19lcnJvcl9yYRgf",
-            "IAEoARIZChFndWlkaW5nX2Vycm9yX2RlYxggIAEoARIvCgtjb21wdXRlZF9h",
-            "dBghIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASEwoLanVsaWFu",
-            "X2RhdGUYIiABKAESFQoNc2lkZXJlYWxfdGltZRgjIAEoASKKBwoPQ29udHJv",
-            "bGxlclN0YXRlEjgKBnN0YXR1cxgBIAEoDjIoLmFzdHJvX21vdW50LkNvbnRy",
-            "b2xsZXJTdGF0ZS5Nb3VudFN0YXR1cxIyCg50cmFja2VkX29iamVjdBgCIAEo",
-            "CzIaLmFzdHJvX21vdW50LlRyYWNrZWRPYmplY3QSNAoQY3VycmVudF9wb3Np",
-            "dGlvbhgDIAEoCzIaLmFzdHJvX21vdW50Lk1vdW50UG9zaXRpb24SNAoPcm90",
-            "YXRpb25fbWF0cml4GAQgASgLMhsuYXN0cm9fbW91bnQuUm90YXRpb25NYXRy",
-            "aXgSNAoNdHBvaW50X3BhcmFtcxgFIAEoCzIdLmFzdHJvX21vdW50LlRQb2lu",
-            "dFBhcmFtZXRlcnMSGAoQZW5jb2RlcnNfZW5hYmxlZBgGIAEoCBIVCg1ndWlk",
-            "ZXJfYWN0aXZlGAcgASgIEi4KCnN0YXRlX3RpbWUYCCABKAsyGi5nb29nbGUu",
-            "cHJvdG9idWYuVGltZXN0YW1wEhgKEHRyYWNraW5nX3JhdGVfcmEYCSABKAES",
-            "GQoRdHJhY2tpbmdfcmF0ZV9kZWMYCiABKAESEQoJcGllcl9zaWRlGAsgASgB",
-            "EhgKEG1lcmlkaWFuX2ZsaXBwZWQYDCABKAgSGAoQdGltZV90b19tZXJpZGlh",
-            "bhgNIAEoARITCgt0aW1lX3RvX3NldBgOIAEoARIUCgx0aW1lX3RvX3Jpc2UY",
-            "DyABKAESEwoLdGVtcGVyYXR1cmUYECABKAESEAoIcHJlc3N1cmUYESABKAES",
-            "EAoIaHVtaWRpdHkYEiABKAESEgoKd2luZF9zcGVlZBgTIAEoARIWCg53aW5k",
-            "X2RpcmVjdGlvbhgUIAEoARIWCg5wb2ludGluZ19lcnJvchgVIAEoARIcChR0",
-            "cmFja2luZ19wZXJmb3JtYW5jZRgWIAEoARIbChNndWlkaW5nX3BlcmZvcm1h",
-            "bmNlGBcgASgBEhcKD21vdW50X3ZpYnJhdGlvbhgYIAEoARI2ChBib290c3Ry",
-            "YXBfc3RhdHVzGBkgASgLMhwuYXN0cm9fbW91bnQuQm9vdHN0cmFwU3RhdHVz",
-            "IlYKC01vdW50U3RhdHVzEgsKB1VOS05PV04QABIICgRJRExFEAESCwoHU0xF",
-            "V0lORxACEgwKCFRSQUNLSU5HEAMSCgoGUEFSS0VEEAQSCQoFRVJST1IQBSKK",
-            "AQoMUG9sZVBvc2l0aW9uEhAKCGxhdGl0dWRlGAEgASgBEhEKCWxvbmdpdHVk",
-            "ZRgCIAEoARIQCghhbHRpdHVkZRgDIAEoARIQCghhY2N1cmFjeRgEIAEoARIx",
-            "Cg1kZXRlcm1pbmVkX2F0GAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVz",
-            "dGFtcCJpChVIb3Jpem9udGFsQ29vcmRpbmF0ZXMSEAoIYWx0aXR1ZGUYASAB",
-            "KAESDwoHYXppbXV0aBgCIAEoARItCgl0aW1lc3RhbXAYAyABKAsyGi5nb29n",
-            "bGUucHJvdG9idWYuVGltZXN0YW1wIsEBChJBeGlzQ29udHJvbFJlcXVlc3QS",
-            "DwoHYXhpc19pZBgBIAEoBRIqCgRtb2RlGAIgASgOMhwuYXN0cm9fbW91bnQu",
-            "QXhpc0NvbnRyb2xNb2RlEhcKD3RhcmdldF9wb3NpdGlvbhgDIAEoARIUCgxt",
-            "YXhfdmVsb2NpdHkYBCABKAESFAoMYWNjZWxlcmF0aW9uGAUgASgBEhcKD3Rh",
-            "cmdldF92ZWxvY2l0eRgGIAEoARIQCghyZWxhdGl2ZRgHIAEoCCJMCg9BeGlz",
-            "U3RvcFJlcXVlc3QSDwoHYXhpc19pZBgBIAEoBRISCgpkZWNlbGVyYXRlGAIg",
-            "ASgIEhQKDGRlY2VsZXJhdGlvbhgDIAEoASI8ChRFbWVyZ2VuY3lTdG9wUmVx",
-            "dWVzdBIPCgdheGlzX2lkGAEgASgFEhMKC3Jlc2V0X2FmdGVyGAIgASgIIoAC",
-            "CgpBeGlzU3RhdHVzEg8KB2F4aXNfaWQYASABKAUSGAoQY3VycmVudF9wb3Np",
-            "dGlvbhgCIAEoARIYChBjdXJyZW50X3ZlbG9jaXR5GAMgASgBEhcKD3Rhcmdl",
-            "dF9wb3NpdGlvbhgEIAEoARIXCg90YXJnZXRfdmVsb2NpdHkYBSABKAESDgoG",
-            "bW92aW5nGAYgASgIEhYKDnRhcmdldF9yZWFjaGVkGAcgASgIEg0KBWVycm9y",
-            "GAggASgIEhUKDWVycm9yX21lc3NhZ2UYCSABKAkSLQoJdGltZXN0YW1wGAog",
-            "ASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCJDChBTdGF0ZVNhdmVS",
-            "ZXF1ZXN0EhEKCWZpbGVfcGF0aBgBIAEoCRIcChRpbmNsdWRlX21lYXN1cmVt",
-            "ZW50cxgCIAEoCCI5ChFTdGF0ZVNhdmVSZXNwb25zZRIRCglmaWxlX3BhdGgY",
-            "ASABKAkSEQoJZmlsZV9zaXplGAIgASgDIiUKEFN0YXRlTG9hZFJlcXVlc3QS",
-            "EQoJZmlsZV9wYXRoGAEgASgJIk0KGFBvbGVEZXRlcm1pbmF0aW9uUmVxdWVz",
-            "dBIZChFtZWFzdXJlbWVudF9jb3VudBgBIAEoBRIWCg5kdXJhdGlvbl9ob3Vy",
-            "cxgCIAEoASKdAQoNRW5jb2RlckNvbmZpZxI0CgR0eXBlGAEgASgOMiYuYXN0",
-            "cm9fbW91bnQuRW5jb2RlckNvbmZpZy5FbmNvZGVyVHlwZRISCgpyZXNvbHV0",
-            "aW9uGAIgASgBEhQKDHVzZV9mZWVkYmFjaxgDIAEoCCIsCgtFbmNvZGVyVHlw",
-            "ZRIMCghBQlNPTFVURRAAEg8KC0lOQ1JFTUVOVEFMEAEiVQoMR3VpZGVyQ29u",
-            "ZmlnEhkKEWNvbm5lY3Rpb25fc3RyaW5nGAEgASgJEhYKDm1heF9jb3JyZWN0",
-            "aW9uGAIgASgBEhIKCmFnZ3Jlc3Npb24YAyABKAEicAoQR3VpZGVyQ29ycmVj",
-            "dGlvbhIVCg1yYV9jb3JyZWN0aW9uGAEgASgBEhYKDmRlY19jb3JyZWN0aW9u",
-            "GAIgASgBEi0KCXRpbWVzdGFtcBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5U",
-            "aW1lc3RhbXAizgQKFkF4aXNQaHlzaWNhbFBhcmFtZXRlcnMSGwoTbW90b3Jf",
-            "c3RlcHNfcGVyX3JldhgBIAEoARIbChNtb3Rvcl9taWNyb3N0ZXBwaW5nGAIg",
-            "ASgBEhgKEG1vdG9yX3N0ZXBfYW5nbGUYAyABKAESGgoSZW5jb2Rlcl9yZXNv",
-            "bHV0aW9uGAQgASgBEiEKGWVuY29kZXJfY291bnRzX3Blcl9hcmNzZWMYBSAB",
-            "KAESIgoaZW5jb2Rlcl9xdWFudGl6YXRpb25fZXJyb3IYBiABKAESEgoKZ2Vh",
-            "cl9yYXRpbxgHIAEoARISCgp3b3JtX3JhdGlvGAggASgBEhIKCndvcm1fdGVl",
-            "dGgYCSABKAUSGAoQd29ybV93aGVlbF90ZWV0aBgKIAEoBRIeChZjeWNsaWNf",
-            "ZXJyb3JfYW1wbGl0dWRlGAsgASgBEhsKE2N5Y2xpY19lcnJvcl9wZXJpb2QY",
-            "DCABKAESGAoQY3ljbGljX2hhcm1vbmljcxgNIAMoARIQCghiYWNrbGFzaBgO",
-            "IAEoARIbChNiYWNrbGFzaF90ZW1wX2NvZWZmGA8gASgBEhYKDmF4aXNfc3Rp",
-            "ZmZuZXNzGBAgASgBEhwKFHRvcnNpb25hbF9jb21wbGlhbmNlGBEgASgBEhcK",
-            "D2V4cGFuc2lvbl9jb2VmZhgSIAEoARIdChV0ZW1wX2dlYXJfZXJyb3JfY29l",
-            "ZmYYEyABKAESGQoRY2FsaWJyYXRpb25fdGFibGUYFCADKAESGAoQY2FsaWJy",
-            "YXRpb25fdGVtcBgVIAEoASJCChBNb3VudE9yaWVudGF0aW9uEgoKAnF4GAEg",
-            "ASgBEgoKAnF5GAIgASgBEgoKAnF6GAMgASgBEgoKAnF3GAQgASgBIuwLCg1D",
-            "b25maWd1cmF0aW9uEhAKCGxhdGl0dWRlGAEgASgBEhEKCWxvbmdpdHVkZRgC",
-            "IAEoARIQCghhbHRpdHVkZRgDIAEoARIUCgxtb3VudF9oZWlnaHQYBCABKAES",
-            "EQoJcGllcl93ZXN0GAUgASgBEhEKCXBpZXJfZWFzdBgGIAEoARIUCgxmb2Nh",
-            "bF9sZW5ndGgYByABKAESEAoIYXBlcnR1cmUYCCABKAESGwoTZGVmYXVsdF90",
-            "ZW1wZXJhdHVyZRgJIAEoARIYChBkZWZhdWx0X3ByZXNzdXJlGAogASgBEhgK",
-            "EGRlZmF1bHRfaHVtaWRpdHkYCyABKAESFQoNcHJvY2Vzc19ub2lzZRgMIAEo",
-            "ARIZChFtZWFzdXJlbWVudF9ub2lzZRgNIAEoARIRCglsb2dfbGV2ZWwYDiAB",
-            "KAkSFQoNbG9nX2RpcmVjdG9yeRgPIAEoCRIZChFsb2dfcm90YXRpb25fZGF5",
-            "cxgQIAEoBRIUCgxncnBjX2FkZHJlc3MYESABKAkSEQoJZ3JwY19wb3J0GBIg",
-            "ASgFEhkKEWNhbm9wZW5faW50ZXJmYWNlGBMgASgJEhcKD2Nhbm9wZW5fbm9k",
-            "ZV9pZBgUIAEoBRIbChNwYXJrX3Bvc2l0aW9uX2F4aXMxGBUgASgBEhsKE3Bh",
-            "cmtfcG9zaXRpb25fYXhpczIYFiABKAESFQoNbWF4X3NsZXdfcmF0ZRgXIAEo",
-            "ARIZChFtYXhfdHJhY2tpbmdfcmF0ZRgYIAEoARIZChFzbGV3X2FjY2VsZXJh",
-            "dGlvbhgZIAEoARIdChV0cmFja2luZ19hY2NlbGVyYXRpb24YGiABKAESOwoO",
-            "aGFfYXhpc19wYXJhbXMYGyABKAsyIy5hc3Ryb19tb3VudC5BeGlzUGh5c2lj",
-            "YWxQYXJhbWV0ZXJzEjwKD2RlY19heGlzX3BhcmFtcxgcIAEoCzIjLmFzdHJv",
-            "X21vdW50LkF4aXNQaHlzaWNhbFBhcmFtZXRlcnMSFAoMdXNlX2VuY29kZXJz",
-            "GB0gASgIEhkKEWVuY29kZXJzX2Fic29sdXRlGB4gASgIEiEKGWVuY29kZXJf",
-            "cmVzb2x1dGlvbl9jb25maWcYHyABKAESHAoUdHBvaW50X2VuYWJsZWRfdGVy",
-            "bXMYICABKA0SFQoNZW5hYmxlX2d1aWRlchghIAEoCBIdChVndWlkZXJfbWF4",
-            "X2NvcnJlY3Rpb24YIiABKAESGQoRZ3VpZGVyX2FnZ3Jlc3Npb24YIyABKAES",
-            "JAocZW5hYmxlX3JlZnJhY3Rpb25fY29ycmVjdGlvbhgkIAEoCBIqCgptb3Vu",
-            "dF90eXBlGCUgASgOMhYuYXN0cm9fbW91bnQuTW91bnRUeXBlEhoKEnBvc2l0",
-            "aW9uX3RvbGVyYW5jZRgmIAEoARIWCg5yYXRlX3RvbGVyYW5jZRgnIAEoARId",
-            "ChVtZXJpZGlhbl9mbGlwX2VuYWJsZWQYKCABKAgSIwobbWVyaWRpYW5fZmxp",
-            "cF9kZWxheV9taW51dGVzGCkgASgBEigKIG1lcmlkaWFuX2ZsaXBfaHlzdGVy",
-            "ZXNpc19kZWdyZWVzGCogASgBEhsKE3NvZnRfbGltaXRzX2VuYWJsZWQYKyAB",
-            "KAgSHAoUc29mdF9saW1pdF9heGlzMV9taW4YLCABKAESHAoUc29mdF9saW1p",
-            "dF9heGlzMV9tYXgYLSABKAESHAoUc29mdF9saW1pdF9heGlzMl9taW4YLiAB",
-            "KAESHAoUc29mdF9saW1pdF9heGlzMl9tYXgYLyABKAESIgoac29mdF9saW1p",
-            "dF93YXJuaW5nX2RlZ3JlZXMYMCABKAESJwofc29mdF9saW1pdF9kZWNlbGVy",
-            "YXRpb25fZGVncmVlcxgxIAEoARInCh9zb2Z0X2xpbWl0X3RyYWNraW5nX3Jh",
-            "dGVfZmFjdG9yGDIgASgBEjgKEW1vdW50X29yaWVudGF0aW9uGDMgASgLMh0u",
-            "YXN0cm9fbW91bnQuTW91bnRPcmllbnRhdGlvbiIlChJIZWFsdGhDaGVja1Jl",
-            "cXVlc3QSDwoHc2VydmljZRgBIAEoCSLkAQoTSGVhbHRoQ2hlY2tSZXNwb25z",
-            "ZRI+CgZzdGF0dXMYASABKA4yLi5hc3Ryb19tb3VudC5IZWFsdGhDaGVja1Jl",
-            "c3BvbnNlLlNlcnZpbmdTdGF0dXMSDwoHc2VydmljZRgCIAEoCRIrCgdtZXRy",
-            "aWNzGAMgASgLMhouYXN0cm9fbW91bnQuU3lzdGVtTWV0cmljcyJPCg1TZXJ2",
-            "aW5nU3RhdHVzEgsKB1VOS05PV04QABILCgdTRVJWSU5HEAESDwoLTk9UX1NF",
-            "UlZJTkcQAhITCg9TRVJWSUNFX1VOS05PV04QAyLUAgoNU3lzdGVtTWV0cmlj",
-            "cxIZChFjcHVfdXNhZ2VfcGVyY2VudBgBIAEoARIXCg9tZW1vcnlfdXNhZ2Vf",
-            "bWIYAiABKAESGgoSYWN0aXZlX2Nvbm5lY3Rpb25zGAMgASgEEhYKDnRvdGFs",
-            "X3JlcXVlc3RzGAQgASgEEhMKC2Vycm9yX2NvdW50GAUgASgEEhwKFGF2Z19y",
-            "ZXNwb25zZV90aW1lX21zGAYgASgBEjoKDW1vdW50X21ldHJpY3MYByABKAsy",
-            "Iy5hc3Ryb19tb3VudC5Nb3VudENvbnRyb2xsZXJNZXRyaWNzEjgKDmthbG1h",
-            "bl9tZXRyaWNzGAggASgLMiAuYXN0cm9fbW91bnQuS2FsbWFuRmlsdGVyTWV0",
-            "cmljcxIyCg50cG9pbnRfbWV0cmljcxgJIAEoCzIaLmFzdHJvX21vdW50LlRQ",
-            "b2ludE1ldHJpY3Mi5wEKFk1vdW50Q29udHJvbGxlck1ldHJpY3MSHQoVdHJh",
-            "Y2tpbmdfZXJyb3JfcmFfYXZnGAEgASgBEh4KFnRyYWNraW5nX2Vycm9yX2Rl",
-            "Y19hdmcYAiABKAESGgoSdHJhY2tpbmdfZXJyb3JfbWF4GAMgASgBEhIKCnNs",
-            "ZXdfY291bnQYBCABKAQSEwoLdHJhY2tfY291bnQYBSABKAQSGQoRY2FsaWJy",
-            "YXRpb25fY291bnQYBiABKAQSFwoPZW5jb2RlcnNfYWN0aXZlGAcgASgIEhUK",
-            "DWd1aWRlcl9hY3RpdmUYCCABKAgikgEKE0thbG1hbkZpbHRlck1ldHJpY3MS",
-            "FQoNcHJvY2Vzc19ub2lzZRgBIAEoARIZChFtZWFzdXJlbWVudF9ub2lzZRgC",
-            "IAEoARIXCg9pbm5vdmF0aW9uX25vcm0YAyABKAESFAoMdXBkYXRlX2NvdW50",
-            "GAQgASgEEhoKEmF2Z191cGRhdGVfdGltZV9tcxgFIAEoASJ/Cg1UUG9pbnRN",
-            "ZXRyaWNzEhkKEW1lYXN1cmVtZW50X2NvdW50GAEgASgNEhQKDHJlc2lkdWFs",
-            "X21heBgCIAEoARIUCgxyZXNpZHVhbF9ybXMYAyABKAESEwoLY2hpX3NxdWFy",
-            "ZWQYBCABKAESEgoKY2FsaWJyYXRlZBgFIAEoCCLFAQoORXBoZW1lcmlzUG9p",
-            "bnQSLQoJdGltZXN0YW1wGAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVz",
-            "dGFtcBIKCgJyYRgCIAEoARILCgNkZWMYAyABKAESDwoHcmFfcmF0ZRgEIAEo",
-            "ARIQCghkZWNfcmF0ZRgFIAEoARIQCghyYV9hY2NlbBgGIAEoARIRCglkZWNf",
-            "YWNjZWwYByABKAESEAoIZGlzdGFuY2UYCCABKAESEQoJbWFnbml0dWRlGAkg",
-            "ASgBIp0CCg1FcGhlbWVyaXNEYXRhEhEKCW9iamVjdF9pZBgBIAEoCRITCgtv",
-            "YmplY3RfbmFtZRgCIAEoCRITCgtvYmplY3RfdHlwZRgDIAEoCRIrCgZwb2lu",
-            "dHMYBCADKAsyGy5hc3Ryb19tb3VudC5FcGhlbWVyaXNQb2ludBIbChNpbnRl",
-            "cnBvbGF0aW9uX29yZGVyGAUgASgBEhcKD3JlZmVyZW5jZV9mcmFtZRgGIAEo",
-            "CRIOCgZzb3VyY2UYByABKAkSLgoKdmFsaWRfZnJvbRgIIAEoCzIaLmdvb2ds",
-            "ZS5wcm90b2J1Zi5UaW1lc3RhbXASLAoIdmFsaWRfdG8YCSABKAsyGi5nb29n",
-            "bGUucHJvdG9idWYuVGltZXN0YW1wIvsBChVFcGhlbWVyaXNUcmFja1JlcXVl",
-            "c3QSLQoJZXBoZW1lcmlzGAEgASgLMhouYXN0cm9fbW91bnQuRXBoZW1lcmlz",
-            "RGF0YRIZChFsZWFkX3RpbWVfc2Vjb25kcxgCIAEoARIZChFlbmFibGVfcHJl",
-            "ZGljdGlvbhgDIAEoCBIhChlwcmVkaWN0aW9uX2ludGVydmFsX2hvdXJzGAQg",
-            "ASgBEhIKCmF1dG9fc3RhcnQYBSABKAgSFQoNdHJhY2tpbmdfbW9kZRgGIAEo",
-            "CRIWCg5jdXN0b21fcmF0ZV9yYRgHIAEoARIXCg9jdXN0b21fcmF0ZV9kZWMY",
-            "CCABKAEiyAEKHVN0YXJ0RXBoZW1lcmlzVHJhY2tpbmdSZXF1ZXN0EhEKCW9i",
-            "amVjdF9pZBgBIAEoCRIuCgpzdGFydF90aW1lGAIgASgLMhouZ29vZ2xlLnBy",
-            "b3RvYnVmLlRpbWVzdGFtcBIwCg5zdGFydF9wb3NpdGlvbhgDIAEoCzIYLmFz",
-            "dHJvX21vdW50LkNvb3JkaW5hdGVzEhUKDXdhaXRfYXRfc3RhcnQYBCABKAgS",
-            "GwoTc2xld19tYXJnaW5fc2Vjb25kcxgFIAEoASK8BgoURXBoZW1lcmlzVHJh",
-            "Y2tTdGF0dXMSPgoFc3RhdGUYASABKA4yLy5hc3Ryb19tb3VudC5FcGhlbWVy",
-            "aXNUcmFja1N0YXR1cy5UcmFja2luZ1N0YXRlEhEKCW9iamVjdF9pZBgCIAEo",
-            "CRITCgtvYmplY3RfbmFtZRgDIAEoCRIwCgxjdXJyZW50X3RpbWUYBCABKAsy",
-            "Gi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjQKEHRyYWNrX3N0YXJ0X3Rp",
-            "bWUYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjIKDnRyYWNr",
-            "X2VuZF90aW1lGAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIy",
-            "ChBjdXJyZW50X3Bvc2l0aW9uGAcgASgLMhguYXN0cm9fbW91bnQuQ29vcmRp",
-            "bmF0ZXMSMQoPdGFyZ2V0X3Bvc2l0aW9uGAggASgLMhguYXN0cm9fbW91bnQu",
-            "Q29vcmRpbmF0ZXMSHQoVcG9zaXRpb25fZXJyb3JfYXJjc2VjGAkgASgBEg8K",
-            "B3JhX3JhdGUYCiABKAESEAoIZGVjX3JhdGUYCyABKAESHgoWdGltZV9yZW1h",
-            "aW5pbmdfc2Vjb25kcxgMIAEoARIgChhlYXJ0aF9yb3RhdGlvbl9jb3JyZWN0",
-            "ZWQYDSABKAgSFQoNZXJyb3JfbWVzc2FnZRgOIAEoCRIQCgh3YXJuaW5ncxgP",
-            "IAMoCRJWChN0cmFja2luZ19wYXJhbWV0ZXJzGBAgAygLMjkuYXN0cm9fbW91",
-            "bnQuRXBoZW1lcmlzVHJhY2tTdGF0dXMuVHJhY2tpbmdQYXJhbWV0ZXJzRW50",
-            "cnkaOQoXVHJhY2tpbmdQYXJhbWV0ZXJzRW50cnkSCwoDa2V5GAEgASgJEg0K",
-            "BXZhbHVlGAIgASgJOgI4ASJ5Cg1UcmFja2luZ1N0YXRlEggKBElETEUQABIU",
-            "ChBTTEVXSU5HX1RPX1NUQVJUEAESFAoQV0FJVElOR19BVF9TVEFSVBACEgwK",
-            "CFRSQUNLSU5HEAMSDgoKUFJFRElDVElORxAEEgkKBUVOREVEEAUSCQoFRVJS",
-            "T1IQBiKaAgoQRXBoZW1lcmlzTWV0cmljcxIRCglvYmplY3RfaWQYASABKAkS",
-            "EwoLb2JqZWN0X3R5cGUYAiABKAkSIAoYdG90YWxfdHJhY2tfdGltZV9zZWNv",
-            "bmRzGAMgASgEEiEKGWF2Z19wb3NpdGlvbl9lcnJvcl9hcmNzZWMYBCABKAES",
-            "IQoZbWF4X3Bvc2l0aW9uX2Vycm9yX2FyY3NlYxgFIAEoARIfChdhdmdfdHJh",
-            "Y2tpbmdfcmF0ZV9lcnJvchgGIAEoARIYChBwcmVkaWN0aW9uX2NvdW50GAcg",
-            "ASgNEhsKE3ByZWRpY3Rpb25fYWNjdXJhY3kYCCABKAESHgoWZWFydGhfcm90",
-            "YXRpb25fYXBwbGllZBgJIAEoCCJAChRCb290c3RyYXBNb2RlUmVxdWVzdBIo",
-            "CgRtb2RlGAEgASgOMhouYXN0cm9fbW91bnQuQm9vdHN0cmFwTW9kZSLFAgoU",
-            "Qm9vdHN0cmFwTWVhc3VyZW1lbnQSKgoIb2JzZXJ2ZWQYASABKAsyGC5hc3Ry",
-            "b19tb3VudC5Db29yZGluYXRlcxIqCghleHBlY3RlZBgCIAEoCzIYLmFzdHJv",
-            "X21vdW50LkNvb3JkaW5hdGVzEjIKDm1vdW50X3Bvc2l0aW9uGAMgASgLMhou",
-            "YXN0cm9fbW91bnQuTW91bnRQb3NpdGlvbhItCgl0aW1lc3RhbXAYBCABKAsy",
-            "Gi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEh4KFmVzdGltYXRlZF9lcnJv",
-            "cl9hcmNzZWMYBSABKAESIQoZdXNlX2Zvcl9pbml0aWFsX2FsaWdubWVudBgG",
-            "IAEoCBIXCg9zdGFyX2NhdGFsb2dfaWQYByABKAkSFgoOc3Rhcl9tYWduaXR1",
-            "ZGUYCCABKAEijAMKGkJvb3RzdHJhcENhbGlicmF0aW9uUmVzdWx0Eg8KB3N1",
-            "Y2Nlc3MYASABKAgSFQoNZXJyb3JfbWVzc2FnZRgCIAEoCRIiChppbml0aWFs",
-            "X3JvdGF0aW9uX2FuZ2xlX2RlZxgDIAEoARIeChZhbGlnbm1lbnRfZXJyb3Jf",
-            "YXJjc2VjGAQgASgBEhkKEW1lYXN1cmVtZW50X2NvdW50GAUgASgFEjEKDWNh",
-            "bGlicmF0ZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1w",
-            "EhsKE3Jlc2lkdWFsX3Jtc19hcmNzZWMYByABKAESGwoTbWF4X3Jlc2lkdWFs",
-            "X2FyY3NlYxgIIAEoARIYChByZWFkeV9mb3JfdHBvaW50GAkgASgIEjwKFWVz",
-            "dGltYXRlZF9vcmllbnRhdGlvbhgKIAEoCzIdLmFzdHJvX21vdW50Lk1vdW50",
-            "T3JpZW50YXRpb24SIgoaZXN0aW1hdGVkX3F1YXRlcm5pb25fZXJyb3IYCyAB",
-            "KAEiowUKD0Jvb3RzdHJhcFN0YXR1cxISCgpjYWxpYnJhdGVkGAEgASgIEjQK",
-            "EGxhc3RfY2FsaWJyYXRpb24YAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGlt",
-            "ZXN0YW1wEhkKEW1lYXN1cmVtZW50X2NvdW50GAMgASgFEiYKHmN1cnJlbnRf",
-            "YWxpZ25tZW50X2Vycm9yX2FyY3NlYxgEIAEoARIYChByZWFkeV9mb3JfdHBv",
-            "aW50GAUgASgIEjwKBXN0YXRlGAYgASgOMi0uYXN0cm9fbW91bnQuQm9vdHN0",
-            "cmFwU3RhdHVzLkNhbGlicmF0aW9uU3RhdGUSFQoNc3RhdGVfbWVzc2FnZRgH",
-            "IAEoCRIhChltaW5fbWVhc3VyZW1lbnRzX3JlcXVpcmVkGAggASgBEiMKG21p",
-            "bl9tZWFzdXJlbWVudHNfZm9yX3Rwb2ludBgJIAEoARIyCg5ib290c3RyYXBf",
-            "bW9kZRgKIAEoDjIaLmFzdHJvX21vdW50LkJvb3RzdHJhcE1vZGUSHQoVZW5j",
-            "b2Rlcl90eXBlX2Fic29sdXRlGAsgASgIEiAKGHJlZmVyZW5jZV9wb3NpdGlv",
-            "bl9rbm93bhgMIAEoCBIkChxlc3RpbWF0ZWRfZW5jb2Rlcl9vZmZzZXRfZGVn",
-            "GA0gASgBEiIKGm1hbnVhbF9tZWFzdXJlbWVudHNfbmVlZGVkGA4gASgFIowB",
-            "ChBDYWxpYnJhdGlvblN0YXRlEhIKDk5PVF9DQUxJQlJBVEVEEAASGwoXTUVB",
-            "U1VSRU1FTlRTX0NPTExFQ1RJTkcQARIPCgtDQUxJQlJBVElORxACEg4KCkNB",
-            "TElCUkFURUQQAxIbChdORUVEU19NT1JFX01FQVNVUkVNRU5UUxAEEgkKBUVS",
-            "Uk9SEAUiigEKFEF1dG9Cb290c3RyYXBSZXF1ZXN0EhkKEXRhcmdldF9zdGFy",
-            "X25hbWVzGAEgAygJEhgKEG1pbl9tZWFzdXJlbWVudHMYAiABKAUSIgoabWF4",
-            "X2FsaWdubWVudF9lcnJvcl9hcmNzZWMYAyABKAESGQoRcHJvY2VlZF90b190",
-            "cG9pbnQYBCABKAgilAMKE0F1dG9Cb290c3RyYXBTdGF0dXMSQgoFc3RhdGUY",
-            "ASABKA4yMy5hc3Ryb19tb3VudC5BdXRvQm9vdHN0cmFwU3RhdHVzLkF1dG9C",
-            "b290c3RyYXBTdGF0ZRIVCg1zdGF0ZV9tZXNzYWdlGAIgASgJEh4KFm1lYXN1",
-            "cmVtZW50c19jb2xsZWN0ZWQYAyABKAUSGwoTbWVhc3VyZW1lbnRzX3Rhcmdl",
-            "dBgEIAEoBRIbChNjdXJyZW50X3RhcmdldF9zdGFyGAUgASgJEhgKEHByb2dy",
-            "ZXNzX3BlcmNlbnQYBiABKAESFQoNZXJyb3JfbWVzc2FnZRgHIAEoCSKWAQoS",
-            "QXV0b0Jvb3RzdHJhcFN0YXRlEggKBElETEUQABITCg9TRUxFQ1RJTkdfU1RB",
-            "UlMQARILCgdTTEVXSU5HEAISEQoNUExBVEVfU09MVklORxADEhYKEkFERElO",
-            "R19NRUFTVVJFTUVOVBAEEg8KC0NBTElCUkFUSU5HEAUSDQoJQ09NUExFVEVE",
-            "EAYSCQoFRVJST1IQByLjAgoPRGVyb3RhdG9yQ29uZmlnEjgKBHR5cGUYASAB",
-            "KA4yKi5hc3Ryb19tb3VudC5EZXJvdGF0b3JDb25maWcuRGVyb3RhdG9yVHlw",
-            "ZRIZChFjb25uZWN0aW9uX3N0cmluZxgCIAEoCRISCgpnZWFyX3JhdGlvGAMg",
-            "ASgBEhEKCW1heF9zcGVlZBgEIAEoARIYChBtYXhfYWNjZWxlcmF0aW9uGAUg",
-            "ASgBEhAKCGJhY2tsYXNoGAYgASgBEhgKEGFic29sdXRlX2VuY29kZXIYByAB",
-            "KAgSGgoSZW5jb2Rlcl9yZXNvbHV0aW9uGAggASgBEhUKDWhvbWluZ19vZmZz",
-            "ZXQYCSABKAESGQoRY2FsaWJyYXRpb25fdGFibGUYCiADKAEiQAoNRGVyb3Rh",
-            "dG9yVHlwZRILCgdDQU5PUEVOEAASCwoHU1RFUFBFUhABEgkKBVNFUlZPEAIS",
-            "CgoGQ1VTVE9NEAMirwIKG0ZpZWxkUm90YXRpb25Db250cm9sUmVxdWVzdBJD",
-            "CgRtb2RlGAEgASgOMjUuYXN0cm9fbW91bnQuRmllbGRSb3RhdGlvbkNvbnRy",
-            "b2xSZXF1ZXN0LlJvdGF0aW9uTW9kZRIUCgx0YXJnZXRfYW5nbGUYAiABKAES",
-            "FQoNcm90YXRpb25fcmF0ZRgDIAEoARIQCghyZWxhdGl2ZRgEIAEoCBIbChN3",
-            "YWl0X2Zvcl9jb21wbGV0aW9uGAUgASgIIm8KDFJvdGF0aW9uTW9kZRIMCghE",
-            "SVNBQkxFRBAAEgoKBkFMVF9BWhABEg4KCkVRVUFUT1JJQUwQAhIKCgZDVVNU",
-            "T00QAxIPCgtGSVhFRF9BTkdMRRAEEgwKCFRSQUNLSU5HEAUSCgoGQ0FTVUFM",
-            "EAYioAIKD0Rlcm90YXRvclN0YXR1cxIPCgdlbmFibGVkGAEgASgIEg4KBm1v",
-            "dmluZxgCIAEoCBINCgVob21lZBgDIAEoCBIVCg1jdXJyZW50X2FuZ2xlGAQg",
-            "ASgBEhQKDHRhcmdldF9hbmdsZRgFIAEoARIVCg1yb3RhdGlvbl9yYXRlGAYg",
-            "ASgBEhsKE2ZpZWxkX3JvdGF0aW9uX3JhdGUYByABKAESNgoQZGVyb3RhdG9y",
-            "X2NvbmZpZxgIIAEoCzIcLmFzdHJvX21vdW50LkRlcm90YXRvckNvbmZpZxIV",
-            "Cg1lcnJvcl9tZXNzYWdlGAkgASgJEi0KCXRpbWVzdGFtcBgKIAEoCzIaLmdv",
-            "b2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAivwEKE0ZpZWxkUm90YXRpb25QYXJh",
-            "bXMSDwoHZW5hYmxlZBgBIAEoCBIQCghsYXRpdHVkZRgCIAEoARIQCghhbHRp",
-            "dHVkZRgDIAEoARIPCgdhemltdXRoGAQgASgBEhUKDWNvbXB1dGVkX3JhdGUY",
-            "BSABKAESGgoSYXBwbGllZF9jb3JyZWN0aW9uGAYgASgBEhMKC3RlbXBlcmF0",
-            "dXJlGAcgASgBEhoKEmZsZXh1cmVfY29ycmVjdGlvbhgIIAEoASLjAQoWRGVy",
-            "b3RhdG9ySG9taW5nUmVxdWVzdBJACgZtZXRob2QYASABKA4yMC5hc3Ryb19t",
-            "b3VudC5EZXJvdGF0b3JIb21pbmdSZXF1ZXN0LkhvbWluZ01ldGhvZBIUCgxz",
-            "ZWFyY2hfc3BlZWQYAiABKAESDgoGb2Zmc2V0GAMgASgBEhcKD2NhbGlicmF0",
-            "ZV9hZnRlchgEIAEoCCJICgxIb21pbmdNZXRob2QSCAoEQVVUTxAAEhAKDExJ",
-            "TUlUX1NXSVRDSBABEhAKDEVOQ09ERVJfWkVSTxACEgoKBk1BTlVBTBADItMC",
-            "CgtNb3RvckNvbmZpZxIkCgR0eXBlGAEgASgOMhYuYXN0cm9fbW91bnQuTW90",
-            "b3JUeXBlEi4KDGRlZmF1bHRfbW9kZRgCIAEoDjIYLmFzdHJvX21vdW50LkNv",
-            "bnRyb2xNb2RlEhQKDG1heF92ZWxvY2l0eRgDIAEoARIYChBtYXhfYWNjZWxl",
-            "cmF0aW9uGAQgASgBEhIKCm1heF90b3JxdWUYBSABKAESIQoZZW5jb2Rlcl9j",
-            "b3VudHNfcGVyX2RlZ3JlZRgGIAEoARISCgpnZWFyX3JhdGlvGAcgASgBEhwK",
-            "FGVuYWJsZV9jdXJyZW50X2xpbWl0GAggASgIEhUKDWN1cnJlbnRfbGltaXQY",
-            "CSABKAESJQodZW5hYmxlX3RlbXBlcmF0dXJlX3Byb3RlY3Rpb24YCiABKAgS",
-            "FwoPbWF4X3RlbXBlcmF0dXJlGAsgASgBIrsBChFBeGlzRW5jb2RlckNvbmZp",
-            "ZxImCgR0eXBlGAEgASgOMhguYXN0cm9fbW91bnQuRW5jb2RlclR5cGUSMAoJ",
-            "aW50ZXJmYWNlGAIgASgOMh0uYXN0cm9fbW91bnQuRW5jb2RlckludGVyZmFj",
-            "ZRIZChFyZXNvbHV0aW9uX2NvdW50cxgDIAEoDRIZChFjb3VudHNfcGVyX2Rl",
-            "Z3JlZRgEIAEoARIWCg51cGRhdGVfcmF0ZV9oehgFIAEoASLmAgoKQXhpc0Nv",
-            "bmZpZxIKCgJpZBgBIAEoBRIMCgRuYW1lGAIgASgJEi4KDG1vdG9yX2NvbmZp",
-            "ZxgDIAEoCzIYLmFzdHJvX21vdW50Lk1vdG9yQ29uZmlnEjYKDmVuY29kZXJf",
-            "Y29uZmlnGAQgASgLMh4uYXN0cm9fbW91bnQuQXhpc0VuY29kZXJDb25maWcS",
-            "OwoNc2FmZXR5X2xpbWl0cxgFIAEoCzIkLmFzdHJvX21vdW50LkF4aXNDb25m",
-            "aWcuU2FmZXR5TGltaXRzGpgBCgxTYWZldHlMaW1pdHMSFAoMbWluX3Bvc2l0",
-            "aW9uGAEgASgBEhQKDG1heF9wb3NpdGlvbhgCIAEoARIUCgxtYXhfdmVsb2Np",
-            "dHkYAyABKAESGAoQbWF4X2FjY2VsZXJhdGlvbhgEIAEoARITCgttYXhfY3Vy",
-            "cmVudBgFIAEoARIXCg9tYXhfdGVtcGVyYXR1cmUYBiABKAEikwEKCVBJRFBh",
-            "cmFtcxIKCgJrcBgBIAEoARIKCgJraRgCIAEoARIKCgJrZBgDIAEoARIWCg5p",
-            "bnRlZ3JhbF9saW1pdBgEIAEoARIUCgxvdXRwdXRfbGltaXQYBSABKAESGAoQ",
-            "YW50aV93aW5kdXBfZ2FpbhgGIAEoARIaChJlbmFibGVfYW50aV93aW5kdXAY",
-            "ByABKAgilwIKDFNhZmV0eUNvbmZpZxIVCg1lbmFibGVfbGltaXRzGAEgASgI",
-            "Eh0KFWVuYWJsZV9lbWVyZ2VuY3lfc3RvcBgCIAEoCBIhChllbWVyZ2VuY3lf",
-            "c3RvcF90aW1lb3V0X21zGAMgASgNEiUKHWVuYWJsZV90ZW1wZXJhdHVyZV9t",
-            "b25pdG9yaW5nGAQgASgIEiEKGWVuYWJsZV9jdXJyZW50X21vbml0b3JpbmcY",
-            "BSABKAgSIQoZZW5hYmxlX3ZvbHRhZ2VfbW9uaXRvcmluZxgGIAEoCBITCgtt",
-            "aW5fdm9sdGFnZRgHIAEoARITCgttYXhfdm9sdGFnZRgIIAEoARIXCg9tb25p",
-            "dG9yaW5nX3JhdGUYCSABKA0ivgEKD1NpbXVsYXRlZENvbmZpZxIZChFlbmFi",
-            "bGVfc2ltdWxhdGlvbhgBIAEoCBIeChZzaW11bGF0aW9uX3VwZGF0ZV9yYXRl",
-            "GAIgASgBEh0KFXBvc2l0aW9uX25vaXNlX3N0ZGRldhgDIAEoARIdChV2ZWxv",
-            "Y2l0eV9ub2lzZV9zdGRkZXYYBCABKAESFwoPc2ltdWxhdGVfZXJyb3JzGAUg",
-            "ASgIEhkKEWVycm9yX3Byb2JhYmlsaXR5GAYgASgBIrUBCg1DYW5PcGVuQ29u",
-            "ZmlnEg8KB2xpYnJhcnkYASABKAkSFgoOaW50ZXJmYWNlX25hbWUYAiABKAkS",
-            "DwoHYml0cmF0ZRgDIAEoDRIPCgdub2RlX2lkGAQgASgNEhAKCHVzZV9zeW5j",
-            "GAUgASgIEhYKDnN5bmNfcGVyaW9kX21zGAYgASgNEhYKDnNkb190aW1lb3V0",
-            "X21zGAcgASgNEhcKD3Bkb191cGRhdGVfcmF0ZRgIIAEoDSKLAQoMU2VyaWFs",
-            "Q29uZmlnEgwKBHBvcnQYASABKAkSEQoJYmF1ZF9yYXRlGAIgASgNEhAKCHBy",
-            "b3RvY29sGAMgASgJEhEKCWRhdGFfYml0cxgEIAEoDRIRCglzdG9wX2JpdHMY",
-            "BSABKA0SDgoGcGFyaXR5GAYgASgJEhIKCnRpbWVvdXRfbXMYByABKA0ibQoO",
-            "RXRoZXJuZXRDb25maWcSEgoKaXBfYWRkcmVzcxgBIAEoCRIMCgRwb3J0GAIg",
-            "ASgNEhAKCHByb3RvY29sGAMgASgJEhIKCnRpbWVvdXRfbXMYBCABKA0SEwoL",
-            "cmV0cnlfY291bnQYBSABKA0i8wIKCUhBTENvbmZpZxIiCgR0eXBlGAEgASgO",
-            "MhQuYXN0cm9fbW91bnQuSEFMVHlwZRIMCgRuYW1lGAIgASgJEi8KCXNpbXVs",
-            "YXRlZBgDIAEoCzIcLmFzdHJvX21vdW50LlNpbXVsYXRlZENvbmZpZxIrCgdj",
-            "YW5vcGVuGAQgASgLMhouYXN0cm9fbW91bnQuQ2FuT3BlbkNvbmZpZxIpCgZz",
-            "ZXJpYWwYBSABKAsyGS5hc3Ryb19tb3VudC5TZXJpYWxDb25maWcSLQoIZXRo",
-            "ZXJuZXQYBiABKAsyGy5hc3Ryb19tb3VudC5FdGhlcm5ldENvbmZpZxIlCgRh",
-            "eGVzGAcgAygLMhcuYXN0cm9fbW91bnQuQXhpc0NvbmZpZxIqCgpwaWRfcGFy",
-            "YW1zGAggASgLMhYuYXN0cm9fbW91bnQuUElEUGFyYW1zEikKBnNhZmV0eRgJ",
-            "IAEoCzIZLmFzdHJvX21vdW50LlNhZmV0eUNvbmZpZyKAAgoJSEFMU3RhdHVz",
-            "EhMKC2luaXRpYWxpemVkGAEgASgIEg8KB3J1bm5pbmcYAiABKAgSIgoEdHlw",
-            "ZRgDIAEoDjIULmFzdHJvX21vdW50LkhBTFR5cGUSFQoNcGxhdGZvcm1fbmFt",
-            "ZRgEIAEoCRIYChBoYXJkd2FyZV92ZXJzaW9uGAUgASgJEhYKDnN0YXR1c19t",
-            "ZXNzYWdlGAYgASgJEhoKEnN1cHBvcnRlZF9mZWF0dXJlcxgHIAMoCRIVCg1l",
-            "cnJvcl9tZXNzYWdlGAggASgJEi0KCXRpbWVzdGFtcBgJIAEoCzIaLmdvb2ds",
-            "ZS5wcm90b2J1Zi5UaW1lc3RhbXAiOgoQSEFMQ29uZmlnUmVxdWVzdBImCgZj",
-            "b25maWcYASABKAsyFi5hc3Ryb19tb3VudC5IQUxDb25maWciKQoQSEFMUmVp",
-            "bml0UmVxdWVzdBIVCg1mb3JjZV9yZXN0YXJ0GAEgASgIKkgKDlRyYWplY3Rv",
-            "cnlUeXBlEg8KC1RSQVBFWk9JREFMEAASCwoHU19TSEFQRRABEggKBFNJTkUQ",
-            "AhIOCgpQT0xZTk9NSUFMEAMqPQoPQXhpc0NvbnRyb2xNb2RlEhQKEFBPU0lU",
-            "SU9OX0NPTlRST0wQABIUChBWRUxPQ0lUWV9DT05UUk9MEAEqQAoJTW91bnRU",
-            "eXBlEg4KCkVRVUFUT1JJQUwQABIKCgZBTFRfQVoQARILCgdVTktOT1dOEAIS",
-            "CgoGQ0FTVUFMEAMqVAoNQm9vdHN0cmFwTW9kZRIUChBCT09UU1RSQVBfTUFO",
-            "VUFMEAASFAoQQk9PVFNUUkFQX0hZQlJJRBABEhcKE0JPT1RTVFJBUF9BVVRP",
-            "TUFUSUMQAipfCgdIQUxUeXBlEhEKDUhBTF9TSU1VTEFURUQQABIPCgtIQUxf",
-            "Q0FOT1BFThABEg4KCkhBTF9TRVJJQUwQAhIQCgxIQUxfRVRIRVJORVQQAxIO",
-            "CgpIQUxfQ1VTVE9NEAQqaQoJTW90b3JUeXBlEhEKDU1PVE9SX1NURVBQRVIQ",
-            "ABISCg5NT1RPUl9EQ19CUlVTSBABEhYKEk1PVE9SX0RDX0JSVVNITEVTUxAC",
-            "EgwKCE1PVE9SX0FDEAMSDwoLTU9UT1JfU0VSVk8QBCphCgtDb250cm9sTW9k",
-            "ZRIUChBDT05UUk9MX1BPU0lUSU9OEAASFAoQQ09OVFJPTF9WRUxPQ0lUWRAB",
-            "EhIKDkNPTlRST0xfVE9SUVVFEAISEgoOQ09OVFJPTF9IT01JTkcQAyp9CgtF",
-            "bmNvZGVyVHlwZRIUChBFTkNPREVSX0FCU09MVVRFEAASFwoTRU5DT0RFUl9J",
-            "TkNSRU1FTlRBTBABEhQKEEVOQ09ERVJfTUFHTkVUSUMQAhITCg9FTkNPREVS",
-            "X09QVElDQUwQAxIUChBFTkNPREVSX1JFU09MVkVSEAQqbgoQRW5jb2Rlcklu",
-            "dGVyZmFjZRITCg9FTkNPREVSX0NBTk9QRU4QABIPCgtFTkNPREVSX1NTSRAB",
-            "Eg8KC0VOQ09ERVJfU1BJEAISDwoLRU5DT0RFUl9JMkMQAxISCg5FTkNPREVS",
-            "X0FOQUxPRxAEKvgBCgpIQUxGZWF0dXJlEh0KGUhBTF9GRUFUVVJFX01PVE9S",
-            "X0NPTlRST0wQABIfChtIQUxfRkVBVFVSRV9FTkNPREVSX1JFQURJTkcQARIh",
-            "Ch1IQUxfRkVBVFVSRV9TQUZFVFlfTU9OSVRPUklORxACEiAKHEhBTF9GRUFU",
-            "VVJFX1NFTlNPUl9JTlRFUkZBQ0UQAxIaChZIQUxfRkVBVFVSRV9TSU1VTEFU",
-            "SU9OEAQSFwoTSEFMX0ZFQVRVUkVfQ0FOT1BFThAFEhYKEkhBTF9GRUFUVVJF",
-            "X01PREJVUxAGEhgKFEhBTF9GRUFUVVJFX0VUSEVSQ0FUEAcy2iIKFk1vdW50",
-            "Q29udHJvbGxlclNlcnZpY2USRQoRU2xld1RvQ29vcmRpbmF0ZXMSGC5hc3Ry",
-            "b19tb3VudC5Db29yZGluYXRlcxoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJO",
-            "ChBTbGV3VG9Ib3Jpem9udGFsEiIuYXN0cm9fbW91bnQuSG9yaXpvbnRhbENv",
-            "b3JkaW5hdGVzGhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5Ej8KC1RyYWNrT2Jq",
-            "ZWN0EhguYXN0cm9fbW91bnQuQ29vcmRpbmF0ZXMaFi5nb29nbGUucHJvdG9i",
-            "dWYuRW1wdHkSNgoEU3RvcBIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoWLmdv",
-            "b2dsZS5wcm90b2J1Zi5FbXB0eRI2CgRQYXJrEhYuZ29vZ2xlLnByb3RvYnVm",
-            "LkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EjgKBlVucGFyaxIWLmdv",
-            "b2dsZS5wcm90b2J1Zi5FbXB0eRoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJA",
-            "CghHZXRTdGF0ZRIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRocLmFzdHJvX21v",
-            "dW50LkNvbnRyb2xsZXJTdGF0ZRJECgpXYXRjaFN0YXRlEhYuZ29vZ2xlLnBy",
-            "b3RvYnVmLkVtcHR5GhwuYXN0cm9fbW91bnQuQ29udHJvbGxlclN0YXRlMAES",
-            "SgoJU2F2ZVN0YXRlEh0uYXN0cm9fbW91bnQuU3RhdGVTYXZlUmVxdWVzdBoe",
-            "LmFzdHJvX21vdW50LlN0YXRlU2F2ZVJlc3BvbnNlEkIKCUxvYWRTdGF0ZRId",
-            "LmFzdHJvX21vdW50LlN0YXRlTG9hZFJlcXVlc3QaFi5nb29nbGUucHJvdG9i",
-            "dWYuRW1wdHkSPQoLQ2xlYXJFcnJvcnMSFi5nb29nbGUucHJvdG9idWYuRW1w",
-            "dHkaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSQgoOQWRkTWVhc3VyZW1lbnQS",
-            "GC5hc3Ryb19tb3VudC5NZWFzdXJlbWVudBoWLmdvb2dsZS5wcm90b2J1Zi5F",
-            "bXB0eRJUChdBZGRCb290c3RyYXBNZWFzdXJlbWVudBIhLmFzdHJvX21vdW50",
-            "LkJvb3RzdHJhcE1lYXN1cmVtZW50GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5",
-            "EloKF1J1bkJvb3RzdHJhcENhbGlicmF0aW9uEhYuZ29vZ2xlLnByb3RvYnVm",
-            "LkVtcHR5GicuYXN0cm9fbW91bnQuQm9vdHN0cmFwQ2FsaWJyYXRpb25SZXN1",
-            "bHQSSgoSR2V0Qm9vdHN0cmFwU3RhdHVzEhYuZ29vZ2xlLnByb3RvYnVmLkVt",
-            "cHR5GhwuYXN0cm9fbW91bnQuQm9vdHN0cmFwU3RhdHVzEkwKGkNsZWFyQm9v",
-            "dHN0cmFwTWVhc3VyZW1lbnRzEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhYu",
-            "Z29vZ2xlLnByb3RvYnVmLkVtcHR5Ek0KEFNldEJvb3RzdHJhcE1vZGUSIS5h",
-            "c3Ryb19tb3VudC5Cb290c3RyYXBNb2RlUmVxdWVzdBoWLmdvb2dsZS5wcm90",
-            "b2J1Zi5FbXB0eRJSChVSdW5BdXRvbWF0aWNCb290c3RyYXASIS5hc3Ryb19t",
-            "b3VudC5BdXRvQm9vdHN0cmFwUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5F",
-            "bXB0eRJSChZHZXRBdXRvQm9vdHN0cmFwU3RhdHVzEhYuZ29vZ2xlLnByb3Rv",
-            "YnVmLkVtcHR5GiAuYXN0cm9fbW91bnQuQXV0b0Jvb3RzdHJhcFN0YXR1cxJI",
-            "ChRBZGRUUG9pbnRNZWFzdXJlbWVudBIYLmFzdHJvX21vdW50Lk1lYXN1cmVt",
-            "ZW50GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkkKF0NsZWFyVFBvaW50TWVh",
-            "c3VyZW1lbnRzEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnBy",
-            "b3RvYnVmLkVtcHR5EkwKE0dldFRQb2ludFBhcmFtZXRlcnMSFi5nb29nbGUu",
-            "cHJvdG9idWYuRW1wdHkaHS5hc3Ryb19tb3VudC5UUG9pbnRQYXJhbWV0ZXJz",
-            "EkYKFFJ1blRQb2ludENhbGlicmF0aW9uEhYuZ29vZ2xlLnByb3RvYnVmLkVt",
-            "cHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkgKEUdldFJvdGF0aW9uTWF0",
-            "cml4EhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhsuYXN0cm9fbW91bnQuUm90",
-            "YXRpb25NYXRyaXgSWQoVRGV0ZXJtaW5lUG9sZVBvc2l0aW9uEiUuYXN0cm9f",
-            "bW91bnQuUG9sZURldGVybWluYXRpb25SZXF1ZXN0GhkuYXN0cm9fbW91bnQu",
-            "UG9sZVBvc2l0aW9uEkQKDkVuYWJsZUVuY29kZXJzEhouYXN0cm9fbW91bnQu",
-            "RW5jb2RlckNvbmZpZxoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJBCg9EaXNh",
-            "YmxlRW5jb2RlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaFi5nb29nbGUu",
-            "cHJvdG9idWYuRW1wdHkSQgoNQ29ubmVjdEd1aWRlchIZLmFzdHJvX21vdW50",
-            "Lkd1aWRlckNvbmZpZxoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJCChBEaXNj",
-            "b25uZWN0R3VpZGVyEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xl",
-            "LnByb3RvYnVmLkVtcHR5Ek0KFFNlbmRHdWlkZXJDb3JyZWN0aW9uEh0uYXN0",
-            "cm9fbW91bnQuR3VpZGVyQ29ycmVjdGlvbhoWLmdvb2dsZS5wcm90b2J1Zi5F",
-            "bXB0eRJGChBHZXRDb25maWd1cmF0aW9uEhYuZ29vZ2xlLnByb3RvYnVmLkVt",
-            "cHR5GhouYXN0cm9fbW91bnQuQ29uZmlndXJhdGlvbhJJChNVcGRhdGVDb25m",
-            "aWd1cmF0aW9uEhouYXN0cm9fbW91bnQuQ29uZmlndXJhdGlvbhoWLmdvb2ds",
-            "ZS5wcm90b2J1Zi5FbXB0eRJMChJHZW5lcmF0ZVRyYWplY3RvcnkSHS5hc3Ry",
-            "b19tb3VudC5UcmFqZWN0b3J5UGFyYW1zGhcuYXN0cm9fbW91bnQuVHJhamVj",
-            "dG9yeRJEChFFeGVjdXRlVHJhamVjdG9yeRIXLmFzdHJvX21vdW50LlRyYWpl",
-            "Y3RvcnkaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSQAoOU3RvcFRyYWplY3Rv",
-            "cnkSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaFi5nb29nbGUucHJvdG9idWYu",
-            "RW1wdHkSUAoLQ2hlY2tIZWFsdGgSHy5hc3Ryb19tb3VudC5IZWFsdGhDaGVj",
-            "a1JlcXVlc3QaIC5hc3Ryb19tb3VudC5IZWFsdGhDaGVja1Jlc3BvbnNlEkUK",
-            "D1VwbG9hZEVwaGVtZXJpcxIaLmFzdHJvX21vdW50LkVwaGVtZXJpc0RhdGEa",
-            "Fi5nb29nbGUucHJvdG9idWYuRW1wdHkSZwoWU3RhcnRFcGhlbWVyaXNUcmFj",
-            "a2luZxIqLmFzdHJvX21vdW50LlN0YXJ0RXBoZW1lcmlzVHJhY2tpbmdSZXF1",
-            "ZXN0GiEuYXN0cm9fbW91bnQuRXBoZW1lcmlzVHJhY2tTdGF0dXMSZwoeU3Rh",
-            "cnRFcGhlbWVyaXNUcmFja2luZ1dpdGhEYXRhEiIuYXN0cm9fbW91bnQuRXBo",
-            "ZW1lcmlzVHJhY2tSZXF1ZXN0GiEuYXN0cm9fbW91bnQuRXBoZW1lcmlzVHJh",
-            "Y2tTdGF0dXMSVAoXR2V0RXBoZW1lcmlzVHJhY2tTdGF0dXMSFi5nb29nbGUu",
-            "cHJvdG9idWYuRW1wdHkaIS5hc3Ryb19tb3VudC5FcGhlbWVyaXNUcmFja1N0",
-            "YXR1cxJHChVTdG9wRXBoZW1lcmlzVHJhY2tpbmcSFi5nb29nbGUucHJvdG9i",
-            "dWYuRW1wdHkaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSTAoTR2V0RXBoZW1l",
-            "cmlzTWV0cmljcxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRodLmFzdHJvX21v",
-            "dW50LkVwaGVtZXJpc01ldHJpY3MSRQoTQ2xlYXJFcGhlbWVyaXNDYWNoZRIW",
-            "Lmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0",
-            "eRJGCgtDb250cm9sQXhpcxIfLmFzdHJvX21vdW50LkF4aXNDb250cm9sUmVx",
-            "dWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJACghTdG9wQXhpcxIcLmFz",
-            "dHJvX21vdW50LkF4aXNTdG9wUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5F",
-            "bXB0eRJKCg1FbWVyZ2VuY3lTdG9wEiEuYXN0cm9fbW91bnQuRW1lcmdlbmN5",
-            "U3RvcFJlcXVlc3QaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSQAoNR2V0QXhp",
-            "c1N0YXR1cxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoXLmFzdHJvX21vdW50",
-            "LkF4aXNTdGF0dXMSSgoSQ29uZmlndXJlRGVyb3RhdG9yEhwuYXN0cm9fbW91",
-            "bnQuRGVyb3RhdG9yQ29uZmlnGhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5Ek8K",
-            "E0VuYWJsZUZpZWxkUm90YXRpb24SIC5hc3Ryb19tb3VudC5GaWVsZFJvdGF0",
-            "aW9uUGFyYW1zGhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5ElgKFENvbnRyb2xG",
-            "aWVsZFJvdGF0aW9uEiguYXN0cm9fbW91bnQuRmllbGRSb3RhdGlvbkNvbnRy",
-            "b2xSZXF1ZXN0GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkoKEkdldERlcm90",
-            "YXRvclN0YXR1cxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRocLmFzdHJvX21v",
-            "dW50LkRlcm90YXRvclN0YXR1cxJMCg1Ib21lRGVyb3RhdG9yEiMuYXN0cm9f",
-            "bW91bnQuRGVyb3RhdG9ySG9taW5nUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1",
-            "Zi5FbXB0eRJSChZHZXRGaWVsZFJvdGF0aW9uUGFyYW1zEhYuZ29vZ2xlLnBy",
-            "b3RvYnVmLkVtcHR5GiAuYXN0cm9fbW91bnQuRmllbGRSb3RhdGlvblBhcmFt",
-            "cxI+CgxHZXRIQUxDb25maWcSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaFi5h",
-            "c3Ryb19tb3VudC5IQUxDb25maWcSRQoMU2V0SEFMQ29uZmlnEh0uYXN0cm9f",
-            "bW91bnQuSEFMQ29uZmlnUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0",
-            "eRI+CgxHZXRIQUxTdGF0dXMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaFi5h",
-            "c3Ryb19tb3VudC5IQUxTdGF0dXMSSAoPUmVpbml0aWFsaXplSEFMEh0uYXN0",
-            "cm9fbW91bnQuSEFMUmVpbml0UmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5F",
-            "bXB0eRJMChNTZXRNb3VudE9yaWVudGF0aW9uEh0uYXN0cm9fbW91bnQuTW91",
-            "bnRPcmllbnRhdGlvbhoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJMChNHZXRN",
-            "b3VudE9yaWVudGF0aW9uEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5Gh0uYXN0",
-            "cm9fbW91bnQuTW91bnRPcmllbnRhdGlvbmIGcHJvdG8z"));
+            "dGFtcCLTBAoWQXhpc1BoeXNpY2FsUGFyYW1ldGVycxIaChJlbmNvZGVyX3Jl",
+            "c29sdXRpb24YBCABKAESIQoZZW5jb2Rlcl9jb3VudHNfcGVyX2FyY3NlYxgF",
+            "IAEoARIiChplbmNvZGVyX3F1YW50aXphdGlvbl9lcnJvchgGIAEoARISCgpn",
+            "ZWFyX3JhdGlvGAcgASgBEhIKCndvcm1fcmF0aW8YCCABKAESEgoKd29ybV90",
+            "ZWV0aBgJIAEoBRIYChB3b3JtX3doZWVsX3RlZXRoGAogASgFEh4KFmN5Y2xp",
+            "Y19lcnJvcl9hbXBsaXR1ZGUYCyABKAESGwoTY3ljbGljX2Vycm9yX3Blcmlv",
+            "ZBgMIAEoARIYChBjeWNsaWNfaGFybW9uaWNzGA0gAygBEhAKCGJhY2tsYXNo",
+            "GA4gASgBEhsKE2JhY2tsYXNoX3RlbXBfY29lZmYYDyABKAESFgoOYXhpc19z",
+            "dGlmZm5lc3MYECABKAESHAoUdG9yc2lvbmFsX2NvbXBsaWFuY2UYESABKAES",
+            "FwoPZXhwYW5zaW9uX2NvZWZmGBIgASgBEh0KFXRlbXBfZ2Vhcl9lcnJvcl9j",
+            "b2VmZhgTIAEoARIZChFjYWxpYnJhdGlvbl90YWJsZRgUIAMoARIYChBjYWxp",
+            "YnJhdGlvbl90ZW1wGBUgASgBEiIKGnBvc2l0aW9uX2NvdW50c19wZXJfZGVn",
+            "cmVlGBYgASgBEiEKGXZlbG9jaXR5X2NvdW50c19wZXJfZGVnX3MYFyABKAFK",
+            "BAgBEAJKBAgCEANKBAgDEAQiQgoQTW91bnRPcmllbnRhdGlvbhIKCgJxeBgB",
+            "IAEoARIKCgJxeRgCIAEoARIKCgJxehgDIAEoARIKCgJxdxgEIAEoASI/CgtM",
+            "eDIwMENvbmZpZxIPCgdlbmFibGVkGAEgASgIEgwKBHBvcnQYAiABKAkSEQoJ",
+            "YmF1ZF9yYXRlGAMgASgFIpQbCg1Db25maWd1cmF0aW9uEhAKCGxhdGl0dWRl",
+            "GAEgASgBEhEKCWxvbmdpdHVkZRgCIAEoARIQCghhbHRpdHVkZRgDIAEoARIU",
+            "Cgxmb2NhbF9sZW5ndGgYByABKAESEAoIYXBlcnR1cmUYCCABKAESEwoLdHVi",
+            "ZV9sZW5ndGgYWyABKAESFAoMY2FtZXJhX21vZGVsGFwgASgJEhIKCnBpeGVs",
+            "X3NpemUYXSABKAESFAoMc2Vuc29yX3dpZHRoGF4gASgFEhUKDXNlbnNvcl9o",
+            "ZWlnaHQYXyABKAUSLgoMbHgyMDBfY29uZmlnGGAgASgLMhguYXN0cm9fbW91",
+            "bnQuTHgyMDBDb25maWcSGwoTZGVmYXVsdF90ZW1wZXJhdHVyZRgJIAEoARIY",
+            "ChBkZWZhdWx0X3ByZXNzdXJlGAogASgBEhgKEGRlZmF1bHRfaHVtaWRpdHkY",
+            "CyABKAESFQoNcHJvY2Vzc19ub2lzZRgMIAEoARIZChFtZWFzdXJlbWVudF9u",
+            "b2lzZRgNIAEoARIRCglsb2dfbGV2ZWwYDiABKAkSFQoNbG9nX2RpcmVjdG9y",
+            "eRgPIAEoCRIfChJsb2dfY29uc29sZV9vdXRwdXQYSyABKAhIAIgBARIZChFs",
+            "b2dfcm90YXRpb25fZGF5cxhZIAEoBRIcChRsb2dfbWF4X2ZpbGVfc2l6ZV9t",
+            "YhhaIAEoBRIUCgxncnBjX2FkZHJlc3MYESABKAkSEQoJZ3JwY19wb3J0GBIg",
+            "ASgFEh8KF25ldHdvcmtfbWF4X2Nvbm5lY3Rpb25zGEwgASgFEh8KEm5ldHdv",
+            "cmtfZW5hYmxlX3NzbBhNIAEoCEgBiAEBEh0KFW5ldHdvcmtfc3NsX2NlcnRf",
+            "cGF0aBhOIAEoCRIcChRuZXR3b3JrX3NzbF9rZXlfcGF0aBhPIAEoCRIZChFj",
+            "YW5vcGVuX2ludGVyZmFjZRgTIAEoCRIXCg9jYW5vcGVuX25vZGVfaWQYFCAB",
+            "KAUSGQoRY2Fub3Blbl9iYXVkX3JhdGUYUCABKAUSIAoTY2Fub3Blbl9lbmFi",
+            "bGVfc3luYxhRIAEoCEgCiAEBEiAKGGNhbm9wZW5fc3luY19pbnRlcnZhbF9t",
+            "cxhSIAEoBRIbChNwYXJrX3Bvc2l0aW9uX2F4aXMxGBUgASgBEhsKE3Bhcmtf",
+            "cG9zaXRpb25fYXhpczIYFiABKAESFQoNbWF4X3NsZXdfcmF0ZRgXIAEoARIZ",
+            "ChFtYXhfdHJhY2tpbmdfcmF0ZRgYIAEoARIZChFzbGV3X2FjY2VsZXJhdGlv",
+            "bhgZIAEoARIdChV0cmFja2luZ19hY2NlbGVyYXRpb24YGiABKAESOwoOaGFf",
+            "YXhpc19wYXJhbXMYGyABKAsyIy5hc3Ryb19tb3VudC5BeGlzUGh5c2ljYWxQ",
+            "YXJhbWV0ZXJzEjwKD2RlY19heGlzX3BhcmFtcxgcIAEoCzIjLmFzdHJvX21v",
+            "dW50LkF4aXNQaHlzaWNhbFBhcmFtZXRlcnMSGQoMdXNlX2VuY29kZXJzGB0g",
+            "ASgISAOIAQESHgoRZW5jb2RlcnNfYWJzb2x1dGUYHiABKAhIBIgBARIhChll",
+            "bmNvZGVyX3Jlc29sdXRpb25fY29uZmlnGB8gASgBEhwKFHRwb2ludF9lbmFi",
+            "bGVkX3Rlcm1zGCAgASgNEhoKDWVuYWJsZV9ndWlkZXIYISABKAhIBYgBARId",
+            "ChVndWlkZXJfbWF4X2NvcnJlY3Rpb24YIiABKAESGQoRZ3VpZGVyX2FnZ3Jl",
+            "c3Npb24YIyABKAESKQocZW5hYmxlX3JlZnJhY3Rpb25fY29ycmVjdGlvbhgk",
+            "IAEoCEgGiAEBEioKCm1vdW50X3R5cGUYJSABKA4yFi5hc3Ryb19tb3VudC5N",
+            "b3VudFR5cGUSGgoScG9zaXRpb25fdG9sZXJhbmNlGCYgASgBEhYKDnJhdGVf",
+            "dG9sZXJhbmNlGCcgASgBEiIKFW1lcmlkaWFuX2ZsaXBfZW5hYmxlZBgoIAEo",
+            "CEgHiAEBEiMKG21lcmlkaWFuX2ZsaXBfZGVsYXlfbWludXRlcxgpIAEoARIo",
+            "CiBtZXJpZGlhbl9mbGlwX2h5c3RlcmVzaXNfZGVncmVlcxgqIAEoARIgChNz",
+            "b2Z0X2xpbWl0c19lbmFibGVkGCsgASgISAiIAQESHAoUc29mdF9saW1pdF9h",
+            "eGlzMV9taW4YLCABKAESHAoUc29mdF9saW1pdF9heGlzMV9tYXgYLSABKAES",
+            "HAoUc29mdF9saW1pdF9heGlzMl9taW4YLiABKAESHAoUc29mdF9saW1pdF9h",
+            "eGlzMl9tYXgYLyABKAESIgoac29mdF9saW1pdF93YXJuaW5nX2RlZ3JlZXMY",
+            "MCABKAESJwofc29mdF9saW1pdF9kZWNlbGVyYXRpb25fZGVncmVlcxgxIAEo",
+            "ARInCh9zb2Z0X2xpbWl0X3RyYWNraW5nX3JhdGVfZmFjdG9yGDIgASgBEjgK",
+            "EW1vdW50X29yaWVudGF0aW9uGDMgASgLMh0uYXN0cm9fbW91bnQuTW91bnRP",
+            "cmllbnRhdGlvbhIfChJzZXJ2b19pbml0X2VuYWJsZWQYNCABKAhICYgBARIb",
+            "ChNzZXJ2b19pbml0X3NlcXVlbmNlGDUgASgJEhoKEmNhbm9wZW5fYWNjZWxf",
+            "bW9kZRg2IAEoCRInChpjYW5vcGVuX3Bkb19jb25maWdfZW5hYmxlZBhGIAEo",
+            "CEgKiAEBEhoKEmNvbnRyb2xsZXJfcG9sbF9tcxhHIAEoBRIaChJ0cmFja2lu",
+            "Z191cGRhdGVfbXMYSCABKAUSJQodbWVyaWRpYW5fZmxpcF90aW1lb3V0X3Nl",
+            "Y29uZHMYSSABKAESLAofY2Fub3Blbl9wb3NpdGlvbl9yZXdpbmRfZW5hYmxl",
+            "ZBhVIAEoCEgLiAEBEjAKKGNhbm9wZW5fcG9zaXRpb25fcmV3aW5kX2ludGVy",
+            "dmFsX3NlY29uZHMYUyABKAESMQopY2Fub3Blbl9wb3NpdGlvbl9yZXdpbmRf",
+            "dGhyZXNob2xkX3BlcmNlbnQYVCABKAESLgohZXF1YXRvcmlhbF90cmFja2lu",
+            "Z192ZWxvY2l0eV9tb2RlGFYgASgISAyIAQESGQoMaW52ZXJ0X2F4aXMxGFcg",
+            "ASgISA2IAQESGQoMaW52ZXJ0X2F4aXMyGFggASgISA6IAQESIAoTc3BsaXRf",
+            "dHJhY2tpbmdfbG9vcBhhIAEoCEgPiAEBEhYKDmNhbGNfdXBkYXRlX2h6GGIg",
+            "ASgFEhQKDGlvX3VwZGF0ZV9oehhjIAEoBRIcChR0ZWxlbWV0cnlfZGVjaW1h",
+            "dGlvbhhkIAEoBRIfChdzYWZldHlfY2hlY2tfZGVjaW1hdGlvbhhlIAEoBRIY",
+            "Cgtpb19yZWFsdGltZRhmIAEoCEgQiAEBEhwKFGlvX3JlYWx0aW1lX3ByaW9y",
+            "aXR5GGcgASgFEhoKDXBkb19mYXN0X3BhdGgYaCABKAhIEYgBARIhChRwZG9f",
+            "dmVsb2NpdHlfbWFwcGluZxhpIAEoCEgSiAEBEh0KEHNkb19zbG93X2NvbnRy",
+            "b2wYaiABKAhIE4gBARIeChZ0cmFja2luZ19wb3NfdXBkYXRlX2h6GGsgASgF",
+            "EiQKHHRyYWNraW5nX3Bvc192ZWxvY2l0eV9tYXJnaW4YbCABKAESFQoNdHJh",
+            "Y2tpbmdfbW9kZRhtIAEoCRIiChVhdXRvX3RyYWNrX2FmdGVyX3NsZXcYbiAB",
+            "KAhIFIgBARIpChxhdXRvX3RyYWNrX2FmdGVyX2NhbGlicmF0aW9uGG8gASgI",
+            "SBWIAQESIgoVYXV0b190cmFja19hZnRlcl9nb3RvGHAgASgISBaIAQFCFQoT",
+            "X2xvZ19jb25zb2xlX291dHB1dEIVChNfbmV0d29ya19lbmFibGVfc3NsQhYK",
+            "FF9jYW5vcGVuX2VuYWJsZV9zeW5jQg8KDV91c2VfZW5jb2RlcnNCFAoSX2Vu",
+            "Y29kZXJzX2Fic29sdXRlQhAKDl9lbmFibGVfZ3VpZGVyQh8KHV9lbmFibGVf",
+            "cmVmcmFjdGlvbl9jb3JyZWN0aW9uQhgKFl9tZXJpZGlhbl9mbGlwX2VuYWJs",
+            "ZWRCFgoUX3NvZnRfbGltaXRzX2VuYWJsZWRCFQoTX3NlcnZvX2luaXRfZW5h",
+            "YmxlZEIdChtfY2Fub3Blbl9wZG9fY29uZmlnX2VuYWJsZWRCIgogX2Nhbm9w",
+            "ZW5fcG9zaXRpb25fcmV3aW5kX2VuYWJsZWRCJAoiX2VxdWF0b3JpYWxfdHJh",
+            "Y2tpbmdfdmVsb2NpdHlfbW9kZUIPCg1faW52ZXJ0X2F4aXMxQg8KDV9pbnZl",
+            "cnRfYXhpczJCFgoUX3NwbGl0X3RyYWNraW5nX2xvb3BCDgoMX2lvX3JlYWx0",
+            "aW1lQhAKDl9wZG9fZmFzdF9wYXRoQhcKFV9wZG9fdmVsb2NpdHlfbWFwcGlu",
+            "Z0ITChFfc2RvX3Nsb3dfY29udHJvbEIYChZfYXV0b190cmFja19hZnRlcl9z",
+            "bGV3Qh8KHV9hdXRvX3RyYWNrX2FmdGVyX2NhbGlicmF0aW9uQhgKFl9hdXRv",
+            "X3RyYWNrX2FmdGVyX2dvdG9KBAg3EDhKBAg4EDkiJQoSSGVhbHRoQ2hlY2tS",
+            "ZXF1ZXN0Eg8KB3NlcnZpY2UYASABKAki5AEKE0hlYWx0aENoZWNrUmVzcG9u",
+            "c2USPgoGc3RhdHVzGAEgASgOMi4uYXN0cm9fbW91bnQuSGVhbHRoQ2hlY2tS",
+            "ZXNwb25zZS5TZXJ2aW5nU3RhdHVzEg8KB3NlcnZpY2UYAiABKAkSKwoHbWV0",
+            "cmljcxgDIAEoCzIaLmFzdHJvX21vdW50LlN5c3RlbU1ldHJpY3MiTwoNU2Vy",
+            "dmluZ1N0YXR1cxILCgdVTktOT1dOEAASCwoHU0VSVklORxABEg8KC05PVF9T",
+            "RVJWSU5HEAISEwoPU0VSVklDRV9VTktOT1dOEAMi1AIKDVN5c3RlbU1ldHJp",
+            "Y3MSGQoRY3B1X3VzYWdlX3BlcmNlbnQYASABKAESFwoPbWVtb3J5X3VzYWdl",
+            "X21iGAIgASgBEhoKEmFjdGl2ZV9jb25uZWN0aW9ucxgDIAEoBBIWCg50b3Rh",
+            "bF9yZXF1ZXN0cxgEIAEoBBITCgtlcnJvcl9jb3VudBgFIAEoBBIcChRhdmdf",
+            "cmVzcG9uc2VfdGltZV9tcxgGIAEoARI6Cg1tb3VudF9tZXRyaWNzGAcgASgL",
+            "MiMuYXN0cm9fbW91bnQuTW91bnRDb250cm9sbGVyTWV0cmljcxI4Cg5rYWxt",
+            "YW5fbWV0cmljcxgIIAEoCzIgLmFzdHJvX21vdW50LkthbG1hbkZpbHRlck1l",
+            "dHJpY3MSMgoOdHBvaW50X21ldHJpY3MYCSABKAsyGi5hc3Ryb19tb3VudC5U",
+            "UG9pbnRNZXRyaWNzIucBChZNb3VudENvbnRyb2xsZXJNZXRyaWNzEh0KFXRy",
+            "YWNraW5nX2Vycm9yX3JhX2F2ZxgBIAEoARIeChZ0cmFja2luZ19lcnJvcl9k",
+            "ZWNfYXZnGAIgASgBEhoKEnRyYWNraW5nX2Vycm9yX21heBgDIAEoARISCgpz",
+            "bGV3X2NvdW50GAQgASgEEhMKC3RyYWNrX2NvdW50GAUgASgEEhkKEWNhbGli",
+            "cmF0aW9uX2NvdW50GAYgASgEEhcKD2VuY29kZXJzX2FjdGl2ZRgHIAEoCBIV",
+            "Cg1ndWlkZXJfYWN0aXZlGAggASgIIpIBChNLYWxtYW5GaWx0ZXJNZXRyaWNz",
+            "EhUKDXByb2Nlc3Nfbm9pc2UYASABKAESGQoRbWVhc3VyZW1lbnRfbm9pc2UY",
+            "AiABKAESFwoPaW5ub3ZhdGlvbl9ub3JtGAMgASgBEhQKDHVwZGF0ZV9jb3Vu",
+            "dBgEIAEoBBIaChJhdmdfdXBkYXRlX3RpbWVfbXMYBSABKAEifwoNVFBvaW50",
+            "TWV0cmljcxIZChFtZWFzdXJlbWVudF9jb3VudBgBIAEoDRIUCgxyZXNpZHVh",
+            "bF9tYXgYAiABKAESFAoMcmVzaWR1YWxfcm1zGAMgASgBEhMKC2NoaV9zcXVh",
+            "cmVkGAQgASgBEhIKCmNhbGlicmF0ZWQYBSABKAgixQEKDkVwaGVtZXJpc1Bv",
+            "aW50Ei0KCXRpbWVzdGFtcBgBIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1l",
+            "c3RhbXASCgoCcmEYAiABKAESCwoDZGVjGAMgASgBEg8KB3JhX3JhdGUYBCAB",
+            "KAESEAoIZGVjX3JhdGUYBSABKAESEAoIcmFfYWNjZWwYBiABKAESEQoJZGVj",
+            "X2FjY2VsGAcgASgBEhAKCGRpc3RhbmNlGAggASgBEhEKCW1hZ25pdHVkZRgJ",
+            "IAEoASKdAgoNRXBoZW1lcmlzRGF0YRIRCglvYmplY3RfaWQYASABKAkSEwoL",
+            "b2JqZWN0X25hbWUYAiABKAkSEwoLb2JqZWN0X3R5cGUYAyABKAkSKwoGcG9p",
+            "bnRzGAQgAygLMhsuYXN0cm9fbW91bnQuRXBoZW1lcmlzUG9pbnQSGwoTaW50",
+            "ZXJwb2xhdGlvbl9vcmRlchgFIAEoARIXCg9yZWZlcmVuY2VfZnJhbWUYBiAB",
+            "KAkSDgoGc291cmNlGAcgASgJEi4KCnZhbGlkX2Zyb20YCCABKAsyGi5nb29n",
+            "bGUucHJvdG9idWYuVGltZXN0YW1wEiwKCHZhbGlkX3RvGAkgASgLMhouZ29v",
+            "Z2xlLnByb3RvYnVmLlRpbWVzdGFtcCL7AQoVRXBoZW1lcmlzVHJhY2tSZXF1",
+            "ZXN0Ei0KCWVwaGVtZXJpcxgBIAEoCzIaLmFzdHJvX21vdW50LkVwaGVtZXJp",
+            "c0RhdGESGQoRbGVhZF90aW1lX3NlY29uZHMYAiABKAESGQoRZW5hYmxlX3By",
+            "ZWRpY3Rpb24YAyABKAgSIQoZcHJlZGljdGlvbl9pbnRlcnZhbF9ob3VycxgE",
+            "IAEoARISCgphdXRvX3N0YXJ0GAUgASgIEhUKDXRyYWNraW5nX21vZGUYBiAB",
+            "KAkSFgoOY3VzdG9tX3JhdGVfcmEYByABKAESFwoPY3VzdG9tX3JhdGVfZGVj",
+            "GAggASgBIsgBCh1TdGFydEVwaGVtZXJpc1RyYWNraW5nUmVxdWVzdBIRCglv",
+            "YmplY3RfaWQYASABKAkSLgoKc3RhcnRfdGltZRgCIAEoCzIaLmdvb2dsZS5w",
+            "cm90b2J1Zi5UaW1lc3RhbXASMAoOc3RhcnRfcG9zaXRpb24YAyABKAsyGC5h",
+            "c3Ryb19tb3VudC5Db29yZGluYXRlcxIVCg13YWl0X2F0X3N0YXJ0GAQgASgI",
+            "EhsKE3NsZXdfbWFyZ2luX3NlY29uZHMYBSABKAEivAYKFEVwaGVtZXJpc1Ry",
+            "YWNrU3RhdHVzEj4KBXN0YXRlGAEgASgOMi8uYXN0cm9fbW91bnQuRXBoZW1l",
+            "cmlzVHJhY2tTdGF0dXMuVHJhY2tpbmdTdGF0ZRIRCglvYmplY3RfaWQYAiAB",
+            "KAkSEwoLb2JqZWN0X25hbWUYAyABKAkSMAoMY3VycmVudF90aW1lGAQgASgL",
+            "MhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI0ChB0cmFja19zdGFydF90",
+            "aW1lGAUgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIyCg50cmFj",
+            "a19lbmRfdGltZRgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAS",
+            "MgoQY3VycmVudF9wb3NpdGlvbhgHIAEoCzIYLmFzdHJvX21vdW50LkNvb3Jk",
+            "aW5hdGVzEjEKD3RhcmdldF9wb3NpdGlvbhgIIAEoCzIYLmFzdHJvX21vdW50",
+            "LkNvb3JkaW5hdGVzEh0KFXBvc2l0aW9uX2Vycm9yX2FyY3NlYxgJIAEoARIP",
+            "CgdyYV9yYXRlGAogASgBEhAKCGRlY19yYXRlGAsgASgBEh4KFnRpbWVfcmVt",
+            "YWluaW5nX3NlY29uZHMYDCABKAESIAoYZWFydGhfcm90YXRpb25fY29ycmVj",
+            "dGVkGA0gASgIEhUKDWVycm9yX21lc3NhZ2UYDiABKAkSEAoId2FybmluZ3MY",
+            "DyADKAkSVgoTdHJhY2tpbmdfcGFyYW1ldGVycxgQIAMoCzI5LmFzdHJvX21v",
+            "dW50LkVwaGVtZXJpc1RyYWNrU3RhdHVzLlRyYWNraW5nUGFyYW1ldGVyc0Vu",
+            "dHJ5GjkKF1RyYWNraW5nUGFyYW1ldGVyc0VudHJ5EgsKA2tleRgBIAEoCRIN",
+            "CgV2YWx1ZRgCIAEoCToCOAEieQoNVHJhY2tpbmdTdGF0ZRIICgRJRExFEAAS",
+            "FAoQU0xFV0lOR19UT19TVEFSVBABEhQKEFdBSVRJTkdfQVRfU1RBUlQQAhIM",
+            "CghUUkFDS0lORxADEg4KClBSRURJQ1RJTkcQBBIJCgVFTkRFRBAFEgkKBUVS",
+            "Uk9SEAYimgIKEEVwaGVtZXJpc01ldHJpY3MSEQoJb2JqZWN0X2lkGAEgASgJ",
+            "EhMKC29iamVjdF90eXBlGAIgASgJEiAKGHRvdGFsX3RyYWNrX3RpbWVfc2Vj",
+            "b25kcxgDIAEoBBIhChlhdmdfcG9zaXRpb25fZXJyb3JfYXJjc2VjGAQgASgB",
+            "EiEKGW1heF9wb3NpdGlvbl9lcnJvcl9hcmNzZWMYBSABKAESHwoXYXZnX3Ry",
+            "YWNraW5nX3JhdGVfZXJyb3IYBiABKAESGAoQcHJlZGljdGlvbl9jb3VudBgH",
+            "IAEoDRIbChNwcmVkaWN0aW9uX2FjY3VyYWN5GAggASgBEh4KFmVhcnRoX3Jv",
+            "dGF0aW9uX2FwcGxpZWQYCSABKAgiQAoUQm9vdHN0cmFwTW9kZVJlcXVlc3QS",
+            "KAoEbW9kZRgBIAEoDjIaLmFzdHJvX21vdW50LkJvb3RzdHJhcE1vZGUixQIK",
+            "FEJvb3RzdHJhcE1lYXN1cmVtZW50EioKCG9ic2VydmVkGAEgASgLMhguYXN0",
+            "cm9fbW91bnQuQ29vcmRpbmF0ZXMSKgoIZXhwZWN0ZWQYAiABKAsyGC5hc3Ry",
+            "b19tb3VudC5Db29yZGluYXRlcxIyCg5tb3VudF9wb3NpdGlvbhgDIAEoCzIa",
+            "LmFzdHJvX21vdW50Lk1vdW50UG9zaXRpb24SLQoJdGltZXN0YW1wGAQgASgL",
+            "MhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIeChZlc3RpbWF0ZWRfZXJy",
+            "b3JfYXJjc2VjGAUgASgBEiEKGXVzZV9mb3JfaW5pdGlhbF9hbGlnbm1lbnQY",
+            "BiABKAgSFwoPc3Rhcl9jYXRhbG9nX2lkGAcgASgJEhYKDnN0YXJfbWFnbml0",
+            "dWRlGAggASgBIowDChpCb290c3RyYXBDYWxpYnJhdGlvblJlc3VsdBIPCgdz",
+            "dWNjZXNzGAEgASgIEhUKDWVycm9yX21lc3NhZ2UYAiABKAkSIgoaaW5pdGlh",
+            "bF9yb3RhdGlvbl9hbmdsZV9kZWcYAyABKAESHgoWYWxpZ25tZW50X2Vycm9y",
+            "X2FyY3NlYxgEIAEoARIZChFtZWFzdXJlbWVudF9jb3VudBgFIAEoBRIxCg1j",
+            "YWxpYnJhdGVkX2F0GAYgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFt",
+            "cBIbChNyZXNpZHVhbF9ybXNfYXJjc2VjGAcgASgBEhsKE21heF9yZXNpZHVh",
+            "bF9hcmNzZWMYCCABKAESGAoQcmVhZHlfZm9yX3Rwb2ludBgJIAEoCBI8ChVl",
+            "c3RpbWF0ZWRfb3JpZW50YXRpb24YCiABKAsyHS5hc3Ryb19tb3VudC5Nb3Vu",
+            "dE9yaWVudGF0aW9uEiIKGmVzdGltYXRlZF9xdWF0ZXJuaW9uX2Vycm9yGAsg",
+            "ASgBIqMFCg9Cb290c3RyYXBTdGF0dXMSEgoKY2FsaWJyYXRlZBgBIAEoCBI0",
+            "ChBsYXN0X2NhbGlicmF0aW9uGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRp",
+            "bWVzdGFtcBIZChFtZWFzdXJlbWVudF9jb3VudBgDIAEoBRImCh5jdXJyZW50",
+            "X2FsaWdubWVudF9lcnJvcl9hcmNzZWMYBCABKAESGAoQcmVhZHlfZm9yX3Rw",
+            "b2ludBgFIAEoCBI8CgVzdGF0ZRgGIAEoDjItLmFzdHJvX21vdW50LkJvb3Rz",
+            "dHJhcFN0YXR1cy5DYWxpYnJhdGlvblN0YXRlEhUKDXN0YXRlX21lc3NhZ2UY",
+            "ByABKAkSIQoZbWluX21lYXN1cmVtZW50c19yZXF1aXJlZBgIIAEoARIjChtt",
+            "aW5fbWVhc3VyZW1lbnRzX2Zvcl90cG9pbnQYCSABKAESMgoOYm9vdHN0cmFw",
+            "X21vZGUYCiABKA4yGi5hc3Ryb19tb3VudC5Cb290c3RyYXBNb2RlEh0KFWVu",
+            "Y29kZXJfdHlwZV9hYnNvbHV0ZRgLIAEoCBIgChhyZWZlcmVuY2VfcG9zaXRp",
+            "b25fa25vd24YDCABKAgSJAocZXN0aW1hdGVkX2VuY29kZXJfb2Zmc2V0X2Rl",
+            "ZxgNIAEoARIiChptYW51YWxfbWVhc3VyZW1lbnRzX25lZWRlZBgOIAEoBSKM",
+            "AQoQQ2FsaWJyYXRpb25TdGF0ZRISCg5OT1RfQ0FMSUJSQVRFRBAAEhsKF01F",
+            "QVNVUkVNRU5UU19DT0xMRUNUSU5HEAESDwoLQ0FMSUJSQVRJTkcQAhIOCgpD",
+            "QUxJQlJBVEVEEAMSGwoXTkVFRFNfTU9SRV9NRUFTVVJFTUVOVFMQBBIJCgVF",
+            "UlJPUhAFIooBChRBdXRvQm9vdHN0cmFwUmVxdWVzdBIZChF0YXJnZXRfc3Rh",
+            "cl9uYW1lcxgBIAMoCRIYChBtaW5fbWVhc3VyZW1lbnRzGAIgASgFEiIKGm1h",
+            "eF9hbGlnbm1lbnRfZXJyb3JfYXJjc2VjGAMgASgBEhkKEXByb2NlZWRfdG9f",
+            "dHBvaW50GAQgASgIIpQDChNBdXRvQm9vdHN0cmFwU3RhdHVzEkIKBXN0YXRl",
+            "GAEgASgOMjMuYXN0cm9fbW91bnQuQXV0b0Jvb3RzdHJhcFN0YXR1cy5BdXRv",
+            "Qm9vdHN0cmFwU3RhdGUSFQoNc3RhdGVfbWVzc2FnZRgCIAEoCRIeChZtZWFz",
+            "dXJlbWVudHNfY29sbGVjdGVkGAMgASgFEhsKE21lYXN1cmVtZW50c190YXJn",
+            "ZXQYBCABKAUSGwoTY3VycmVudF90YXJnZXRfc3RhchgFIAEoCRIYChBwcm9n",
+            "cmVzc19wZXJjZW50GAYgASgBEhUKDWVycm9yX21lc3NhZ2UYByABKAkilgEK",
+            "EkF1dG9Cb290c3RyYXBTdGF0ZRIICgRJRExFEAASEwoPU0VMRUNUSU5HX1NU",
+            "QVJTEAESCwoHU0xFV0lORxACEhEKDVBMQVRFX1NPTFZJTkcQAxIWChJBRERJ",
+            "TkdfTUVBU1VSRU1FTlQQBBIPCgtDQUxJQlJBVElORxAFEg0KCUNPTVBMRVRF",
+            "RBAGEgkKBUVSUk9SEAci0wIKC01vdG9yQ29uZmlnEiQKBHR5cGUYASABKA4y",
+            "Fi5hc3Ryb19tb3VudC5Nb3RvclR5cGUSLgoMZGVmYXVsdF9tb2RlGAIgASgO",
+            "MhguYXN0cm9fbW91bnQuQ29udHJvbE1vZGUSFAoMbWF4X3ZlbG9jaXR5GAMg",
+            "ASgBEhgKEG1heF9hY2NlbGVyYXRpb24YBCABKAESEgoKbWF4X3RvcnF1ZRgF",
+            "IAEoARIhChllbmNvZGVyX2NvdW50c19wZXJfZGVncmVlGAYgASgBEhIKCmdl",
+            "YXJfcmF0aW8YByABKAESHAoUZW5hYmxlX2N1cnJlbnRfbGltaXQYCCABKAgS",
+            "FQoNY3VycmVudF9saW1pdBgJIAEoARIlCh1lbmFibGVfdGVtcGVyYXR1cmVf",
+            "cHJvdGVjdGlvbhgKIAEoCBIXCg9tYXhfdGVtcGVyYXR1cmUYCyABKAEiuwEK",
+            "EUF4aXNFbmNvZGVyQ29uZmlnEiYKBHR5cGUYASABKA4yGC5hc3Ryb19tb3Vu",
+            "dC5FbmNvZGVyVHlwZRIwCglpbnRlcmZhY2UYAiABKA4yHS5hc3Ryb19tb3Vu",
+            "dC5FbmNvZGVySW50ZXJmYWNlEhkKEXJlc29sdXRpb25fY291bnRzGAMgASgN",
+            "EhkKEWNvdW50c19wZXJfZGVncmVlGAQgASgBEhYKDnVwZGF0ZV9yYXRlX2h6",
+            "GAUgASgBIoADCgpBeGlzQ29uZmlnEgoKAmlkGAEgASgFEgwKBG5hbWUYAiAB",
+            "KAkSLgoMbW90b3JfY29uZmlnGAMgASgLMhguYXN0cm9fbW91bnQuTW90b3JD",
+            "b25maWcSNgoOZW5jb2Rlcl9jb25maWcYBCABKAsyHi5hc3Ryb19tb3VudC5B",
+            "eGlzRW5jb2RlckNvbmZpZxI7Cg1zYWZldHlfbGltaXRzGAUgASgLMiQuYXN0",
+            "cm9fbW91bnQuQXhpc0NvbmZpZy5TYWZldHlMaW1pdHMSGAoQaW52ZXJ0X2Rp",
+            "cmVjdGlvbhgGIAEoCBqYAQoMU2FmZXR5TGltaXRzEhQKDG1pbl9wb3NpdGlv",
+            "bhgBIAEoARIUCgxtYXhfcG9zaXRpb24YAiABKAESFAoMbWF4X3ZlbG9jaXR5",
+            "GAMgASgBEhgKEG1heF9hY2NlbGVyYXRpb24YBCABKAESEwoLbWF4X2N1cnJl",
+            "bnQYBSABKAESFwoPbWF4X3RlbXBlcmF0dXJlGAYgASgBIpMBCglQSURQYXJh",
+            "bXMSCgoCa3AYASABKAESCgoCa2kYAiABKAESCgoCa2QYAyABKAESFgoOaW50",
+            "ZWdyYWxfbGltaXQYBCABKAESFAoMb3V0cHV0X2xpbWl0GAUgASgBEhgKEGFu",
+            "dGlfd2luZHVwX2dhaW4YBiABKAESGgoSZW5hYmxlX2FudGlfd2luZHVwGAcg",
+            "ASgIIpcCCgxTYWZldHlDb25maWcSFQoNZW5hYmxlX2xpbWl0cxgBIAEoCBId",
+            "ChVlbmFibGVfZW1lcmdlbmN5X3N0b3AYAiABKAgSIQoZZW1lcmdlbmN5X3N0",
+            "b3BfdGltZW91dF9tcxgDIAEoDRIlCh1lbmFibGVfdGVtcGVyYXR1cmVfbW9u",
+            "aXRvcmluZxgEIAEoCBIhChllbmFibGVfY3VycmVudF9tb25pdG9yaW5nGAUg",
+            "ASgIEiEKGWVuYWJsZV92b2x0YWdlX21vbml0b3JpbmcYBiABKAgSEwoLbWlu",
+            "X3ZvbHRhZ2UYByABKAESEwoLbWF4X3ZvbHRhZ2UYCCABKAESFwoPbW9uaXRv",
+            "cmluZ19yYXRlGAkgASgNIr4BCg9TaW11bGF0ZWRDb25maWcSGQoRZW5hYmxl",
+            "X3NpbXVsYXRpb24YASABKAgSHgoWc2ltdWxhdGlvbl91cGRhdGVfcmF0ZRgC",
+            "IAEoARIdChVwb3NpdGlvbl9ub2lzZV9zdGRkZXYYAyABKAESHQoVdmVsb2Np",
+            "dHlfbm9pc2Vfc3RkZGV2GAQgASgBEhcKD3NpbXVsYXRlX2Vycm9ycxgFIAEo",
+            "CBIZChFlcnJvcl9wcm9iYWJpbGl0eRgGIAEoASK1AQoNQ2FuT3BlbkNvbmZp",
+            "ZxIPCgdsaWJyYXJ5GAEgASgJEhYKDmludGVyZmFjZV9uYW1lGAIgASgJEg8K",
+            "B2JpdHJhdGUYAyABKA0SDwoHbm9kZV9pZBgEIAEoDRIQCgh1c2Vfc3luYxgF",
+            "IAEoCBIWCg5zeW5jX3BlcmlvZF9tcxgGIAEoDRIWCg5zZG9fdGltZW91dF9t",
+            "cxgHIAEoDRIXCg9wZG9fdXBkYXRlX3JhdGUYCCABKA0iiwEKDFNlcmlhbENv",
+            "bmZpZxIMCgRwb3J0GAEgASgJEhEKCWJhdWRfcmF0ZRgCIAEoDRIQCghwcm90",
+            "b2NvbBgDIAEoCRIRCglkYXRhX2JpdHMYBCABKA0SEQoJc3RvcF9iaXRzGAUg",
+            "ASgNEg4KBnBhcml0eRgGIAEoCRISCgp0aW1lb3V0X21zGAcgASgNIm0KDkV0",
+            "aGVybmV0Q29uZmlnEhIKCmlwX2FkZHJlc3MYASABKAkSDAoEcG9ydBgCIAEo",
+            "DRIQCghwcm90b2NvbBgDIAEoCRISCgp0aW1lb3V0X21zGAQgASgNEhMKC3Jl",
+            "dHJ5X2NvdW50GAUgASgNIrEBCg1TcGVlZFBpZEVudHJ5EhEKCXNwZWVkX3Jw",
+            "bRgBIAEoARISCgpjdXJyZW50X2twGAIgASgBEhIKCmN1cnJlbnRfa2kYAyAB",
+            "KAESEAoIc3BlZWRfa3AYBCABKAESEAoIc3BlZWRfa2kYBSABKAESFwoPc3Bl",
+            "ZWRfZmlsdGVyX2h6GAYgASgBEhMKC3Bvc2l0aW9uX2twGAcgASgBEhMKC3Bv",
+            "c2l0aW9uX2tpGAggASgBIuYCCg5NZjcwMjV2MkNvbmZpZxIVCg1jYW5faW50",
+            "ZXJmYWNlGAEgASgJEg8KB2JpdHJhdGUYAiABKA0SFgoOc2RvX3RpbWVvdXRf",
+            "bXMYAyABKA0SIQoZcG9zaXRpb25fdW5pdHNfcGVyX2RlZ3JlZRgEIAEoARIe",
+            "ChZ2ZWxvY2l0eV91bml0c19wZXJfZHBzGAUgASgBEiQKHHNwZWVkX3BpZF9h",
+            "ZGFwdGF0aW9uX2VuYWJsZWQYBiABKAgSJgoec3BlZWRfcGlkX2FkYXB0YXRp",
+            "b25fdXBkYXRlX21zGAcgASgBEjYKEnNwZWVkX3BpZF9zY2hlZHVsZRgIIAMo",
+            "CzIaLmFzdHJvX21vdW50LlNwZWVkUGlkRW50cnkSFgoOc2VuZF9zcGVlZF9w",
+            "aWQYCSABKAgSGAoQc2VuZF9jdXJyZW50X3BpZBgKIAEoCBIZChFzZW5kX3Bv",
+            "c2l0aW9uX3BpZBgLIAEoCCKABAoJSEFMQ29uZmlnEiIKBHR5cGUYASABKA4y",
+            "FC5hc3Ryb19tb3VudC5IQUxUeXBlEgwKBG5hbWUYAiABKAkSLwoJc2ltdWxh",
+            "dGVkGAMgASgLMhwuYXN0cm9fbW91bnQuU2ltdWxhdGVkQ29uZmlnEisKB2Nh",
+            "bm9wZW4YBCABKAsyGi5hc3Ryb19tb3VudC5DYW5PcGVuQ29uZmlnEikKBnNl",
+            "cmlhbBgFIAEoCzIZLmFzdHJvX21vdW50LlNlcmlhbENvbmZpZxItCghldGhl",
+            "cm5ldBgGIAEoCzIbLmFzdHJvX21vdW50LkV0aGVybmV0Q29uZmlnEiUKBGF4",
+            "ZXMYByADKAsyFy5hc3Ryb19tb3VudC5BeGlzQ29uZmlnEioKCnBpZF9wYXJh",
+            "bXMYCCABKAsyFi5hc3Ryb19tb3VudC5QSURQYXJhbXMSKQoGc2FmZXR5GAkg",
+            "ASgLMhkuYXN0cm9fbW91bnQuU2FmZXR5Q29uZmlnEisKB2dhbWVwYWQYCiAB",
+            "KAsyGi5hc3Ryb19tb3VudC5HYW1lcGFkQ29uZmlnEhEKCWNhbl90cmFjZRgL",
+            "IAEoCBIcChRjYW5fdHJhY2VfcmVhZF9zdGF0ZRgMIAEoCBItCghtZjcwMjV2",
+            "MhgNIAEoCzIbLmFzdHJvX21vdW50Lk1mNzAyNXYyQ29uZmlnIqcBCg1HYW1l",
+            "cGFkQ29uZmlnEhMKC2RldmljZV9wYXRoGAEgASgJEhEKCWRlYWRfem9uZRgC",
+            "IAEoARITCgtzZW5zaXRpdml0eRgDIAEoARIWCg5yZWFkX2ZyZXF1ZW5jeRgE",
+            "IAEoARIRCglhdXRvc3RhcnQYBSABKAgSLgoMZ2FtZXBhZF9tb2RlGAYgASgO",
+            "MhguYXN0cm9fbW91bnQuR2FtZXBhZE1vZGUirAIKCUhBTFN0YXR1cxITCgtp",
+            "bml0aWFsaXplZBgBIAEoCBIPCgdydW5uaW5nGAIgASgIEiIKBHR5cGUYAyAB",
+            "KA4yFC5hc3Ryb19tb3VudC5IQUxUeXBlEhUKDXBsYXRmb3JtX25hbWUYBCAB",
+            "KAkSGAoQaGFyZHdhcmVfdmVyc2lvbhgFIAEoCRIWCg5zdGF0dXNfbWVzc2Fn",
+            "ZRgGIAEoCRIaChJzdXBwb3J0ZWRfZmVhdHVyZXMYByADKAkSFQoNZXJyb3Jf",
+            "bWVzc2FnZRgIIAEoCRItCgl0aW1lc3RhbXAYCSABKAsyGi5nb29nbGUucHJv",
+            "dG9idWYuVGltZXN0YW1wEioKB2dhbWVwYWQYCiABKAsyGS5hc3Ryb19tb3Vu",
+            "dC5HYW1lcGFkU3RhdGUixgUKDEdhbWVwYWRTdGF0ZRIRCgljb25uZWN0ZWQY",
+            "ASABKAgSEwoLZGV2aWNlX25hbWUYAiABKAkSDwoHYXhpc19seBgDIAEoARIP",
+            "CgdheGlzX2x5GAQgASgBEg8KB2F4aXNfcngYBSABKAESDwoHYXhpc19yeRgG",
+            "IAEoARIWCg5heGlzX3RyaWdnZXJfbBgHIAEoARIWCg5heGlzX3RyaWdnZXJf",
+            "chgIIAEoARIPCgdwb3ZfaGF0GAkgASgBEhMKC2J1dHRvbl9zdG9wGAogASgI",
+            "Eh0KFWJ1dHRvbl9lbWVyZ2VuY3lfc3RvcBgLIAEoCBITCgtidXR0b25fcGFy",
+            "axgMIAEoCBIXCg9idXR0b25fc3BlZWRfdXAYDSABKAgSGQoRYnV0dG9uX3Nw",
+            "ZWVkX2Rvd24YDiABKAgSHAoUYnV0dG9uX21hbnVhbF90b2dnbGUYDyABKAgS",
+            "EwoLYnV0dG9uX2hvbWUYECABKAgSEgoKYXhpc19jb3VudBgRIAEoBRIUCgxi",
+            "dXR0b25fY291bnQYEiABKAUSLgoMZ2FtZXBhZF9tb2RlGBMgASgOMhguYXN0",
+            "cm9fbW91bnQuR2FtZXBhZE1vZGUSHAoUYm9vdHN0cmFwX2NhbGlicmF0ZWQY",
+            "FCABKAgSGQoRdHBvaW50X2NhbGlicmF0ZWQYFSABKAgSFAoMbWF4X3ZlbG9j",
+            "aXR5GBYgASgBEiIKGmJ1dHRvbl9ib290c3RyYXBfY2FsaWJyYXRlGBcgASgI",
+            "Eh8KF2J1dHRvbl90cG9pbnRfY2FsaWJyYXRlGBggASgIEhwKFGJ1dHRvbl9t",
+            "ZXJpZGlhbl9mbGlwGBkgASgIEhkKEWJ1dHRvbl9tb2RlX2N5Y2xlGBogASgI",
+            "EhsKE2J1dHRvbl9jbGVhcl9lcnJvcnMYGyABKAgSFQoNYnV0dG9uX3VucGFy",
+            "axgcIAEoCCI8ChJHYW1lcGFkTW9kZVJlcXVlc3QSJgoEbW9kZRgBIAEoDjIY",
+            "LmFzdHJvX21vdW50LkdhbWVwYWRNb2RlIjoKEEhBTENvbmZpZ1JlcXVlc3QS",
+            "JgoGY29uZmlnGAEgASgLMhYuYXN0cm9fbW91bnQuSEFMQ29uZmlnIikKEEhB",
+            "TFJlaW5pdFJlcXVlc3QSFQoNZm9yY2VfcmVzdGFydBgBIAEoCCIyChJNb3Vu",
+            "dEhvbWluZ1JlcXVlc3QSDQoFYXhpczEYASABKAESDQoFYXhpczIYAiABKAEq",
+            "SAoOVHJhamVjdG9yeVR5cGUSDwoLVFJBUEVaT0lEQUwQABILCgdTX1NIQVBF",
+            "EAESCAoEU0lORRACEg4KClBPTFlOT01JQUwQAyo9Cg9BeGlzQ29udHJvbE1v",
+            "ZGUSFAoQUE9TSVRJT05fQ09OVFJPTBAAEhQKEFZFTE9DSVRZX0NPTlRST0wQ",
+            "ASpACglNb3VudFR5cGUSDgoKRVFVQVRPUklBTBAAEgoKBkFMVF9BWhABEgsK",
+            "B1VOS05PV04QAhIKCgZDQVNVQUwQAypgCgtHYW1lcGFkTW9kZRIPCgtHQU1F",
+            "UEFEX1JBVxAAEhUKEUdBTUVQQURfQ0VMRVNUSUFMEAESEgoOR0FNRVBBRF9B",
+            "TFRfQVoQAhIVChFHQU1FUEFEX1BSRUNJU0lPThADKlQKDUJvb3RzdHJhcE1v",
+            "ZGUSFAoQQk9PVFNUUkFQX01BTlVBTBAAEhQKEEJPT1RTVFJBUF9IWUJSSUQQ",
+            "ARIXChNCT09UU1RSQVBfQVVUT01BVElDEAIqXwoHSEFMVHlwZRIRCg1IQUxf",
+            "U0lNVUxBVEVEEAASDwoLSEFMX0NBTk9QRU4QARIOCgpIQUxfU0VSSUFMEAIS",
+            "EAoMSEFMX0VUSEVSTkVUEAMSDgoKSEFMX0NVU1RPTRAEKmkKCU1vdG9yVHlw",
+            "ZRIRCg1NT1RPUl9TVEVQUEVSEAASEgoOTU9UT1JfRENfQlJVU0gQARIWChJN",
+            "T1RPUl9EQ19CUlVTSExFU1MQAhIMCghNT1RPUl9BQxADEg8KC01PVE9SX1NF",
+            "UlZPEAQqYQoLQ29udHJvbE1vZGUSFAoQQ09OVFJPTF9QT1NJVElPThAAEhQK",
+            "EENPTlRST0xfVkVMT0NJVFkQARISCg5DT05UUk9MX1RPUlFVRRACEhIKDkNP",
+            "TlRST0xfSE9NSU5HEAMqfQoLRW5jb2RlclR5cGUSFAoQRU5DT0RFUl9BQlNP",
+            "TFVURRAAEhcKE0VOQ09ERVJfSU5DUkVNRU5UQUwQARIUChBFTkNPREVSX01B",
+            "R05FVElDEAISEwoPRU5DT0RFUl9PUFRJQ0FMEAMSFAoQRU5DT0RFUl9SRVNP",
+            "TFZFUhAEKm4KEEVuY29kZXJJbnRlcmZhY2USEwoPRU5DT0RFUl9DQU5PUEVO",
+            "EAASDwoLRU5DT0RFUl9TU0kQARIPCgtFTkNPREVSX1NQSRACEg8KC0VOQ09E",
+            "RVJfSTJDEAMSEgoORU5DT0RFUl9BTkFMT0cQBCr6AQoKSEFMRmVhdHVyZRId",
+            "ChlIQUxfRkVBVFVSRV9NT1RPUl9DT05UUk9MEAASHwobSEFMX0ZFQVRVUkVf",
+            "RU5DT0RFUl9SRUFESU5HEAESIQodSEFMX0ZFQVRVUkVfU0FGRVRZX01PTklU",
+            "T1JJTkcQAhIgChxIQUxfRkVBVFVSRV9TRU5TT1JfSU5URVJGQUNFEAMSGgoW",
+            "SEFMX0ZFQVRVUkVfU0lNVUxBVElPThAEEhkKFUhBTF9GRUFUVVJFX0ZJRUxE",
+            "X0JVUxAFEhYKEkhBTF9GRUFUVVJFX01PREJVUxAGEhgKFEhBTF9GRUFUVVJF",
+            "X0VUSEVSQ0FUEAcy/iEKFk1vdW50Q29udHJvbGxlclNlcnZpY2USRQoRU2xl",
+            "d1RvQ29vcmRpbmF0ZXMSGC5hc3Ryb19tb3VudC5Db29yZGluYXRlcxoWLmdv",
+            "b2dsZS5wcm90b2J1Zi5FbXB0eRJOChBTbGV3VG9Ib3Jpem9udGFsEiIuYXN0",
+            "cm9fbW91bnQuSG9yaXpvbnRhbENvb3JkaW5hdGVzGhYuZ29vZ2xlLnByb3Rv",
+            "YnVmLkVtcHR5Ej8KC1RyYWNrT2JqZWN0EhguYXN0cm9fbW91bnQuQ29vcmRp",
+            "bmF0ZXMaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSNgoEU3RvcBIWLmdvb2ds",
+            "ZS5wcm90b2J1Zi5FbXB0eRoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRI2CgRQ",
+            "YXJrEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVm",
+            "LkVtcHR5EjgKBlVucGFyaxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoWLmdv",
+            "b2dsZS5wcm90b2J1Zi5FbXB0eRJFChNFeGVjdXRlTWVyaWRpYW5GbGlwEhYu",
+            "Z29vZ2xlLnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5",
+            "EkAKCEdldFN0YXRlEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhwuYXN0cm9f",
+            "bW91bnQuQ29udHJvbGxlclN0YXRlEkQKCldhdGNoU3RhdGUSFi5nb29nbGUu",
+            "cHJvdG9idWYuRW1wdHkaHC5hc3Ryb19tb3VudC5Db250cm9sbGVyU3RhdGUw",
+            "ARJKCglTYXZlU3RhdGUSHS5hc3Ryb19tb3VudC5TdGF0ZVNhdmVSZXF1ZXN0",
+            "Gh4uYXN0cm9fbW91bnQuU3RhdGVTYXZlUmVzcG9uc2USQgoJTG9hZFN0YXRl",
+            "Eh0uYXN0cm9fbW91bnQuU3RhdGVMb2FkUmVxdWVzdBoWLmdvb2dsZS5wcm90",
+            "b2J1Zi5FbXB0eRI9CgtDbGVhckVycm9ycxIWLmdvb2dsZS5wcm90b2J1Zi5F",
+            "bXB0eRoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJUChdBZGRCb290c3RyYXBN",
+            "ZWFzdXJlbWVudBIhLmFzdHJvX21vdW50LkJvb3RzdHJhcE1lYXN1cmVtZW50",
+            "GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EloKF1J1bkJvb3RzdHJhcENhbGli",
+            "cmF0aW9uEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GicuYXN0cm9fbW91bnQu",
+            "Qm9vdHN0cmFwQ2FsaWJyYXRpb25SZXN1bHQSSgoSR2V0Qm9vdHN0cmFwU3Rh",
+            "dHVzEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhwuYXN0cm9fbW91bnQuQm9v",
+            "dHN0cmFwU3RhdHVzEkwKGkNsZWFyQm9vdHN0cmFwTWVhc3VyZW1lbnRzEhYu",
+            "Z29vZ2xlLnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5",
+            "Ek0KEFNldEJvb3RzdHJhcE1vZGUSIS5hc3Ryb19tb3VudC5Cb290c3RyYXBN",
+            "b2RlUmVxdWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJSChVSdW5BdXRv",
+            "bWF0aWNCb290c3RyYXASIS5hc3Ryb19tb3VudC5BdXRvQm9vdHN0cmFwUmVx",
+            "dWVzdBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJSChZHZXRBdXRvQm9vdHN0",
+            "cmFwU3RhdHVzEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GiAuYXN0cm9fbW91",
+            "bnQuQXV0b0Jvb3RzdHJhcFN0YXR1cxJIChRBZGRUUG9pbnRNZWFzdXJlbWVu",
+            "dBIYLmFzdHJvX21vdW50Lk1lYXN1cmVtZW50GhYuZ29vZ2xlLnByb3RvYnVm",
+            "LkVtcHR5EkkKF0NsZWFyVFBvaW50TWVhc3VyZW1lbnRzEhYuZ29vZ2xlLnBy",
+            "b3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkwKE0dldFRQ",
+            "b2ludFBhcmFtZXRlcnMSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaHS5hc3Ry",
+            "b19tb3VudC5UUG9pbnRQYXJhbWV0ZXJzEkYKFFJ1blRQb2ludENhbGlicmF0",
+            "aW9uEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVm",
+            "LkVtcHR5EkgKEUdldFJvdGF0aW9uTWF0cml4EhYuZ29vZ2xlLnByb3RvYnVm",
+            "LkVtcHR5GhsuYXN0cm9fbW91bnQuUm90YXRpb25NYXRyaXgSWQoVRGV0ZXJt",
+            "aW5lUG9sZVBvc2l0aW9uEiUuYXN0cm9fbW91bnQuUG9sZURldGVybWluYXRp",
+            "b25SZXF1ZXN0GhkuYXN0cm9fbW91bnQuUG9sZVBvc2l0aW9uEkQKDkVuYWJs",
+            "ZUVuY29kZXJzEhouYXN0cm9fbW91bnQuRW5jb2RlckNvbmZpZxoWLmdvb2ds",
+            "ZS5wcm90b2J1Zi5FbXB0eRJBCg9EaXNhYmxlRW5jb2RlcnMSFi5nb29nbGUu",
+            "cHJvdG9idWYuRW1wdHkaFi5nb29nbGUucHJvdG9idWYuRW1wdHkSQgoNQ29u",
+            "bmVjdEd1aWRlchIZLmFzdHJvX21vdW50Lkd1aWRlckNvbmZpZxoWLmdvb2ds",
+            "ZS5wcm90b2J1Zi5FbXB0eRJCChBEaXNjb25uZWN0R3VpZGVyEhYuZ29vZ2xl",
+            "LnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5Ek0KFFNl",
+            "bmRHdWlkZXJDb3JyZWN0aW9uEh0uYXN0cm9fbW91bnQuR3VpZGVyQ29ycmVj",
+            "dGlvbhoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJGChBHZXRDb25maWd1cmF0",
+            "aW9uEhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhouYXN0cm9fbW91bnQuQ29u",
+            "ZmlndXJhdGlvbhJJChNVcGRhdGVDb25maWd1cmF0aW9uEhouYXN0cm9fbW91",
+            "bnQuQ29uZmlndXJhdGlvbhoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJQCgtD",
+            "aGVja0hlYWx0aBIfLmFzdHJvX21vdW50LkhlYWx0aENoZWNrUmVxdWVzdBog",
+            "LmFzdHJvX21vdW50LkhlYWx0aENoZWNrUmVzcG9uc2USRQoPVXBsb2FkRXBo",
+            "ZW1lcmlzEhouYXN0cm9fbW91bnQuRXBoZW1lcmlzRGF0YRoWLmdvb2dsZS5w",
+            "cm90b2J1Zi5FbXB0eRJnChZTdGFydEVwaGVtZXJpc1RyYWNraW5nEiouYXN0",
+            "cm9fbW91bnQuU3RhcnRFcGhlbWVyaXNUcmFja2luZ1JlcXVlc3QaIS5hc3Ry",
+            "b19tb3VudC5FcGhlbWVyaXNUcmFja1N0YXR1cxJnCh5TdGFydEVwaGVtZXJp",
+            "c1RyYWNraW5nV2l0aERhdGESIi5hc3Ryb19tb3VudC5FcGhlbWVyaXNUcmFj",
+            "a1JlcXVlc3QaIS5hc3Ryb19tb3VudC5FcGhlbWVyaXNUcmFja1N0YXR1cxJU",
+            "ChdHZXRFcGhlbWVyaXNUcmFja1N0YXR1cxIWLmdvb2dsZS5wcm90b2J1Zi5F",
+            "bXB0eRohLmFzdHJvX21vdW50LkVwaGVtZXJpc1RyYWNrU3RhdHVzEkcKFVN0",
+            "b3BFcGhlbWVyaXNUcmFja2luZxIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoW",
+            "Lmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJMChNHZXRFcGhlbWVyaXNNZXRyaWNz",
+            "EhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5Gh0uYXN0cm9fbW91bnQuRXBoZW1l",
+            "cmlzTWV0cmljcxJFChNDbGVhckVwaGVtZXJpc0NhY2hlEhYuZ29vZ2xlLnBy",
+            "b3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkYKC0NvbnRy",
+            "b2xBeGlzEh8uYXN0cm9fbW91bnQuQXhpc0NvbnRyb2xSZXF1ZXN0GhYuZ29v",
+            "Z2xlLnByb3RvYnVmLkVtcHR5EkAKCFN0b3BBeGlzEhwuYXN0cm9fbW91bnQu",
+            "QXhpc1N0b3BSZXF1ZXN0GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkoKDUVt",
+            "ZXJnZW5jeVN0b3ASIS5hc3Ryb19tb3VudC5FbWVyZ2VuY3lTdG9wUmVxdWVz",
+            "dBoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRJACg1HZXRBeGlzU3RhdHVzEhYu",
+            "Z29vZ2xlLnByb3RvYnVmLkVtcHR5GhcuYXN0cm9fbW91bnQuQXhpc1N0YXR1",
+            "cxI/CgRIb21lEh8uYXN0cm9fbW91bnQuTW91bnRIb21pbmdSZXF1ZXN0GhYu",
+            "Z29vZ2xlLnByb3RvYnVmLkVtcHR5Ej4KDEdldEhBTENvbmZpZxIWLmdvb2ds",
+            "ZS5wcm90b2J1Zi5FbXB0eRoWLmFzdHJvX21vdW50LkhBTENvbmZpZxJFCgxT",
+            "ZXRIQUxDb25maWcSHS5hc3Ryb19tb3VudC5IQUxDb25maWdSZXF1ZXN0GhYu",
+            "Z29vZ2xlLnByb3RvYnVmLkVtcHR5Ej4KDEdldEhBTFN0YXR1cxIWLmdvb2ds",
+            "ZS5wcm90b2J1Zi5FbXB0eRoWLmFzdHJvX21vdW50LkhBTFN0YXR1cxJICg9S",
+            "ZWluaXRpYWxpemVIQUwSHS5hc3Ryb19tb3VudC5IQUxSZWluaXRSZXF1ZXN0",
+            "GhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5EkMKEVJlc3RhcnRDb250cm9sbGVy",
+            "EhYuZ29vZ2xlLnByb3RvYnVmLkVtcHR5GhYuZ29vZ2xlLnByb3RvYnVmLkVt",
+            "cHR5EkcKFUhhcmRSZXN0YXJ0Q29udHJvbGxlchIWLmdvb2dsZS5wcm90b2J1",
+            "Zi5FbXB0eRoWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRI+CgxTdGFydEdhbWVw",
+            "YWQSFi5nb29nbGUucHJvdG9idWYuRW1wdHkaFi5nb29nbGUucHJvdG9idWYu",
+            "RW1wdHkSPQoLU3RvcEdhbWVwYWQSFi5nb29nbGUucHJvdG9idWYuRW1wdHka",
+            "Fi5nb29nbGUucHJvdG9idWYuRW1wdHkSSQoOU2V0R2FtZXBhZE1vZGUSHy5h",
+            "c3Ryb19tb3VudC5HYW1lcGFkTW9kZVJlcXVlc3QaFi5nb29nbGUucHJvdG9i",
+            "dWYuRW1wdHkSTAoTU2V0TW91bnRPcmllbnRhdGlvbhIdLmFzdHJvX21vdW50",
+            "Lk1vdW50T3JpZW50YXRpb24aFi5nb29nbGUucHJvdG9idWYuRW1wdHkSTAoT",
+            "R2V0TW91bnRPcmllbnRhdGlvbhIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRod",
+            "LmFzdHJvX21vdW50Lk1vdW50T3JpZW50YXRpb24SPgoKU3RhcnRMeDIwMBIW",
+            "Lmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoYLmFzdHJvX21vdW50Lkx4MjAwU3Rh",
+            "dHVzEj0KCVN0b3BMeDIwMBIWLmdvb2dsZS5wcm90b2J1Zi5FbXB0eRoYLmFz",
+            "dHJvX21vdW50Lkx4MjAwU3RhdHVzEkIKDkdldEx4MjAwU3RhdHVzEhYuZ29v",
+            "Z2xlLnByb3RvYnVmLkVtcHR5GhguYXN0cm9fbW91bnQuTHgyMDBTdGF0dXNi",
+            "BnByb3RvMw=="));
       descriptor = pbr::FileDescriptor.FromGeneratedCode(descriptorData,
           new pbr::FileDescriptor[] { global::Google.Protobuf.WellKnownTypes.TimestampReflection.Descriptor, global::Google.Protobuf.WellKnownTypes.EmptyReflection.Descriptor, },
-          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::AstroMount.TrajectoryType), typeof(global::AstroMount.AxisControlMode), typeof(global::AstroMount.MountType), typeof(global::AstroMount.BootstrapMode), typeof(global::AstroMount.HALType), typeof(global::AstroMount.MotorType), typeof(global::AstroMount.ControlMode), typeof(global::AstroMount.EncoderType), typeof(global::AstroMount.EncoderInterface), typeof(global::AstroMount.HALFeature), }, null, new pbr::GeneratedClrTypeInfo[] {
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Coordinates), global::AstroMount.Coordinates.Parser, new[]{ "Ra", "Dec", "PmRa", "PmDec", "Parallax", "RadialVelocity", "Epoch", "CatalogId", "ObjectId", "Magnitude", "SpectralType", "EpochRa", "EpochDec", "PositionAngle", "Separation", "ApplyRefraction", "Temperature", "Pressure", "Humidity", "ApplyPrecession", "ApplyNutation", "ApplyAberration", "ApplyLightTime", "ApplyGravDeflection", "Altitude", "Azimuth", "ApparentRa", "ApparentDec", "TopoRa", "TopoDec" }, null, null, null, null),
+          new pbr::GeneratedClrTypeInfo(new[] {typeof(global::AstroMount.TrajectoryType), typeof(global::AstroMount.AxisControlMode), typeof(global::AstroMount.MountType), typeof(global::AstroMount.GamepadMode), typeof(global::AstroMount.BootstrapMode), typeof(global::AstroMount.HALType), typeof(global::AstroMount.MotorType), typeof(global::AstroMount.ControlMode), typeof(global::AstroMount.EncoderType), typeof(global::AstroMount.EncoderInterface), typeof(global::AstroMount.HALFeature), }, null, new pbr::GeneratedClrTypeInfo[] {
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Coordinates), global::AstroMount.Coordinates.Parser, new[]{ "Ra", "Dec", "TrackingMode", "CustomTrackRateRa", "CustomTrackRateDec", "PmRa", "PmDec", "Parallax", "RadialVelocity", "Epoch", "CatalogId", "ObjectId", "Magnitude", "SpectralType", "EpochRa", "EpochDec", "PositionAngle", "Separation", "ApplyRefraction", "Temperature", "Pressure", "Humidity", "ApplyPrecession", "ApplyNutation", "ApplyAberration", "ApplyLightTime", "ApplyGravDeflection", "Altitude", "Azimuth", "ApparentRa", "ApparentDec", "TopoRa", "TopoDec" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.MountPosition), global::AstroMount.MountPosition.Parser, new[]{ "Axis1", "Axis2", "Timestamp" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Measurement), global::AstroMount.Measurement.Parser, new[]{ "Observed", "Expected", "MountPosition", "Temperature", "Pressure", "Humidity", "Timestamp" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.TPointParameters), global::AstroMount.TPointParameters.Parser, new[]{ "Coefficients", "ChiSquared", "LastUpdate", "Calibrated" }, null, null, null, null),
@@ -525,13 +586,14 @@ namespace AstroMount {
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.TrajectoryPoint), global::AstroMount.TrajectoryPoint.Parser, new[]{ "Position", "Velocity", "Acceleration", "Jerk", "Time" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Trajectory), global::AstroMount.Trajectory.Parser, new[]{ "Params", "Points", "GeneratedAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.TrackedObject), global::AstroMount.TrackedObject.Parser, new[]{ "Coordinates", "SemiMajorAxis", "Eccentricity", "Inclination", "LongitudeAscNode", "ArgumentPerihelion", "MeanAnomaly", "EpochOfElements", "Diameter", "Albedo", "RotationPeriod", "PoleRa", "PoleDec", "PhaseAngle", "SolarDistance", "EarthDistance", "Elongation", "AbsoluteMagnitude", "SlopeParameter", "PhaseCoefficient", "Airmass", "Extinction", "Seeing", "SkyBrightness", "RaRate", "DecRate", "AltitudeRate", "AzimuthRate", "TrackingErrorRa", "TrackingErrorDec", "GuidingErrorRa", "GuidingErrorDec", "ComputedAt", "JulianDate", "SiderealTime" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.ControllerState), global::AstroMount.ControllerState.Parser, new[]{ "Status", "TrackedObject", "CurrentPosition", "RotationMatrix", "TpointParams", "EncodersEnabled", "GuiderActive", "StateTime", "TrackingRateRa", "TrackingRateDec", "PierSide", "MeridianFlipped", "TimeToMeridian", "TimeToSet", "TimeToRise", "Temperature", "Pressure", "Humidity", "WindSpeed", "WindDirection", "PointingError", "TrackingPerformance", "GuidingPerformance", "MountVibration", "BootstrapStatus" }, null, new[]{ typeof(global::AstroMount.ControllerState.Types.MountStatus) }, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.ControllerState), global::AstroMount.ControllerState.Parser, new[]{ "Status", "TrackedObject", "CurrentPosition", "RotationMatrix", "TpointParams", "EncodersEnabled", "GuiderActive", "StateTime", "TrackingRateRa", "TrackingRateDec", "PierSide", "MeridianFlipped", "TimeToMeridian", "TimeToSet", "TimeToRise", "Temperature", "Pressure", "Humidity", "WindSpeed", "WindDirection", "PointingError", "TrackingPerformance", "GuidingPerformance", "MountVibration", "BootstrapStatus", "TelescopeAxis1", "TelescopeAxis2", "ActualRateAxis1", "ActualRateAxis2", "CurrentRa", "CurrentDec" }, null, new[]{ typeof(global::AstroMount.ControllerState.Types.MountStatus) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.PolePosition), global::AstroMount.PolePosition.Parser, new[]{ "Latitude", "Longitude", "Altitude", "Accuracy", "DeterminedAt" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HorizontalCoordinates), global::AstroMount.HorizontalCoordinates.Parser, new[]{ "Altitude", "Azimuth", "Timestamp" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisControlRequest), global::AstroMount.AxisControlRequest.Parser, new[]{ "AxisId", "Mode", "TargetPosition", "MaxVelocity", "Acceleration", "TargetVelocity", "Relative" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisStopRequest), global::AstroMount.AxisStopRequest.Parser, new[]{ "AxisId", "Decelerate", "Deceleration" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.EmergencyStopRequest), global::AstroMount.EmergencyStopRequest.Parser, new[]{ "AxisId", "ResetAfter" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisStatus), global::AstroMount.AxisStatus.Parser, new[]{ "AxisId", "CurrentPosition", "CurrentVelocity", "TargetPosition", "TargetVelocity", "Moving", "TargetReached", "Error", "ErrorMessage", "Timestamp" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Lx200Status), global::AstroMount.Lx200Status.Parser, new[]{ "Enabled", "Running", "Port", "BaudRate" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.StateSaveRequest), global::AstroMount.StateSaveRequest.Parser, new[]{ "FilePath", "IncludeMeasurements" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.StateSaveResponse), global::AstroMount.StateSaveResponse.Parser, new[]{ "FilePath", "FileSize" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.StateLoadRequest), global::AstroMount.StateLoadRequest.Parser, new[]{ "FilePath" }, null, null, null, null),
@@ -539,9 +601,10 @@ namespace AstroMount {
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.EncoderConfig), global::AstroMount.EncoderConfig.Parser, new[]{ "Type", "Resolution", "UseFeedback" }, null, new[]{ typeof(global::AstroMount.EncoderConfig.Types.EncoderType) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.GuiderConfig), global::AstroMount.GuiderConfig.Parser, new[]{ "ConnectionString", "MaxCorrection", "Aggression" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.GuiderCorrection), global::AstroMount.GuiderCorrection.Parser, new[]{ "RaCorrection", "DecCorrection", "Timestamp" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisPhysicalParameters), global::AstroMount.AxisPhysicalParameters.Parser, new[]{ "MotorStepsPerRev", "MotorMicrostepping", "MotorStepAngle", "EncoderResolution", "EncoderCountsPerArcsec", "EncoderQuantizationError", "GearRatio", "WormRatio", "WormTeeth", "WormWheelTeeth", "CyclicErrorAmplitude", "CyclicErrorPeriod", "CyclicHarmonics", "Backlash", "BacklashTempCoeff", "AxisStiffness", "TorsionalCompliance", "ExpansionCoeff", "TempGearErrorCoeff", "CalibrationTable", "CalibrationTemp" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisPhysicalParameters), global::AstroMount.AxisPhysicalParameters.Parser, new[]{ "EncoderResolution", "EncoderCountsPerArcsec", "EncoderQuantizationError", "GearRatio", "WormRatio", "WormTeeth", "WormWheelTeeth", "CyclicErrorAmplitude", "CyclicErrorPeriod", "CyclicHarmonics", "Backlash", "BacklashTempCoeff", "AxisStiffness", "TorsionalCompliance", "ExpansionCoeff", "TempGearErrorCoeff", "CalibrationTable", "CalibrationTemp", "PositionCountsPerDegree", "VelocityCountsPerDegS" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.MountOrientation), global::AstroMount.MountOrientation.Parser, new[]{ "Qx", "Qy", "Qz", "Qw" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Configuration), global::AstroMount.Configuration.Parser, new[]{ "Latitude", "Longitude", "Altitude", "MountHeight", "PierWest", "PierEast", "FocalLength", "Aperture", "DefaultTemperature", "DefaultPressure", "DefaultHumidity", "ProcessNoise", "MeasurementNoise", "LogLevel", "LogDirectory", "GrpcAddress", "GrpcPort", "CanopenInterface", "CanopenNodeId", "ParkPositionAxis1", "ParkPositionAxis2", "MaxSlewRate", "MaxTrackingRate", "SlewAcceleration", "TrackingAcceleration", "HaAxisParams", "DecAxisParams", "UseEncoders", "EncodersAbsolute", "EncoderResolutionConfig", "TpointEnabledTerms", "EnableGuider", "GuiderMaxCorrection", "GuiderAggression", "EnableRefractionCorrection", "MountType", "PositionTolerance", "RateTolerance", "MeridianFlipEnabled", "MeridianFlipDelayMinutes", "MeridianFlipHysteresisDegrees", "SoftLimitsEnabled", "SoftLimitAxis1Min", "SoftLimitAxis1Max", "SoftLimitAxis2Min", "SoftLimitAxis2Max", "SoftLimitWarningDegrees", "SoftLimitDecelerationDegrees", "SoftLimitTrackingRateFactor", "MountOrientation" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Lx200Config), global::AstroMount.Lx200Config.Parser, new[]{ "Enabled", "Port", "BaudRate" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Configuration), global::AstroMount.Configuration.Parser, new[]{ "Latitude", "Longitude", "Altitude", "FocalLength", "Aperture", "TubeLength", "CameraModel", "PixelSize", "SensorWidth", "SensorHeight", "Lx200Config", "DefaultTemperature", "DefaultPressure", "DefaultHumidity", "ProcessNoise", "MeasurementNoise", "LogLevel", "LogDirectory", "LogConsoleOutput", "LogRotationDays", "LogMaxFileSizeMb", "GrpcAddress", "GrpcPort", "NetworkMaxConnections", "NetworkEnableSsl", "NetworkSslCertPath", "NetworkSslKeyPath", "CanopenInterface", "CanopenNodeId", "CanopenBaudRate", "CanopenEnableSync", "CanopenSyncIntervalMs", "ParkPositionAxis1", "ParkPositionAxis2", "MaxSlewRate", "MaxTrackingRate", "SlewAcceleration", "TrackingAcceleration", "HaAxisParams", "DecAxisParams", "UseEncoders", "EncodersAbsolute", "EncoderResolutionConfig", "TpointEnabledTerms", "EnableGuider", "GuiderMaxCorrection", "GuiderAggression", "EnableRefractionCorrection", "MountType", "PositionTolerance", "RateTolerance", "MeridianFlipEnabled", "MeridianFlipDelayMinutes", "MeridianFlipHysteresisDegrees", "SoftLimitsEnabled", "SoftLimitAxis1Min", "SoftLimitAxis1Max", "SoftLimitAxis2Min", "SoftLimitAxis2Max", "SoftLimitWarningDegrees", "SoftLimitDecelerationDegrees", "SoftLimitTrackingRateFactor", "MountOrientation", "ServoInitEnabled", "ServoInitSequence", "CanopenAccelMode", "CanopenPdoConfigEnabled", "ControllerPollMs", "TrackingUpdateMs", "MeridianFlipTimeoutSeconds", "CanopenPositionRewindEnabled", "CanopenPositionRewindIntervalSeconds", "CanopenPositionRewindThresholdPercent", "EquatorialTrackingVelocityMode", "InvertAxis1", "InvertAxis2", "SplitTrackingLoop", "CalcUpdateHz", "IoUpdateHz", "TelemetryDecimation", "SafetyCheckDecimation", "IoRealtime", "IoRealtimePriority", "PdoFastPath", "PdoVelocityMapping", "SdoSlowControl", "TrackingPosUpdateHz", "TrackingPosVelocityMargin", "TrackingMode", "AutoTrackAfterSlew", "AutoTrackAfterCalibration", "AutoTrackAfterGoto" }, new[]{ "LogConsoleOutput", "NetworkEnableSsl", "CanopenEnableSync", "UseEncoders", "EncodersAbsolute", "EnableGuider", "EnableRefractionCorrection", "MeridianFlipEnabled", "SoftLimitsEnabled", "ServoInitEnabled", "CanopenPdoConfigEnabled", "CanopenPositionRewindEnabled", "EquatorialTrackingVelocityMode", "InvertAxis1", "InvertAxis2", "SplitTrackingLoop", "IoRealtime", "PdoFastPath", "PdoVelocityMapping", "SdoSlowControl", "AutoTrackAfterSlew", "AutoTrackAfterCalibration", "AutoTrackAfterGoto" }, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HealthCheckRequest), global::AstroMount.HealthCheckRequest.Parser, new[]{ "Service" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HealthCheckResponse), global::AstroMount.HealthCheckResponse.Parser, new[]{ "Status", "Service", "Metrics" }, null, new[]{ typeof(global::AstroMount.HealthCheckResponse.Types.ServingStatus) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.SystemMetrics), global::AstroMount.SystemMetrics.Parser, new[]{ "CpuUsagePercent", "MemoryUsageMb", "ActiveConnections", "TotalRequests", "ErrorCount", "AvgResponseTimeMs", "MountMetrics", "KalmanMetrics", "TpointMetrics" }, null, null, null, null),
@@ -560,24 +623,25 @@ namespace AstroMount {
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.BootstrapStatus), global::AstroMount.BootstrapStatus.Parser, new[]{ "Calibrated", "LastCalibration", "MeasurementCount", "CurrentAlignmentErrorArcsec", "ReadyForTpoint", "State", "StateMessage", "MinMeasurementsRequired", "MinMeasurementsForTpoint", "BootstrapMode", "EncoderTypeAbsolute", "ReferencePositionKnown", "EstimatedEncoderOffsetDeg", "ManualMeasurementsNeeded" }, null, new[]{ typeof(global::AstroMount.BootstrapStatus.Types.CalibrationState) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AutoBootstrapRequest), global::AstroMount.AutoBootstrapRequest.Parser, new[]{ "TargetStarNames", "MinMeasurements", "MaxAlignmentErrorArcsec", "ProceedToTpoint" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AutoBootstrapStatus), global::AstroMount.AutoBootstrapStatus.Parser, new[]{ "State", "StateMessage", "MeasurementsCollected", "MeasurementsTarget", "CurrentTargetStar", "ProgressPercent", "ErrorMessage" }, null, new[]{ typeof(global::AstroMount.AutoBootstrapStatus.Types.AutoBootstrapState) }, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.DerotatorConfig), global::AstroMount.DerotatorConfig.Parser, new[]{ "Type", "ConnectionString", "GearRatio", "MaxSpeed", "MaxAcceleration", "Backlash", "AbsoluteEncoder", "EncoderResolution", "HomingOffset", "CalibrationTable" }, null, new[]{ typeof(global::AstroMount.DerotatorConfig.Types.DerotatorType) }, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.FieldRotationControlRequest), global::AstroMount.FieldRotationControlRequest.Parser, new[]{ "Mode", "TargetAngle", "RotationRate", "Relative", "WaitForCompletion" }, null, new[]{ typeof(global::AstroMount.FieldRotationControlRequest.Types.RotationMode) }, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.DerotatorStatus), global::AstroMount.DerotatorStatus.Parser, new[]{ "Enabled", "Moving", "Homed", "CurrentAngle", "TargetAngle", "RotationRate", "FieldRotationRate", "DerotatorConfig", "ErrorMessage", "Timestamp" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.FieldRotationParams), global::AstroMount.FieldRotationParams.Parser, new[]{ "Enabled", "Latitude", "Altitude", "Azimuth", "ComputedRate", "AppliedCorrection", "Temperature", "FlexureCorrection" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.DerotatorHomingRequest), global::AstroMount.DerotatorHomingRequest.Parser, new[]{ "Method", "SearchSpeed", "Offset", "CalibrateAfter" }, null, new[]{ typeof(global::AstroMount.DerotatorHomingRequest.Types.HomingMethod) }, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.MotorConfig), global::AstroMount.MotorConfig.Parser, new[]{ "Type", "DefaultMode", "MaxVelocity", "MaxAcceleration", "MaxTorque", "EncoderCountsPerDegree", "GearRatio", "EnableCurrentLimit", "CurrentLimit", "EnableTemperatureProtection", "MaxTemperature" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisEncoderConfig), global::AstroMount.AxisEncoderConfig.Parser, new[]{ "Type", "Interface", "ResolutionCounts", "CountsPerDegree", "UpdateRateHz" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisConfig), global::AstroMount.AxisConfig.Parser, new[]{ "Id", "Name", "MotorConfig", "EncoderConfig", "SafetyLimits" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisConfig.Types.SafetyLimits), global::AstroMount.AxisConfig.Types.SafetyLimits.Parser, new[]{ "MinPosition", "MaxPosition", "MaxVelocity", "MaxAcceleration", "MaxCurrent", "MaxTemperature" }, null, null, null, null)}),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisConfig), global::AstroMount.AxisConfig.Parser, new[]{ "Id", "Name", "MotorConfig", "EncoderConfig", "SafetyLimits", "InvertDirection" }, null, null, null, new pbr::GeneratedClrTypeInfo[] { new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.AxisConfig.Types.SafetyLimits), global::AstroMount.AxisConfig.Types.SafetyLimits.Parser, new[]{ "MinPosition", "MaxPosition", "MaxVelocity", "MaxAcceleration", "MaxCurrent", "MaxTemperature" }, null, null, null, null)}),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.PIDParams), global::AstroMount.PIDParams.Parser, new[]{ "Kp", "Ki", "Kd", "IntegralLimit", "OutputLimit", "AntiWindupGain", "EnableAntiWindup" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.SafetyConfig), global::AstroMount.SafetyConfig.Parser, new[]{ "EnableLimits", "EnableEmergencyStop", "EmergencyStopTimeoutMs", "EnableTemperatureMonitoring", "EnableCurrentMonitoring", "EnableVoltageMonitoring", "MinVoltage", "MaxVoltage", "MonitoringRate" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.SimulatedConfig), global::AstroMount.SimulatedConfig.Parser, new[]{ "EnableSimulation", "SimulationUpdateRate", "PositionNoiseStddev", "VelocityNoiseStddev", "SimulateErrors", "ErrorProbability" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.CanOpenConfig), global::AstroMount.CanOpenConfig.Parser, new[]{ "Library", "InterfaceName", "Bitrate", "NodeId", "UseSync", "SyncPeriodMs", "SdoTimeoutMs", "PdoUpdateRate" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.SerialConfig), global::AstroMount.SerialConfig.Parser, new[]{ "Port", "BaudRate", "Protocol", "DataBits", "StopBits", "Parity", "TimeoutMs" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.EthernetConfig), global::AstroMount.EthernetConfig.Parser, new[]{ "IpAddress", "Port", "Protocol", "TimeoutMs", "RetryCount" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HALConfig), global::AstroMount.HALConfig.Parser, new[]{ "Type", "Name", "Simulated", "Canopen", "Serial", "Ethernet", "Axes", "PidParams", "Safety" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HALStatus), global::AstroMount.HALStatus.Parser, new[]{ "Initialized", "Running", "Type", "PlatformName", "HardwareVersion", "StatusMessage", "SupportedFeatures", "ErrorMessage", "Timestamp" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.SpeedPidEntry), global::AstroMount.SpeedPidEntry.Parser, new[]{ "SpeedRpm", "CurrentKp", "CurrentKi", "SpeedKp", "SpeedKi", "SpeedFilterHz", "PositionKp", "PositionKi" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.Mf7025v2Config), global::AstroMount.Mf7025v2Config.Parser, new[]{ "CanInterface", "Bitrate", "SdoTimeoutMs", "PositionUnitsPerDegree", "VelocityUnitsPerDps", "SpeedPidAdaptationEnabled", "SpeedPidAdaptationUpdateMs", "SpeedPidSchedule", "SendSpeedPid", "SendCurrentPid", "SendPositionPid" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HALConfig), global::AstroMount.HALConfig.Parser, new[]{ "Type", "Name", "Simulated", "Canopen", "Serial", "Ethernet", "Axes", "PidParams", "Safety", "Gamepad", "CanTrace", "CanTraceReadState", "Mf7025V2" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.GamepadConfig), global::AstroMount.GamepadConfig.Parser, new[]{ "DevicePath", "DeadZone", "Sensitivity", "ReadFrequency", "Autostart", "GamepadMode" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HALStatus), global::AstroMount.HALStatus.Parser, new[]{ "Initialized", "Running", "Type", "PlatformName", "HardwareVersion", "StatusMessage", "SupportedFeatures", "ErrorMessage", "Timestamp", "Gamepad" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.GamepadState), global::AstroMount.GamepadState.Parser, new[]{ "Connected", "DeviceName", "AxisLx", "AxisLy", "AxisRx", "AxisRy", "AxisTriggerL", "AxisTriggerR", "PovHat", "ButtonStop", "ButtonEmergencyStop", "ButtonPark", "ButtonSpeedUp", "ButtonSpeedDown", "ButtonManualToggle", "ButtonHome", "AxisCount", "ButtonCount", "GamepadMode", "BootstrapCalibrated", "TpointCalibrated", "MaxVelocity", "ButtonBootstrapCalibrate", "ButtonTpointCalibrate", "ButtonMeridianFlip", "ButtonModeCycle", "ButtonClearErrors", "ButtonUnpark" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.GamepadModeRequest), global::AstroMount.GamepadModeRequest.Parser, new[]{ "Mode" }, null, null, null, null),
             new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HALConfigRequest), global::AstroMount.HALConfigRequest.Parser, new[]{ "Config" }, null, null, null, null),
-            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HALReinitRequest), global::AstroMount.HALReinitRequest.Parser, new[]{ "ForceRestart" }, null, null, null, null)
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.HALReinitRequest), global::AstroMount.HALReinitRequest.Parser, new[]{ "ForceRestart" }, null, null, null, null),
+            new pbr::GeneratedClrTypeInfo(typeof(global::AstroMount.MountHomingRequest), global::AstroMount.MountHomingRequest.Parser, new[]{ "Axis1", "Axis2" }, null, null, null, null)
           }));
     }
     #endregion
@@ -619,6 +683,28 @@ namespace AstroMount {
     /// Randomly oriented mount with quaternion orientation
     /// </summary>
     [pbr::OriginalName("CASUAL")] Casual = 3,
+  }
+
+  /// <summary>
+  /// Gamepad navigation mode — how joystick axes map to mount motion
+  /// </summary>
+  public enum GamepadMode {
+    /// <summary>
+    /// Raw axis velocity control (always available)
+    /// </summary>
+    [pbr::OriginalName("GAMEPAD_RAW")] GamepadRaw = 0,
+    /// <summary>
+    /// Navigate in RA/Dec (requires bootstrap calibration)
+    /// </summary>
+    [pbr::OriginalName("GAMEPAD_CELESTIAL")] GamepadCelestial = 1,
+    /// <summary>
+    /// Navigate in Alt/Az (requires bootstrap calibration)
+    /// </summary>
+    [pbr::OriginalName("GAMEPAD_ALT_AZ")] GamepadAltAz = 2,
+    /// <summary>
+    /// Fine RA/Dec control at low speed (requires TPOINT calibration)
+    /// </summary>
+    [pbr::OriginalName("GAMEPAD_PRECISION")] GamepadPrecision = 3,
   }
 
   /// <summary>
@@ -774,7 +860,7 @@ namespace AstroMount {
     [pbr::OriginalName("HAL_FEATURE_SAFETY_MONITORING")] SafetyMonitoring = 2,
     [pbr::OriginalName("HAL_FEATURE_SENSOR_INTERFACE")] SensorInterface = 3,
     [pbr::OriginalName("HAL_FEATURE_SIMULATION")] Simulation = 4,
-    [pbr::OriginalName("HAL_FEATURE_CANOPEN")] Canopen = 5,
+    [pbr::OriginalName("HAL_FEATURE_FIELD_BUS")] FieldBus = 5,
     [pbr::OriginalName("HAL_FEATURE_MODBUS")] Modbus = 6,
     [pbr::OriginalName("HAL_FEATURE_ETHERCAT")] Ethercat = 7,
   }
@@ -822,6 +908,9 @@ namespace AstroMount {
     public Coordinates(Coordinates other) : this() {
       ra_ = other.ra_;
       dec_ = other.dec_;
+      trackingMode_ = other.trackingMode_;
+      customTrackRateRa_ = other.customTrackRateRa_;
+      customTrackRateDec_ = other.customTrackRateDec_;
       pmRa_ = other.pmRa_;
       pmDec_ = other.pmDec_;
       parallax_ = other.parallax_;
@@ -886,6 +975,53 @@ namespace AstroMount {
       get { return dec_; }
       set {
         dec_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "tracking_mode" field.</summary>
+    public const int TrackingModeFieldNumber = 31;
+    private int trackingMode_;
+    /// <summary>
+    /// Tracking mode
+    /// 0 = SIDEREAL (default), 1 = SOLAR, 2 = LUNAR, 3 = CUSTOM, 4 = OFF
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int TrackingMode {
+      get { return trackingMode_; }
+      set {
+        trackingMode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "custom_track_rate_ra" field.</summary>
+    public const int CustomTrackRateRaFieldNumber = 32;
+    private double customTrackRateRa_;
+    /// <summary>
+    /// Custom tracking rates (arcsec/s), used when tracking_mode = 3 (CUSTOM).
+    /// 0 means "use configured default" (RA) / "no Dec drift" (Dec).
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CustomTrackRateRa {
+      get { return customTrackRateRa_; }
+      set {
+        customTrackRateRa_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "custom_track_rate_dec" field.</summary>
+    public const int CustomTrackRateDecFieldNumber = 33;
+    private double customTrackRateDec_;
+    /// <summary>
+    /// arcsec/s
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CustomTrackRateDec {
+      get { return customTrackRateDec_; }
+      set {
+        customTrackRateDec_ = value;
       }
     }
 
@@ -1323,6 +1459,9 @@ namespace AstroMount {
       }
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Ra, other.Ra)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Dec, other.Dec)) return false;
+      if (TrackingMode != other.TrackingMode) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CustomTrackRateRa, other.CustomTrackRateRa)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CustomTrackRateDec, other.CustomTrackRateDec)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PmRa, other.PmRa)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PmDec, other.PmDec)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Parallax, other.Parallax)) return false;
@@ -1360,6 +1499,9 @@ namespace AstroMount {
       int hash = 1;
       if (Ra != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Ra);
       if (Dec != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Dec);
+      if (TrackingMode != 0) hash ^= TrackingMode.GetHashCode();
+      if (CustomTrackRateRa != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CustomTrackRateRa);
+      if (CustomTrackRateDec != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CustomTrackRateDec);
       if (PmRa != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PmRa);
       if (PmDec != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PmDec);
       if (Parallax != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Parallax);
@@ -1526,6 +1668,18 @@ namespace AstroMount {
         output.WriteRawTag(241, 1);
         output.WriteDouble(TopoDec);
       }
+      if (TrackingMode != 0) {
+        output.WriteRawTag(248, 1);
+        output.WriteInt32(TrackingMode);
+      }
+      if (CustomTrackRateRa != 0D) {
+        output.WriteRawTag(129, 2);
+        output.WriteDouble(CustomTrackRateRa);
+      }
+      if (CustomTrackRateDec != 0D) {
+        output.WriteRawTag(137, 2);
+        output.WriteDouble(CustomTrackRateDec);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -1656,6 +1810,18 @@ namespace AstroMount {
         output.WriteRawTag(241, 1);
         output.WriteDouble(TopoDec);
       }
+      if (TrackingMode != 0) {
+        output.WriteRawTag(248, 1);
+        output.WriteInt32(TrackingMode);
+      }
+      if (CustomTrackRateRa != 0D) {
+        output.WriteRawTag(129, 2);
+        output.WriteDouble(CustomTrackRateRa);
+      }
+      if (CustomTrackRateDec != 0D) {
+        output.WriteRawTag(137, 2);
+        output.WriteDouble(CustomTrackRateDec);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -1671,6 +1837,15 @@ namespace AstroMount {
       }
       if (Dec != 0D) {
         size += 1 + 8;
+      }
+      if (TrackingMode != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(TrackingMode);
+      }
+      if (CustomTrackRateRa != 0D) {
+        size += 2 + 8;
+      }
+      if (CustomTrackRateDec != 0D) {
+        size += 2 + 8;
       }
       if (PmRa != 0D) {
         size += 1 + 8;
@@ -1773,6 +1948,15 @@ namespace AstroMount {
       }
       if (other.Dec != 0D) {
         Dec = other.Dec;
+      }
+      if (other.TrackingMode != 0) {
+        TrackingMode = other.TrackingMode;
+      }
+      if (other.CustomTrackRateRa != 0D) {
+        CustomTrackRateRa = other.CustomTrackRateRa;
+      }
+      if (other.CustomTrackRateDec != 0D) {
+        CustomTrackRateDec = other.CustomTrackRateDec;
       }
       if (other.PmRa != 0D) {
         PmRa = other.PmRa;
@@ -1997,6 +2181,18 @@ namespace AstroMount {
             TopoDec = input.ReadDouble();
             break;
           }
+          case 248: {
+            TrackingMode = input.ReadInt32();
+            break;
+          }
+          case 257: {
+            CustomTrackRateRa = input.ReadDouble();
+            break;
+          }
+          case 265: {
+            CustomTrackRateDec = input.ReadDouble();
+            break;
+          }
         }
       }
     #endif
@@ -2134,6 +2330,18 @@ namespace AstroMount {
           }
           case 241: {
             TopoDec = input.ReadDouble();
+            break;
+          }
+          case 248: {
+            TrackingMode = input.ReadInt32();
+            break;
+          }
+          case 257: {
+            CustomTrackRateRa = input.ReadDouble();
+            break;
+          }
+          case 265: {
+            CustomTrackRateDec = input.ReadDouble();
             break;
           }
         }
@@ -6297,6 +6505,12 @@ namespace AstroMount {
       guidingPerformance_ = other.guidingPerformance_;
       mountVibration_ = other.mountVibration_;
       bootstrapStatus_ = other.bootstrapStatus_ != null ? other.bootstrapStatus_.Clone() : null;
+      telescopeAxis1_ = other.telescopeAxis1_;
+      telescopeAxis2_ = other.telescopeAxis2_;
+      actualRateAxis1_ = other.actualRateAxis1_;
+      actualRateAxis2_ = other.actualRateAxis2_;
+      currentRa_ = other.currentRa_;
+      currentDec_ = other.currentDec_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -6657,6 +6871,98 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "telescope_axis1" field.</summary>
+    public const int TelescopeAxis1FieldNumber = 26;
+    private double telescopeAxis1_;
+    /// <summary>
+    /// Telescope axis positions (servo position ÷ gear ratio)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double TelescopeAxis1 {
+      get { return telescopeAxis1_; }
+      set {
+        telescopeAxis1_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "telescope_axis2" field.</summary>
+    public const int TelescopeAxis2FieldNumber = 27;
+    private double telescopeAxis2_;
+    /// <summary>
+    /// Telescope axis2 position [degrees]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double TelescopeAxis2 {
+      get { return telescopeAxis2_; }
+      set {
+        telescopeAxis2_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "actual_rate_axis1" field.</summary>
+    public const int ActualRateAxis1FieldNumber = 28;
+    private double actualRateAxis1_;
+    /// <summary>
+    /// Actual motor velocity (from CANopen hardware, deg/s)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double ActualRateAxis1 {
+      get { return actualRateAxis1_; }
+      set {
+        actualRateAxis1_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "actual_rate_axis2" field.</summary>
+    public const int ActualRateAxis2FieldNumber = 29;
+    private double actualRateAxis2_;
+    /// <summary>
+    /// Actual axis2 velocity [deg/s]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double ActualRateAxis2 {
+      get { return actualRateAxis2_; }
+      set {
+        actualRateAxis2_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "current_ra" field.</summary>
+    public const int CurrentRaFieldNumber = 30;
+    private double currentRa_;
+    /// <summary>
+    /// Corrected on-sky position (after bootstrap orientation / TPOINT).
+    /// These reflect the sky coordinates the mount is actually pointing at,
+    /// unlike telescope_axis1/axis2 which are raw mount axes.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CurrentRa {
+      get { return currentRa_; }
+      set {
+        currentRa_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "current_dec" field.</summary>
+    public const int CurrentDecFieldNumber = 31;
+    private double currentDec_;
+    /// <summary>
+    /// Corrected declination [degrees]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CurrentDec {
+      get { return currentDec_; }
+      set {
+        currentDec_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -6697,6 +7003,12 @@ namespace AstroMount {
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(GuidingPerformance, other.GuidingPerformance)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MountVibration, other.MountVibration)) return false;
       if (!object.Equals(BootstrapStatus, other.BootstrapStatus)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(TelescopeAxis1, other.TelescopeAxis1)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(TelescopeAxis2, other.TelescopeAxis2)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(ActualRateAxis1, other.ActualRateAxis1)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(ActualRateAxis2, other.ActualRateAxis2)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CurrentRa, other.CurrentRa)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CurrentDec, other.CurrentDec)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -6729,6 +7041,12 @@ namespace AstroMount {
       if (GuidingPerformance != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(GuidingPerformance);
       if (MountVibration != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MountVibration);
       if (bootstrapStatus_ != null) hash ^= BootstrapStatus.GetHashCode();
+      if (TelescopeAxis1 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TelescopeAxis1);
+      if (TelescopeAxis2 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TelescopeAxis2);
+      if (ActualRateAxis1 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(ActualRateAxis1);
+      if (ActualRateAxis2 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(ActualRateAxis2);
+      if (CurrentRa != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CurrentRa);
+      if (CurrentDec != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CurrentDec);
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -6847,6 +7165,30 @@ namespace AstroMount {
         output.WriteRawTag(202, 1);
         output.WriteMessage(BootstrapStatus);
       }
+      if (TelescopeAxis1 != 0D) {
+        output.WriteRawTag(209, 1);
+        output.WriteDouble(TelescopeAxis1);
+      }
+      if (TelescopeAxis2 != 0D) {
+        output.WriteRawTag(217, 1);
+        output.WriteDouble(TelescopeAxis2);
+      }
+      if (ActualRateAxis1 != 0D) {
+        output.WriteRawTag(225, 1);
+        output.WriteDouble(ActualRateAxis1);
+      }
+      if (ActualRateAxis2 != 0D) {
+        output.WriteRawTag(233, 1);
+        output.WriteDouble(ActualRateAxis2);
+      }
+      if (CurrentRa != 0D) {
+        output.WriteRawTag(241, 1);
+        output.WriteDouble(CurrentRa);
+      }
+      if (CurrentDec != 0D) {
+        output.WriteRawTag(249, 1);
+        output.WriteDouble(CurrentDec);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -6957,6 +7299,30 @@ namespace AstroMount {
         output.WriteRawTag(202, 1);
         output.WriteMessage(BootstrapStatus);
       }
+      if (TelescopeAxis1 != 0D) {
+        output.WriteRawTag(209, 1);
+        output.WriteDouble(TelescopeAxis1);
+      }
+      if (TelescopeAxis2 != 0D) {
+        output.WriteRawTag(217, 1);
+        output.WriteDouble(TelescopeAxis2);
+      }
+      if (ActualRateAxis1 != 0D) {
+        output.WriteRawTag(225, 1);
+        output.WriteDouble(ActualRateAxis1);
+      }
+      if (ActualRateAxis2 != 0D) {
+        output.WriteRawTag(233, 1);
+        output.WriteDouble(ActualRateAxis2);
+      }
+      if (CurrentRa != 0D) {
+        output.WriteRawTag(241, 1);
+        output.WriteDouble(CurrentRa);
+      }
+      if (CurrentDec != 0D) {
+        output.WriteRawTag(249, 1);
+        output.WriteDouble(CurrentDec);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -7041,6 +7407,24 @@ namespace AstroMount {
       }
       if (bootstrapStatus_ != null) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(BootstrapStatus);
+      }
+      if (TelescopeAxis1 != 0D) {
+        size += 2 + 8;
+      }
+      if (TelescopeAxis2 != 0D) {
+        size += 2 + 8;
+      }
+      if (ActualRateAxis1 != 0D) {
+        size += 2 + 8;
+      }
+      if (ActualRateAxis2 != 0D) {
+        size += 2 + 8;
+      }
+      if (CurrentRa != 0D) {
+        size += 2 + 8;
+      }
+      if (CurrentDec != 0D) {
+        size += 2 + 8;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -7146,6 +7530,24 @@ namespace AstroMount {
           BootstrapStatus = new global::AstroMount.BootstrapStatus();
         }
         BootstrapStatus.MergeFrom(other.BootstrapStatus);
+      }
+      if (other.TelescopeAxis1 != 0D) {
+        TelescopeAxis1 = other.TelescopeAxis1;
+      }
+      if (other.TelescopeAxis2 != 0D) {
+        TelescopeAxis2 = other.TelescopeAxis2;
+      }
+      if (other.ActualRateAxis1 != 0D) {
+        ActualRateAxis1 = other.ActualRateAxis1;
+      }
+      if (other.ActualRateAxis2 != 0D) {
+        ActualRateAxis2 = other.ActualRateAxis2;
+      }
+      if (other.CurrentRa != 0D) {
+        CurrentRa = other.CurrentRa;
+      }
+      if (other.CurrentDec != 0D) {
+        CurrentDec = other.CurrentDec;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -7284,6 +7686,30 @@ namespace AstroMount {
             input.ReadMessage(BootstrapStatus);
             break;
           }
+          case 209: {
+            TelescopeAxis1 = input.ReadDouble();
+            break;
+          }
+          case 217: {
+            TelescopeAxis2 = input.ReadDouble();
+            break;
+          }
+          case 225: {
+            ActualRateAxis1 = input.ReadDouble();
+            break;
+          }
+          case 233: {
+            ActualRateAxis2 = input.ReadDouble();
+            break;
+          }
+          case 241: {
+            CurrentRa = input.ReadDouble();
+            break;
+          }
+          case 249: {
+            CurrentDec = input.ReadDouble();
+            break;
+          }
         }
       }
     #endif
@@ -7419,6 +7845,30 @@ namespace AstroMount {
               BootstrapStatus = new global::AstroMount.BootstrapStatus();
             }
             input.ReadMessage(BootstrapStatus);
+            break;
+          }
+          case 209: {
+            TelescopeAxis1 = input.ReadDouble();
+            break;
+          }
+          case 217: {
+            TelescopeAxis2 = input.ReadDouble();
+            break;
+          }
+          case 225: {
+            ActualRateAxis1 = input.ReadDouble();
+            break;
+          }
+          case 233: {
+            ActualRateAxis2 = input.ReadDouble();
+            break;
+          }
+          case 241: {
+            CurrentRa = input.ReadDouble();
+            break;
+          }
+          case 249: {
+            CurrentDec = input.ReadDouble();
             break;
           }
         }
@@ -9636,6 +10086,318 @@ namespace AstroMount {
   }
 
   /// <summary>
+  /// LX200 server status
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class Lx200Status : pb::IMessage<Lx200Status>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<Lx200Status> _parser = new pb::MessageParser<Lx200Status>(() => new Lx200Status());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<Lx200Status> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[16]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Lx200Status() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Lx200Status(Lx200Status other) : this() {
+      enabled_ = other.enabled_;
+      running_ = other.running_;
+      port_ = other.port_;
+      baudRate_ = other.baudRate_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Lx200Status Clone() {
+      return new Lx200Status(this);
+    }
+
+    /// <summary>Field number for the "enabled" field.</summary>
+    public const int EnabledFieldNumber = 1;
+    private bool enabled_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Enabled {
+      get { return enabled_; }
+      set {
+        enabled_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "running" field.</summary>
+    public const int RunningFieldNumber = 2;
+    private bool running_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Running {
+      get { return running_; }
+      set {
+        running_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "port" field.</summary>
+    public const int PortFieldNumber = 3;
+    private string port_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Port {
+      get { return port_; }
+      set {
+        port_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "baud_rate" field.</summary>
+    public const int BaudRateFieldNumber = 4;
+    private int baudRate_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int BaudRate {
+      get { return baudRate_; }
+      set {
+        baudRate_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as Lx200Status);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(Lx200Status other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Enabled != other.Enabled) return false;
+      if (Running != other.Running) return false;
+      if (Port != other.Port) return false;
+      if (BaudRate != other.BaudRate) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Enabled != false) hash ^= Enabled.GetHashCode();
+      if (Running != false) hash ^= Running.GetHashCode();
+      if (Port.Length != 0) hash ^= Port.GetHashCode();
+      if (BaudRate != 0) hash ^= BaudRate.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Enabled != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Enabled);
+      }
+      if (Running != false) {
+        output.WriteRawTag(16);
+        output.WriteBool(Running);
+      }
+      if (Port.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Port);
+      }
+      if (BaudRate != 0) {
+        output.WriteRawTag(32);
+        output.WriteInt32(BaudRate);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Enabled != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Enabled);
+      }
+      if (Running != false) {
+        output.WriteRawTag(16);
+        output.WriteBool(Running);
+      }
+      if (Port.Length != 0) {
+        output.WriteRawTag(26);
+        output.WriteString(Port);
+      }
+      if (BaudRate != 0) {
+        output.WriteRawTag(32);
+        output.WriteInt32(BaudRate);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Enabled != false) {
+        size += 1 + 1;
+      }
+      if (Running != false) {
+        size += 1 + 1;
+      }
+      if (Port.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Port);
+      }
+      if (BaudRate != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(BaudRate);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(Lx200Status other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Enabled != false) {
+        Enabled = other.Enabled;
+      }
+      if (other.Running != false) {
+        Running = other.Running;
+      }
+      if (other.Port.Length != 0) {
+        Port = other.Port;
+      }
+      if (other.BaudRate != 0) {
+        BaudRate = other.BaudRate;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Enabled = input.ReadBool();
+            break;
+          }
+          case 16: {
+            Running = input.ReadBool();
+            break;
+          }
+          case 26: {
+            Port = input.ReadString();
+            break;
+          }
+          case 32: {
+            BaudRate = input.ReadInt32();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Enabled = input.ReadBool();
+            break;
+          }
+          case 16: {
+            Running = input.ReadBool();
+            break;
+          }
+          case 26: {
+            Port = input.ReadString();
+            break;
+          }
+          case 32: {
+            BaudRate = input.ReadInt32();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
   /// State save/load requests
   /// </summary>
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
@@ -9653,7 +10415,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[16]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[17]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -9891,7 +10653,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[17]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[18]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10126,7 +10888,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[18]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[19]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10330,7 +11092,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[19]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[20]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10574,7 +11336,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[20]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[21]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -10865,7 +11627,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[21]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[22]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11149,7 +11911,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[22]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[23]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11439,7 +12201,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[23]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[24]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -11459,9 +12221,6 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AxisPhysicalParameters(AxisPhysicalParameters other) : this() {
-      motorStepsPerRev_ = other.motorStepsPerRev_;
-      motorMicrostepping_ = other.motorMicrostepping_;
-      motorStepAngle_ = other.motorStepAngle_;
       encoderResolution_ = other.encoderResolution_;
       encoderCountsPerArcsec_ = other.encoderCountsPerArcsec_;
       encoderQuantizationError_ = other.encoderQuantizationError_;
@@ -11480,6 +12239,8 @@ namespace AstroMount {
       tempGearErrorCoeff_ = other.tempGearErrorCoeff_;
       calibrationTable_ = other.calibrationTable_.Clone();
       calibrationTemp_ = other.calibrationTemp_;
+      positionCountsPerDegree_ = other.positionCountsPerDegree_;
+      velocityCountsPerDegS_ = other.velocityCountsPerDegS_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -11487,51 +12248,6 @@ namespace AstroMount {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public AxisPhysicalParameters Clone() {
       return new AxisPhysicalParameters(this);
-    }
-
-    /// <summary>Field number for the "motor_steps_per_rev" field.</summary>
-    public const int MotorStepsPerRevFieldNumber = 1;
-    private double motorStepsPerRev_;
-    /// <summary>
-    /// Motor parameters
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double MotorStepsPerRev {
-      get { return motorStepsPerRev_; }
-      set {
-        motorStepsPerRev_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "motor_microstepping" field.</summary>
-    public const int MotorMicrosteppingFieldNumber = 2;
-    private double motorMicrostepping_;
-    /// <summary>
-    /// Microstepping factor (e.g., 16, 32, 64)
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double MotorMicrostepping {
-      get { return motorMicrostepping_; }
-      set {
-        motorMicrostepping_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "motor_step_angle" field.</summary>
-    public const int MotorStepAngleFieldNumber = 3;
-    private double motorStepAngle_;
-    /// <summary>
-    /// Step angle [arcseconds]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double MotorStepAngle {
-      get { return motorStepAngle_; }
-      set {
-        motorStepAngle_ = value;
-      }
     }
 
     /// <summary>Field number for the "encoder_resolution" field.</summary>
@@ -11802,6 +12518,36 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "position_counts_per_degree" field.</summary>
+    public const int PositionCountsPerDegreeFieldNumber = 22;
+    private double positionCountsPerDegree_;
+    /// <summary>
+    /// CANopen scaling factors (per-axis, replaces global fields 55/56)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double PositionCountsPerDegree {
+      get { return positionCountsPerDegree_; }
+      set {
+        positionCountsPerDegree_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "velocity_counts_per_deg_s" field.</summary>
+    public const int VelocityCountsPerDegSFieldNumber = 23;
+    private double velocityCountsPerDegS_;
+    /// <summary>
+    /// counts per °/s for 0x606C
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double VelocityCountsPerDegS {
+      get { return velocityCountsPerDegS_; }
+      set {
+        velocityCountsPerDegS_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -11817,9 +12563,6 @@ namespace AstroMount {
       if (ReferenceEquals(other, this)) {
         return true;
       }
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MotorStepsPerRev, other.MotorStepsPerRev)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MotorMicrostepping, other.MotorMicrostepping)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MotorStepAngle, other.MotorStepAngle)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(EncoderResolution, other.EncoderResolution)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(EncoderCountsPerArcsec, other.EncoderCountsPerArcsec)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(EncoderQuantizationError, other.EncoderQuantizationError)) return false;
@@ -11838,6 +12581,8 @@ namespace AstroMount {
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(TempGearErrorCoeff, other.TempGearErrorCoeff)) return false;
       if(!calibrationTable_.Equals(other.calibrationTable_)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CalibrationTemp, other.CalibrationTemp)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PositionCountsPerDegree, other.PositionCountsPerDegree)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(VelocityCountsPerDegS, other.VelocityCountsPerDegS)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -11845,9 +12590,6 @@ namespace AstroMount {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override int GetHashCode() {
       int hash = 1;
-      if (MotorStepsPerRev != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MotorStepsPerRev);
-      if (MotorMicrostepping != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MotorMicrostepping);
-      if (MotorStepAngle != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MotorStepAngle);
       if (EncoderResolution != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(EncoderResolution);
       if (EncoderCountsPerArcsec != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(EncoderCountsPerArcsec);
       if (EncoderQuantizationError != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(EncoderQuantizationError);
@@ -11866,6 +12608,8 @@ namespace AstroMount {
       if (TempGearErrorCoeff != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TempGearErrorCoeff);
       hash ^= calibrationTable_.GetHashCode();
       if (CalibrationTemp != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CalibrationTemp);
+      if (PositionCountsPerDegree != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PositionCountsPerDegree);
+      if (VelocityCountsPerDegS != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(VelocityCountsPerDegS);
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -11884,18 +12628,6 @@ namespace AstroMount {
     #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
       output.WriteRawMessage(this);
     #else
-      if (MotorStepsPerRev != 0D) {
-        output.WriteRawTag(9);
-        output.WriteDouble(MotorStepsPerRev);
-      }
-      if (MotorMicrostepping != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(MotorMicrostepping);
-      }
-      if (MotorStepAngle != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(MotorStepAngle);
-      }
       if (EncoderResolution != 0D) {
         output.WriteRawTag(33);
         output.WriteDouble(EncoderResolution);
@@ -11962,6 +12694,14 @@ namespace AstroMount {
         output.WriteRawTag(169, 1);
         output.WriteDouble(CalibrationTemp);
       }
+      if (PositionCountsPerDegree != 0D) {
+        output.WriteRawTag(177, 1);
+        output.WriteDouble(PositionCountsPerDegree);
+      }
+      if (VelocityCountsPerDegS != 0D) {
+        output.WriteRawTag(185, 1);
+        output.WriteDouble(VelocityCountsPerDegS);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -11972,18 +12712,6 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (MotorStepsPerRev != 0D) {
-        output.WriteRawTag(9);
-        output.WriteDouble(MotorStepsPerRev);
-      }
-      if (MotorMicrostepping != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(MotorMicrostepping);
-      }
-      if (MotorStepAngle != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(MotorStepAngle);
-      }
       if (EncoderResolution != 0D) {
         output.WriteRawTag(33);
         output.WriteDouble(EncoderResolution);
@@ -12050,6 +12778,14 @@ namespace AstroMount {
         output.WriteRawTag(169, 1);
         output.WriteDouble(CalibrationTemp);
       }
+      if (PositionCountsPerDegree != 0D) {
+        output.WriteRawTag(177, 1);
+        output.WriteDouble(PositionCountsPerDegree);
+      }
+      if (VelocityCountsPerDegS != 0D) {
+        output.WriteRawTag(185, 1);
+        output.WriteDouble(VelocityCountsPerDegS);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -12060,15 +12796,6 @@ namespace AstroMount {
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public int CalculateSize() {
       int size = 0;
-      if (MotorStepsPerRev != 0D) {
-        size += 1 + 8;
-      }
-      if (MotorMicrostepping != 0D) {
-        size += 1 + 8;
-      }
-      if (MotorStepAngle != 0D) {
-        size += 1 + 8;
-      }
       if (EncoderResolution != 0D) {
         size += 1 + 8;
       }
@@ -12119,6 +12846,12 @@ namespace AstroMount {
       if (CalibrationTemp != 0D) {
         size += 2 + 8;
       }
+      if (PositionCountsPerDegree != 0D) {
+        size += 2 + 8;
+      }
+      if (VelocityCountsPerDegS != 0D) {
+        size += 2 + 8;
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -12130,15 +12863,6 @@ namespace AstroMount {
     public void MergeFrom(AxisPhysicalParameters other) {
       if (other == null) {
         return;
-      }
-      if (other.MotorStepsPerRev != 0D) {
-        MotorStepsPerRev = other.MotorStepsPerRev;
-      }
-      if (other.MotorMicrostepping != 0D) {
-        MotorMicrostepping = other.MotorMicrostepping;
-      }
-      if (other.MotorStepAngle != 0D) {
-        MotorStepAngle = other.MotorStepAngle;
       }
       if (other.EncoderResolution != 0D) {
         EncoderResolution = other.EncoderResolution;
@@ -12190,6 +12914,12 @@ namespace AstroMount {
       if (other.CalibrationTemp != 0D) {
         CalibrationTemp = other.CalibrationTemp;
       }
+      if (other.PositionCountsPerDegree != 0D) {
+        PositionCountsPerDegree = other.PositionCountsPerDegree;
+      }
+      if (other.VelocityCountsPerDegS != 0D) {
+        VelocityCountsPerDegS = other.VelocityCountsPerDegS;
+      }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
 
@@ -12209,18 +12939,6 @@ namespace AstroMount {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
             break;
-          case 9: {
-            MotorStepsPerRev = input.ReadDouble();
-            break;
-          }
-          case 17: {
-            MotorMicrostepping = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            MotorStepAngle = input.ReadDouble();
-            break;
-          }
           case 33: {
             EncoderResolution = input.ReadDouble();
             break;
@@ -12295,6 +13013,14 @@ namespace AstroMount {
             CalibrationTemp = input.ReadDouble();
             break;
           }
+          case 177: {
+            PositionCountsPerDegree = input.ReadDouble();
+            break;
+          }
+          case 185: {
+            VelocityCountsPerDegS = input.ReadDouble();
+            break;
+          }
         }
       }
     #endif
@@ -12314,18 +13040,6 @@ namespace AstroMount {
           default:
             _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
             break;
-          case 9: {
-            MotorStepsPerRev = input.ReadDouble();
-            break;
-          }
-          case 17: {
-            MotorMicrostepping = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            MotorStepAngle = input.ReadDouble();
-            break;
-          }
           case 33: {
             EncoderResolution = input.ReadDouble();
             break;
@@ -12400,6 +13114,14 @@ namespace AstroMount {
             CalibrationTemp = input.ReadDouble();
             break;
           }
+          case 177: {
+            PositionCountsPerDegree = input.ReadDouble();
+            break;
+          }
+          case 185: {
+            VelocityCountsPerDegS = input.ReadDouble();
+            break;
+          }
         }
       }
     }
@@ -12425,7 +13147,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[24]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[25]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12732,6 +13454,290 @@ namespace AstroMount {
   }
 
   /// <summary>
+  /// LX200 serial interface configuration
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class Lx200Config : pb::IMessage<Lx200Config>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<Lx200Config> _parser = new pb::MessageParser<Lx200Config>(() => new Lx200Config());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<Lx200Config> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[26]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Lx200Config() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Lx200Config(Lx200Config other) : this() {
+      enabled_ = other.enabled_;
+      port_ = other.port_;
+      baudRate_ = other.baudRate_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Lx200Config Clone() {
+      return new Lx200Config(this);
+    }
+
+    /// <summary>Field number for the "enabled" field.</summary>
+    public const int EnabledFieldNumber = 1;
+    private bool enabled_;
+    /// <summary>
+    /// Enable LX200 serial interface
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Enabled {
+      get { return enabled_; }
+      set {
+        enabled_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "port" field.</summary>
+    public const int PortFieldNumber = 2;
+    private string port_ = "";
+    /// <summary>
+    /// Serial port device (e.g. /dev/ttyUSB0)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string Port {
+      get { return port_; }
+      set {
+        port_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "baud_rate" field.</summary>
+    public const int BaudRateFieldNumber = 3;
+    private int baudRate_;
+    /// <summary>
+    /// Baud rate (default: 9600)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int BaudRate {
+      get { return baudRate_; }
+      set {
+        baudRate_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as Lx200Config);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(Lx200Config other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Enabled != other.Enabled) return false;
+      if (Port != other.Port) return false;
+      if (BaudRate != other.BaudRate) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Enabled != false) hash ^= Enabled.GetHashCode();
+      if (Port.Length != 0) hash ^= Port.GetHashCode();
+      if (BaudRate != 0) hash ^= BaudRate.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Enabled != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Enabled);
+      }
+      if (Port.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Port);
+      }
+      if (BaudRate != 0) {
+        output.WriteRawTag(24);
+        output.WriteInt32(BaudRate);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Enabled != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Enabled);
+      }
+      if (Port.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(Port);
+      }
+      if (BaudRate != 0) {
+        output.WriteRawTag(24);
+        output.WriteInt32(BaudRate);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Enabled != false) {
+        size += 1 + 1;
+      }
+      if (Port.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(Port);
+      }
+      if (BaudRate != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeInt32Size(BaudRate);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(Lx200Config other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Enabled != false) {
+        Enabled = other.Enabled;
+      }
+      if (other.Port.Length != 0) {
+        Port = other.Port;
+      }
+      if (other.BaudRate != 0) {
+        BaudRate = other.BaudRate;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Enabled = input.ReadBool();
+            break;
+          }
+          case 18: {
+            Port = input.ReadString();
+            break;
+          }
+          case 24: {
+            BaudRate = input.ReadInt32();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Enabled = input.ReadBool();
+            break;
+          }
+          case 18: {
+            Port = input.ReadString();
+            break;
+          }
+          case 24: {
+            BaudRate = input.ReadInt32();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
   /// Configuration
   /// </summary>
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
@@ -12742,6 +13748,7 @@ namespace AstroMount {
   {
     private static readonly pb::MessageParser<Configuration> _parser = new pb::MessageParser<Configuration>(() => new Configuration());
     private pb::UnknownFieldSet _unknownFields;
+    private int _hasBits0;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pb::MessageParser<Configuration> Parser { get { return _parser; } }
@@ -12749,7 +13756,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[25]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[27]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -12769,14 +13776,18 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public Configuration(Configuration other) : this() {
+      _hasBits0 = other._hasBits0;
       latitude_ = other.latitude_;
       longitude_ = other.longitude_;
       altitude_ = other.altitude_;
-      mountHeight_ = other.mountHeight_;
-      pierWest_ = other.pierWest_;
-      pierEast_ = other.pierEast_;
       focalLength_ = other.focalLength_;
       aperture_ = other.aperture_;
+      tubeLength_ = other.tubeLength_;
+      cameraModel_ = other.cameraModel_;
+      pixelSize_ = other.pixelSize_;
+      sensorWidth_ = other.sensorWidth_;
+      sensorHeight_ = other.sensorHeight_;
+      lx200Config_ = other.lx200Config_ != null ? other.lx200Config_.Clone() : null;
       defaultTemperature_ = other.defaultTemperature_;
       defaultPressure_ = other.defaultPressure_;
       defaultHumidity_ = other.defaultHumidity_;
@@ -12784,11 +13795,20 @@ namespace AstroMount {
       measurementNoise_ = other.measurementNoise_;
       logLevel_ = other.logLevel_;
       logDirectory_ = other.logDirectory_;
+      logConsoleOutput_ = other.logConsoleOutput_;
       logRotationDays_ = other.logRotationDays_;
+      logMaxFileSizeMb_ = other.logMaxFileSizeMb_;
       grpcAddress_ = other.grpcAddress_;
       grpcPort_ = other.grpcPort_;
+      networkMaxConnections_ = other.networkMaxConnections_;
+      networkEnableSsl_ = other.networkEnableSsl_;
+      networkSslCertPath_ = other.networkSslCertPath_;
+      networkSslKeyPath_ = other.networkSslKeyPath_;
       canopenInterface_ = other.canopenInterface_;
       canopenNodeId_ = other.canopenNodeId_;
+      canopenBaudRate_ = other.canopenBaudRate_;
+      canopenEnableSync_ = other.canopenEnableSync_;
+      canopenSyncIntervalMs_ = other.canopenSyncIntervalMs_;
       parkPositionAxis1_ = other.parkPositionAxis1_;
       parkPositionAxis2_ = other.parkPositionAxis2_;
       maxSlewRate_ = other.maxSlewRate_;
@@ -12820,6 +13840,35 @@ namespace AstroMount {
       softLimitDecelerationDegrees_ = other.softLimitDecelerationDegrees_;
       softLimitTrackingRateFactor_ = other.softLimitTrackingRateFactor_;
       mountOrientation_ = other.mountOrientation_ != null ? other.mountOrientation_.Clone() : null;
+      servoInitEnabled_ = other.servoInitEnabled_;
+      servoInitSequence_ = other.servoInitSequence_;
+      canopenAccelMode_ = other.canopenAccelMode_;
+      canopenPdoConfigEnabled_ = other.canopenPdoConfigEnabled_;
+      controllerPollMs_ = other.controllerPollMs_;
+      trackingUpdateMs_ = other.trackingUpdateMs_;
+      meridianFlipTimeoutSeconds_ = other.meridianFlipTimeoutSeconds_;
+      canopenPositionRewindEnabled_ = other.canopenPositionRewindEnabled_;
+      canopenPositionRewindIntervalSeconds_ = other.canopenPositionRewindIntervalSeconds_;
+      canopenPositionRewindThresholdPercent_ = other.canopenPositionRewindThresholdPercent_;
+      equatorialTrackingVelocityMode_ = other.equatorialTrackingVelocityMode_;
+      invertAxis1_ = other.invertAxis1_;
+      invertAxis2_ = other.invertAxis2_;
+      splitTrackingLoop_ = other.splitTrackingLoop_;
+      calcUpdateHz_ = other.calcUpdateHz_;
+      ioUpdateHz_ = other.ioUpdateHz_;
+      telemetryDecimation_ = other.telemetryDecimation_;
+      safetyCheckDecimation_ = other.safetyCheckDecimation_;
+      ioRealtime_ = other.ioRealtime_;
+      ioRealtimePriority_ = other.ioRealtimePriority_;
+      pdoFastPath_ = other.pdoFastPath_;
+      pdoVelocityMapping_ = other.pdoVelocityMapping_;
+      sdoSlowControl_ = other.sdoSlowControl_;
+      trackingPosUpdateHz_ = other.trackingPosUpdateHz_;
+      trackingPosVelocityMargin_ = other.trackingPosVelocityMargin_;
+      trackingMode_ = other.trackingMode_;
+      autoTrackAfterSlew_ = other.autoTrackAfterSlew_;
+      autoTrackAfterCalibration_ = other.autoTrackAfterCalibration_;
+      autoTrackAfterGoto_ = other.autoTrackAfterGoto_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -12868,45 +13917,6 @@ namespace AstroMount {
       }
     }
 
-    /// <summary>Field number for the "mount_height" field.</summary>
-    public const int MountHeightFieldNumber = 4;
-    private double mountHeight_;
-    /// <summary>
-    /// Mount parameters
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double MountHeight {
-      get { return mountHeight_; }
-      set {
-        mountHeight_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "pier_west" field.</summary>
-    public const int PierWestFieldNumber = 5;
-    private double pierWest_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double PierWest {
-      get { return pierWest_; }
-      set {
-        pierWest_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "pier_east" field.</summary>
-    public const int PierEastFieldNumber = 6;
-    private double pierEast_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double PierEast {
-      get { return pierEast_; }
-      set {
-        pierEast_ = value;
-      }
-    }
-
     /// <summary>Field number for the "focal_length" field.</summary>
     public const int FocalLengthFieldNumber = 7;
     private double focalLength_;
@@ -12931,6 +13941,96 @@ namespace AstroMount {
       get { return aperture_; }
       set {
         aperture_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "tube_length" field.</summary>
+    public const int TubeLengthFieldNumber = 91;
+    private double tubeLength_;
+    /// <summary>
+    /// Tube length [mm]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double TubeLength {
+      get { return tubeLength_; }
+      set {
+        tubeLength_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "camera_model" field.</summary>
+    public const int CameraModelFieldNumber = 92;
+    private string cameraModel_ = "";
+    /// <summary>
+    /// Camera model name
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string CameraModel {
+      get { return cameraModel_; }
+      set {
+        cameraModel_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "pixel_size" field.</summary>
+    public const int PixelSizeFieldNumber = 93;
+    private double pixelSize_;
+    /// <summary>
+    /// Pixel size [µm]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double PixelSize {
+      get { return pixelSize_; }
+      set {
+        pixelSize_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "sensor_width" field.</summary>
+    public const int SensorWidthFieldNumber = 94;
+    private int sensorWidth_;
+    /// <summary>
+    /// Sensor width [pixels]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int SensorWidth {
+      get { return sensorWidth_; }
+      set {
+        sensorWidth_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "sensor_height" field.</summary>
+    public const int SensorHeightFieldNumber = 95;
+    private int sensorHeight_;
+    /// <summary>
+    /// Sensor height [pixels]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int SensorHeight {
+      get { return sensorHeight_; }
+      set {
+        sensorHeight_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "lx200_config" field.</summary>
+    public const int Lx200ConfigFieldNumber = 96;
+    private global::AstroMount.Lx200Config lx200Config_;
+    /// <summary>
+    /// LX200 serial interface
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::AstroMount.Lx200Config Lx200Config {
+      get { return lx200Config_; }
+      set {
+        lx200Config_ = value;
       }
     }
 
@@ -13027,6 +14127,63 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "log_console_output" field.</summary>
+    public const int LogConsoleOutputFieldNumber = 75;
+    private readonly static bool LogConsoleOutputDefaultValue = false;
+
+    private bool logConsoleOutput_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool LogConsoleOutput {
+      get { if ((_hasBits0 & 256) != 0) { return logConsoleOutput_; } else { return LogConsoleOutputDefaultValue; } }
+      set {
+        _hasBits0 |= 256;
+        logConsoleOutput_ = value;
+      }
+    }
+    /// <summary>Gets whether the "log_console_output" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasLogConsoleOutput {
+      get { return (_hasBits0 & 256) != 0; }
+    }
+    /// <summary>Clears the value of the "log_console_output" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearLogConsoleOutput() {
+      _hasBits0 &= ~256;
+    }
+
+    /// <summary>Field number for the "log_rotation_days" field.</summary>
+    public const int LogRotationDaysFieldNumber = 89;
+    private int logRotationDays_;
+    /// <summary>
+    /// Log rotation period in days (default: 7)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int LogRotationDays {
+      get { return logRotationDays_; }
+      set {
+        logRotationDays_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "log_max_file_size_mb" field.</summary>
+    public const int LogMaxFileSizeMbFieldNumber = 90;
+    private int logMaxFileSizeMb_;
+    /// <summary>
+    /// Max log file size in MB (default: 10)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int LogMaxFileSizeMb {
+      get { return logMaxFileSizeMb_; }
+      set {
+        logMaxFileSizeMb_ = value;
+      }
+    }
+
     /// <summary>Field number for the "grpc_address" field.</summary>
     public const int GrpcAddressFieldNumber = 17;
     private string grpcAddress_ = "";
@@ -13054,6 +14211,69 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "network_max_connections" field.</summary>
+    public const int NetworkMaxConnectionsFieldNumber = 76;
+    private int networkMaxConnections_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int NetworkMaxConnections {
+      get { return networkMaxConnections_; }
+      set {
+        networkMaxConnections_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "network_enable_ssl" field.</summary>
+    public const int NetworkEnableSslFieldNumber = 77;
+    private readonly static bool NetworkEnableSslDefaultValue = false;
+
+    private bool networkEnableSsl_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool NetworkEnableSsl {
+      get { if ((_hasBits0 & 512) != 0) { return networkEnableSsl_; } else { return NetworkEnableSslDefaultValue; } }
+      set {
+        _hasBits0 |= 512;
+        networkEnableSsl_ = value;
+      }
+    }
+    /// <summary>Gets whether the "network_enable_ssl" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasNetworkEnableSsl {
+      get { return (_hasBits0 & 512) != 0; }
+    }
+    /// <summary>Clears the value of the "network_enable_ssl" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearNetworkEnableSsl() {
+      _hasBits0 &= ~512;
+    }
+
+    /// <summary>Field number for the "network_ssl_cert_path" field.</summary>
+    public const int NetworkSslCertPathFieldNumber = 78;
+    private string networkSslCertPath_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string NetworkSslCertPath {
+      get { return networkSslCertPath_; }
+      set {
+        networkSslCertPath_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "network_ssl_key_path" field.</summary>
+    public const int NetworkSslKeyPathFieldNumber = 79;
+    private string networkSslKeyPath_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string NetworkSslKeyPath {
+      get { return networkSslKeyPath_; }
+      set {
+        networkSslKeyPath_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
     /// <summary>Field number for the "canopen_interface" field.</summary>
     public const int CanopenInterfaceFieldNumber = 19;
     private string canopenInterface_ = "";
@@ -13078,6 +14298,57 @@ namespace AstroMount {
       get { return canopenNodeId_; }
       set {
         canopenNodeId_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "canopen_baud_rate" field.</summary>
+    public const int CanopenBaudRateFieldNumber = 80;
+    private int canopenBaudRate_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CanopenBaudRate {
+      get { return canopenBaudRate_; }
+      set {
+        canopenBaudRate_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "canopen_enable_sync" field.</summary>
+    public const int CanopenEnableSyncFieldNumber = 81;
+    private readonly static bool CanopenEnableSyncDefaultValue = false;
+
+    private bool canopenEnableSync_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool CanopenEnableSync {
+      get { if ((_hasBits0 & 1024) != 0) { return canopenEnableSync_; } else { return CanopenEnableSyncDefaultValue; } }
+      set {
+        _hasBits0 |= 1024;
+        canopenEnableSync_ = value;
+      }
+    }
+    /// <summary>Gets whether the "canopen_enable_sync" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasCanopenEnableSync {
+      get { return (_hasBits0 & 1024) != 0; }
+    }
+    /// <summary>Clears the value of the "canopen_enable_sync" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearCanopenEnableSync() {
+      _hasBits0 &= ~1024;
+    }
+
+    /// <summary>Field number for the "canopen_sync_interval_ms" field.</summary>
+    public const int CanopenSyncIntervalMsFieldNumber = 82;
+    private int canopenSyncIntervalMs_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CanopenSyncIntervalMs {
+      get { return canopenSyncIntervalMs_; }
+      set {
+        canopenSyncIntervalMs_ = value;
       }
     }
 
@@ -13188,6 +14459,8 @@ namespace AstroMount {
 
     /// <summary>Field number for the "use_encoders" field.</summary>
     public const int UseEncodersFieldNumber = 29;
+    private readonly static bool UseEncodersDefaultValue = false;
+
     private bool useEncoders_;
     /// <summary>
     /// Encoder configuration
@@ -13195,22 +14468,50 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool UseEncoders {
-      get { return useEncoders_; }
+      get { if ((_hasBits0 & 1) != 0) { return useEncoders_; } else { return UseEncodersDefaultValue; } }
       set {
+        _hasBits0 |= 1;
         useEncoders_ = value;
       }
+    }
+    /// <summary>Gets whether the "use_encoders" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasUseEncoders {
+      get { return (_hasBits0 & 1) != 0; }
+    }
+    /// <summary>Clears the value of the "use_encoders" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearUseEncoders() {
+      _hasBits0 &= ~1;
     }
 
     /// <summary>Field number for the "encoders_absolute" field.</summary>
     public const int EncodersAbsoluteFieldNumber = 30;
+    private readonly static bool EncodersAbsoluteDefaultValue = false;
+
     private bool encodersAbsolute_;
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool EncodersAbsolute {
-      get { return encodersAbsolute_; }
+      get { if ((_hasBits0 & 2) != 0) { return encodersAbsolute_; } else { return EncodersAbsoluteDefaultValue; } }
       set {
+        _hasBits0 |= 2;
         encodersAbsolute_ = value;
       }
+    }
+    /// <summary>Gets whether the "encoders_absolute" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasEncodersAbsolute {
+      get { return (_hasBits0 & 2) != 0; }
+    }
+    /// <summary>Clears the value of the "encoders_absolute" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearEncodersAbsolute() {
+      _hasBits0 &= ~2;
     }
 
     /// <summary>Field number for the "encoder_resolution_config" field.</summary>
@@ -13242,6 +14543,8 @@ namespace AstroMount {
 
     /// <summary>Field number for the "enable_guider" field.</summary>
     public const int EnableGuiderFieldNumber = 33;
+    private readonly static bool EnableGuiderDefaultValue = false;
+
     private bool enableGuider_;
     /// <summary>
     /// Guider configuration
@@ -13249,10 +14552,23 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool EnableGuider {
-      get { return enableGuider_; }
+      get { if ((_hasBits0 & 4) != 0) { return enableGuider_; } else { return EnableGuiderDefaultValue; } }
       set {
+        _hasBits0 |= 4;
         enableGuider_ = value;
       }
+    }
+    /// <summary>Gets whether the "enable_guider" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasEnableGuider {
+      get { return (_hasBits0 & 4) != 0; }
+    }
+    /// <summary>Clears the value of the "enable_guider" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearEnableGuider() {
+      _hasBits0 &= ~4;
     }
 
     /// <summary>Field number for the "guider_max_correction" field.</summary>
@@ -13281,6 +14597,8 @@ namespace AstroMount {
 
     /// <summary>Field number for the "enable_refraction_correction" field.</summary>
     public const int EnableRefractionCorrectionFieldNumber = 36;
+    private readonly static bool EnableRefractionCorrectionDefaultValue = false;
+
     private bool enableRefractionCorrection_;
     /// <summary>
     /// Atmospheric refraction correction
@@ -13288,10 +14606,23 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool EnableRefractionCorrection {
-      get { return enableRefractionCorrection_; }
+      get { if ((_hasBits0 & 8) != 0) { return enableRefractionCorrection_; } else { return EnableRefractionCorrectionDefaultValue; } }
       set {
+        _hasBits0 |= 8;
         enableRefractionCorrection_ = value;
       }
+    }
+    /// <summary>Gets whether the "enable_refraction_correction" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasEnableRefractionCorrection {
+      get { return (_hasBits0 & 8) != 0; }
+    }
+    /// <summary>Clears the value of the "enable_refraction_correction" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearEnableRefractionCorrection() {
+      _hasBits0 &= ~8;
     }
 
     /// <summary>Field number for the "mount_type" field.</summary>
@@ -13341,6 +14672,8 @@ namespace AstroMount {
 
     /// <summary>Field number for the "meridian_flip_enabled" field.</summary>
     public const int MeridianFlipEnabledFieldNumber = 40;
+    private readonly static bool MeridianFlipEnabledDefaultValue = false;
+
     private bool meridianFlipEnabled_;
     /// <summary>
     /// Meridian flip configuration
@@ -13348,10 +14681,23 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool MeridianFlipEnabled {
-      get { return meridianFlipEnabled_; }
+      get { if ((_hasBits0 & 16) != 0) { return meridianFlipEnabled_; } else { return MeridianFlipEnabledDefaultValue; } }
       set {
+        _hasBits0 |= 16;
         meridianFlipEnabled_ = value;
       }
+    }
+    /// <summary>Gets whether the "meridian_flip_enabled" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasMeridianFlipEnabled {
+      get { return (_hasBits0 & 16) != 0; }
+    }
+    /// <summary>Clears the value of the "meridian_flip_enabled" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearMeridianFlipEnabled() {
+      _hasBits0 &= ~16;
     }
 
     /// <summary>Field number for the "meridian_flip_delay_minutes" field.</summary>
@@ -13386,6 +14732,8 @@ namespace AstroMount {
 
     /// <summary>Field number for the "soft_limits_enabled" field.</summary>
     public const int SoftLimitsEnabledFieldNumber = 43;
+    private readonly static bool SoftLimitsEnabledDefaultValue = false;
+
     private bool softLimitsEnabled_;
     /// <summary>
     /// Soft limits configuration
@@ -13393,10 +14741,23 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public bool SoftLimitsEnabled {
-      get { return softLimitsEnabled_; }
+      get { if ((_hasBits0 & 32) != 0) { return softLimitsEnabled_; } else { return SoftLimitsEnabledDefaultValue; } }
       set {
+        _hasBits0 |= 32;
         softLimitsEnabled_ = value;
       }
+    }
+    /// <summary>Gets whether the "soft_limits_enabled" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSoftLimitsEnabled {
+      get { return (_hasBits0 & 32) != 0; }
+    }
+    /// <summary>Clears the value of the "soft_limits_enabled" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSoftLimitsEnabled() {
+      _hasBits0 &= ~32;
     }
 
     /// <summary>Field number for the "soft_limit_axis1_min" field.</summary>
@@ -13519,6 +14880,661 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "servo_init_enabled" field.</summary>
+    public const int ServoInitEnabledFieldNumber = 52;
+    private readonly static bool ServoInitEnabledDefaultValue = false;
+
+    private bool servoInitEnabled_;
+    /// <summary>
+    /// Servo initialization via custom SDO sequence
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ServoInitEnabled {
+      get { if ((_hasBits0 & 64) != 0) { return servoInitEnabled_; } else { return ServoInitEnabledDefaultValue; } }
+      set {
+        _hasBits0 |= 64;
+        servoInitEnabled_ = value;
+      }
+    }
+    /// <summary>Gets whether the "servo_init_enabled" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasServoInitEnabled {
+      get { return (_hasBits0 & 64) != 0; }
+    }
+    /// <summary>Clears the value of the "servo_init_enabled" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearServoInitEnabled() {
+      _hasBits0 &= ~64;
+    }
+
+    /// <summary>Field number for the "servo_init_sequence" field.</summary>
+    public const int ServoInitSequenceFieldNumber = 53;
+    private string servoInitSequence_ = "";
+    /// <summary>
+    /// JSON array of {axis, index, subindex, value, description} entries
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string ServoInitSequence {
+      get { return servoInitSequence_; }
+      set {
+        servoInitSequence_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "canopen_accel_mode" field.</summary>
+    public const int CanopenAccelModeFieldNumber = 54;
+    private string canopenAccelMode_ = "";
+    /// <summary>
+    /// CANopen acceleration interpretation mode
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string CanopenAccelMode {
+      get { return canopenAccelMode_; }
+      set {
+        canopenAccelMode_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "canopen_pdo_config_enabled" field.</summary>
+    public const int CanopenPdoConfigEnabledFieldNumber = 70;
+    private readonly static bool CanopenPdoConfigEnabledDefaultValue = false;
+
+    private bool canopenPdoConfigEnabled_;
+    /// <summary>
+    /// Write PDO mappings to drive during init
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool CanopenPdoConfigEnabled {
+      get { if ((_hasBits0 & 128) != 0) { return canopenPdoConfigEnabled_; } else { return CanopenPdoConfigEnabledDefaultValue; } }
+      set {
+        _hasBits0 |= 128;
+        canopenPdoConfigEnabled_ = value;
+      }
+    }
+    /// <summary>Gets whether the "canopen_pdo_config_enabled" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasCanopenPdoConfigEnabled {
+      get { return (_hasBits0 & 128) != 0; }
+    }
+    /// <summary>Clears the value of the "canopen_pdo_config_enabled" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearCanopenPdoConfigEnabled() {
+      _hasBits0 &= ~128;
+    }
+
+    /// <summary>Field number for the "controller_poll_ms" field.</summary>
+    public const int ControllerPollMsFieldNumber = 71;
+    private int controllerPollMs_;
+    /// <summary>
+    /// Main loop poll interval [ms], default 50 (20 Hz)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int ControllerPollMs {
+      get { return controllerPollMs_; }
+      set {
+        controllerPollMs_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "tracking_update_ms" field.</summary>
+    public const int TrackingUpdateMsFieldNumber = 72;
+    private int trackingUpdateMs_;
+    /// <summary>
+    /// Tracking update interval [ms], default 20 (50 Hz)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int TrackingUpdateMs {
+      get { return trackingUpdateMs_; }
+      set {
+        trackingUpdateMs_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "meridian_flip_timeout_seconds" field.</summary>
+    public const int MeridianFlipTimeoutSecondsFieldNumber = 73;
+    private double meridianFlipTimeoutSeconds_;
+    /// <summary>
+    /// Meridian flip timeout
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double MeridianFlipTimeoutSeconds {
+      get { return meridianFlipTimeoutSeconds_; }
+      set {
+        meridianFlipTimeoutSeconds_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "canopen_position_rewind_enabled" field.</summary>
+    public const int CanopenPositionRewindEnabledFieldNumber = 85;
+    private readonly static bool CanopenPositionRewindEnabledDefaultValue = false;
+
+    private bool canopenPositionRewindEnabled_;
+    /// <summary>
+    /// Enable/disable the CANopen position rewind mechanism entirely.
+    /// When disabled, the drive's absolute position counter is never reset,
+    /// regardless of the interval or threshold settings below.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool CanopenPositionRewindEnabled {
+      get { if ((_hasBits0 & 2048) != 0) { return canopenPositionRewindEnabled_; } else { return CanopenPositionRewindEnabledDefaultValue; } }
+      set {
+        _hasBits0 |= 2048;
+        canopenPositionRewindEnabled_ = value;
+      }
+    }
+    /// <summary>Gets whether the "canopen_position_rewind_enabled" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasCanopenPositionRewindEnabled {
+      get { return (_hasBits0 & 2048) != 0; }
+    }
+    /// <summary>Clears the value of the "canopen_position_rewind_enabled" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearCanopenPositionRewindEnabled() {
+      _hasBits0 &= ~2048;
+    }
+
+    /// <summary>Field number for the "canopen_position_rewind_interval_seconds" field.</summary>
+    public const int CanopenPositionRewindIntervalSecondsFieldNumber = 83;
+    private double canopenPositionRewindIntervalSeconds_;
+    /// <summary>
+    /// CANopen position rewind: periodically reset the drive's absolute position
+    /// counter to prevent overflow beyond the drive's target position limit
+    /// (typically ±1,000,000 encoder counts). Set to 0 to disable.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CanopenPositionRewindIntervalSeconds {
+      get { return canopenPositionRewindIntervalSeconds_; }
+      set {
+        canopenPositionRewindIntervalSeconds_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "canopen_position_rewind_threshold_percent" field.</summary>
+    public const int CanopenPositionRewindThresholdPercentFieldNumber = 84;
+    private double canopenPositionRewindThresholdPercent_;
+    /// <summary>
+    /// Threshold percentage of the 1,000,000 count limit at which immediate
+    /// rewind is triggered regardless of the time interval. Range 0–100.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CanopenPositionRewindThresholdPercent {
+      get { return canopenPositionRewindThresholdPercent_; }
+      set {
+        canopenPositionRewindThresholdPercent_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "equatorial_tracking_velocity_mode" field.</summary>
+    public const int EquatorialTrackingVelocityModeFieldNumber = 86;
+    private readonly static bool EquatorialTrackingVelocityModeDefaultValue = false;
+
+    private bool equatorialTrackingVelocityMode_;
+    /// <summary>
+    /// Equatorial tracking mode: false = Profile Position (default, stable),
+    /// true = Profile Velocity (experimental — velocity feedback 0x606C is
+    /// unreliable on some hardware).
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool EquatorialTrackingVelocityMode {
+      get { if ((_hasBits0 & 4096) != 0) { return equatorialTrackingVelocityMode_; } else { return EquatorialTrackingVelocityModeDefaultValue; } }
+      set {
+        _hasBits0 |= 4096;
+        equatorialTrackingVelocityMode_ = value;
+      }
+    }
+    /// <summary>Gets whether the "equatorial_tracking_velocity_mode" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasEquatorialTrackingVelocityMode {
+      get { return (_hasBits0 & 4096) != 0; }
+    }
+    /// <summary>Clears the value of the "equatorial_tracking_velocity_mode" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearEquatorialTrackingVelocityMode() {
+      _hasBits0 &= ~4096;
+    }
+
+    /// <summary>Field number for the "invert_axis1" field.</summary>
+    public const int InvertAxis1FieldNumber = 87;
+    private readonly static bool InvertAxis1DefaultValue = false;
+
+    private bool invertAxis1_;
+    /// <summary>
+    /// Per-axis rotation direction inversion.
+    /// When true, the motor target position/velocity for this axis is negated,
+    /// reversing the physical rotation direction relative to the computed target.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool InvertAxis1 {
+      get { if ((_hasBits0 & 8192) != 0) { return invertAxis1_; } else { return InvertAxis1DefaultValue; } }
+      set {
+        _hasBits0 |= 8192;
+        invertAxis1_ = value;
+      }
+    }
+    /// <summary>Gets whether the "invert_axis1" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasInvertAxis1 {
+      get { return (_hasBits0 & 8192) != 0; }
+    }
+    /// <summary>Clears the value of the "invert_axis1" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearInvertAxis1() {
+      _hasBits0 &= ~8192;
+    }
+
+    /// <summary>Field number for the "invert_axis2" field.</summary>
+    public const int InvertAxis2FieldNumber = 88;
+    private readonly static bool InvertAxis2DefaultValue = false;
+
+    private bool invertAxis2_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool InvertAxis2 {
+      get { if ((_hasBits0 & 16384) != 0) { return invertAxis2_; } else { return InvertAxis2DefaultValue; } }
+      set {
+        _hasBits0 |= 16384;
+        invertAxis2_ = value;
+      }
+    }
+    /// <summary>Gets whether the "invert_axis2" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasInvertAxis2 {
+      get { return (_hasBits0 & 16384) != 0; }
+    }
+    /// <summary>Clears the value of the "invert_axis2" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearInvertAxis2() {
+      _hasBits0 &= ~16384;
+    }
+
+    /// <summary>Field number for the "split_tracking_loop" field.</summary>
+    public const int SplitTrackingLoopFieldNumber = 97;
+    private readonly static bool SplitTrackingLoopDefaultValue = false;
+
+    private bool splitTrackingLoop_;
+    /// <summary>
+    /// Split tracking loop (calc + io writer + io reader) and PDO fast path.
+    /// See docs/pl/propozycja_podzialu_watku_sledzenia.md and
+    /// docs/pl/wyznaczanie_predkosci_sledzenia.md.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SplitTrackingLoop {
+      get { if ((_hasBits0 & 32768) != 0) { return splitTrackingLoop_; } else { return SplitTrackingLoopDefaultValue; } }
+      set {
+        _hasBits0 |= 32768;
+        splitTrackingLoop_ = value;
+      }
+    }
+    /// <summary>Gets whether the "split_tracking_loop" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSplitTrackingLoop {
+      get { return (_hasBits0 & 32768) != 0; }
+    }
+    /// <summary>Clears the value of the "split_tracking_loop" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSplitTrackingLoop() {
+      _hasBits0 &= ~32768;
+    }
+
+    /// <summary>Field number for the "calc_update_hz" field.</summary>
+    public const int CalcUpdateHzFieldNumber = 98;
+    private int calcUpdateHz_;
+    /// <summary>
+    /// computational thread frequency [Hz]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalcUpdateHz {
+      get { return calcUpdateHz_; }
+      set {
+        calcUpdateHz_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "io_update_hz" field.</summary>
+    public const int IoUpdateHzFieldNumber = 99;
+    private int ioUpdateHz_;
+    /// <summary>
+    /// communication (io) thread frequency [Hz]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int IoUpdateHz {
+      get { return ioUpdateHz_; }
+      set {
+        ioUpdateHz_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "telemetry_decimation" field.</summary>
+    public const int TelemetryDecimationFieldNumber = 100;
+    private int telemetryDecimation_;
+    /// <summary>
+    /// io iterations between sensor reads
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int TelemetryDecimation {
+      get { return telemetryDecimation_; }
+      set {
+        telemetryDecimation_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "safety_check_decimation" field.</summary>
+    public const int SafetyCheckDecimationFieldNumber = 101;
+    private int safetyCheckDecimation_;
+    /// <summary>
+    /// io iterations between safety-monitor reads
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int SafetyCheckDecimation {
+      get { return safetyCheckDecimation_; }
+      set {
+        safetyCheckDecimation_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "io_realtime" field.</summary>
+    public const int IoRealtimeFieldNumber = 102;
+    private readonly static bool IoRealtimeDefaultValue = false;
+
+    private bool ioRealtime_;
+    /// <summary>
+    /// promote io writer thread to SCHED_FIFO (best effort)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool IoRealtime {
+      get { if ((_hasBits0 & 65536) != 0) { return ioRealtime_; } else { return IoRealtimeDefaultValue; } }
+      set {
+        _hasBits0 |= 65536;
+        ioRealtime_ = value;
+      }
+    }
+    /// <summary>Gets whether the "io_realtime" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasIoRealtime {
+      get { return (_hasBits0 & 65536) != 0; }
+    }
+    /// <summary>Clears the value of the "io_realtime" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearIoRealtime() {
+      _hasBits0 &= ~65536;
+    }
+
+    /// <summary>Field number for the "io_realtime_priority" field.</summary>
+    public const int IoRealtimePriorityFieldNumber = 103;
+    private int ioRealtimePriority_;
+    /// <summary>
+    /// SCHED_FIFO priority for the io writer thread
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int IoRealtimePriority {
+      get { return ioRealtimePriority_; }
+      set {
+        ioRealtimePriority_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "pdo_fast_path" field.</summary>
+    public const int PdoFastPathFieldNumber = 104;
+    private readonly static bool PdoFastPathDefaultValue = false;
+
+    private bool pdoFastPath_;
+    /// <summary>
+    /// use TPDO1 reads + RPDO2 writes on the hot path
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool PdoFastPath {
+      get { if ((_hasBits0 & 131072) != 0) { return pdoFastPath_; } else { return PdoFastPathDefaultValue; } }
+      set {
+        _hasBits0 |= 131072;
+        pdoFastPath_ = value;
+      }
+    }
+    /// <summary>Gets whether the "pdo_fast_path" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasPdoFastPath {
+      get { return (_hasBits0 & 131072) != 0; }
+    }
+    /// <summary>Clears the value of the "pdo_fast_path" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearPdoFastPath() {
+      _hasBits0 &= ~131072;
+    }
+
+    /// <summary>Field number for the "pdo_velocity_mapping" field.</summary>
+    public const int PdoVelocityMappingFieldNumber = 105;
+    private readonly static bool PdoVelocityMappingDefaultValue = false;
+
+    private bool pdoVelocityMapping_;
+    /// <summary>
+    /// map RPDO2 to 6040h + 60FFh (target velocity)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool PdoVelocityMapping {
+      get { if ((_hasBits0 & 262144) != 0) { return pdoVelocityMapping_; } else { return PdoVelocityMappingDefaultValue; } }
+      set {
+        _hasBits0 |= 262144;
+        pdoVelocityMapping_ = value;
+      }
+    }
+    /// <summary>Gets whether the "pdo_velocity_mapping" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasPdoVelocityMapping {
+      get { return (_hasBits0 & 262144) != 0; }
+    }
+    /// <summary>Clears the value of the "pdo_velocity_mapping" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearPdoVelocityMapping() {
+      _hasBits0 &= ~262144;
+    }
+
+    /// <summary>Field number for the "sdo_slow_control" field.</summary>
+    public const int SdoSlowControlFieldNumber = 106;
+    private readonly static bool SdoSlowControlDefaultValue = false;
+
+    private bool sdoSlowControl_;
+    /// <summary>
+    /// keep SDO for mode switch / config / homing
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SdoSlowControl {
+      get { if ((_hasBits0 & 524288) != 0) { return sdoSlowControl_; } else { return SdoSlowControlDefaultValue; } }
+      set {
+        _hasBits0 |= 524288;
+        sdoSlowControl_ = value;
+      }
+    }
+    /// <summary>Gets whether the "sdo_slow_control" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasSdoSlowControl {
+      get { return (_hasBits0 & 524288) != 0; }
+    }
+    /// <summary>Clears the value of the "sdo_slow_control" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearSdoSlowControl() {
+      _hasBits0 &= ~524288;
+    }
+
+    /// <summary>Field number for the "tracking_pos_update_hz" field.</summary>
+    public const int TrackingPosUpdateHzFieldNumber = 107;
+    private int trackingPosUpdateHz_;
+    /// <summary>
+    /// position-mode target update cadence [Hz] (EQ position mode)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int TrackingPosUpdateHz {
+      get { return trackingPosUpdateHz_; }
+      set {
+        trackingPosUpdateHz_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "tracking_pos_velocity_margin" field.</summary>
+    public const int TrackingPosVelocityMarginFieldNumber = 108;
+    private double trackingPosVelocityMargin_;
+    /// <summary>
+    /// bounded scaling factor applied to the actual tracking rate in position-mode tracking (clamped to max_tracking_rate)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double TrackingPosVelocityMargin {
+      get { return trackingPosVelocityMargin_; }
+      set {
+        trackingPosVelocityMargin_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "tracking_mode" field.</summary>
+    public const int TrackingModeFieldNumber = 109;
+    private string trackingMode_ = "";
+    /// <summary>
+    /// "auto" | "position" | "velocity" — tracking command mode selector
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string TrackingMode {
+      get { return trackingMode_; }
+      set {
+        trackingMode_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "auto_track_after_slew" field.</summary>
+    public const int AutoTrackAfterSlewFieldNumber = 110;
+    private readonly static bool AutoTrackAfterSlewDefaultValue = false;
+
+    private bool autoTrackAfterSlew_;
+    /// <summary>
+    /// Auto-bootstrap orchestration options.
+    /// When true, the proxy orchestrator starts tracking after each calibration
+    /// slew and/or after the calibration finishes.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool AutoTrackAfterSlew {
+      get { if ((_hasBits0 & 1048576) != 0) { return autoTrackAfterSlew_; } else { return AutoTrackAfterSlewDefaultValue; } }
+      set {
+        _hasBits0 |= 1048576;
+        autoTrackAfterSlew_ = value;
+      }
+    }
+    /// <summary>Gets whether the "auto_track_after_slew" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasAutoTrackAfterSlew {
+      get { return (_hasBits0 & 1048576) != 0; }
+    }
+    /// <summary>Clears the value of the "auto_track_after_slew" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearAutoTrackAfterSlew() {
+      _hasBits0 &= ~1048576;
+    }
+
+    /// <summary>Field number for the "auto_track_after_calibration" field.</summary>
+    public const int AutoTrackAfterCalibrationFieldNumber = 111;
+    private readonly static bool AutoTrackAfterCalibrationDefaultValue = false;
+
+    private bool autoTrackAfterCalibration_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool AutoTrackAfterCalibration {
+      get { if ((_hasBits0 & 2097152) != 0) { return autoTrackAfterCalibration_; } else { return AutoTrackAfterCalibrationDefaultValue; } }
+      set {
+        _hasBits0 |= 2097152;
+        autoTrackAfterCalibration_ = value;
+      }
+    }
+    /// <summary>Gets whether the "auto_track_after_calibration" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasAutoTrackAfterCalibration {
+      get { return (_hasBits0 & 2097152) != 0; }
+    }
+    /// <summary>Clears the value of the "auto_track_after_calibration" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearAutoTrackAfterCalibration() {
+      _hasBits0 &= ~2097152;
+    }
+
+    /// <summary>Field number for the "auto_track_after_goto" field.</summary>
+    public const int AutoTrackAfterGotoFieldNumber = 112;
+    private readonly static bool AutoTrackAfterGotoDefaultValue = false;
+
+    private bool autoTrackAfterGoto_;
+    /// <summary>
+    /// Auto-track after a normal Goto (SlewToCoordinates) completes.
+    /// When true, the controller automatically starts sidereal tracking of the
+    /// Goto target once the slew settles. Runtime-modifiable via
+    /// UpdateConfiguration (no controller restart required).
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool AutoTrackAfterGoto {
+      get { if ((_hasBits0 & 4194304) != 0) { return autoTrackAfterGoto_; } else { return AutoTrackAfterGotoDefaultValue; } }
+      set {
+        _hasBits0 |= 4194304;
+        autoTrackAfterGoto_ = value;
+      }
+    }
+    /// <summary>Gets whether the "auto_track_after_goto" field is set</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool HasAutoTrackAfterGoto {
+      get { return (_hasBits0 & 4194304) != 0; }
+    }
+    /// <summary>Clears the value of the "auto_track_after_goto" field</summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void ClearAutoTrackAfterGoto() {
+      _hasBits0 &= ~4194304;
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -13537,11 +15553,14 @@ namespace AstroMount {
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Latitude, other.Latitude)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Longitude, other.Longitude)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Altitude, other.Altitude)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MountHeight, other.MountHeight)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PierWest, other.PierWest)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PierEast, other.PierEast)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(FocalLength, other.FocalLength)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Aperture, other.Aperture)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(TubeLength, other.TubeLength)) return false;
+      if (CameraModel != other.CameraModel) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PixelSize, other.PixelSize)) return false;
+      if (SensorWidth != other.SensorWidth) return false;
+      if (SensorHeight != other.SensorHeight) return false;
+      if (!object.Equals(Lx200Config, other.Lx200Config)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(DefaultTemperature, other.DefaultTemperature)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(DefaultPressure, other.DefaultPressure)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(DefaultHumidity, other.DefaultHumidity)) return false;
@@ -13549,10 +15568,20 @@ namespace AstroMount {
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MeasurementNoise, other.MeasurementNoise)) return false;
       if (LogLevel != other.LogLevel) return false;
       if (LogDirectory != other.LogDirectory) return false;
+      if (LogConsoleOutput != other.LogConsoleOutput) return false;
+      if (LogRotationDays != other.LogRotationDays) return false;
+      if (LogMaxFileSizeMb != other.LogMaxFileSizeMb) return false;
       if (GrpcAddress != other.GrpcAddress) return false;
       if (GrpcPort != other.GrpcPort) return false;
+      if (NetworkMaxConnections != other.NetworkMaxConnections) return false;
+      if (NetworkEnableSsl != other.NetworkEnableSsl) return false;
+      if (NetworkSslCertPath != other.NetworkSslCertPath) return false;
+      if (NetworkSslKeyPath != other.NetworkSslKeyPath) return false;
       if (CanopenInterface != other.CanopenInterface) return false;
       if (CanopenNodeId != other.CanopenNodeId) return false;
+      if (CanopenBaudRate != other.CanopenBaudRate) return false;
+      if (CanopenEnableSync != other.CanopenEnableSync) return false;
+      if (CanopenSyncIntervalMs != other.CanopenSyncIntervalMs) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(ParkPositionAxis1, other.ParkPositionAxis1)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(ParkPositionAxis2, other.ParkPositionAxis2)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MaxSlewRate, other.MaxSlewRate)) return false;
@@ -13584,6 +15613,35 @@ namespace AstroMount {
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SoftLimitDecelerationDegrees, other.SoftLimitDecelerationDegrees)) return false;
       if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SoftLimitTrackingRateFactor, other.SoftLimitTrackingRateFactor)) return false;
       if (!object.Equals(MountOrientation, other.MountOrientation)) return false;
+      if (ServoInitEnabled != other.ServoInitEnabled) return false;
+      if (ServoInitSequence != other.ServoInitSequence) return false;
+      if (CanopenAccelMode != other.CanopenAccelMode) return false;
+      if (CanopenPdoConfigEnabled != other.CanopenPdoConfigEnabled) return false;
+      if (ControllerPollMs != other.ControllerPollMs) return false;
+      if (TrackingUpdateMs != other.TrackingUpdateMs) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MeridianFlipTimeoutSeconds, other.MeridianFlipTimeoutSeconds)) return false;
+      if (CanopenPositionRewindEnabled != other.CanopenPositionRewindEnabled) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CanopenPositionRewindIntervalSeconds, other.CanopenPositionRewindIntervalSeconds)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CanopenPositionRewindThresholdPercent, other.CanopenPositionRewindThresholdPercent)) return false;
+      if (EquatorialTrackingVelocityMode != other.EquatorialTrackingVelocityMode) return false;
+      if (InvertAxis1 != other.InvertAxis1) return false;
+      if (InvertAxis2 != other.InvertAxis2) return false;
+      if (SplitTrackingLoop != other.SplitTrackingLoop) return false;
+      if (CalcUpdateHz != other.CalcUpdateHz) return false;
+      if (IoUpdateHz != other.IoUpdateHz) return false;
+      if (TelemetryDecimation != other.TelemetryDecimation) return false;
+      if (SafetyCheckDecimation != other.SafetyCheckDecimation) return false;
+      if (IoRealtime != other.IoRealtime) return false;
+      if (IoRealtimePriority != other.IoRealtimePriority) return false;
+      if (PdoFastPath != other.PdoFastPath) return false;
+      if (PdoVelocityMapping != other.PdoVelocityMapping) return false;
+      if (SdoSlowControl != other.SdoSlowControl) return false;
+      if (TrackingPosUpdateHz != other.TrackingPosUpdateHz) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(TrackingPosVelocityMargin, other.TrackingPosVelocityMargin)) return false;
+      if (TrackingMode != other.TrackingMode) return false;
+      if (AutoTrackAfterSlew != other.AutoTrackAfterSlew) return false;
+      if (AutoTrackAfterCalibration != other.AutoTrackAfterCalibration) return false;
+      if (AutoTrackAfterGoto != other.AutoTrackAfterGoto) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -13594,11 +15652,14 @@ namespace AstroMount {
       if (Latitude != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Latitude);
       if (Longitude != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Longitude);
       if (Altitude != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Altitude);
-      if (MountHeight != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MountHeight);
-      if (PierWest != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PierWest);
-      if (PierEast != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PierEast);
       if (FocalLength != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(FocalLength);
       if (Aperture != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Aperture);
+      if (TubeLength != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TubeLength);
+      if (CameraModel.Length != 0) hash ^= CameraModel.GetHashCode();
+      if (PixelSize != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PixelSize);
+      if (SensorWidth != 0) hash ^= SensorWidth.GetHashCode();
+      if (SensorHeight != 0) hash ^= SensorHeight.GetHashCode();
+      if (lx200Config_ != null) hash ^= Lx200Config.GetHashCode();
       if (DefaultTemperature != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(DefaultTemperature);
       if (DefaultPressure != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(DefaultPressure);
       if (DefaultHumidity != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(DefaultHumidity);
@@ -13606,10 +15667,20 @@ namespace AstroMount {
       if (MeasurementNoise != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MeasurementNoise);
       if (LogLevel.Length != 0) hash ^= LogLevel.GetHashCode();
       if (LogDirectory.Length != 0) hash ^= LogDirectory.GetHashCode();
+      if (HasLogConsoleOutput) hash ^= LogConsoleOutput.GetHashCode();
+      if (LogRotationDays != 0) hash ^= LogRotationDays.GetHashCode();
+      if (LogMaxFileSizeMb != 0) hash ^= LogMaxFileSizeMb.GetHashCode();
       if (GrpcAddress.Length != 0) hash ^= GrpcAddress.GetHashCode();
       if (GrpcPort != 0) hash ^= GrpcPort.GetHashCode();
+      if (NetworkMaxConnections != 0) hash ^= NetworkMaxConnections.GetHashCode();
+      if (HasNetworkEnableSsl) hash ^= NetworkEnableSsl.GetHashCode();
+      if (NetworkSslCertPath.Length != 0) hash ^= NetworkSslCertPath.GetHashCode();
+      if (NetworkSslKeyPath.Length != 0) hash ^= NetworkSslKeyPath.GetHashCode();
       if (CanopenInterface.Length != 0) hash ^= CanopenInterface.GetHashCode();
       if (CanopenNodeId != 0) hash ^= CanopenNodeId.GetHashCode();
+      if (CanopenBaudRate != 0) hash ^= CanopenBaudRate.GetHashCode();
+      if (HasCanopenEnableSync) hash ^= CanopenEnableSync.GetHashCode();
+      if (CanopenSyncIntervalMs != 0) hash ^= CanopenSyncIntervalMs.GetHashCode();
       if (ParkPositionAxis1 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(ParkPositionAxis1);
       if (ParkPositionAxis2 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(ParkPositionAxis2);
       if (MaxSlewRate != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MaxSlewRate);
@@ -13618,21 +15689,21 @@ namespace AstroMount {
       if (TrackingAcceleration != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TrackingAcceleration);
       if (haAxisParams_ != null) hash ^= HaAxisParams.GetHashCode();
       if (decAxisParams_ != null) hash ^= DecAxisParams.GetHashCode();
-      if (UseEncoders != false) hash ^= UseEncoders.GetHashCode();
-      if (EncodersAbsolute != false) hash ^= EncodersAbsolute.GetHashCode();
+      if (HasUseEncoders) hash ^= UseEncoders.GetHashCode();
+      if (HasEncodersAbsolute) hash ^= EncodersAbsolute.GetHashCode();
       if (EncoderResolutionConfig != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(EncoderResolutionConfig);
       if (TpointEnabledTerms != 0) hash ^= TpointEnabledTerms.GetHashCode();
-      if (EnableGuider != false) hash ^= EnableGuider.GetHashCode();
+      if (HasEnableGuider) hash ^= EnableGuider.GetHashCode();
       if (GuiderMaxCorrection != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(GuiderMaxCorrection);
       if (GuiderAggression != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(GuiderAggression);
-      if (EnableRefractionCorrection != false) hash ^= EnableRefractionCorrection.GetHashCode();
+      if (HasEnableRefractionCorrection) hash ^= EnableRefractionCorrection.GetHashCode();
       if (MountType != global::AstroMount.MountType.Equatorial) hash ^= MountType.GetHashCode();
       if (PositionTolerance != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PositionTolerance);
       if (RateTolerance != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(RateTolerance);
-      if (MeridianFlipEnabled != false) hash ^= MeridianFlipEnabled.GetHashCode();
+      if (HasMeridianFlipEnabled) hash ^= MeridianFlipEnabled.GetHashCode();
       if (MeridianFlipDelayMinutes != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MeridianFlipDelayMinutes);
       if (MeridianFlipHysteresisDegrees != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MeridianFlipHysteresisDegrees);
-      if (SoftLimitsEnabled != false) hash ^= SoftLimitsEnabled.GetHashCode();
+      if (HasSoftLimitsEnabled) hash ^= SoftLimitsEnabled.GetHashCode();
       if (SoftLimitAxis1Min != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SoftLimitAxis1Min);
       if (SoftLimitAxis1Max != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SoftLimitAxis1Max);
       if (SoftLimitAxis2Min != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SoftLimitAxis2Min);
@@ -13641,6 +15712,35 @@ namespace AstroMount {
       if (SoftLimitDecelerationDegrees != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SoftLimitDecelerationDegrees);
       if (SoftLimitTrackingRateFactor != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SoftLimitTrackingRateFactor);
       if (mountOrientation_ != null) hash ^= MountOrientation.GetHashCode();
+      if (HasServoInitEnabled) hash ^= ServoInitEnabled.GetHashCode();
+      if (ServoInitSequence.Length != 0) hash ^= ServoInitSequence.GetHashCode();
+      if (CanopenAccelMode.Length != 0) hash ^= CanopenAccelMode.GetHashCode();
+      if (HasCanopenPdoConfigEnabled) hash ^= CanopenPdoConfigEnabled.GetHashCode();
+      if (ControllerPollMs != 0) hash ^= ControllerPollMs.GetHashCode();
+      if (TrackingUpdateMs != 0) hash ^= TrackingUpdateMs.GetHashCode();
+      if (MeridianFlipTimeoutSeconds != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MeridianFlipTimeoutSeconds);
+      if (HasCanopenPositionRewindEnabled) hash ^= CanopenPositionRewindEnabled.GetHashCode();
+      if (CanopenPositionRewindIntervalSeconds != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CanopenPositionRewindIntervalSeconds);
+      if (CanopenPositionRewindThresholdPercent != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CanopenPositionRewindThresholdPercent);
+      if (HasEquatorialTrackingVelocityMode) hash ^= EquatorialTrackingVelocityMode.GetHashCode();
+      if (HasInvertAxis1) hash ^= InvertAxis1.GetHashCode();
+      if (HasInvertAxis2) hash ^= InvertAxis2.GetHashCode();
+      if (HasSplitTrackingLoop) hash ^= SplitTrackingLoop.GetHashCode();
+      if (CalcUpdateHz != 0) hash ^= CalcUpdateHz.GetHashCode();
+      if (IoUpdateHz != 0) hash ^= IoUpdateHz.GetHashCode();
+      if (TelemetryDecimation != 0) hash ^= TelemetryDecimation.GetHashCode();
+      if (SafetyCheckDecimation != 0) hash ^= SafetyCheckDecimation.GetHashCode();
+      if (HasIoRealtime) hash ^= IoRealtime.GetHashCode();
+      if (IoRealtimePriority != 0) hash ^= IoRealtimePriority.GetHashCode();
+      if (HasPdoFastPath) hash ^= PdoFastPath.GetHashCode();
+      if (HasPdoVelocityMapping) hash ^= PdoVelocityMapping.GetHashCode();
+      if (HasSdoSlowControl) hash ^= SdoSlowControl.GetHashCode();
+      if (TrackingPosUpdateHz != 0) hash ^= TrackingPosUpdateHz.GetHashCode();
+      if (TrackingPosVelocityMargin != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TrackingPosVelocityMargin);
+      if (TrackingMode.Length != 0) hash ^= TrackingMode.GetHashCode();
+      if (HasAutoTrackAfterSlew) hash ^= AutoTrackAfterSlew.GetHashCode();
+      if (HasAutoTrackAfterCalibration) hash ^= AutoTrackAfterCalibration.GetHashCode();
+      if (HasAutoTrackAfterGoto) hash ^= AutoTrackAfterGoto.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -13671,18 +15771,6 @@ namespace AstroMount {
         output.WriteRawTag(25);
         output.WriteDouble(Altitude);
       }
-      if (MountHeight != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(MountHeight);
-      }
-      if (PierWest != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(PierWest);
-      }
-      if (PierEast != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(PierEast);
-      }
       if (FocalLength != 0D) {
         output.WriteRawTag(57);
         output.WriteDouble(FocalLength);
@@ -13767,11 +15855,11 @@ namespace AstroMount {
         output.WriteRawTag(226, 1);
         output.WriteMessage(DecAxisParams);
       }
-      if (UseEncoders != false) {
+      if (HasUseEncoders) {
         output.WriteRawTag(232, 1);
         output.WriteBool(UseEncoders);
       }
-      if (EncodersAbsolute != false) {
+      if (HasEncodersAbsolute) {
         output.WriteRawTag(240, 1);
         output.WriteBool(EncodersAbsolute);
       }
@@ -13783,7 +15871,7 @@ namespace AstroMount {
         output.WriteRawTag(128, 2);
         output.WriteUInt32(TpointEnabledTerms);
       }
-      if (EnableGuider != false) {
+      if (HasEnableGuider) {
         output.WriteRawTag(136, 2);
         output.WriteBool(EnableGuider);
       }
@@ -13795,7 +15883,7 @@ namespace AstroMount {
         output.WriteRawTag(153, 2);
         output.WriteDouble(GuiderAggression);
       }
-      if (EnableRefractionCorrection != false) {
+      if (HasEnableRefractionCorrection) {
         output.WriteRawTag(160, 2);
         output.WriteBool(EnableRefractionCorrection);
       }
@@ -13811,7 +15899,7 @@ namespace AstroMount {
         output.WriteRawTag(185, 2);
         output.WriteDouble(RateTolerance);
       }
-      if (MeridianFlipEnabled != false) {
+      if (HasMeridianFlipEnabled) {
         output.WriteRawTag(192, 2);
         output.WriteBool(MeridianFlipEnabled);
       }
@@ -13823,7 +15911,7 @@ namespace AstroMount {
         output.WriteRawTag(209, 2);
         output.WriteDouble(MeridianFlipHysteresisDegrees);
       }
-      if (SoftLimitsEnabled != false) {
+      if (HasSoftLimitsEnabled) {
         output.WriteRawTag(216, 2);
         output.WriteBool(SoftLimitsEnabled);
       }
@@ -13858,6 +15946,186 @@ namespace AstroMount {
       if (mountOrientation_ != null) {
         output.WriteRawTag(154, 3);
         output.WriteMessage(MountOrientation);
+      }
+      if (HasServoInitEnabled) {
+        output.WriteRawTag(160, 3);
+        output.WriteBool(ServoInitEnabled);
+      }
+      if (ServoInitSequence.Length != 0) {
+        output.WriteRawTag(170, 3);
+        output.WriteString(ServoInitSequence);
+      }
+      if (CanopenAccelMode.Length != 0) {
+        output.WriteRawTag(178, 3);
+        output.WriteString(CanopenAccelMode);
+      }
+      if (HasCanopenPdoConfigEnabled) {
+        output.WriteRawTag(176, 4);
+        output.WriteBool(CanopenPdoConfigEnabled);
+      }
+      if (ControllerPollMs != 0) {
+        output.WriteRawTag(184, 4);
+        output.WriteInt32(ControllerPollMs);
+      }
+      if (TrackingUpdateMs != 0) {
+        output.WriteRawTag(192, 4);
+        output.WriteInt32(TrackingUpdateMs);
+      }
+      if (MeridianFlipTimeoutSeconds != 0D) {
+        output.WriteRawTag(201, 4);
+        output.WriteDouble(MeridianFlipTimeoutSeconds);
+      }
+      if (HasLogConsoleOutput) {
+        output.WriteRawTag(216, 4);
+        output.WriteBool(LogConsoleOutput);
+      }
+      if (NetworkMaxConnections != 0) {
+        output.WriteRawTag(224, 4);
+        output.WriteInt32(NetworkMaxConnections);
+      }
+      if (HasNetworkEnableSsl) {
+        output.WriteRawTag(232, 4);
+        output.WriteBool(NetworkEnableSsl);
+      }
+      if (NetworkSslCertPath.Length != 0) {
+        output.WriteRawTag(242, 4);
+        output.WriteString(NetworkSslCertPath);
+      }
+      if (NetworkSslKeyPath.Length != 0) {
+        output.WriteRawTag(250, 4);
+        output.WriteString(NetworkSslKeyPath);
+      }
+      if (CanopenBaudRate != 0) {
+        output.WriteRawTag(128, 5);
+        output.WriteInt32(CanopenBaudRate);
+      }
+      if (HasCanopenEnableSync) {
+        output.WriteRawTag(136, 5);
+        output.WriteBool(CanopenEnableSync);
+      }
+      if (CanopenSyncIntervalMs != 0) {
+        output.WriteRawTag(144, 5);
+        output.WriteInt32(CanopenSyncIntervalMs);
+      }
+      if (CanopenPositionRewindIntervalSeconds != 0D) {
+        output.WriteRawTag(153, 5);
+        output.WriteDouble(CanopenPositionRewindIntervalSeconds);
+      }
+      if (CanopenPositionRewindThresholdPercent != 0D) {
+        output.WriteRawTag(161, 5);
+        output.WriteDouble(CanopenPositionRewindThresholdPercent);
+      }
+      if (HasCanopenPositionRewindEnabled) {
+        output.WriteRawTag(168, 5);
+        output.WriteBool(CanopenPositionRewindEnabled);
+      }
+      if (HasEquatorialTrackingVelocityMode) {
+        output.WriteRawTag(176, 5);
+        output.WriteBool(EquatorialTrackingVelocityMode);
+      }
+      if (HasInvertAxis1) {
+        output.WriteRawTag(184, 5);
+        output.WriteBool(InvertAxis1);
+      }
+      if (HasInvertAxis2) {
+        output.WriteRawTag(192, 5);
+        output.WriteBool(InvertAxis2);
+      }
+      if (LogRotationDays != 0) {
+        output.WriteRawTag(200, 5);
+        output.WriteInt32(LogRotationDays);
+      }
+      if (LogMaxFileSizeMb != 0) {
+        output.WriteRawTag(208, 5);
+        output.WriteInt32(LogMaxFileSizeMb);
+      }
+      if (TubeLength != 0D) {
+        output.WriteRawTag(217, 5);
+        output.WriteDouble(TubeLength);
+      }
+      if (CameraModel.Length != 0) {
+        output.WriteRawTag(226, 5);
+        output.WriteString(CameraModel);
+      }
+      if (PixelSize != 0D) {
+        output.WriteRawTag(233, 5);
+        output.WriteDouble(PixelSize);
+      }
+      if (SensorWidth != 0) {
+        output.WriteRawTag(240, 5);
+        output.WriteInt32(SensorWidth);
+      }
+      if (SensorHeight != 0) {
+        output.WriteRawTag(248, 5);
+        output.WriteInt32(SensorHeight);
+      }
+      if (lx200Config_ != null) {
+        output.WriteRawTag(130, 6);
+        output.WriteMessage(Lx200Config);
+      }
+      if (HasSplitTrackingLoop) {
+        output.WriteRawTag(136, 6);
+        output.WriteBool(SplitTrackingLoop);
+      }
+      if (CalcUpdateHz != 0) {
+        output.WriteRawTag(144, 6);
+        output.WriteInt32(CalcUpdateHz);
+      }
+      if (IoUpdateHz != 0) {
+        output.WriteRawTag(152, 6);
+        output.WriteInt32(IoUpdateHz);
+      }
+      if (TelemetryDecimation != 0) {
+        output.WriteRawTag(160, 6);
+        output.WriteInt32(TelemetryDecimation);
+      }
+      if (SafetyCheckDecimation != 0) {
+        output.WriteRawTag(168, 6);
+        output.WriteInt32(SafetyCheckDecimation);
+      }
+      if (HasIoRealtime) {
+        output.WriteRawTag(176, 6);
+        output.WriteBool(IoRealtime);
+      }
+      if (IoRealtimePriority != 0) {
+        output.WriteRawTag(184, 6);
+        output.WriteInt32(IoRealtimePriority);
+      }
+      if (HasPdoFastPath) {
+        output.WriteRawTag(192, 6);
+        output.WriteBool(PdoFastPath);
+      }
+      if (HasPdoVelocityMapping) {
+        output.WriteRawTag(200, 6);
+        output.WriteBool(PdoVelocityMapping);
+      }
+      if (HasSdoSlowControl) {
+        output.WriteRawTag(208, 6);
+        output.WriteBool(SdoSlowControl);
+      }
+      if (TrackingPosUpdateHz != 0) {
+        output.WriteRawTag(216, 6);
+        output.WriteInt32(TrackingPosUpdateHz);
+      }
+      if (TrackingPosVelocityMargin != 0D) {
+        output.WriteRawTag(225, 6);
+        output.WriteDouble(TrackingPosVelocityMargin);
+      }
+      if (TrackingMode.Length != 0) {
+        output.WriteRawTag(234, 6);
+        output.WriteString(TrackingMode);
+      }
+      if (HasAutoTrackAfterSlew) {
+        output.WriteRawTag(240, 6);
+        output.WriteBool(AutoTrackAfterSlew);
+      }
+      if (HasAutoTrackAfterCalibration) {
+        output.WriteRawTag(248, 6);
+        output.WriteBool(AutoTrackAfterCalibration);
+      }
+      if (HasAutoTrackAfterGoto) {
+        output.WriteRawTag(128, 7);
+        output.WriteBool(AutoTrackAfterGoto);
       }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
@@ -13881,18 +16149,6 @@ namespace AstroMount {
         output.WriteRawTag(25);
         output.WriteDouble(Altitude);
       }
-      if (MountHeight != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(MountHeight);
-      }
-      if (PierWest != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(PierWest);
-      }
-      if (PierEast != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(PierEast);
-      }
       if (FocalLength != 0D) {
         output.WriteRawTag(57);
         output.WriteDouble(FocalLength);
@@ -13977,11 +16233,11 @@ namespace AstroMount {
         output.WriteRawTag(226, 1);
         output.WriteMessage(DecAxisParams);
       }
-      if (UseEncoders != false) {
+      if (HasUseEncoders) {
         output.WriteRawTag(232, 1);
         output.WriteBool(UseEncoders);
       }
-      if (EncodersAbsolute != false) {
+      if (HasEncodersAbsolute) {
         output.WriteRawTag(240, 1);
         output.WriteBool(EncodersAbsolute);
       }
@@ -13993,7 +16249,7 @@ namespace AstroMount {
         output.WriteRawTag(128, 2);
         output.WriteUInt32(TpointEnabledTerms);
       }
-      if (EnableGuider != false) {
+      if (HasEnableGuider) {
         output.WriteRawTag(136, 2);
         output.WriteBool(EnableGuider);
       }
@@ -14005,7 +16261,7 @@ namespace AstroMount {
         output.WriteRawTag(153, 2);
         output.WriteDouble(GuiderAggression);
       }
-      if (EnableRefractionCorrection != false) {
+      if (HasEnableRefractionCorrection) {
         output.WriteRawTag(160, 2);
         output.WriteBool(EnableRefractionCorrection);
       }
@@ -14021,7 +16277,7 @@ namespace AstroMount {
         output.WriteRawTag(185, 2);
         output.WriteDouble(RateTolerance);
       }
-      if (MeridianFlipEnabled != false) {
+      if (HasMeridianFlipEnabled) {
         output.WriteRawTag(192, 2);
         output.WriteBool(MeridianFlipEnabled);
       }
@@ -14033,7 +16289,7 @@ namespace AstroMount {
         output.WriteRawTag(209, 2);
         output.WriteDouble(MeridianFlipHysteresisDegrees);
       }
-      if (SoftLimitsEnabled != false) {
+      if (HasSoftLimitsEnabled) {
         output.WriteRawTag(216, 2);
         output.WriteBool(SoftLimitsEnabled);
       }
@@ -14069,6 +16325,186 @@ namespace AstroMount {
         output.WriteRawTag(154, 3);
         output.WriteMessage(MountOrientation);
       }
+      if (HasServoInitEnabled) {
+        output.WriteRawTag(160, 3);
+        output.WriteBool(ServoInitEnabled);
+      }
+      if (ServoInitSequence.Length != 0) {
+        output.WriteRawTag(170, 3);
+        output.WriteString(ServoInitSequence);
+      }
+      if (CanopenAccelMode.Length != 0) {
+        output.WriteRawTag(178, 3);
+        output.WriteString(CanopenAccelMode);
+      }
+      if (HasCanopenPdoConfigEnabled) {
+        output.WriteRawTag(176, 4);
+        output.WriteBool(CanopenPdoConfigEnabled);
+      }
+      if (ControllerPollMs != 0) {
+        output.WriteRawTag(184, 4);
+        output.WriteInt32(ControllerPollMs);
+      }
+      if (TrackingUpdateMs != 0) {
+        output.WriteRawTag(192, 4);
+        output.WriteInt32(TrackingUpdateMs);
+      }
+      if (MeridianFlipTimeoutSeconds != 0D) {
+        output.WriteRawTag(201, 4);
+        output.WriteDouble(MeridianFlipTimeoutSeconds);
+      }
+      if (HasLogConsoleOutput) {
+        output.WriteRawTag(216, 4);
+        output.WriteBool(LogConsoleOutput);
+      }
+      if (NetworkMaxConnections != 0) {
+        output.WriteRawTag(224, 4);
+        output.WriteInt32(NetworkMaxConnections);
+      }
+      if (HasNetworkEnableSsl) {
+        output.WriteRawTag(232, 4);
+        output.WriteBool(NetworkEnableSsl);
+      }
+      if (NetworkSslCertPath.Length != 0) {
+        output.WriteRawTag(242, 4);
+        output.WriteString(NetworkSslCertPath);
+      }
+      if (NetworkSslKeyPath.Length != 0) {
+        output.WriteRawTag(250, 4);
+        output.WriteString(NetworkSslKeyPath);
+      }
+      if (CanopenBaudRate != 0) {
+        output.WriteRawTag(128, 5);
+        output.WriteInt32(CanopenBaudRate);
+      }
+      if (HasCanopenEnableSync) {
+        output.WriteRawTag(136, 5);
+        output.WriteBool(CanopenEnableSync);
+      }
+      if (CanopenSyncIntervalMs != 0) {
+        output.WriteRawTag(144, 5);
+        output.WriteInt32(CanopenSyncIntervalMs);
+      }
+      if (CanopenPositionRewindIntervalSeconds != 0D) {
+        output.WriteRawTag(153, 5);
+        output.WriteDouble(CanopenPositionRewindIntervalSeconds);
+      }
+      if (CanopenPositionRewindThresholdPercent != 0D) {
+        output.WriteRawTag(161, 5);
+        output.WriteDouble(CanopenPositionRewindThresholdPercent);
+      }
+      if (HasCanopenPositionRewindEnabled) {
+        output.WriteRawTag(168, 5);
+        output.WriteBool(CanopenPositionRewindEnabled);
+      }
+      if (HasEquatorialTrackingVelocityMode) {
+        output.WriteRawTag(176, 5);
+        output.WriteBool(EquatorialTrackingVelocityMode);
+      }
+      if (HasInvertAxis1) {
+        output.WriteRawTag(184, 5);
+        output.WriteBool(InvertAxis1);
+      }
+      if (HasInvertAxis2) {
+        output.WriteRawTag(192, 5);
+        output.WriteBool(InvertAxis2);
+      }
+      if (LogRotationDays != 0) {
+        output.WriteRawTag(200, 5);
+        output.WriteInt32(LogRotationDays);
+      }
+      if (LogMaxFileSizeMb != 0) {
+        output.WriteRawTag(208, 5);
+        output.WriteInt32(LogMaxFileSizeMb);
+      }
+      if (TubeLength != 0D) {
+        output.WriteRawTag(217, 5);
+        output.WriteDouble(TubeLength);
+      }
+      if (CameraModel.Length != 0) {
+        output.WriteRawTag(226, 5);
+        output.WriteString(CameraModel);
+      }
+      if (PixelSize != 0D) {
+        output.WriteRawTag(233, 5);
+        output.WriteDouble(PixelSize);
+      }
+      if (SensorWidth != 0) {
+        output.WriteRawTag(240, 5);
+        output.WriteInt32(SensorWidth);
+      }
+      if (SensorHeight != 0) {
+        output.WriteRawTag(248, 5);
+        output.WriteInt32(SensorHeight);
+      }
+      if (lx200Config_ != null) {
+        output.WriteRawTag(130, 6);
+        output.WriteMessage(Lx200Config);
+      }
+      if (HasSplitTrackingLoop) {
+        output.WriteRawTag(136, 6);
+        output.WriteBool(SplitTrackingLoop);
+      }
+      if (CalcUpdateHz != 0) {
+        output.WriteRawTag(144, 6);
+        output.WriteInt32(CalcUpdateHz);
+      }
+      if (IoUpdateHz != 0) {
+        output.WriteRawTag(152, 6);
+        output.WriteInt32(IoUpdateHz);
+      }
+      if (TelemetryDecimation != 0) {
+        output.WriteRawTag(160, 6);
+        output.WriteInt32(TelemetryDecimation);
+      }
+      if (SafetyCheckDecimation != 0) {
+        output.WriteRawTag(168, 6);
+        output.WriteInt32(SafetyCheckDecimation);
+      }
+      if (HasIoRealtime) {
+        output.WriteRawTag(176, 6);
+        output.WriteBool(IoRealtime);
+      }
+      if (IoRealtimePriority != 0) {
+        output.WriteRawTag(184, 6);
+        output.WriteInt32(IoRealtimePriority);
+      }
+      if (HasPdoFastPath) {
+        output.WriteRawTag(192, 6);
+        output.WriteBool(PdoFastPath);
+      }
+      if (HasPdoVelocityMapping) {
+        output.WriteRawTag(200, 6);
+        output.WriteBool(PdoVelocityMapping);
+      }
+      if (HasSdoSlowControl) {
+        output.WriteRawTag(208, 6);
+        output.WriteBool(SdoSlowControl);
+      }
+      if (TrackingPosUpdateHz != 0) {
+        output.WriteRawTag(216, 6);
+        output.WriteInt32(TrackingPosUpdateHz);
+      }
+      if (TrackingPosVelocityMargin != 0D) {
+        output.WriteRawTag(225, 6);
+        output.WriteDouble(TrackingPosVelocityMargin);
+      }
+      if (TrackingMode.Length != 0) {
+        output.WriteRawTag(234, 6);
+        output.WriteString(TrackingMode);
+      }
+      if (HasAutoTrackAfterSlew) {
+        output.WriteRawTag(240, 6);
+        output.WriteBool(AutoTrackAfterSlew);
+      }
+      if (HasAutoTrackAfterCalibration) {
+        output.WriteRawTag(248, 6);
+        output.WriteBool(AutoTrackAfterCalibration);
+      }
+      if (HasAutoTrackAfterGoto) {
+        output.WriteRawTag(128, 7);
+        output.WriteBool(AutoTrackAfterGoto);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -14088,20 +16524,29 @@ namespace AstroMount {
       if (Altitude != 0D) {
         size += 1 + 8;
       }
-      if (MountHeight != 0D) {
-        size += 1 + 8;
-      }
-      if (PierWest != 0D) {
-        size += 1 + 8;
-      }
-      if (PierEast != 0D) {
-        size += 1 + 8;
-      }
       if (FocalLength != 0D) {
         size += 1 + 8;
       }
       if (Aperture != 0D) {
         size += 1 + 8;
+      }
+      if (TubeLength != 0D) {
+        size += 2 + 8;
+      }
+      if (CameraModel.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(CameraModel);
+      }
+      if (PixelSize != 0D) {
+        size += 2 + 8;
+      }
+      if (SensorWidth != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(SensorWidth);
+      }
+      if (SensorHeight != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(SensorHeight);
+      }
+      if (lx200Config_ != null) {
+        size += 2 + pb::CodedOutputStream.ComputeMessageSize(Lx200Config);
       }
       if (DefaultTemperature != 0D) {
         size += 1 + 8;
@@ -14124,17 +16569,47 @@ namespace AstroMount {
       if (LogDirectory.Length != 0) {
         size += 1 + pb::CodedOutputStream.ComputeStringSize(LogDirectory);
       }
+      if (HasLogConsoleOutput) {
+        size += 2 + 1;
+      }
+      if (LogRotationDays != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(LogRotationDays);
+      }
+      if (LogMaxFileSizeMb != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(LogMaxFileSizeMb);
+      }
       if (GrpcAddress.Length != 0) {
         size += 2 + pb::CodedOutputStream.ComputeStringSize(GrpcAddress);
       }
       if (GrpcPort != 0) {
         size += 2 + pb::CodedOutputStream.ComputeInt32Size(GrpcPort);
       }
+      if (NetworkMaxConnections != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(NetworkMaxConnections);
+      }
+      if (HasNetworkEnableSsl) {
+        size += 2 + 1;
+      }
+      if (NetworkSslCertPath.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(NetworkSslCertPath);
+      }
+      if (NetworkSslKeyPath.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(NetworkSslKeyPath);
+      }
       if (CanopenInterface.Length != 0) {
         size += 2 + pb::CodedOutputStream.ComputeStringSize(CanopenInterface);
       }
       if (CanopenNodeId != 0) {
         size += 2 + pb::CodedOutputStream.ComputeInt32Size(CanopenNodeId);
+      }
+      if (CanopenBaudRate != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(CanopenBaudRate);
+      }
+      if (HasCanopenEnableSync) {
+        size += 2 + 1;
+      }
+      if (CanopenSyncIntervalMs != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(CanopenSyncIntervalMs);
       }
       if (ParkPositionAxis1 != 0D) {
         size += 2 + 8;
@@ -14160,10 +16635,10 @@ namespace AstroMount {
       if (decAxisParams_ != null) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(DecAxisParams);
       }
-      if (UseEncoders != false) {
+      if (HasUseEncoders) {
         size += 2 + 1;
       }
-      if (EncodersAbsolute != false) {
+      if (HasEncodersAbsolute) {
         size += 2 + 1;
       }
       if (EncoderResolutionConfig != 0D) {
@@ -14172,7 +16647,7 @@ namespace AstroMount {
       if (TpointEnabledTerms != 0) {
         size += 2 + pb::CodedOutputStream.ComputeUInt32Size(TpointEnabledTerms);
       }
-      if (EnableGuider != false) {
+      if (HasEnableGuider) {
         size += 2 + 1;
       }
       if (GuiderMaxCorrection != 0D) {
@@ -14181,7 +16656,7 @@ namespace AstroMount {
       if (GuiderAggression != 0D) {
         size += 2 + 8;
       }
-      if (EnableRefractionCorrection != false) {
+      if (HasEnableRefractionCorrection) {
         size += 2 + 1;
       }
       if (MountType != global::AstroMount.MountType.Equatorial) {
@@ -14193,7 +16668,7 @@ namespace AstroMount {
       if (RateTolerance != 0D) {
         size += 2 + 8;
       }
-      if (MeridianFlipEnabled != false) {
+      if (HasMeridianFlipEnabled) {
         size += 2 + 1;
       }
       if (MeridianFlipDelayMinutes != 0D) {
@@ -14202,7 +16677,7 @@ namespace AstroMount {
       if (MeridianFlipHysteresisDegrees != 0D) {
         size += 2 + 8;
       }
-      if (SoftLimitsEnabled != false) {
+      if (HasSoftLimitsEnabled) {
         size += 2 + 1;
       }
       if (SoftLimitAxis1Min != 0D) {
@@ -14229,6 +16704,93 @@ namespace AstroMount {
       if (mountOrientation_ != null) {
         size += 2 + pb::CodedOutputStream.ComputeMessageSize(MountOrientation);
       }
+      if (HasServoInitEnabled) {
+        size += 2 + 1;
+      }
+      if (ServoInitSequence.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(ServoInitSequence);
+      }
+      if (CanopenAccelMode.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(CanopenAccelMode);
+      }
+      if (HasCanopenPdoConfigEnabled) {
+        size += 2 + 1;
+      }
+      if (ControllerPollMs != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(ControllerPollMs);
+      }
+      if (TrackingUpdateMs != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(TrackingUpdateMs);
+      }
+      if (MeridianFlipTimeoutSeconds != 0D) {
+        size += 2 + 8;
+      }
+      if (HasCanopenPositionRewindEnabled) {
+        size += 2 + 1;
+      }
+      if (CanopenPositionRewindIntervalSeconds != 0D) {
+        size += 2 + 8;
+      }
+      if (CanopenPositionRewindThresholdPercent != 0D) {
+        size += 2 + 8;
+      }
+      if (HasEquatorialTrackingVelocityMode) {
+        size += 2 + 1;
+      }
+      if (HasInvertAxis1) {
+        size += 2 + 1;
+      }
+      if (HasInvertAxis2) {
+        size += 2 + 1;
+      }
+      if (HasSplitTrackingLoop) {
+        size += 2 + 1;
+      }
+      if (CalcUpdateHz != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(CalcUpdateHz);
+      }
+      if (IoUpdateHz != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(IoUpdateHz);
+      }
+      if (TelemetryDecimation != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(TelemetryDecimation);
+      }
+      if (SafetyCheckDecimation != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(SafetyCheckDecimation);
+      }
+      if (HasIoRealtime) {
+        size += 2 + 1;
+      }
+      if (IoRealtimePriority != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(IoRealtimePriority);
+      }
+      if (HasPdoFastPath) {
+        size += 2 + 1;
+      }
+      if (HasPdoVelocityMapping) {
+        size += 2 + 1;
+      }
+      if (HasSdoSlowControl) {
+        size += 2 + 1;
+      }
+      if (TrackingPosUpdateHz != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(TrackingPosUpdateHz);
+      }
+      if (TrackingPosVelocityMargin != 0D) {
+        size += 2 + 8;
+      }
+      if (TrackingMode.Length != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeStringSize(TrackingMode);
+      }
+      if (HasAutoTrackAfterSlew) {
+        size += 2 + 1;
+      }
+      if (HasAutoTrackAfterCalibration) {
+        size += 2 + 1;
+      }
+      if (HasAutoTrackAfterGoto) {
+        size += 2 + 1;
+      }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
       }
@@ -14250,20 +16812,32 @@ namespace AstroMount {
       if (other.Altitude != 0D) {
         Altitude = other.Altitude;
       }
-      if (other.MountHeight != 0D) {
-        MountHeight = other.MountHeight;
-      }
-      if (other.PierWest != 0D) {
-        PierWest = other.PierWest;
-      }
-      if (other.PierEast != 0D) {
-        PierEast = other.PierEast;
-      }
       if (other.FocalLength != 0D) {
         FocalLength = other.FocalLength;
       }
       if (other.Aperture != 0D) {
         Aperture = other.Aperture;
+      }
+      if (other.TubeLength != 0D) {
+        TubeLength = other.TubeLength;
+      }
+      if (other.CameraModel.Length != 0) {
+        CameraModel = other.CameraModel;
+      }
+      if (other.PixelSize != 0D) {
+        PixelSize = other.PixelSize;
+      }
+      if (other.SensorWidth != 0) {
+        SensorWidth = other.SensorWidth;
+      }
+      if (other.SensorHeight != 0) {
+        SensorHeight = other.SensorHeight;
+      }
+      if (other.lx200Config_ != null) {
+        if (lx200Config_ == null) {
+          Lx200Config = new global::AstroMount.Lx200Config();
+        }
+        Lx200Config.MergeFrom(other.Lx200Config);
       }
       if (other.DefaultTemperature != 0D) {
         DefaultTemperature = other.DefaultTemperature;
@@ -14286,17 +16860,47 @@ namespace AstroMount {
       if (other.LogDirectory.Length != 0) {
         LogDirectory = other.LogDirectory;
       }
+      if (other.HasLogConsoleOutput) {
+        LogConsoleOutput = other.LogConsoleOutput;
+      }
+      if (other.LogRotationDays != 0) {
+        LogRotationDays = other.LogRotationDays;
+      }
+      if (other.LogMaxFileSizeMb != 0) {
+        LogMaxFileSizeMb = other.LogMaxFileSizeMb;
+      }
       if (other.GrpcAddress.Length != 0) {
         GrpcAddress = other.GrpcAddress;
       }
       if (other.GrpcPort != 0) {
         GrpcPort = other.GrpcPort;
       }
+      if (other.NetworkMaxConnections != 0) {
+        NetworkMaxConnections = other.NetworkMaxConnections;
+      }
+      if (other.HasNetworkEnableSsl) {
+        NetworkEnableSsl = other.NetworkEnableSsl;
+      }
+      if (other.NetworkSslCertPath.Length != 0) {
+        NetworkSslCertPath = other.NetworkSslCertPath;
+      }
+      if (other.NetworkSslKeyPath.Length != 0) {
+        NetworkSslKeyPath = other.NetworkSslKeyPath;
+      }
       if (other.CanopenInterface.Length != 0) {
         CanopenInterface = other.CanopenInterface;
       }
       if (other.CanopenNodeId != 0) {
         CanopenNodeId = other.CanopenNodeId;
+      }
+      if (other.CanopenBaudRate != 0) {
+        CanopenBaudRate = other.CanopenBaudRate;
+      }
+      if (other.HasCanopenEnableSync) {
+        CanopenEnableSync = other.CanopenEnableSync;
+      }
+      if (other.CanopenSyncIntervalMs != 0) {
+        CanopenSyncIntervalMs = other.CanopenSyncIntervalMs;
       }
       if (other.ParkPositionAxis1 != 0D) {
         ParkPositionAxis1 = other.ParkPositionAxis1;
@@ -14328,10 +16932,10 @@ namespace AstroMount {
         }
         DecAxisParams.MergeFrom(other.DecAxisParams);
       }
-      if (other.UseEncoders != false) {
+      if (other.HasUseEncoders) {
         UseEncoders = other.UseEncoders;
       }
-      if (other.EncodersAbsolute != false) {
+      if (other.HasEncodersAbsolute) {
         EncodersAbsolute = other.EncodersAbsolute;
       }
       if (other.EncoderResolutionConfig != 0D) {
@@ -14340,7 +16944,7 @@ namespace AstroMount {
       if (other.TpointEnabledTerms != 0) {
         TpointEnabledTerms = other.TpointEnabledTerms;
       }
-      if (other.EnableGuider != false) {
+      if (other.HasEnableGuider) {
         EnableGuider = other.EnableGuider;
       }
       if (other.GuiderMaxCorrection != 0D) {
@@ -14349,7 +16953,7 @@ namespace AstroMount {
       if (other.GuiderAggression != 0D) {
         GuiderAggression = other.GuiderAggression;
       }
-      if (other.EnableRefractionCorrection != false) {
+      if (other.HasEnableRefractionCorrection) {
         EnableRefractionCorrection = other.EnableRefractionCorrection;
       }
       if (other.MountType != global::AstroMount.MountType.Equatorial) {
@@ -14361,7 +16965,7 @@ namespace AstroMount {
       if (other.RateTolerance != 0D) {
         RateTolerance = other.RateTolerance;
       }
-      if (other.MeridianFlipEnabled != false) {
+      if (other.HasMeridianFlipEnabled) {
         MeridianFlipEnabled = other.MeridianFlipEnabled;
       }
       if (other.MeridianFlipDelayMinutes != 0D) {
@@ -14370,7 +16974,7 @@ namespace AstroMount {
       if (other.MeridianFlipHysteresisDegrees != 0D) {
         MeridianFlipHysteresisDegrees = other.MeridianFlipHysteresisDegrees;
       }
-      if (other.SoftLimitsEnabled != false) {
+      if (other.HasSoftLimitsEnabled) {
         SoftLimitsEnabled = other.SoftLimitsEnabled;
       }
       if (other.SoftLimitAxis1Min != 0D) {
@@ -14399,6 +17003,93 @@ namespace AstroMount {
           MountOrientation = new global::AstroMount.MountOrientation();
         }
         MountOrientation.MergeFrom(other.MountOrientation);
+      }
+      if (other.HasServoInitEnabled) {
+        ServoInitEnabled = other.ServoInitEnabled;
+      }
+      if (other.ServoInitSequence.Length != 0) {
+        ServoInitSequence = other.ServoInitSequence;
+      }
+      if (other.CanopenAccelMode.Length != 0) {
+        CanopenAccelMode = other.CanopenAccelMode;
+      }
+      if (other.HasCanopenPdoConfigEnabled) {
+        CanopenPdoConfigEnabled = other.CanopenPdoConfigEnabled;
+      }
+      if (other.ControllerPollMs != 0) {
+        ControllerPollMs = other.ControllerPollMs;
+      }
+      if (other.TrackingUpdateMs != 0) {
+        TrackingUpdateMs = other.TrackingUpdateMs;
+      }
+      if (other.MeridianFlipTimeoutSeconds != 0D) {
+        MeridianFlipTimeoutSeconds = other.MeridianFlipTimeoutSeconds;
+      }
+      if (other.HasCanopenPositionRewindEnabled) {
+        CanopenPositionRewindEnabled = other.CanopenPositionRewindEnabled;
+      }
+      if (other.CanopenPositionRewindIntervalSeconds != 0D) {
+        CanopenPositionRewindIntervalSeconds = other.CanopenPositionRewindIntervalSeconds;
+      }
+      if (other.CanopenPositionRewindThresholdPercent != 0D) {
+        CanopenPositionRewindThresholdPercent = other.CanopenPositionRewindThresholdPercent;
+      }
+      if (other.HasEquatorialTrackingVelocityMode) {
+        EquatorialTrackingVelocityMode = other.EquatorialTrackingVelocityMode;
+      }
+      if (other.HasInvertAxis1) {
+        InvertAxis1 = other.InvertAxis1;
+      }
+      if (other.HasInvertAxis2) {
+        InvertAxis2 = other.InvertAxis2;
+      }
+      if (other.HasSplitTrackingLoop) {
+        SplitTrackingLoop = other.SplitTrackingLoop;
+      }
+      if (other.CalcUpdateHz != 0) {
+        CalcUpdateHz = other.CalcUpdateHz;
+      }
+      if (other.IoUpdateHz != 0) {
+        IoUpdateHz = other.IoUpdateHz;
+      }
+      if (other.TelemetryDecimation != 0) {
+        TelemetryDecimation = other.TelemetryDecimation;
+      }
+      if (other.SafetyCheckDecimation != 0) {
+        SafetyCheckDecimation = other.SafetyCheckDecimation;
+      }
+      if (other.HasIoRealtime) {
+        IoRealtime = other.IoRealtime;
+      }
+      if (other.IoRealtimePriority != 0) {
+        IoRealtimePriority = other.IoRealtimePriority;
+      }
+      if (other.HasPdoFastPath) {
+        PdoFastPath = other.PdoFastPath;
+      }
+      if (other.HasPdoVelocityMapping) {
+        PdoVelocityMapping = other.PdoVelocityMapping;
+      }
+      if (other.HasSdoSlowControl) {
+        SdoSlowControl = other.SdoSlowControl;
+      }
+      if (other.TrackingPosUpdateHz != 0) {
+        TrackingPosUpdateHz = other.TrackingPosUpdateHz;
+      }
+      if (other.TrackingPosVelocityMargin != 0D) {
+        TrackingPosVelocityMargin = other.TrackingPosVelocityMargin;
+      }
+      if (other.TrackingMode.Length != 0) {
+        TrackingMode = other.TrackingMode;
+      }
+      if (other.HasAutoTrackAfterSlew) {
+        AutoTrackAfterSlew = other.AutoTrackAfterSlew;
+      }
+      if (other.HasAutoTrackAfterCalibration) {
+        AutoTrackAfterCalibration = other.AutoTrackAfterCalibration;
+      }
+      if (other.HasAutoTrackAfterGoto) {
+        AutoTrackAfterGoto = other.AutoTrackAfterGoto;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -14429,18 +17120,6 @@ namespace AstroMount {
           }
           case 25: {
             Altitude = input.ReadDouble();
-            break;
-          }
-          case 33: {
-            MountHeight = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            PierWest = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            PierEast = input.ReadDouble();
             break;
           }
           case 57: {
@@ -14626,6 +17305,189 @@ namespace AstroMount {
               MountOrientation = new global::AstroMount.MountOrientation();
             }
             input.ReadMessage(MountOrientation);
+            break;
+          }
+          case 416: {
+            ServoInitEnabled = input.ReadBool();
+            break;
+          }
+          case 426: {
+            ServoInitSequence = input.ReadString();
+            break;
+          }
+          case 434: {
+            CanopenAccelMode = input.ReadString();
+            break;
+          }
+          case 560: {
+            CanopenPdoConfigEnabled = input.ReadBool();
+            break;
+          }
+          case 568: {
+            ControllerPollMs = input.ReadInt32();
+            break;
+          }
+          case 576: {
+            TrackingUpdateMs = input.ReadInt32();
+            break;
+          }
+          case 585: {
+            MeridianFlipTimeoutSeconds = input.ReadDouble();
+            break;
+          }
+          case 600: {
+            LogConsoleOutput = input.ReadBool();
+            break;
+          }
+          case 608: {
+            NetworkMaxConnections = input.ReadInt32();
+            break;
+          }
+          case 616: {
+            NetworkEnableSsl = input.ReadBool();
+            break;
+          }
+          case 626: {
+            NetworkSslCertPath = input.ReadString();
+            break;
+          }
+          case 634: {
+            NetworkSslKeyPath = input.ReadString();
+            break;
+          }
+          case 640: {
+            CanopenBaudRate = input.ReadInt32();
+            break;
+          }
+          case 648: {
+            CanopenEnableSync = input.ReadBool();
+            break;
+          }
+          case 656: {
+            CanopenSyncIntervalMs = input.ReadInt32();
+            break;
+          }
+          case 665: {
+            CanopenPositionRewindIntervalSeconds = input.ReadDouble();
+            break;
+          }
+          case 673: {
+            CanopenPositionRewindThresholdPercent = input.ReadDouble();
+            break;
+          }
+          case 680: {
+            CanopenPositionRewindEnabled = input.ReadBool();
+            break;
+          }
+          case 688: {
+            EquatorialTrackingVelocityMode = input.ReadBool();
+            break;
+          }
+          case 696: {
+            InvertAxis1 = input.ReadBool();
+            break;
+          }
+          case 704: {
+            InvertAxis2 = input.ReadBool();
+            break;
+          }
+          case 712: {
+            LogRotationDays = input.ReadInt32();
+            break;
+          }
+          case 720: {
+            LogMaxFileSizeMb = input.ReadInt32();
+            break;
+          }
+          case 729: {
+            TubeLength = input.ReadDouble();
+            break;
+          }
+          case 738: {
+            CameraModel = input.ReadString();
+            break;
+          }
+          case 745: {
+            PixelSize = input.ReadDouble();
+            break;
+          }
+          case 752: {
+            SensorWidth = input.ReadInt32();
+            break;
+          }
+          case 760: {
+            SensorHeight = input.ReadInt32();
+            break;
+          }
+          case 770: {
+            if (lx200Config_ == null) {
+              Lx200Config = new global::AstroMount.Lx200Config();
+            }
+            input.ReadMessage(Lx200Config);
+            break;
+          }
+          case 776: {
+            SplitTrackingLoop = input.ReadBool();
+            break;
+          }
+          case 784: {
+            CalcUpdateHz = input.ReadInt32();
+            break;
+          }
+          case 792: {
+            IoUpdateHz = input.ReadInt32();
+            break;
+          }
+          case 800: {
+            TelemetryDecimation = input.ReadInt32();
+            break;
+          }
+          case 808: {
+            SafetyCheckDecimation = input.ReadInt32();
+            break;
+          }
+          case 816: {
+            IoRealtime = input.ReadBool();
+            break;
+          }
+          case 824: {
+            IoRealtimePriority = input.ReadInt32();
+            break;
+          }
+          case 832: {
+            PdoFastPath = input.ReadBool();
+            break;
+          }
+          case 840: {
+            PdoVelocityMapping = input.ReadBool();
+            break;
+          }
+          case 848: {
+            SdoSlowControl = input.ReadBool();
+            break;
+          }
+          case 856: {
+            TrackingPosUpdateHz = input.ReadInt32();
+            break;
+          }
+          case 865: {
+            TrackingPosVelocityMargin = input.ReadDouble();
+            break;
+          }
+          case 874: {
+            TrackingMode = input.ReadString();
+            break;
+          }
+          case 880: {
+            AutoTrackAfterSlew = input.ReadBool();
+            break;
+          }
+          case 888: {
+            AutoTrackAfterCalibration = input.ReadBool();
+            break;
+          }
+          case 896: {
+            AutoTrackAfterGoto = input.ReadBool();
             break;
           }
         }
@@ -14659,18 +17521,6 @@ namespace AstroMount {
             Altitude = input.ReadDouble();
             break;
           }
-          case 33: {
-            MountHeight = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            PierWest = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            PierEast = input.ReadDouble();
-            break;
-          }
           case 57: {
             FocalLength = input.ReadDouble();
             break;
@@ -14856,6 +17706,189 @@ namespace AstroMount {
             input.ReadMessage(MountOrientation);
             break;
           }
+          case 416: {
+            ServoInitEnabled = input.ReadBool();
+            break;
+          }
+          case 426: {
+            ServoInitSequence = input.ReadString();
+            break;
+          }
+          case 434: {
+            CanopenAccelMode = input.ReadString();
+            break;
+          }
+          case 560: {
+            CanopenPdoConfigEnabled = input.ReadBool();
+            break;
+          }
+          case 568: {
+            ControllerPollMs = input.ReadInt32();
+            break;
+          }
+          case 576: {
+            TrackingUpdateMs = input.ReadInt32();
+            break;
+          }
+          case 585: {
+            MeridianFlipTimeoutSeconds = input.ReadDouble();
+            break;
+          }
+          case 600: {
+            LogConsoleOutput = input.ReadBool();
+            break;
+          }
+          case 608: {
+            NetworkMaxConnections = input.ReadInt32();
+            break;
+          }
+          case 616: {
+            NetworkEnableSsl = input.ReadBool();
+            break;
+          }
+          case 626: {
+            NetworkSslCertPath = input.ReadString();
+            break;
+          }
+          case 634: {
+            NetworkSslKeyPath = input.ReadString();
+            break;
+          }
+          case 640: {
+            CanopenBaudRate = input.ReadInt32();
+            break;
+          }
+          case 648: {
+            CanopenEnableSync = input.ReadBool();
+            break;
+          }
+          case 656: {
+            CanopenSyncIntervalMs = input.ReadInt32();
+            break;
+          }
+          case 665: {
+            CanopenPositionRewindIntervalSeconds = input.ReadDouble();
+            break;
+          }
+          case 673: {
+            CanopenPositionRewindThresholdPercent = input.ReadDouble();
+            break;
+          }
+          case 680: {
+            CanopenPositionRewindEnabled = input.ReadBool();
+            break;
+          }
+          case 688: {
+            EquatorialTrackingVelocityMode = input.ReadBool();
+            break;
+          }
+          case 696: {
+            InvertAxis1 = input.ReadBool();
+            break;
+          }
+          case 704: {
+            InvertAxis2 = input.ReadBool();
+            break;
+          }
+          case 712: {
+            LogRotationDays = input.ReadInt32();
+            break;
+          }
+          case 720: {
+            LogMaxFileSizeMb = input.ReadInt32();
+            break;
+          }
+          case 729: {
+            TubeLength = input.ReadDouble();
+            break;
+          }
+          case 738: {
+            CameraModel = input.ReadString();
+            break;
+          }
+          case 745: {
+            PixelSize = input.ReadDouble();
+            break;
+          }
+          case 752: {
+            SensorWidth = input.ReadInt32();
+            break;
+          }
+          case 760: {
+            SensorHeight = input.ReadInt32();
+            break;
+          }
+          case 770: {
+            if (lx200Config_ == null) {
+              Lx200Config = new global::AstroMount.Lx200Config();
+            }
+            input.ReadMessage(Lx200Config);
+            break;
+          }
+          case 776: {
+            SplitTrackingLoop = input.ReadBool();
+            break;
+          }
+          case 784: {
+            CalcUpdateHz = input.ReadInt32();
+            break;
+          }
+          case 792: {
+            IoUpdateHz = input.ReadInt32();
+            break;
+          }
+          case 800: {
+            TelemetryDecimation = input.ReadInt32();
+            break;
+          }
+          case 808: {
+            SafetyCheckDecimation = input.ReadInt32();
+            break;
+          }
+          case 816: {
+            IoRealtime = input.ReadBool();
+            break;
+          }
+          case 824: {
+            IoRealtimePriority = input.ReadInt32();
+            break;
+          }
+          case 832: {
+            PdoFastPath = input.ReadBool();
+            break;
+          }
+          case 840: {
+            PdoVelocityMapping = input.ReadBool();
+            break;
+          }
+          case 848: {
+            SdoSlowControl = input.ReadBool();
+            break;
+          }
+          case 856: {
+            TrackingPosUpdateHz = input.ReadInt32();
+            break;
+          }
+          case 865: {
+            TrackingPosVelocityMargin = input.ReadDouble();
+            break;
+          }
+          case 874: {
+            TrackingMode = input.ReadString();
+            break;
+          }
+          case 880: {
+            AutoTrackAfterSlew = input.ReadBool();
+            break;
+          }
+          case 888: {
+            AutoTrackAfterCalibration = input.ReadBool();
+            break;
+          }
+          case 896: {
+            AutoTrackAfterGoto = input.ReadBool();
+            break;
+          }
         }
       }
     }
@@ -14881,7 +17914,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[26]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[28]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15079,7 +18112,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[27]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[29]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15375,7 +18408,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[28]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[30]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -15896,7 +18929,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[29]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[31]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -16353,7 +19386,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[30]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[32]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -16699,7 +19732,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[31]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[33]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -17048,7 +20081,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[32]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[34]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -17575,7 +20608,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[33]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[35]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -18097,7 +21130,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[34]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[36]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -18587,7 +21620,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[35]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[37]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -18966,7 +21999,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[36]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[38]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -19760,7 +22793,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[37]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[39]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -20257,7 +23290,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[38]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[40]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -20458,7 +23491,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[39]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[41]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -20975,7 +24008,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[40]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[42]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -21588,7 +24621,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[41]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[43]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -22335,7 +25368,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[42]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[44]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -22648,7 +25681,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[43]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[45]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -23073,2378 +26106,6 @@ namespace AstroMount {
   }
 
   /// <summary>
-  /// Derotator configuration
-  /// </summary>
-  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class DerotatorConfig : pb::IMessage<DerotatorConfig>
-  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      , pb::IBufferMessage
-  #endif
-  {
-    private static readonly pb::MessageParser<DerotatorConfig> _parser = new pb::MessageParser<DerotatorConfig>(() => new DerotatorConfig());
-    private pb::UnknownFieldSet _unknownFields;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<DerotatorConfig> Parser { get { return _parser; } }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[44]; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    pbr::MessageDescriptor pb::IMessage.Descriptor {
-      get { return Descriptor; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorConfig() {
-      OnConstruction();
-    }
-
-    partial void OnConstruction();
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorConfig(DerotatorConfig other) : this() {
-      type_ = other.type_;
-      connectionString_ = other.connectionString_;
-      gearRatio_ = other.gearRatio_;
-      maxSpeed_ = other.maxSpeed_;
-      maxAcceleration_ = other.maxAcceleration_;
-      backlash_ = other.backlash_;
-      absoluteEncoder_ = other.absoluteEncoder_;
-      encoderResolution_ = other.encoderResolution_;
-      homingOffset_ = other.homingOffset_;
-      calibrationTable_ = other.calibrationTable_.Clone();
-      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorConfig Clone() {
-      return new DerotatorConfig(this);
-    }
-
-    /// <summary>Field number for the "type" field.</summary>
-    public const int TypeFieldNumber = 1;
-    private global::AstroMount.DerotatorConfig.Types.DerotatorType type_ = global::AstroMount.DerotatorConfig.Types.DerotatorType.Canopen;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::AstroMount.DerotatorConfig.Types.DerotatorType Type {
-      get { return type_; }
-      set {
-        type_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "connection_string" field.</summary>
-    public const int ConnectionStringFieldNumber = 2;
-    private string connectionString_ = "";
-    /// <summary>
-    /// e.g., "can0:1" for CanOpen
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public string ConnectionString {
-      get { return connectionString_; }
-      set {
-        connectionString_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
-      }
-    }
-
-    /// <summary>Field number for the "gear_ratio" field.</summary>
-    public const int GearRatioFieldNumber = 3;
-    private double gearRatio_;
-    /// <summary>
-    /// Gear ratio (motor:output)
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double GearRatio {
-      get { return gearRatio_; }
-      set {
-        gearRatio_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "max_speed" field.</summary>
-    public const int MaxSpeedFieldNumber = 4;
-    private double maxSpeed_;
-    /// <summary>
-    /// Max rotation speed [deg/s]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double MaxSpeed {
-      get { return maxSpeed_; }
-      set {
-        maxSpeed_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "max_acceleration" field.</summary>
-    public const int MaxAccelerationFieldNumber = 5;
-    private double maxAcceleration_;
-    /// <summary>
-    /// Max acceleration [deg/s²]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double MaxAcceleration {
-      get { return maxAcceleration_; }
-      set {
-        maxAcceleration_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "backlash" field.</summary>
-    public const int BacklashFieldNumber = 6;
-    private double backlash_;
-    /// <summary>
-    /// Backlash [arcsec]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double Backlash {
-      get { return backlash_; }
-      set {
-        backlash_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "absolute_encoder" field.</summary>
-    public const int AbsoluteEncoderFieldNumber = 7;
-    private bool absoluteEncoder_;
-    /// <summary>
-    /// Has absolute encoder
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool AbsoluteEncoder {
-      get { return absoluteEncoder_; }
-      set {
-        absoluteEncoder_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "encoder_resolution" field.</summary>
-    public const int EncoderResolutionFieldNumber = 8;
-    private double encoderResolution_;
-    /// <summary>
-    /// Encoder counts per revolution
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double EncoderResolution {
-      get { return encoderResolution_; }
-      set {
-        encoderResolution_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "homing_offset" field.</summary>
-    public const int HomingOffsetFieldNumber = 9;
-    private double homingOffset_;
-    /// <summary>
-    /// Homing offset [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double HomingOffset {
-      get { return homingOffset_; }
-      set {
-        homingOffset_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "calibration_table" field.</summary>
-    public const int CalibrationTableFieldNumber = 10;
-    private static readonly pb::FieldCodec<double> _repeated_calibrationTable_codec
-        = pb::FieldCodec.ForDouble(82);
-    private readonly pbc::RepeatedField<double> calibrationTable_ = new pbc::RepeatedField<double>();
-    /// <summary>
-    /// Calibration table [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public pbc::RepeatedField<double> CalibrationTable {
-      get { return calibrationTable_; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override bool Equals(object other) {
-      return Equals(other as DerotatorConfig);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(DerotatorConfig other) {
-      if (ReferenceEquals(other, null)) {
-        return false;
-      }
-      if (ReferenceEquals(other, this)) {
-        return true;
-      }
-      if (Type != other.Type) return false;
-      if (ConnectionString != other.ConnectionString) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(GearRatio, other.GearRatio)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MaxSpeed, other.MaxSpeed)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MaxAcceleration, other.MaxAcceleration)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Backlash, other.Backlash)) return false;
-      if (AbsoluteEncoder != other.AbsoluteEncoder) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(EncoderResolution, other.EncoderResolution)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(HomingOffset, other.HomingOffset)) return false;
-      if(!calibrationTable_.Equals(other.calibrationTable_)) return false;
-      return Equals(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override int GetHashCode() {
-      int hash = 1;
-      if (Type != global::AstroMount.DerotatorConfig.Types.DerotatorType.Canopen) hash ^= Type.GetHashCode();
-      if (ConnectionString.Length != 0) hash ^= ConnectionString.GetHashCode();
-      if (GearRatio != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(GearRatio);
-      if (MaxSpeed != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MaxSpeed);
-      if (MaxAcceleration != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MaxAcceleration);
-      if (Backlash != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Backlash);
-      if (AbsoluteEncoder != false) hash ^= AbsoluteEncoder.GetHashCode();
-      if (EncoderResolution != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(EncoderResolution);
-      if (HomingOffset != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(HomingOffset);
-      hash ^= calibrationTable_.GetHashCode();
-      if (_unknownFields != null) {
-        hash ^= _unknownFields.GetHashCode();
-      }
-      return hash;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override string ToString() {
-      return pb::JsonFormatter.ToDiagnosticString(this);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void WriteTo(pb::CodedOutputStream output) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      output.WriteRawMessage(this);
-    #else
-      if (Type != global::AstroMount.DerotatorConfig.Types.DerotatorType.Canopen) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Type);
-      }
-      if (ConnectionString.Length != 0) {
-        output.WriteRawTag(18);
-        output.WriteString(ConnectionString);
-      }
-      if (GearRatio != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(GearRatio);
-      }
-      if (MaxSpeed != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(MaxSpeed);
-      }
-      if (MaxAcceleration != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(MaxAcceleration);
-      }
-      if (Backlash != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(Backlash);
-      }
-      if (AbsoluteEncoder != false) {
-        output.WriteRawTag(56);
-        output.WriteBool(AbsoluteEncoder);
-      }
-      if (EncoderResolution != 0D) {
-        output.WriteRawTag(65);
-        output.WriteDouble(EncoderResolution);
-      }
-      if (HomingOffset != 0D) {
-        output.WriteRawTag(73);
-        output.WriteDouble(HomingOffset);
-      }
-      calibrationTable_.WriteTo(output, _repeated_calibrationTable_codec);
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(output);
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Type != global::AstroMount.DerotatorConfig.Types.DerotatorType.Canopen) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Type);
-      }
-      if (ConnectionString.Length != 0) {
-        output.WriteRawTag(18);
-        output.WriteString(ConnectionString);
-      }
-      if (GearRatio != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(GearRatio);
-      }
-      if (MaxSpeed != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(MaxSpeed);
-      }
-      if (MaxAcceleration != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(MaxAcceleration);
-      }
-      if (Backlash != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(Backlash);
-      }
-      if (AbsoluteEncoder != false) {
-        output.WriteRawTag(56);
-        output.WriteBool(AbsoluteEncoder);
-      }
-      if (EncoderResolution != 0D) {
-        output.WriteRawTag(65);
-        output.WriteDouble(EncoderResolution);
-      }
-      if (HomingOffset != 0D) {
-        output.WriteRawTag(73);
-        output.WriteDouble(HomingOffset);
-      }
-      calibrationTable_.WriteTo(ref output, _repeated_calibrationTable_codec);
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(ref output);
-      }
-    }
-    #endif
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public int CalculateSize() {
-      int size = 0;
-      if (Type != global::AstroMount.DerotatorConfig.Types.DerotatorType.Canopen) {
-        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Type);
-      }
-      if (ConnectionString.Length != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeStringSize(ConnectionString);
-      }
-      if (GearRatio != 0D) {
-        size += 1 + 8;
-      }
-      if (MaxSpeed != 0D) {
-        size += 1 + 8;
-      }
-      if (MaxAcceleration != 0D) {
-        size += 1 + 8;
-      }
-      if (Backlash != 0D) {
-        size += 1 + 8;
-      }
-      if (AbsoluteEncoder != false) {
-        size += 1 + 1;
-      }
-      if (EncoderResolution != 0D) {
-        size += 1 + 8;
-      }
-      if (HomingOffset != 0D) {
-        size += 1 + 8;
-      }
-      size += calibrationTable_.CalculateSize(_repeated_calibrationTable_codec);
-      if (_unknownFields != null) {
-        size += _unknownFields.CalculateSize();
-      }
-      return size;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(DerotatorConfig other) {
-      if (other == null) {
-        return;
-      }
-      if (other.Type != global::AstroMount.DerotatorConfig.Types.DerotatorType.Canopen) {
-        Type = other.Type;
-      }
-      if (other.ConnectionString.Length != 0) {
-        ConnectionString = other.ConnectionString;
-      }
-      if (other.GearRatio != 0D) {
-        GearRatio = other.GearRatio;
-      }
-      if (other.MaxSpeed != 0D) {
-        MaxSpeed = other.MaxSpeed;
-      }
-      if (other.MaxAcceleration != 0D) {
-        MaxAcceleration = other.MaxAcceleration;
-      }
-      if (other.Backlash != 0D) {
-        Backlash = other.Backlash;
-      }
-      if (other.AbsoluteEncoder != false) {
-        AbsoluteEncoder = other.AbsoluteEncoder;
-      }
-      if (other.EncoderResolution != 0D) {
-        EncoderResolution = other.EncoderResolution;
-      }
-      if (other.HomingOffset != 0D) {
-        HomingOffset = other.HomingOffset;
-      }
-      calibrationTable_.Add(other.calibrationTable_);
-      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(pb::CodedInputStream input) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      input.ReadRawMessage(this);
-    #else
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
-            break;
-          case 8: {
-            Type = (global::AstroMount.DerotatorConfig.Types.DerotatorType) input.ReadEnum();
-            break;
-          }
-          case 18: {
-            ConnectionString = input.ReadString();
-            break;
-          }
-          case 25: {
-            GearRatio = input.ReadDouble();
-            break;
-          }
-          case 33: {
-            MaxSpeed = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            MaxAcceleration = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            Backlash = input.ReadDouble();
-            break;
-          }
-          case 56: {
-            AbsoluteEncoder = input.ReadBool();
-            break;
-          }
-          case 65: {
-            EncoderResolution = input.ReadDouble();
-            break;
-          }
-          case 73: {
-            HomingOffset = input.ReadDouble();
-            break;
-          }
-          case 82:
-          case 81: {
-            calibrationTable_.AddEntriesFrom(input, _repeated_calibrationTable_codec);
-            break;
-          }
-        }
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
-            break;
-          case 8: {
-            Type = (global::AstroMount.DerotatorConfig.Types.DerotatorType) input.ReadEnum();
-            break;
-          }
-          case 18: {
-            ConnectionString = input.ReadString();
-            break;
-          }
-          case 25: {
-            GearRatio = input.ReadDouble();
-            break;
-          }
-          case 33: {
-            MaxSpeed = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            MaxAcceleration = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            Backlash = input.ReadDouble();
-            break;
-          }
-          case 56: {
-            AbsoluteEncoder = input.ReadBool();
-            break;
-          }
-          case 65: {
-            EncoderResolution = input.ReadDouble();
-            break;
-          }
-          case 73: {
-            HomingOffset = input.ReadDouble();
-            break;
-          }
-          case 82:
-          case 81: {
-            calibrationTable_.AddEntriesFrom(ref input, _repeated_calibrationTable_codec);
-            break;
-          }
-        }
-      }
-    }
-    #endif
-
-    #region Nested types
-    /// <summary>Container for nested types declared in the DerotatorConfig message type.</summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static partial class Types {
-      public enum DerotatorType {
-        /// <summary>
-        /// CanOpen-based derotator
-        /// </summary>
-        [pbr::OriginalName("CANOPEN")] Canopen = 0,
-        /// <summary>
-        /// Stepper motor derotator  
-        /// </summary>
-        [pbr::OriginalName("STEPPER")] Stepper = 1,
-        /// <summary>
-        /// Servo motor derotator
-        /// </summary>
-        [pbr::OriginalName("SERVO")] Servo = 2,
-        /// <summary>
-        /// Custom interface
-        /// </summary>
-        [pbr::OriginalName("CUSTOM")] Custom = 3,
-      }
-
-    }
-    #endregion
-
-  }
-
-  /// <summary>
-  /// Field rotation control request
-  /// </summary>
-  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class FieldRotationControlRequest : pb::IMessage<FieldRotationControlRequest>
-  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      , pb::IBufferMessage
-  #endif
-  {
-    private static readonly pb::MessageParser<FieldRotationControlRequest> _parser = new pb::MessageParser<FieldRotationControlRequest>(() => new FieldRotationControlRequest());
-    private pb::UnknownFieldSet _unknownFields;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<FieldRotationControlRequest> Parser { get { return _parser; } }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[45]; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    pbr::MessageDescriptor pb::IMessage.Descriptor {
-      get { return Descriptor; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public FieldRotationControlRequest() {
-      OnConstruction();
-    }
-
-    partial void OnConstruction();
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public FieldRotationControlRequest(FieldRotationControlRequest other) : this() {
-      mode_ = other.mode_;
-      targetAngle_ = other.targetAngle_;
-      rotationRate_ = other.rotationRate_;
-      relative_ = other.relative_;
-      waitForCompletion_ = other.waitForCompletion_;
-      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public FieldRotationControlRequest Clone() {
-      return new FieldRotationControlRequest(this);
-    }
-
-    /// <summary>Field number for the "mode" field.</summary>
-    public const int ModeFieldNumber = 1;
-    private global::AstroMount.FieldRotationControlRequest.Types.RotationMode mode_ = global::AstroMount.FieldRotationControlRequest.Types.RotationMode.Disabled;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::AstroMount.FieldRotationControlRequest.Types.RotationMode Mode {
-      get { return mode_; }
-      set {
-        mode_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "target_angle" field.</summary>
-    public const int TargetAngleFieldNumber = 2;
-    private double targetAngle_;
-    /// <summary>
-    /// Target angle [deg] (for FIXED_ANGLE)
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double TargetAngle {
-      get { return targetAngle_; }
-      set {
-        targetAngle_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "rotation_rate" field.</summary>
-    public const int RotationRateFieldNumber = 3;
-    private double rotationRate_;
-    /// <summary>
-    /// Rotation rate [deg/s] (for CUSTOM)
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double RotationRate {
-      get { return rotationRate_; }
-      set {
-        rotationRate_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "relative" field.</summary>
-    public const int RelativeFieldNumber = 4;
-    private bool relative_;
-    /// <summary>
-    /// Relative to current position
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Relative {
-      get { return relative_; }
-      set {
-        relative_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "wait_for_completion" field.</summary>
-    public const int WaitForCompletionFieldNumber = 5;
-    private bool waitForCompletion_;
-    /// <summary>
-    /// Wait until rotation complete
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool WaitForCompletion {
-      get { return waitForCompletion_; }
-      set {
-        waitForCompletion_ = value;
-      }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override bool Equals(object other) {
-      return Equals(other as FieldRotationControlRequest);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(FieldRotationControlRequest other) {
-      if (ReferenceEquals(other, null)) {
-        return false;
-      }
-      if (ReferenceEquals(other, this)) {
-        return true;
-      }
-      if (Mode != other.Mode) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(TargetAngle, other.TargetAngle)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(RotationRate, other.RotationRate)) return false;
-      if (Relative != other.Relative) return false;
-      if (WaitForCompletion != other.WaitForCompletion) return false;
-      return Equals(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override int GetHashCode() {
-      int hash = 1;
-      if (Mode != global::AstroMount.FieldRotationControlRequest.Types.RotationMode.Disabled) hash ^= Mode.GetHashCode();
-      if (TargetAngle != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TargetAngle);
-      if (RotationRate != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(RotationRate);
-      if (Relative != false) hash ^= Relative.GetHashCode();
-      if (WaitForCompletion != false) hash ^= WaitForCompletion.GetHashCode();
-      if (_unknownFields != null) {
-        hash ^= _unknownFields.GetHashCode();
-      }
-      return hash;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override string ToString() {
-      return pb::JsonFormatter.ToDiagnosticString(this);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void WriteTo(pb::CodedOutputStream output) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      output.WriteRawMessage(this);
-    #else
-      if (Mode != global::AstroMount.FieldRotationControlRequest.Types.RotationMode.Disabled) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Mode);
-      }
-      if (TargetAngle != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(TargetAngle);
-      }
-      if (RotationRate != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(RotationRate);
-      }
-      if (Relative != false) {
-        output.WriteRawTag(32);
-        output.WriteBool(Relative);
-      }
-      if (WaitForCompletion != false) {
-        output.WriteRawTag(40);
-        output.WriteBool(WaitForCompletion);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(output);
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Mode != global::AstroMount.FieldRotationControlRequest.Types.RotationMode.Disabled) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Mode);
-      }
-      if (TargetAngle != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(TargetAngle);
-      }
-      if (RotationRate != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(RotationRate);
-      }
-      if (Relative != false) {
-        output.WriteRawTag(32);
-        output.WriteBool(Relative);
-      }
-      if (WaitForCompletion != false) {
-        output.WriteRawTag(40);
-        output.WriteBool(WaitForCompletion);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(ref output);
-      }
-    }
-    #endif
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public int CalculateSize() {
-      int size = 0;
-      if (Mode != global::AstroMount.FieldRotationControlRequest.Types.RotationMode.Disabled) {
-        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Mode);
-      }
-      if (TargetAngle != 0D) {
-        size += 1 + 8;
-      }
-      if (RotationRate != 0D) {
-        size += 1 + 8;
-      }
-      if (Relative != false) {
-        size += 1 + 1;
-      }
-      if (WaitForCompletion != false) {
-        size += 1 + 1;
-      }
-      if (_unknownFields != null) {
-        size += _unknownFields.CalculateSize();
-      }
-      return size;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(FieldRotationControlRequest other) {
-      if (other == null) {
-        return;
-      }
-      if (other.Mode != global::AstroMount.FieldRotationControlRequest.Types.RotationMode.Disabled) {
-        Mode = other.Mode;
-      }
-      if (other.TargetAngle != 0D) {
-        TargetAngle = other.TargetAngle;
-      }
-      if (other.RotationRate != 0D) {
-        RotationRate = other.RotationRate;
-      }
-      if (other.Relative != false) {
-        Relative = other.Relative;
-      }
-      if (other.WaitForCompletion != false) {
-        WaitForCompletion = other.WaitForCompletion;
-      }
-      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(pb::CodedInputStream input) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      input.ReadRawMessage(this);
-    #else
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
-            break;
-          case 8: {
-            Mode = (global::AstroMount.FieldRotationControlRequest.Types.RotationMode) input.ReadEnum();
-            break;
-          }
-          case 17: {
-            TargetAngle = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            RotationRate = input.ReadDouble();
-            break;
-          }
-          case 32: {
-            Relative = input.ReadBool();
-            break;
-          }
-          case 40: {
-            WaitForCompletion = input.ReadBool();
-            break;
-          }
-        }
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
-            break;
-          case 8: {
-            Mode = (global::AstroMount.FieldRotationControlRequest.Types.RotationMode) input.ReadEnum();
-            break;
-          }
-          case 17: {
-            TargetAngle = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            RotationRate = input.ReadDouble();
-            break;
-          }
-          case 32: {
-            Relative = input.ReadBool();
-            break;
-          }
-          case 40: {
-            WaitForCompletion = input.ReadBool();
-            break;
-          }
-        }
-      }
-    }
-    #endif
-
-    #region Nested types
-    /// <summary>Container for nested types declared in the FieldRotationControlRequest message type.</summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static partial class Types {
-      public enum RotationMode {
-        /// <summary>
-        /// No field rotation
-        /// </summary>
-        [pbr::OriginalName("DISABLED")] Disabled = 0,
-        /// <summary>
-        /// Alt-Az field rotation compensation
-        /// </summary>
-        [pbr::OriginalName("ALT_AZ")] AltAz = 1,
-        /// <summary>
-        /// Equatorial mount (no rotation)
-        /// </summary>
-        [pbr::OriginalName("EQUATORIAL")] Equatorial = 2,
-        /// <summary>
-        /// Custom rotation rate
-        /// </summary>
-        [pbr::OriginalName("CUSTOM")] Custom = 3,
-        /// <summary>
-        /// Fixed rotation angle
-        /// </summary>
-        [pbr::OriginalName("FIXED_ANGLE")] FixedAngle = 4,
-        /// <summary>
-        /// Track rotation for moving object
-        /// </summary>
-        [pbr::OriginalName("TRACKING")] Tracking = 5,
-        /// <summary>
-        /// Field rotation for randomly oriented mount
-        /// </summary>
-        [pbr::OriginalName("CASUAL")] Casual = 6,
-      }
-
-    }
-    #endregion
-
-  }
-
-  /// <summary>
-  /// Derotator status
-  /// </summary>
-  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class DerotatorStatus : pb::IMessage<DerotatorStatus>
-  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      , pb::IBufferMessage
-  #endif
-  {
-    private static readonly pb::MessageParser<DerotatorStatus> _parser = new pb::MessageParser<DerotatorStatus>(() => new DerotatorStatus());
-    private pb::UnknownFieldSet _unknownFields;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<DerotatorStatus> Parser { get { return _parser; } }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[46]; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    pbr::MessageDescriptor pb::IMessage.Descriptor {
-      get { return Descriptor; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorStatus() {
-      OnConstruction();
-    }
-
-    partial void OnConstruction();
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorStatus(DerotatorStatus other) : this() {
-      enabled_ = other.enabled_;
-      moving_ = other.moving_;
-      homed_ = other.homed_;
-      currentAngle_ = other.currentAngle_;
-      targetAngle_ = other.targetAngle_;
-      rotationRate_ = other.rotationRate_;
-      fieldRotationRate_ = other.fieldRotationRate_;
-      derotatorConfig_ = other.derotatorConfig_ != null ? other.derotatorConfig_.Clone() : null;
-      errorMessage_ = other.errorMessage_;
-      timestamp_ = other.timestamp_ != null ? other.timestamp_.Clone() : null;
-      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorStatus Clone() {
-      return new DerotatorStatus(this);
-    }
-
-    /// <summary>Field number for the "enabled" field.</summary>
-    public const int EnabledFieldNumber = 1;
-    private bool enabled_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Enabled {
-      get { return enabled_; }
-      set {
-        enabled_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "moving" field.</summary>
-    public const int MovingFieldNumber = 2;
-    private bool moving_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Moving {
-      get { return moving_; }
-      set {
-        moving_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "homed" field.</summary>
-    public const int HomedFieldNumber = 3;
-    private bool homed_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Homed {
-      get { return homed_; }
-      set {
-        homed_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "current_angle" field.</summary>
-    public const int CurrentAngleFieldNumber = 4;
-    private double currentAngle_;
-    /// <summary>
-    /// Current angle [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double CurrentAngle {
-      get { return currentAngle_; }
-      set {
-        currentAngle_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "target_angle" field.</summary>
-    public const int TargetAngleFieldNumber = 5;
-    private double targetAngle_;
-    /// <summary>
-    /// Target angle [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double TargetAngle {
-      get { return targetAngle_; }
-      set {
-        targetAngle_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "rotation_rate" field.</summary>
-    public const int RotationRateFieldNumber = 6;
-    private double rotationRate_;
-    /// <summary>
-    /// Current rotation rate [deg/s]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double RotationRate {
-      get { return rotationRate_; }
-      set {
-        rotationRate_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "field_rotation_rate" field.</summary>
-    public const int FieldRotationRateFieldNumber = 7;
-    private double fieldRotationRate_;
-    /// <summary>
-    /// Calculated field rotation rate [deg/s]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double FieldRotationRate {
-      get { return fieldRotationRate_; }
-      set {
-        fieldRotationRate_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "derotator_config" field.</summary>
-    public const int DerotatorConfigFieldNumber = 8;
-    private global::AstroMount.DerotatorConfig derotatorConfig_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::AstroMount.DerotatorConfig DerotatorConfig {
-      get { return derotatorConfig_; }
-      set {
-        derotatorConfig_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "error_message" field.</summary>
-    public const int ErrorMessageFieldNumber = 9;
-    private string errorMessage_ = "";
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public string ErrorMessage {
-      get { return errorMessage_; }
-      set {
-        errorMessage_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
-      }
-    }
-
-    /// <summary>Field number for the "timestamp" field.</summary>
-    public const int TimestampFieldNumber = 10;
-    private global::Google.Protobuf.WellKnownTypes.Timestamp timestamp_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::Google.Protobuf.WellKnownTypes.Timestamp Timestamp {
-      get { return timestamp_; }
-      set {
-        timestamp_ = value;
-      }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override bool Equals(object other) {
-      return Equals(other as DerotatorStatus);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(DerotatorStatus other) {
-      if (ReferenceEquals(other, null)) {
-        return false;
-      }
-      if (ReferenceEquals(other, this)) {
-        return true;
-      }
-      if (Enabled != other.Enabled) return false;
-      if (Moving != other.Moving) return false;
-      if (Homed != other.Homed) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CurrentAngle, other.CurrentAngle)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(TargetAngle, other.TargetAngle)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(RotationRate, other.RotationRate)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(FieldRotationRate, other.FieldRotationRate)) return false;
-      if (!object.Equals(DerotatorConfig, other.DerotatorConfig)) return false;
-      if (ErrorMessage != other.ErrorMessage) return false;
-      if (!object.Equals(Timestamp, other.Timestamp)) return false;
-      return Equals(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override int GetHashCode() {
-      int hash = 1;
-      if (Enabled != false) hash ^= Enabled.GetHashCode();
-      if (Moving != false) hash ^= Moving.GetHashCode();
-      if (Homed != false) hash ^= Homed.GetHashCode();
-      if (CurrentAngle != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CurrentAngle);
-      if (TargetAngle != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(TargetAngle);
-      if (RotationRate != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(RotationRate);
-      if (FieldRotationRate != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(FieldRotationRate);
-      if (derotatorConfig_ != null) hash ^= DerotatorConfig.GetHashCode();
-      if (ErrorMessage.Length != 0) hash ^= ErrorMessage.GetHashCode();
-      if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
-      if (_unknownFields != null) {
-        hash ^= _unknownFields.GetHashCode();
-      }
-      return hash;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override string ToString() {
-      return pb::JsonFormatter.ToDiagnosticString(this);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void WriteTo(pb::CodedOutputStream output) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      output.WriteRawMessage(this);
-    #else
-      if (Enabled != false) {
-        output.WriteRawTag(8);
-        output.WriteBool(Enabled);
-      }
-      if (Moving != false) {
-        output.WriteRawTag(16);
-        output.WriteBool(Moving);
-      }
-      if (Homed != false) {
-        output.WriteRawTag(24);
-        output.WriteBool(Homed);
-      }
-      if (CurrentAngle != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(CurrentAngle);
-      }
-      if (TargetAngle != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(TargetAngle);
-      }
-      if (RotationRate != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(RotationRate);
-      }
-      if (FieldRotationRate != 0D) {
-        output.WriteRawTag(57);
-        output.WriteDouble(FieldRotationRate);
-      }
-      if (derotatorConfig_ != null) {
-        output.WriteRawTag(66);
-        output.WriteMessage(DerotatorConfig);
-      }
-      if (ErrorMessage.Length != 0) {
-        output.WriteRawTag(74);
-        output.WriteString(ErrorMessage);
-      }
-      if (timestamp_ != null) {
-        output.WriteRawTag(82);
-        output.WriteMessage(Timestamp);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(output);
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Enabled != false) {
-        output.WriteRawTag(8);
-        output.WriteBool(Enabled);
-      }
-      if (Moving != false) {
-        output.WriteRawTag(16);
-        output.WriteBool(Moving);
-      }
-      if (Homed != false) {
-        output.WriteRawTag(24);
-        output.WriteBool(Homed);
-      }
-      if (CurrentAngle != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(CurrentAngle);
-      }
-      if (TargetAngle != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(TargetAngle);
-      }
-      if (RotationRate != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(RotationRate);
-      }
-      if (FieldRotationRate != 0D) {
-        output.WriteRawTag(57);
-        output.WriteDouble(FieldRotationRate);
-      }
-      if (derotatorConfig_ != null) {
-        output.WriteRawTag(66);
-        output.WriteMessage(DerotatorConfig);
-      }
-      if (ErrorMessage.Length != 0) {
-        output.WriteRawTag(74);
-        output.WriteString(ErrorMessage);
-      }
-      if (timestamp_ != null) {
-        output.WriteRawTag(82);
-        output.WriteMessage(Timestamp);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(ref output);
-      }
-    }
-    #endif
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public int CalculateSize() {
-      int size = 0;
-      if (Enabled != false) {
-        size += 1 + 1;
-      }
-      if (Moving != false) {
-        size += 1 + 1;
-      }
-      if (Homed != false) {
-        size += 1 + 1;
-      }
-      if (CurrentAngle != 0D) {
-        size += 1 + 8;
-      }
-      if (TargetAngle != 0D) {
-        size += 1 + 8;
-      }
-      if (RotationRate != 0D) {
-        size += 1 + 8;
-      }
-      if (FieldRotationRate != 0D) {
-        size += 1 + 8;
-      }
-      if (derotatorConfig_ != null) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(DerotatorConfig);
-      }
-      if (ErrorMessage.Length != 0) {
-        size += 1 + pb::CodedOutputStream.ComputeStringSize(ErrorMessage);
-      }
-      if (timestamp_ != null) {
-        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Timestamp);
-      }
-      if (_unknownFields != null) {
-        size += _unknownFields.CalculateSize();
-      }
-      return size;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(DerotatorStatus other) {
-      if (other == null) {
-        return;
-      }
-      if (other.Enabled != false) {
-        Enabled = other.Enabled;
-      }
-      if (other.Moving != false) {
-        Moving = other.Moving;
-      }
-      if (other.Homed != false) {
-        Homed = other.Homed;
-      }
-      if (other.CurrentAngle != 0D) {
-        CurrentAngle = other.CurrentAngle;
-      }
-      if (other.TargetAngle != 0D) {
-        TargetAngle = other.TargetAngle;
-      }
-      if (other.RotationRate != 0D) {
-        RotationRate = other.RotationRate;
-      }
-      if (other.FieldRotationRate != 0D) {
-        FieldRotationRate = other.FieldRotationRate;
-      }
-      if (other.derotatorConfig_ != null) {
-        if (derotatorConfig_ == null) {
-          DerotatorConfig = new global::AstroMount.DerotatorConfig();
-        }
-        DerotatorConfig.MergeFrom(other.DerotatorConfig);
-      }
-      if (other.ErrorMessage.Length != 0) {
-        ErrorMessage = other.ErrorMessage;
-      }
-      if (other.timestamp_ != null) {
-        if (timestamp_ == null) {
-          Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
-        }
-        Timestamp.MergeFrom(other.Timestamp);
-      }
-      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(pb::CodedInputStream input) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      input.ReadRawMessage(this);
-    #else
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
-            break;
-          case 8: {
-            Enabled = input.ReadBool();
-            break;
-          }
-          case 16: {
-            Moving = input.ReadBool();
-            break;
-          }
-          case 24: {
-            Homed = input.ReadBool();
-            break;
-          }
-          case 33: {
-            CurrentAngle = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            TargetAngle = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            RotationRate = input.ReadDouble();
-            break;
-          }
-          case 57: {
-            FieldRotationRate = input.ReadDouble();
-            break;
-          }
-          case 66: {
-            if (derotatorConfig_ == null) {
-              DerotatorConfig = new global::AstroMount.DerotatorConfig();
-            }
-            input.ReadMessage(DerotatorConfig);
-            break;
-          }
-          case 74: {
-            ErrorMessage = input.ReadString();
-            break;
-          }
-          case 82: {
-            if (timestamp_ == null) {
-              Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
-            }
-            input.ReadMessage(Timestamp);
-            break;
-          }
-        }
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
-            break;
-          case 8: {
-            Enabled = input.ReadBool();
-            break;
-          }
-          case 16: {
-            Moving = input.ReadBool();
-            break;
-          }
-          case 24: {
-            Homed = input.ReadBool();
-            break;
-          }
-          case 33: {
-            CurrentAngle = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            TargetAngle = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            RotationRate = input.ReadDouble();
-            break;
-          }
-          case 57: {
-            FieldRotationRate = input.ReadDouble();
-            break;
-          }
-          case 66: {
-            if (derotatorConfig_ == null) {
-              DerotatorConfig = new global::AstroMount.DerotatorConfig();
-            }
-            input.ReadMessage(DerotatorConfig);
-            break;
-          }
-          case 74: {
-            ErrorMessage = input.ReadString();
-            break;
-          }
-          case 82: {
-            if (timestamp_ == null) {
-              Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
-            }
-            input.ReadMessage(Timestamp);
-            break;
-          }
-        }
-      }
-    }
-    #endif
-
-  }
-
-  /// <summary>
-  /// Field rotation compensation parameters
-  /// </summary>
-  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class FieldRotationParams : pb::IMessage<FieldRotationParams>
-  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      , pb::IBufferMessage
-  #endif
-  {
-    private static readonly pb::MessageParser<FieldRotationParams> _parser = new pb::MessageParser<FieldRotationParams>(() => new FieldRotationParams());
-    private pb::UnknownFieldSet _unknownFields;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<FieldRotationParams> Parser { get { return _parser; } }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[47]; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    pbr::MessageDescriptor pb::IMessage.Descriptor {
-      get { return Descriptor; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public FieldRotationParams() {
-      OnConstruction();
-    }
-
-    partial void OnConstruction();
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public FieldRotationParams(FieldRotationParams other) : this() {
-      enabled_ = other.enabled_;
-      latitude_ = other.latitude_;
-      altitude_ = other.altitude_;
-      azimuth_ = other.azimuth_;
-      computedRate_ = other.computedRate_;
-      appliedCorrection_ = other.appliedCorrection_;
-      temperature_ = other.temperature_;
-      flexureCorrection_ = other.flexureCorrection_;
-      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public FieldRotationParams Clone() {
-      return new FieldRotationParams(this);
-    }
-
-    /// <summary>Field number for the "enabled" field.</summary>
-    public const int EnabledFieldNumber = 1;
-    private bool enabled_;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Enabled {
-      get { return enabled_; }
-      set {
-        enabled_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "latitude" field.</summary>
-    public const int LatitudeFieldNumber = 2;
-    private double latitude_;
-    /// <summary>
-    /// Observer latitude [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double Latitude {
-      get { return latitude_; }
-      set {
-        latitude_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "altitude" field.</summary>
-    public const int AltitudeFieldNumber = 3;
-    private double altitude_;
-    /// <summary>
-    /// Current altitude [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double Altitude {
-      get { return altitude_; }
-      set {
-        altitude_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "azimuth" field.</summary>
-    public const int AzimuthFieldNumber = 4;
-    private double azimuth_;
-    /// <summary>
-    /// Current azimuth [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double Azimuth {
-      get { return azimuth_; }
-      set {
-        azimuth_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "computed_rate" field.</summary>
-    public const int ComputedRateFieldNumber = 5;
-    private double computedRate_;
-    /// <summary>
-    /// Computed field rotation rate [deg/s]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double ComputedRate {
-      get { return computedRate_; }
-      set {
-        computedRate_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "applied_correction" field.</summary>
-    public const int AppliedCorrectionFieldNumber = 6;
-    private double appliedCorrection_;
-    /// <summary>
-    /// Applied correction [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double AppliedCorrection {
-      get { return appliedCorrection_; }
-      set {
-        appliedCorrection_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "temperature" field.</summary>
-    public const int TemperatureFieldNumber = 7;
-    private double temperature_;
-    /// <summary>
-    /// Temperature for thermal correction
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double Temperature {
-      get { return temperature_; }
-      set {
-        temperature_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "flexure_correction" field.</summary>
-    public const int FlexureCorrectionFieldNumber = 8;
-    private double flexureCorrection_;
-    /// <summary>
-    /// Flexure correction term
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double FlexureCorrection {
-      get { return flexureCorrection_; }
-      set {
-        flexureCorrection_ = value;
-      }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override bool Equals(object other) {
-      return Equals(other as FieldRotationParams);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(FieldRotationParams other) {
-      if (ReferenceEquals(other, null)) {
-        return false;
-      }
-      if (ReferenceEquals(other, this)) {
-        return true;
-      }
-      if (Enabled != other.Enabled) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Latitude, other.Latitude)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Altitude, other.Altitude)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Azimuth, other.Azimuth)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(ComputedRate, other.ComputedRate)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(AppliedCorrection, other.AppliedCorrection)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Temperature, other.Temperature)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(FlexureCorrection, other.FlexureCorrection)) return false;
-      return Equals(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override int GetHashCode() {
-      int hash = 1;
-      if (Enabled != false) hash ^= Enabled.GetHashCode();
-      if (Latitude != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Latitude);
-      if (Altitude != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Altitude);
-      if (Azimuth != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Azimuth);
-      if (ComputedRate != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(ComputedRate);
-      if (AppliedCorrection != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AppliedCorrection);
-      if (Temperature != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Temperature);
-      if (FlexureCorrection != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(FlexureCorrection);
-      if (_unknownFields != null) {
-        hash ^= _unknownFields.GetHashCode();
-      }
-      return hash;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override string ToString() {
-      return pb::JsonFormatter.ToDiagnosticString(this);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void WriteTo(pb::CodedOutputStream output) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      output.WriteRawMessage(this);
-    #else
-      if (Enabled != false) {
-        output.WriteRawTag(8);
-        output.WriteBool(Enabled);
-      }
-      if (Latitude != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(Latitude);
-      }
-      if (Altitude != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(Altitude);
-      }
-      if (Azimuth != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(Azimuth);
-      }
-      if (ComputedRate != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(ComputedRate);
-      }
-      if (AppliedCorrection != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(AppliedCorrection);
-      }
-      if (Temperature != 0D) {
-        output.WriteRawTag(57);
-        output.WriteDouble(Temperature);
-      }
-      if (FlexureCorrection != 0D) {
-        output.WriteRawTag(65);
-        output.WriteDouble(FlexureCorrection);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(output);
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Enabled != false) {
-        output.WriteRawTag(8);
-        output.WriteBool(Enabled);
-      }
-      if (Latitude != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(Latitude);
-      }
-      if (Altitude != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(Altitude);
-      }
-      if (Azimuth != 0D) {
-        output.WriteRawTag(33);
-        output.WriteDouble(Azimuth);
-      }
-      if (ComputedRate != 0D) {
-        output.WriteRawTag(41);
-        output.WriteDouble(ComputedRate);
-      }
-      if (AppliedCorrection != 0D) {
-        output.WriteRawTag(49);
-        output.WriteDouble(AppliedCorrection);
-      }
-      if (Temperature != 0D) {
-        output.WriteRawTag(57);
-        output.WriteDouble(Temperature);
-      }
-      if (FlexureCorrection != 0D) {
-        output.WriteRawTag(65);
-        output.WriteDouble(FlexureCorrection);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(ref output);
-      }
-    }
-    #endif
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public int CalculateSize() {
-      int size = 0;
-      if (Enabled != false) {
-        size += 1 + 1;
-      }
-      if (Latitude != 0D) {
-        size += 1 + 8;
-      }
-      if (Altitude != 0D) {
-        size += 1 + 8;
-      }
-      if (Azimuth != 0D) {
-        size += 1 + 8;
-      }
-      if (ComputedRate != 0D) {
-        size += 1 + 8;
-      }
-      if (AppliedCorrection != 0D) {
-        size += 1 + 8;
-      }
-      if (Temperature != 0D) {
-        size += 1 + 8;
-      }
-      if (FlexureCorrection != 0D) {
-        size += 1 + 8;
-      }
-      if (_unknownFields != null) {
-        size += _unknownFields.CalculateSize();
-      }
-      return size;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(FieldRotationParams other) {
-      if (other == null) {
-        return;
-      }
-      if (other.Enabled != false) {
-        Enabled = other.Enabled;
-      }
-      if (other.Latitude != 0D) {
-        Latitude = other.Latitude;
-      }
-      if (other.Altitude != 0D) {
-        Altitude = other.Altitude;
-      }
-      if (other.Azimuth != 0D) {
-        Azimuth = other.Azimuth;
-      }
-      if (other.ComputedRate != 0D) {
-        ComputedRate = other.ComputedRate;
-      }
-      if (other.AppliedCorrection != 0D) {
-        AppliedCorrection = other.AppliedCorrection;
-      }
-      if (other.Temperature != 0D) {
-        Temperature = other.Temperature;
-      }
-      if (other.FlexureCorrection != 0D) {
-        FlexureCorrection = other.FlexureCorrection;
-      }
-      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(pb::CodedInputStream input) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      input.ReadRawMessage(this);
-    #else
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
-            break;
-          case 8: {
-            Enabled = input.ReadBool();
-            break;
-          }
-          case 17: {
-            Latitude = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            Altitude = input.ReadDouble();
-            break;
-          }
-          case 33: {
-            Azimuth = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            ComputedRate = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            AppliedCorrection = input.ReadDouble();
-            break;
-          }
-          case 57: {
-            Temperature = input.ReadDouble();
-            break;
-          }
-          case 65: {
-            FlexureCorrection = input.ReadDouble();
-            break;
-          }
-        }
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
-            break;
-          case 8: {
-            Enabled = input.ReadBool();
-            break;
-          }
-          case 17: {
-            Latitude = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            Altitude = input.ReadDouble();
-            break;
-          }
-          case 33: {
-            Azimuth = input.ReadDouble();
-            break;
-          }
-          case 41: {
-            ComputedRate = input.ReadDouble();
-            break;
-          }
-          case 49: {
-            AppliedCorrection = input.ReadDouble();
-            break;
-          }
-          case 57: {
-            Temperature = input.ReadDouble();
-            break;
-          }
-          case 65: {
-            FlexureCorrection = input.ReadDouble();
-            break;
-          }
-        }
-      }
-    }
-    #endif
-
-  }
-
-  /// <summary>
-  /// Derotator homing request
-  /// </summary>
-  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
-  public sealed partial class DerotatorHomingRequest : pb::IMessage<DerotatorHomingRequest>
-  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      , pb::IBufferMessage
-  #endif
-  {
-    private static readonly pb::MessageParser<DerotatorHomingRequest> _parser = new pb::MessageParser<DerotatorHomingRequest>(() => new DerotatorHomingRequest());
-    private pb::UnknownFieldSet _unknownFields;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pb::MessageParser<DerotatorHomingRequest> Parser { get { return _parser; } }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[48]; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    pbr::MessageDescriptor pb::IMessage.Descriptor {
-      get { return Descriptor; }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorHomingRequest() {
-      OnConstruction();
-    }
-
-    partial void OnConstruction();
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorHomingRequest(DerotatorHomingRequest other) : this() {
-      method_ = other.method_;
-      searchSpeed_ = other.searchSpeed_;
-      offset_ = other.offset_;
-      calibrateAfter_ = other.calibrateAfter_;
-      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public DerotatorHomingRequest Clone() {
-      return new DerotatorHomingRequest(this);
-    }
-
-    /// <summary>Field number for the "method" field.</summary>
-    public const int MethodFieldNumber = 1;
-    private global::AstroMount.DerotatorHomingRequest.Types.HomingMethod method_ = global::AstroMount.DerotatorHomingRequest.Types.HomingMethod.Auto;
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public global::AstroMount.DerotatorHomingRequest.Types.HomingMethod Method {
-      get { return method_; }
-      set {
-        method_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "search_speed" field.</summary>
-    public const int SearchSpeedFieldNumber = 2;
-    private double searchSpeed_;
-    /// <summary>
-    /// Speed for homing [deg/s]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double SearchSpeed {
-      get { return searchSpeed_; }
-      set {
-        searchSpeed_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "offset" field.</summary>
-    public const int OffsetFieldNumber = 3;
-    private double offset_;
-    /// <summary>
-    /// Homing offset [deg]
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public double Offset {
-      get { return offset_; }
-      set {
-        offset_ = value;
-      }
-    }
-
-    /// <summary>Field number for the "calibrate_after" field.</summary>
-    public const int CalibrateAfterFieldNumber = 4;
-    private bool calibrateAfter_;
-    /// <summary>
-    /// Run calibration after homing
-    /// </summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool CalibrateAfter {
-      get { return calibrateAfter_; }
-      set {
-        calibrateAfter_ = value;
-      }
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override bool Equals(object other) {
-      return Equals(other as DerotatorHomingRequest);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public bool Equals(DerotatorHomingRequest other) {
-      if (ReferenceEquals(other, null)) {
-        return false;
-      }
-      if (ReferenceEquals(other, this)) {
-        return true;
-      }
-      if (Method != other.Method) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SearchSpeed, other.SearchSpeed)) return false;
-      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Offset, other.Offset)) return false;
-      if (CalibrateAfter != other.CalibrateAfter) return false;
-      return Equals(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override int GetHashCode() {
-      int hash = 1;
-      if (Method != global::AstroMount.DerotatorHomingRequest.Types.HomingMethod.Auto) hash ^= Method.GetHashCode();
-      if (SearchSpeed != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SearchSpeed);
-      if (Offset != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Offset);
-      if (CalibrateAfter != false) hash ^= CalibrateAfter.GetHashCode();
-      if (_unknownFields != null) {
-        hash ^= _unknownFields.GetHashCode();
-      }
-      return hash;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public override string ToString() {
-      return pb::JsonFormatter.ToDiagnosticString(this);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void WriteTo(pb::CodedOutputStream output) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      output.WriteRawMessage(this);
-    #else
-      if (Method != global::AstroMount.DerotatorHomingRequest.Types.HomingMethod.Auto) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Method);
-      }
-      if (SearchSpeed != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(SearchSpeed);
-      }
-      if (Offset != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(Offset);
-      }
-      if (CalibrateAfter != false) {
-        output.WriteRawTag(32);
-        output.WriteBool(CalibrateAfter);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(output);
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
-      if (Method != global::AstroMount.DerotatorHomingRequest.Types.HomingMethod.Auto) {
-        output.WriteRawTag(8);
-        output.WriteEnum((int) Method);
-      }
-      if (SearchSpeed != 0D) {
-        output.WriteRawTag(17);
-        output.WriteDouble(SearchSpeed);
-      }
-      if (Offset != 0D) {
-        output.WriteRawTag(25);
-        output.WriteDouble(Offset);
-      }
-      if (CalibrateAfter != false) {
-        output.WriteRawTag(32);
-        output.WriteBool(CalibrateAfter);
-      }
-      if (_unknownFields != null) {
-        _unknownFields.WriteTo(ref output);
-      }
-    }
-    #endif
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public int CalculateSize() {
-      int size = 0;
-      if (Method != global::AstroMount.DerotatorHomingRequest.Types.HomingMethod.Auto) {
-        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Method);
-      }
-      if (SearchSpeed != 0D) {
-        size += 1 + 8;
-      }
-      if (Offset != 0D) {
-        size += 1 + 8;
-      }
-      if (CalibrateAfter != false) {
-        size += 1 + 1;
-      }
-      if (_unknownFields != null) {
-        size += _unknownFields.CalculateSize();
-      }
-      return size;
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(DerotatorHomingRequest other) {
-      if (other == null) {
-        return;
-      }
-      if (other.Method != global::AstroMount.DerotatorHomingRequest.Types.HomingMethod.Auto) {
-        Method = other.Method;
-      }
-      if (other.SearchSpeed != 0D) {
-        SearchSpeed = other.SearchSpeed;
-      }
-      if (other.Offset != 0D) {
-        Offset = other.Offset;
-      }
-      if (other.CalibrateAfter != false) {
-        CalibrateAfter = other.CalibrateAfter;
-      }
-      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
-    }
-
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public void MergeFrom(pb::CodedInputStream input) {
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-      input.ReadRawMessage(this);
-    #else
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
-            break;
-          case 8: {
-            Method = (global::AstroMount.DerotatorHomingRequest.Types.HomingMethod) input.ReadEnum();
-            break;
-          }
-          case 17: {
-            SearchSpeed = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            Offset = input.ReadDouble();
-            break;
-          }
-          case 32: {
-            CalibrateAfter = input.ReadBool();
-            break;
-          }
-        }
-      }
-    #endif
-    }
-
-    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
-      uint tag;
-      while ((tag = input.ReadTag()) != 0) {
-      if ((tag & 7) == 4) {
-        // Abort on any end group tag.
-        return;
-      }
-      switch(tag) {
-          default:
-            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
-            break;
-          case 8: {
-            Method = (global::AstroMount.DerotatorHomingRequest.Types.HomingMethod) input.ReadEnum();
-            break;
-          }
-          case 17: {
-            SearchSpeed = input.ReadDouble();
-            break;
-          }
-          case 25: {
-            Offset = input.ReadDouble();
-            break;
-          }
-          case 32: {
-            CalibrateAfter = input.ReadBool();
-            break;
-          }
-        }
-      }
-    }
-    #endif
-
-    #region Nested types
-    /// <summary>Container for nested types declared in the DerotatorHomingRequest message type.</summary>
-    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
-    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
-    public static partial class Types {
-      public enum HomingMethod {
-        /// <summary>
-        /// Automatic homing
-        /// </summary>
-        [pbr::OriginalName("AUTO")] Auto = 0,
-        /// <summary>
-        /// Use limit switch
-        /// </summary>
-        [pbr::OriginalName("LIMIT_SWITCH")] LimitSwitch = 1,
-        /// <summary>
-        /// Use encoder zero position
-        /// </summary>
-        [pbr::OriginalName("ENCODER_ZERO")] EncoderZero = 2,
-        /// <summary>
-        /// Manual homing
-        /// </summary>
-        [pbr::OriginalName("MANUAL")] Manual = 3,
-      }
-
-    }
-    #endregion
-
-  }
-
-  /// <summary>
   /// Motor configuration
   /// </summary>
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
@@ -25462,7 +26123,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[49]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[46]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -26048,7 +26709,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[50]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[47]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -26397,7 +27058,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[51]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[48]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -26422,6 +27083,7 @@ namespace AstroMount {
       motorConfig_ = other.motorConfig_ != null ? other.motorConfig_.Clone() : null;
       encoderConfig_ = other.encoderConfig_ != null ? other.encoderConfig_.Clone() : null;
       safetyLimits_ = other.safetyLimits_ != null ? other.safetyLimits_.Clone() : null;
+      invertDirection_ = other.invertDirection_;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -26491,6 +27153,22 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "invert_direction" field.</summary>
+    public const int InvertDirectionFieldNumber = 6;
+    private bool invertDirection_;
+    /// <summary>
+    /// HAL-level direction inversion: negates all position/velocity
+    /// commands sent to the drive. Transparent to the controller.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool InvertDirection {
+      get { return invertDirection_; }
+      set {
+        invertDirection_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -26511,6 +27189,7 @@ namespace AstroMount {
       if (!object.Equals(MotorConfig, other.MotorConfig)) return false;
       if (!object.Equals(EncoderConfig, other.EncoderConfig)) return false;
       if (!object.Equals(SafetyLimits, other.SafetyLimits)) return false;
+      if (InvertDirection != other.InvertDirection) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -26523,6 +27202,7 @@ namespace AstroMount {
       if (motorConfig_ != null) hash ^= MotorConfig.GetHashCode();
       if (encoderConfig_ != null) hash ^= EncoderConfig.GetHashCode();
       if (safetyLimits_ != null) hash ^= SafetyLimits.GetHashCode();
+      if (InvertDirection != false) hash ^= InvertDirection.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -26561,6 +27241,10 @@ namespace AstroMount {
         output.WriteRawTag(42);
         output.WriteMessage(SafetyLimits);
       }
+      if (InvertDirection != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(InvertDirection);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -26591,6 +27275,10 @@ namespace AstroMount {
         output.WriteRawTag(42);
         output.WriteMessage(SafetyLimits);
       }
+      if (InvertDirection != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(InvertDirection);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -26615,6 +27303,9 @@ namespace AstroMount {
       }
       if (safetyLimits_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(SafetyLimits);
+      }
+      if (InvertDirection != false) {
+        size += 1 + 1;
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -26651,6 +27342,9 @@ namespace AstroMount {
           SafetyLimits = new global::AstroMount.AxisConfig.Types.SafetyLimits();
         }
         SafetyLimits.MergeFrom(other.SafetyLimits);
+      }
+      if (other.InvertDirection != false) {
+        InvertDirection = other.InvertDirection;
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -26700,6 +27394,10 @@ namespace AstroMount {
             input.ReadMessage(SafetyLimits);
             break;
           }
+          case 48: {
+            InvertDirection = input.ReadBool();
+            break;
+          }
         }
       }
     #endif
@@ -26746,6 +27444,10 @@ namespace AstroMount {
               SafetyLimits = new global::AstroMount.AxisConfig.Types.SafetyLimits();
             }
             input.ReadMessage(SafetyLimits);
+            break;
+          }
+          case 48: {
+            InvertDirection = input.ReadBool();
             break;
           }
         }
@@ -27185,7 +27887,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[52]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[49]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -27608,7 +28310,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[53]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[50]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -28114,7 +28816,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[54]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[51]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -28512,7 +29214,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[55]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[52]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -28987,7 +29689,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[56]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[53]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -29419,7 +30121,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[57]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[54]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -29757,6 +30459,1085 @@ namespace AstroMount {
   }
 
   /// <summary>
+  /// Single entry of the speed-dependent PID gain schedule (MF7025v2 BLDC).
+  /// Maps a motor-shaft speed [RPM] to the PID gains applied to the drive's
+  /// current, speed and position loops at that speed (RAM-only writes).
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class SpeedPidEntry : pb::IMessage<SpeedPidEntry>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<SpeedPidEntry> _parser = new pb::MessageParser<SpeedPidEntry>(() => new SpeedPidEntry());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<SpeedPidEntry> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[55]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SpeedPidEntry() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SpeedPidEntry(SpeedPidEntry other) : this() {
+      speedRpm_ = other.speedRpm_;
+      currentKp_ = other.currentKp_;
+      currentKi_ = other.currentKi_;
+      speedKp_ = other.speedKp_;
+      speedKi_ = other.speedKi_;
+      speedFilterHz_ = other.speedFilterHz_;
+      positionKp_ = other.positionKp_;
+      positionKi_ = other.positionKi_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public SpeedPidEntry Clone() {
+      return new SpeedPidEntry(this);
+    }
+
+    /// <summary>Field number for the "speed_rpm" field.</summary>
+    public const int SpeedRpmFieldNumber = 1;
+    private double speedRpm_;
+    /// <summary>
+    /// Motor shaft speed breakpoint [RPM]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double SpeedRpm {
+      get { return speedRpm_; }
+      set {
+        speedRpm_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "current_kp" field.</summary>
+    public const int CurrentKpFieldNumber = 2;
+    private double currentKp_;
+    /// <summary>
+    /// Current loop Kp
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CurrentKp {
+      get { return currentKp_; }
+      set {
+        currentKp_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "current_ki" field.</summary>
+    public const int CurrentKiFieldNumber = 3;
+    private double currentKi_;
+    /// <summary>
+    /// Current loop Ki
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double CurrentKi {
+      get { return currentKi_; }
+      set {
+        currentKi_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "speed_kp" field.</summary>
+    public const int SpeedKpFieldNumber = 4;
+    private double speedKp_;
+    /// <summary>
+    /// Speed loop Kp
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double SpeedKp {
+      get { return speedKp_; }
+      set {
+        speedKp_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "speed_ki" field.</summary>
+    public const int SpeedKiFieldNumber = 5;
+    private double speedKi_;
+    /// <summary>
+    /// Speed loop Ki
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double SpeedKi {
+      get { return speedKi_; }
+      set {
+        speedKi_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "speed_filter_hz" field.</summary>
+    public const int SpeedFilterHzFieldNumber = 6;
+    private double speedFilterHz_;
+    /// <summary>
+    /// Speed loop filter cutoff [Hz]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double SpeedFilterHz {
+      get { return speedFilterHz_; }
+      set {
+        speedFilterHz_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "position_kp" field.</summary>
+    public const int PositionKpFieldNumber = 7;
+    private double positionKp_;
+    /// <summary>
+    /// Position loop Kp
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double PositionKp {
+      get { return positionKp_; }
+      set {
+        positionKp_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "position_ki" field.</summary>
+    public const int PositionKiFieldNumber = 8;
+    private double positionKi_;
+    /// <summary>
+    /// Position loop Ki
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double PositionKi {
+      get { return positionKi_; }
+      set {
+        positionKi_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as SpeedPidEntry);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(SpeedPidEntry other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SpeedRpm, other.SpeedRpm)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CurrentKp, other.CurrentKp)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(CurrentKi, other.CurrentKi)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SpeedKp, other.SpeedKp)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SpeedKi, other.SpeedKi)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SpeedFilterHz, other.SpeedFilterHz)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PositionKp, other.PositionKp)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PositionKi, other.PositionKi)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (SpeedRpm != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SpeedRpm);
+      if (CurrentKp != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CurrentKp);
+      if (CurrentKi != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(CurrentKi);
+      if (SpeedKp != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SpeedKp);
+      if (SpeedKi != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SpeedKi);
+      if (SpeedFilterHz != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SpeedFilterHz);
+      if (PositionKp != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PositionKp);
+      if (PositionKi != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PositionKi);
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (SpeedRpm != 0D) {
+        output.WriteRawTag(9);
+        output.WriteDouble(SpeedRpm);
+      }
+      if (CurrentKp != 0D) {
+        output.WriteRawTag(17);
+        output.WriteDouble(CurrentKp);
+      }
+      if (CurrentKi != 0D) {
+        output.WriteRawTag(25);
+        output.WriteDouble(CurrentKi);
+      }
+      if (SpeedKp != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(SpeedKp);
+      }
+      if (SpeedKi != 0D) {
+        output.WriteRawTag(41);
+        output.WriteDouble(SpeedKi);
+      }
+      if (SpeedFilterHz != 0D) {
+        output.WriteRawTag(49);
+        output.WriteDouble(SpeedFilterHz);
+      }
+      if (PositionKp != 0D) {
+        output.WriteRawTag(57);
+        output.WriteDouble(PositionKp);
+      }
+      if (PositionKi != 0D) {
+        output.WriteRawTag(65);
+        output.WriteDouble(PositionKi);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (SpeedRpm != 0D) {
+        output.WriteRawTag(9);
+        output.WriteDouble(SpeedRpm);
+      }
+      if (CurrentKp != 0D) {
+        output.WriteRawTag(17);
+        output.WriteDouble(CurrentKp);
+      }
+      if (CurrentKi != 0D) {
+        output.WriteRawTag(25);
+        output.WriteDouble(CurrentKi);
+      }
+      if (SpeedKp != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(SpeedKp);
+      }
+      if (SpeedKi != 0D) {
+        output.WriteRawTag(41);
+        output.WriteDouble(SpeedKi);
+      }
+      if (SpeedFilterHz != 0D) {
+        output.WriteRawTag(49);
+        output.WriteDouble(SpeedFilterHz);
+      }
+      if (PositionKp != 0D) {
+        output.WriteRawTag(57);
+        output.WriteDouble(PositionKp);
+      }
+      if (PositionKi != 0D) {
+        output.WriteRawTag(65);
+        output.WriteDouble(PositionKi);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (SpeedRpm != 0D) {
+        size += 1 + 8;
+      }
+      if (CurrentKp != 0D) {
+        size += 1 + 8;
+      }
+      if (CurrentKi != 0D) {
+        size += 1 + 8;
+      }
+      if (SpeedKp != 0D) {
+        size += 1 + 8;
+      }
+      if (SpeedKi != 0D) {
+        size += 1 + 8;
+      }
+      if (SpeedFilterHz != 0D) {
+        size += 1 + 8;
+      }
+      if (PositionKp != 0D) {
+        size += 1 + 8;
+      }
+      if (PositionKi != 0D) {
+        size += 1 + 8;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(SpeedPidEntry other) {
+      if (other == null) {
+        return;
+      }
+      if (other.SpeedRpm != 0D) {
+        SpeedRpm = other.SpeedRpm;
+      }
+      if (other.CurrentKp != 0D) {
+        CurrentKp = other.CurrentKp;
+      }
+      if (other.CurrentKi != 0D) {
+        CurrentKi = other.CurrentKi;
+      }
+      if (other.SpeedKp != 0D) {
+        SpeedKp = other.SpeedKp;
+      }
+      if (other.SpeedKi != 0D) {
+        SpeedKi = other.SpeedKi;
+      }
+      if (other.SpeedFilterHz != 0D) {
+        SpeedFilterHz = other.SpeedFilterHz;
+      }
+      if (other.PositionKp != 0D) {
+        PositionKp = other.PositionKp;
+      }
+      if (other.PositionKi != 0D) {
+        PositionKi = other.PositionKi;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 9: {
+            SpeedRpm = input.ReadDouble();
+            break;
+          }
+          case 17: {
+            CurrentKp = input.ReadDouble();
+            break;
+          }
+          case 25: {
+            CurrentKi = input.ReadDouble();
+            break;
+          }
+          case 33: {
+            SpeedKp = input.ReadDouble();
+            break;
+          }
+          case 41: {
+            SpeedKi = input.ReadDouble();
+            break;
+          }
+          case 49: {
+            SpeedFilterHz = input.ReadDouble();
+            break;
+          }
+          case 57: {
+            PositionKp = input.ReadDouble();
+            break;
+          }
+          case 65: {
+            PositionKi = input.ReadDouble();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 9: {
+            SpeedRpm = input.ReadDouble();
+            break;
+          }
+          case 17: {
+            CurrentKp = input.ReadDouble();
+            break;
+          }
+          case 25: {
+            CurrentKi = input.ReadDouble();
+            break;
+          }
+          case 33: {
+            SpeedKp = input.ReadDouble();
+            break;
+          }
+          case 41: {
+            SpeedKi = input.ReadDouble();
+            break;
+          }
+          case 49: {
+            SpeedFilterHz = input.ReadDouble();
+            break;
+          }
+          case 57: {
+            PositionKp = input.ReadDouble();
+            break;
+          }
+          case 65: {
+            PositionKi = input.ReadDouble();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// MF7025v2 (LingKong BLDC) configuration
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class Mf7025v2Config : pb::IMessage<Mf7025v2Config>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<Mf7025v2Config> _parser = new pb::MessageParser<Mf7025v2Config>(() => new Mf7025v2Config());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<Mf7025v2Config> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[56]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Mf7025v2Config() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Mf7025v2Config(Mf7025v2Config other) : this() {
+      canInterface_ = other.canInterface_;
+      bitrate_ = other.bitrate_;
+      sdoTimeoutMs_ = other.sdoTimeoutMs_;
+      positionUnitsPerDegree_ = other.positionUnitsPerDegree_;
+      velocityUnitsPerDps_ = other.velocityUnitsPerDps_;
+      speedPidAdaptationEnabled_ = other.speedPidAdaptationEnabled_;
+      speedPidAdaptationUpdateMs_ = other.speedPidAdaptationUpdateMs_;
+      speedPidSchedule_ = other.speedPidSchedule_.Clone();
+      sendSpeedPid_ = other.sendSpeedPid_;
+      sendCurrentPid_ = other.sendCurrentPid_;
+      sendPositionPid_ = other.sendPositionPid_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public Mf7025v2Config Clone() {
+      return new Mf7025v2Config(this);
+    }
+
+    /// <summary>Field number for the "can_interface" field.</summary>
+    public const int CanInterfaceFieldNumber = 1;
+    private string canInterface_ = "";
+    /// <summary>
+    /// SocketCAN interface name, e.g. "can0"
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string CanInterface {
+      get { return canInterface_; }
+      set {
+        canInterface_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "bitrate" field.</summary>
+    public const int BitrateFieldNumber = 2;
+    private uint bitrate_;
+    /// <summary>
+    /// CAN bitrate in bps (default: 1000000)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint Bitrate {
+      get { return bitrate_; }
+      set {
+        bitrate_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "sdo_timeout_ms" field.</summary>
+    public const int SdoTimeoutMsFieldNumber = 3;
+    private uint sdoTimeoutMs_;
+    /// <summary>
+    /// CAN response timeout (default: 100)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public uint SdoTimeoutMs {
+      get { return sdoTimeoutMs_; }
+      set {
+        sdoTimeoutMs_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "position_units_per_degree" field.</summary>
+    public const int PositionUnitsPerDegreeFieldNumber = 4;
+    private double positionUnitsPerDegree_;
+    /// <summary>
+    /// Position scaling (default: 100.0 = 0.01°/LSB)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double PositionUnitsPerDegree {
+      get { return positionUnitsPerDegree_; }
+      set {
+        positionUnitsPerDegree_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "velocity_units_per_dps" field.</summary>
+    public const int VelocityUnitsPerDpsFieldNumber = 5;
+    private double velocityUnitsPerDps_;
+    /// <summary>
+    /// Velocity scaling (default: 100.0 = 0.01dps/LSB)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double VelocityUnitsPerDps {
+      get { return velocityUnitsPerDps_; }
+      set {
+        velocityUnitsPerDps_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "speed_pid_adaptation_enabled" field.</summary>
+    public const int SpeedPidAdaptationEnabledFieldNumber = 6;
+    private bool speedPidAdaptationEnabled_;
+    /// <summary>
+    /// Speed-dependent PID gain scheduling (RAM writes, volatile)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SpeedPidAdaptationEnabled {
+      get { return speedPidAdaptationEnabled_; }
+      set {
+        speedPidAdaptationEnabled_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "speed_pid_adaptation_update_ms" field.</summary>
+    public const int SpeedPidAdaptationUpdateMsFieldNumber = 7;
+    private double speedPidAdaptationUpdateMs_;
+    /// <summary>
+    /// Min. interval between PID re-evaluations [ms]
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double SpeedPidAdaptationUpdateMs {
+      get { return speedPidAdaptationUpdateMs_; }
+      set {
+        speedPidAdaptationUpdateMs_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "speed_pid_schedule" field.</summary>
+    public const int SpeedPidScheduleFieldNumber = 8;
+    private static readonly pb::FieldCodec<global::AstroMount.SpeedPidEntry> _repeated_speedPidSchedule_codec
+        = pb::FieldCodec.ForMessage(66, global::AstroMount.SpeedPidEntry.Parser);
+    private readonly pbc::RepeatedField<global::AstroMount.SpeedPidEntry> speedPidSchedule_ = new pbc::RepeatedField<global::AstroMount.SpeedPidEntry>();
+    /// <summary>
+    /// Sorted ascending by speed_rpm
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public pbc::RepeatedField<global::AstroMount.SpeedPidEntry> SpeedPidSchedule {
+      get { return speedPidSchedule_; }
+    }
+
+    /// <summary>Field number for the "send_speed_pid" field.</summary>
+    public const int SendSpeedPidFieldNumber = 9;
+    private bool sendSpeedPid_;
+    /// <summary>
+    /// Which PID loop gains from the schedule are actually written to the drive.
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SendSpeedPid {
+      get { return sendSpeedPid_; }
+      set {
+        sendSpeedPid_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "send_current_pid" field.</summary>
+    public const int SendCurrentPidFieldNumber = 10;
+    private bool sendCurrentPid_;
+    /// <summary>
+    /// Send current-loop PID gains (default: false)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SendCurrentPid {
+      get { return sendCurrentPid_; }
+      set {
+        sendCurrentPid_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "send_position_pid" field.</summary>
+    public const int SendPositionPidFieldNumber = 11;
+    private bool sendPositionPid_;
+    /// <summary>
+    /// Send position-loop PID gains (default: true)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool SendPositionPid {
+      get { return sendPositionPid_; }
+      set {
+        sendPositionPid_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as Mf7025v2Config);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(Mf7025v2Config other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (CanInterface != other.CanInterface) return false;
+      if (Bitrate != other.Bitrate) return false;
+      if (SdoTimeoutMs != other.SdoTimeoutMs) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PositionUnitsPerDegree, other.PositionUnitsPerDegree)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(VelocityUnitsPerDps, other.VelocityUnitsPerDps)) return false;
+      if (SpeedPidAdaptationEnabled != other.SpeedPidAdaptationEnabled) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(SpeedPidAdaptationUpdateMs, other.SpeedPidAdaptationUpdateMs)) return false;
+      if(!speedPidSchedule_.Equals(other.speedPidSchedule_)) return false;
+      if (SendSpeedPid != other.SendSpeedPid) return false;
+      if (SendCurrentPid != other.SendCurrentPid) return false;
+      if (SendPositionPid != other.SendPositionPid) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (CanInterface.Length != 0) hash ^= CanInterface.GetHashCode();
+      if (Bitrate != 0) hash ^= Bitrate.GetHashCode();
+      if (SdoTimeoutMs != 0) hash ^= SdoTimeoutMs.GetHashCode();
+      if (PositionUnitsPerDegree != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PositionUnitsPerDegree);
+      if (VelocityUnitsPerDps != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(VelocityUnitsPerDps);
+      if (SpeedPidAdaptationEnabled != false) hash ^= SpeedPidAdaptationEnabled.GetHashCode();
+      if (SpeedPidAdaptationUpdateMs != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(SpeedPidAdaptationUpdateMs);
+      hash ^= speedPidSchedule_.GetHashCode();
+      if (SendSpeedPid != false) hash ^= SendSpeedPid.GetHashCode();
+      if (SendCurrentPid != false) hash ^= SendCurrentPid.GetHashCode();
+      if (SendPositionPid != false) hash ^= SendPositionPid.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (CanInterface.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(CanInterface);
+      }
+      if (Bitrate != 0) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(Bitrate);
+      }
+      if (SdoTimeoutMs != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(SdoTimeoutMs);
+      }
+      if (PositionUnitsPerDegree != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(PositionUnitsPerDegree);
+      }
+      if (VelocityUnitsPerDps != 0D) {
+        output.WriteRawTag(41);
+        output.WriteDouble(VelocityUnitsPerDps);
+      }
+      if (SpeedPidAdaptationEnabled != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(SpeedPidAdaptationEnabled);
+      }
+      if (SpeedPidAdaptationUpdateMs != 0D) {
+        output.WriteRawTag(57);
+        output.WriteDouble(SpeedPidAdaptationUpdateMs);
+      }
+      speedPidSchedule_.WriteTo(output, _repeated_speedPidSchedule_codec);
+      if (SendSpeedPid != false) {
+        output.WriteRawTag(72);
+        output.WriteBool(SendSpeedPid);
+      }
+      if (SendCurrentPid != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(SendCurrentPid);
+      }
+      if (SendPositionPid != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(SendPositionPid);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (CanInterface.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(CanInterface);
+      }
+      if (Bitrate != 0) {
+        output.WriteRawTag(16);
+        output.WriteUInt32(Bitrate);
+      }
+      if (SdoTimeoutMs != 0) {
+        output.WriteRawTag(24);
+        output.WriteUInt32(SdoTimeoutMs);
+      }
+      if (PositionUnitsPerDegree != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(PositionUnitsPerDegree);
+      }
+      if (VelocityUnitsPerDps != 0D) {
+        output.WriteRawTag(41);
+        output.WriteDouble(VelocityUnitsPerDps);
+      }
+      if (SpeedPidAdaptationEnabled != false) {
+        output.WriteRawTag(48);
+        output.WriteBool(SpeedPidAdaptationEnabled);
+      }
+      if (SpeedPidAdaptationUpdateMs != 0D) {
+        output.WriteRawTag(57);
+        output.WriteDouble(SpeedPidAdaptationUpdateMs);
+      }
+      speedPidSchedule_.WriteTo(ref output, _repeated_speedPidSchedule_codec);
+      if (SendSpeedPid != false) {
+        output.WriteRawTag(72);
+        output.WriteBool(SendSpeedPid);
+      }
+      if (SendCurrentPid != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(SendCurrentPid);
+      }
+      if (SendPositionPid != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(SendPositionPid);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (CanInterface.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(CanInterface);
+      }
+      if (Bitrate != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(Bitrate);
+      }
+      if (SdoTimeoutMs != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeUInt32Size(SdoTimeoutMs);
+      }
+      if (PositionUnitsPerDegree != 0D) {
+        size += 1 + 8;
+      }
+      if (VelocityUnitsPerDps != 0D) {
+        size += 1 + 8;
+      }
+      if (SpeedPidAdaptationEnabled != false) {
+        size += 1 + 1;
+      }
+      if (SpeedPidAdaptationUpdateMs != 0D) {
+        size += 1 + 8;
+      }
+      size += speedPidSchedule_.CalculateSize(_repeated_speedPidSchedule_codec);
+      if (SendSpeedPid != false) {
+        size += 1 + 1;
+      }
+      if (SendCurrentPid != false) {
+        size += 1 + 1;
+      }
+      if (SendPositionPid != false) {
+        size += 1 + 1;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(Mf7025v2Config other) {
+      if (other == null) {
+        return;
+      }
+      if (other.CanInterface.Length != 0) {
+        CanInterface = other.CanInterface;
+      }
+      if (other.Bitrate != 0) {
+        Bitrate = other.Bitrate;
+      }
+      if (other.SdoTimeoutMs != 0) {
+        SdoTimeoutMs = other.SdoTimeoutMs;
+      }
+      if (other.PositionUnitsPerDegree != 0D) {
+        PositionUnitsPerDegree = other.PositionUnitsPerDegree;
+      }
+      if (other.VelocityUnitsPerDps != 0D) {
+        VelocityUnitsPerDps = other.VelocityUnitsPerDps;
+      }
+      if (other.SpeedPidAdaptationEnabled != false) {
+        SpeedPidAdaptationEnabled = other.SpeedPidAdaptationEnabled;
+      }
+      if (other.SpeedPidAdaptationUpdateMs != 0D) {
+        SpeedPidAdaptationUpdateMs = other.SpeedPidAdaptationUpdateMs;
+      }
+      speedPidSchedule_.Add(other.speedPidSchedule_);
+      if (other.SendSpeedPid != false) {
+        SendSpeedPid = other.SendSpeedPid;
+      }
+      if (other.SendCurrentPid != false) {
+        SendCurrentPid = other.SendCurrentPid;
+      }
+      if (other.SendPositionPid != false) {
+        SendPositionPid = other.SendPositionPid;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            CanInterface = input.ReadString();
+            break;
+          }
+          case 16: {
+            Bitrate = input.ReadUInt32();
+            break;
+          }
+          case 24: {
+            SdoTimeoutMs = input.ReadUInt32();
+            break;
+          }
+          case 33: {
+            PositionUnitsPerDegree = input.ReadDouble();
+            break;
+          }
+          case 41: {
+            VelocityUnitsPerDps = input.ReadDouble();
+            break;
+          }
+          case 48: {
+            SpeedPidAdaptationEnabled = input.ReadBool();
+            break;
+          }
+          case 57: {
+            SpeedPidAdaptationUpdateMs = input.ReadDouble();
+            break;
+          }
+          case 66: {
+            speedPidSchedule_.AddEntriesFrom(input, _repeated_speedPidSchedule_codec);
+            break;
+          }
+          case 72: {
+            SendSpeedPid = input.ReadBool();
+            break;
+          }
+          case 80: {
+            SendCurrentPid = input.ReadBool();
+            break;
+          }
+          case 88: {
+            SendPositionPid = input.ReadBool();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            CanInterface = input.ReadString();
+            break;
+          }
+          case 16: {
+            Bitrate = input.ReadUInt32();
+            break;
+          }
+          case 24: {
+            SdoTimeoutMs = input.ReadUInt32();
+            break;
+          }
+          case 33: {
+            PositionUnitsPerDegree = input.ReadDouble();
+            break;
+          }
+          case 41: {
+            VelocityUnitsPerDps = input.ReadDouble();
+            break;
+          }
+          case 48: {
+            SpeedPidAdaptationEnabled = input.ReadBool();
+            break;
+          }
+          case 57: {
+            SpeedPidAdaptationUpdateMs = input.ReadDouble();
+            break;
+          }
+          case 66: {
+            speedPidSchedule_.AddEntriesFrom(ref input, _repeated_speedPidSchedule_codec);
+            break;
+          }
+          case 72: {
+            SendSpeedPid = input.ReadBool();
+            break;
+          }
+          case 80: {
+            SendCurrentPid = input.ReadBool();
+            break;
+          }
+          case 88: {
+            SendPositionPid = input.ReadBool();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
   /// HAL configuration
   /// </summary>
   [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
@@ -29774,7 +31555,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[58]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[57]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -29803,6 +31584,10 @@ namespace AstroMount {
       axes_ = other.axes_.Clone();
       pidParams_ = other.pidParams_ != null ? other.pidParams_.Clone() : null;
       safety_ = other.safety_ != null ? other.safety_.Clone() : null;
+      gamepad_ = other.gamepad_ != null ? other.gamepad_.Clone() : null;
+      canTrace_ = other.canTrace_;
+      canTraceReadState_ = other.canTraceReadState_;
+      mf7025V2_ = other.mf7025V2_ != null ? other.mf7025V2_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -29928,6 +31713,66 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "gamepad" field.</summary>
+    public const int GamepadFieldNumber = 10;
+    private global::AstroMount.GamepadConfig gamepad_;
+    /// <summary>
+    /// Gamepad configuration (HAL gamepad subsystem)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::AstroMount.GamepadConfig Gamepad {
+      get { return gamepad_; }
+      set {
+        gamepad_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "can_trace" field.</summary>
+    public const int CanTraceFieldNumber = 11;
+    private bool canTrace_;
+    /// <summary>
+    /// MF7025v2 debug/tracing flags (LingKong BLDC CAN protocol)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool CanTrace {
+      get { return canTrace_; }
+      set {
+        canTrace_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "can_trace_read_state" field.</summary>
+    public const int CanTraceReadStateFieldNumber = 12;
+    private bool canTraceReadState_;
+    /// <summary>
+    /// Also log periodic status-read commands (default: false)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool CanTraceReadState {
+      get { return canTraceReadState_; }
+      set {
+        canTraceReadState_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "mf7025v2" field.</summary>
+    public const int Mf7025V2FieldNumber = 13;
+    private global::AstroMount.Mf7025v2Config mf7025V2_;
+    /// <summary>
+    /// MF7025v2 full configuration (CAN interface, bitrate, timeouts, scaling)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::AstroMount.Mf7025v2Config Mf7025V2 {
+      get { return mf7025V2_; }
+      set {
+        mf7025V2_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -29952,6 +31797,10 @@ namespace AstroMount {
       if(!axes_.Equals(other.axes_)) return false;
       if (!object.Equals(PidParams, other.PidParams)) return false;
       if (!object.Equals(Safety, other.Safety)) return false;
+      if (!object.Equals(Gamepad, other.Gamepad)) return false;
+      if (CanTrace != other.CanTrace) return false;
+      if (CanTraceReadState != other.CanTraceReadState) return false;
+      if (!object.Equals(Mf7025V2, other.Mf7025V2)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -29968,6 +31817,10 @@ namespace AstroMount {
       hash ^= axes_.GetHashCode();
       if (pidParams_ != null) hash ^= PidParams.GetHashCode();
       if (safety_ != null) hash ^= Safety.GetHashCode();
+      if (gamepad_ != null) hash ^= Gamepad.GetHashCode();
+      if (CanTrace != false) hash ^= CanTrace.GetHashCode();
+      if (CanTraceReadState != false) hash ^= CanTraceReadState.GetHashCode();
+      if (mf7025V2_ != null) hash ^= Mf7025V2.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -30019,6 +31872,22 @@ namespace AstroMount {
         output.WriteRawTag(74);
         output.WriteMessage(Safety);
       }
+      if (gamepad_ != null) {
+        output.WriteRawTag(82);
+        output.WriteMessage(Gamepad);
+      }
+      if (CanTrace != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(CanTrace);
+      }
+      if (CanTraceReadState != false) {
+        output.WriteRawTag(96);
+        output.WriteBool(CanTraceReadState);
+      }
+      if (mf7025V2_ != null) {
+        output.WriteRawTag(106);
+        output.WriteMessage(Mf7025V2);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -30062,6 +31931,22 @@ namespace AstroMount {
         output.WriteRawTag(74);
         output.WriteMessage(Safety);
       }
+      if (gamepad_ != null) {
+        output.WriteRawTag(82);
+        output.WriteMessage(Gamepad);
+      }
+      if (CanTrace != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(CanTrace);
+      }
+      if (CanTraceReadState != false) {
+        output.WriteRawTag(96);
+        output.WriteBool(CanTraceReadState);
+      }
+      if (mf7025V2_ != null) {
+        output.WriteRawTag(106);
+        output.WriteMessage(Mf7025V2);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -30096,6 +31981,18 @@ namespace AstroMount {
       }
       if (safety_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Safety);
+      }
+      if (gamepad_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Gamepad);
+      }
+      if (CanTrace != false) {
+        size += 1 + 1;
+      }
+      if (CanTraceReadState != false) {
+        size += 1 + 1;
+      }
+      if (mf7025V2_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Mf7025V2);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -30151,6 +32048,24 @@ namespace AstroMount {
           Safety = new global::AstroMount.SafetyConfig();
         }
         Safety.MergeFrom(other.Safety);
+      }
+      if (other.gamepad_ != null) {
+        if (gamepad_ == null) {
+          Gamepad = new global::AstroMount.GamepadConfig();
+        }
+        Gamepad.MergeFrom(other.Gamepad);
+      }
+      if (other.CanTrace != false) {
+        CanTrace = other.CanTrace;
+      }
+      if (other.CanTraceReadState != false) {
+        CanTraceReadState = other.CanTraceReadState;
+      }
+      if (other.mf7025V2_ != null) {
+        if (mf7025V2_ == null) {
+          Mf7025V2 = new global::AstroMount.Mf7025v2Config();
+        }
+        Mf7025V2.MergeFrom(other.Mf7025V2);
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -30223,6 +32138,28 @@ namespace AstroMount {
               Safety = new global::AstroMount.SafetyConfig();
             }
             input.ReadMessage(Safety);
+            break;
+          }
+          case 82: {
+            if (gamepad_ == null) {
+              Gamepad = new global::AstroMount.GamepadConfig();
+            }
+            input.ReadMessage(Gamepad);
+            break;
+          }
+          case 88: {
+            CanTrace = input.ReadBool();
+            break;
+          }
+          case 96: {
+            CanTraceReadState = input.ReadBool();
+            break;
+          }
+          case 106: {
+            if (mf7025V2_ == null) {
+              Mf7025V2 = new global::AstroMount.Mf7025v2Config();
+            }
+            input.ReadMessage(Mf7025V2);
             break;
           }
         }
@@ -30298,6 +32235,432 @@ namespace AstroMount {
             input.ReadMessage(Safety);
             break;
           }
+          case 82: {
+            if (gamepad_ == null) {
+              Gamepad = new global::AstroMount.GamepadConfig();
+            }
+            input.ReadMessage(Gamepad);
+            break;
+          }
+          case 88: {
+            CanTrace = input.ReadBool();
+            break;
+          }
+          case 96: {
+            CanTraceReadState = input.ReadBool();
+            break;
+          }
+          case 106: {
+            if (mf7025V2_ == null) {
+              Mf7025V2 = new global::AstroMount.Mf7025v2Config();
+            }
+            input.ReadMessage(Mf7025V2);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// Gamepad / joystick configuration for manual mount control
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GamepadConfig : pb::IMessage<GamepadConfig>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GamepadConfig> _parser = new pb::MessageParser<GamepadConfig>(() => new GamepadConfig());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GamepadConfig> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[58]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadConfig() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadConfig(GamepadConfig other) : this() {
+      devicePath_ = other.devicePath_;
+      deadZone_ = other.deadZone_;
+      sensitivity_ = other.sensitivity_;
+      readFrequency_ = other.readFrequency_;
+      autostart_ = other.autostart_;
+      gamepadMode_ = other.gamepadMode_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadConfig Clone() {
+      return new GamepadConfig(this);
+    }
+
+    /// <summary>Field number for the "device_path" field.</summary>
+    public const int DevicePathFieldNumber = 1;
+    private string devicePath_ = "";
+    /// <summary>
+    /// e.g. "/dev/input/js0"
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string DevicePath {
+      get { return devicePath_; }
+      set {
+        devicePath_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "dead_zone" field.</summary>
+    public const int DeadZoneFieldNumber = 2;
+    private double deadZone_;
+    /// <summary>
+    /// Dead zone [0..1], default 0.15
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double DeadZone {
+      get { return deadZone_; }
+      set {
+        deadZone_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "sensitivity" field.</summary>
+    public const int SensitivityFieldNumber = 3;
+    private double sensitivity_;
+    /// <summary>
+    /// Sensitivity curve, default 1.0
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double Sensitivity {
+      get { return sensitivity_; }
+      set {
+        sensitivity_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "read_frequency" field.</summary>
+    public const int ReadFrequencyFieldNumber = 4;
+    private double readFrequency_;
+    /// <summary>
+    /// Poll frequency in Hz, default 50
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double ReadFrequency {
+      get { return readFrequency_; }
+      set {
+        readFrequency_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "autostart" field.</summary>
+    public const int AutostartFieldNumber = 5;
+    private bool autostart_;
+    /// <summary>
+    /// Auto-start gamepad loop after boot
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Autostart {
+      get { return autostart_; }
+      set {
+        autostart_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "gamepad_mode" field.</summary>
+    public const int GamepadModeFieldNumber = 6;
+    private global::AstroMount.GamepadMode gamepadMode_ = global::AstroMount.GamepadMode.GamepadRaw;
+    /// <summary>
+    /// Navigation mode (RAW=0, CELESTIAL=1, ALT_AZ=2)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::AstroMount.GamepadMode GamepadMode {
+      get { return gamepadMode_; }
+      set {
+        gamepadMode_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GamepadConfig);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GamepadConfig other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (DevicePath != other.DevicePath) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(DeadZone, other.DeadZone)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Sensitivity, other.Sensitivity)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(ReadFrequency, other.ReadFrequency)) return false;
+      if (Autostart != other.Autostart) return false;
+      if (GamepadMode != other.GamepadMode) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (DevicePath.Length != 0) hash ^= DevicePath.GetHashCode();
+      if (DeadZone != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(DeadZone);
+      if (Sensitivity != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Sensitivity);
+      if (ReadFrequency != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(ReadFrequency);
+      if (Autostart != false) hash ^= Autostart.GetHashCode();
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) hash ^= GamepadMode.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (DevicePath.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(DevicePath);
+      }
+      if (DeadZone != 0D) {
+        output.WriteRawTag(17);
+        output.WriteDouble(DeadZone);
+      }
+      if (Sensitivity != 0D) {
+        output.WriteRawTag(25);
+        output.WriteDouble(Sensitivity);
+      }
+      if (ReadFrequency != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(ReadFrequency);
+      }
+      if (Autostart != false) {
+        output.WriteRawTag(40);
+        output.WriteBool(Autostart);
+      }
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        output.WriteRawTag(48);
+        output.WriteEnum((int) GamepadMode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (DevicePath.Length != 0) {
+        output.WriteRawTag(10);
+        output.WriteString(DevicePath);
+      }
+      if (DeadZone != 0D) {
+        output.WriteRawTag(17);
+        output.WriteDouble(DeadZone);
+      }
+      if (Sensitivity != 0D) {
+        output.WriteRawTag(25);
+        output.WriteDouble(Sensitivity);
+      }
+      if (ReadFrequency != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(ReadFrequency);
+      }
+      if (Autostart != false) {
+        output.WriteRawTag(40);
+        output.WriteBool(Autostart);
+      }
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        output.WriteRawTag(48);
+        output.WriteEnum((int) GamepadMode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (DevicePath.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(DevicePath);
+      }
+      if (DeadZone != 0D) {
+        size += 1 + 8;
+      }
+      if (Sensitivity != 0D) {
+        size += 1 + 8;
+      }
+      if (ReadFrequency != 0D) {
+        size += 1 + 8;
+      }
+      if (Autostart != false) {
+        size += 1 + 1;
+      }
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) GamepadMode);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GamepadConfig other) {
+      if (other == null) {
+        return;
+      }
+      if (other.DevicePath.Length != 0) {
+        DevicePath = other.DevicePath;
+      }
+      if (other.DeadZone != 0D) {
+        DeadZone = other.DeadZone;
+      }
+      if (other.Sensitivity != 0D) {
+        Sensitivity = other.Sensitivity;
+      }
+      if (other.ReadFrequency != 0D) {
+        ReadFrequency = other.ReadFrequency;
+      }
+      if (other.Autostart != false) {
+        Autostart = other.Autostart;
+      }
+      if (other.GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        GamepadMode = other.GamepadMode;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 10: {
+            DevicePath = input.ReadString();
+            break;
+          }
+          case 17: {
+            DeadZone = input.ReadDouble();
+            break;
+          }
+          case 25: {
+            Sensitivity = input.ReadDouble();
+            break;
+          }
+          case 33: {
+            ReadFrequency = input.ReadDouble();
+            break;
+          }
+          case 40: {
+            Autostart = input.ReadBool();
+            break;
+          }
+          case 48: {
+            GamepadMode = (global::AstroMount.GamepadMode) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 10: {
+            DevicePath = input.ReadString();
+            break;
+          }
+          case 17: {
+            DeadZone = input.ReadDouble();
+            break;
+          }
+          case 25: {
+            Sensitivity = input.ReadDouble();
+            break;
+          }
+          case 33: {
+            ReadFrequency = input.ReadDouble();
+            break;
+          }
+          case 40: {
+            Autostart = input.ReadBool();
+            break;
+          }
+          case 48: {
+            GamepadMode = (global::AstroMount.GamepadMode) input.ReadEnum();
+            break;
+          }
         }
       }
     }
@@ -30352,6 +32715,7 @@ namespace AstroMount {
       supportedFeatures_ = other.supportedFeatures_.Clone();
       errorMessage_ = other.errorMessage_;
       timestamp_ = other.timestamp_ != null ? other.timestamp_.Clone() : null;
+      gamepad_ = other.gamepad_ != null ? other.gamepad_.Clone() : null;
       _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
     }
 
@@ -30468,6 +32832,18 @@ namespace AstroMount {
       }
     }
 
+    /// <summary>Field number for the "gamepad" field.</summary>
+    public const int GamepadFieldNumber = 10;
+    private global::AstroMount.GamepadState gamepad_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::AstroMount.GamepadState Gamepad {
+      get { return gamepad_; }
+      set {
+        gamepad_ = value;
+      }
+    }
+
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public override bool Equals(object other) {
@@ -30492,6 +32868,7 @@ namespace AstroMount {
       if(!supportedFeatures_.Equals(other.supportedFeatures_)) return false;
       if (ErrorMessage != other.ErrorMessage) return false;
       if (!object.Equals(Timestamp, other.Timestamp)) return false;
+      if (!object.Equals(Gamepad, other.Gamepad)) return false;
       return Equals(_unknownFields, other._unknownFields);
     }
 
@@ -30508,6 +32885,7 @@ namespace AstroMount {
       hash ^= supportedFeatures_.GetHashCode();
       if (ErrorMessage.Length != 0) hash ^= ErrorMessage.GetHashCode();
       if (timestamp_ != null) hash ^= Timestamp.GetHashCode();
+      if (gamepad_ != null) hash ^= Gamepad.GetHashCode();
       if (_unknownFields != null) {
         hash ^= _unknownFields.GetHashCode();
       }
@@ -30559,6 +32937,10 @@ namespace AstroMount {
         output.WriteRawTag(74);
         output.WriteMessage(Timestamp);
       }
+      if (gamepad_ != null) {
+        output.WriteRawTag(82);
+        output.WriteMessage(Gamepad);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(output);
       }
@@ -30602,6 +32984,10 @@ namespace AstroMount {
         output.WriteRawTag(74);
         output.WriteMessage(Timestamp);
       }
+      if (gamepad_ != null) {
+        output.WriteRawTag(82);
+        output.WriteMessage(Gamepad);
+      }
       if (_unknownFields != null) {
         _unknownFields.WriteTo(ref output);
       }
@@ -30636,6 +33022,9 @@ namespace AstroMount {
       }
       if (timestamp_ != null) {
         size += 1 + pb::CodedOutputStream.ComputeMessageSize(Timestamp);
+      }
+      if (gamepad_ != null) {
+        size += 1 + pb::CodedOutputStream.ComputeMessageSize(Gamepad);
       }
       if (_unknownFields != null) {
         size += _unknownFields.CalculateSize();
@@ -30676,6 +33065,12 @@ namespace AstroMount {
           Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
         }
         Timestamp.MergeFrom(other.Timestamp);
+      }
+      if (other.gamepad_ != null) {
+        if (gamepad_ == null) {
+          Gamepad = new global::AstroMount.GamepadState();
+        }
+        Gamepad.MergeFrom(other.Gamepad);
       }
       _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
     }
@@ -30733,6 +33128,13 @@ namespace AstroMount {
               Timestamp = new global::Google.Protobuf.WellKnownTypes.Timestamp();
             }
             input.ReadMessage(Timestamp);
+            break;
+          }
+          case 82: {
+            if (gamepad_ == null) {
+              Gamepad = new global::AstroMount.GamepadState();
+            }
+            input.ReadMessage(Gamepad);
             break;
           }
         }
@@ -30793,6 +33195,1447 @@ namespace AstroMount {
             input.ReadMessage(Timestamp);
             break;
           }
+          case 82: {
+            if (gamepad_ == null) {
+              Gamepad = new global::AstroMount.GamepadState();
+            }
+            input.ReadMessage(Gamepad);
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// Live gamepad state (axes, buttons, connection)
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GamepadState : pb::IMessage<GamepadState>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GamepadState> _parser = new pb::MessageParser<GamepadState>(() => new GamepadState());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GamepadState> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[60]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadState() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadState(GamepadState other) : this() {
+      connected_ = other.connected_;
+      deviceName_ = other.deviceName_;
+      axisLx_ = other.axisLx_;
+      axisLy_ = other.axisLy_;
+      axisRx_ = other.axisRx_;
+      axisRy_ = other.axisRy_;
+      axisTriggerL_ = other.axisTriggerL_;
+      axisTriggerR_ = other.axisTriggerR_;
+      povHat_ = other.povHat_;
+      buttonStop_ = other.buttonStop_;
+      buttonEmergencyStop_ = other.buttonEmergencyStop_;
+      buttonPark_ = other.buttonPark_;
+      buttonSpeedUp_ = other.buttonSpeedUp_;
+      buttonSpeedDown_ = other.buttonSpeedDown_;
+      buttonManualToggle_ = other.buttonManualToggle_;
+      buttonHome_ = other.buttonHome_;
+      axisCount_ = other.axisCount_;
+      buttonCount_ = other.buttonCount_;
+      gamepadMode_ = other.gamepadMode_;
+      bootstrapCalibrated_ = other.bootstrapCalibrated_;
+      tpointCalibrated_ = other.tpointCalibrated_;
+      maxVelocity_ = other.maxVelocity_;
+      buttonBootstrapCalibrate_ = other.buttonBootstrapCalibrate_;
+      buttonTpointCalibrate_ = other.buttonTpointCalibrate_;
+      buttonMeridianFlip_ = other.buttonMeridianFlip_;
+      buttonModeCycle_ = other.buttonModeCycle_;
+      buttonClearErrors_ = other.buttonClearErrors_;
+      buttonUnpark_ = other.buttonUnpark_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadState Clone() {
+      return new GamepadState(this);
+    }
+
+    /// <summary>Field number for the "connected" field.</summary>
+    public const int ConnectedFieldNumber = 1;
+    private bool connected_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Connected {
+      get { return connected_; }
+      set {
+        connected_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "device_name" field.</summary>
+    public const int DeviceNameFieldNumber = 2;
+    private string deviceName_ = "";
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public string DeviceName {
+      get { return deviceName_; }
+      set {
+        deviceName_ = pb::ProtoPreconditions.CheckNotNull(value, "value");
+      }
+    }
+
+    /// <summary>Field number for the "axis_lx" field.</summary>
+    public const int AxisLxFieldNumber = 3;
+    private double axisLx_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double AxisLx {
+      get { return axisLx_; }
+      set {
+        axisLx_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "axis_ly" field.</summary>
+    public const int AxisLyFieldNumber = 4;
+    private double axisLy_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double AxisLy {
+      get { return axisLy_; }
+      set {
+        axisLy_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "axis_rx" field.</summary>
+    public const int AxisRxFieldNumber = 5;
+    private double axisRx_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double AxisRx {
+      get { return axisRx_; }
+      set {
+        axisRx_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "axis_ry" field.</summary>
+    public const int AxisRyFieldNumber = 6;
+    private double axisRy_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double AxisRy {
+      get { return axisRy_; }
+      set {
+        axisRy_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "axis_trigger_l" field.</summary>
+    public const int AxisTriggerLFieldNumber = 7;
+    private double axisTriggerL_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double AxisTriggerL {
+      get { return axisTriggerL_; }
+      set {
+        axisTriggerL_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "axis_trigger_r" field.</summary>
+    public const int AxisTriggerRFieldNumber = 8;
+    private double axisTriggerR_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double AxisTriggerR {
+      get { return axisTriggerR_; }
+      set {
+        axisTriggerR_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "pov_hat" field.</summary>
+    public const int PovHatFieldNumber = 9;
+    private double povHat_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double PovHat {
+      get { return povHat_; }
+      set {
+        povHat_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_stop" field.</summary>
+    public const int ButtonStopFieldNumber = 10;
+    private bool buttonStop_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonStop {
+      get { return buttonStop_; }
+      set {
+        buttonStop_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_emergency_stop" field.</summary>
+    public const int ButtonEmergencyStopFieldNumber = 11;
+    private bool buttonEmergencyStop_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonEmergencyStop {
+      get { return buttonEmergencyStop_; }
+      set {
+        buttonEmergencyStop_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_park" field.</summary>
+    public const int ButtonParkFieldNumber = 12;
+    private bool buttonPark_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonPark {
+      get { return buttonPark_; }
+      set {
+        buttonPark_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_speed_up" field.</summary>
+    public const int ButtonSpeedUpFieldNumber = 13;
+    private bool buttonSpeedUp_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonSpeedUp {
+      get { return buttonSpeedUp_; }
+      set {
+        buttonSpeedUp_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_speed_down" field.</summary>
+    public const int ButtonSpeedDownFieldNumber = 14;
+    private bool buttonSpeedDown_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonSpeedDown {
+      get { return buttonSpeedDown_; }
+      set {
+        buttonSpeedDown_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_manual_toggle" field.</summary>
+    public const int ButtonManualToggleFieldNumber = 15;
+    private bool buttonManualToggle_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonManualToggle {
+      get { return buttonManualToggle_; }
+      set {
+        buttonManualToggle_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_home" field.</summary>
+    public const int ButtonHomeFieldNumber = 16;
+    private bool buttonHome_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonHome {
+      get { return buttonHome_; }
+      set {
+        buttonHome_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "axis_count" field.</summary>
+    public const int AxisCountFieldNumber = 17;
+    private int axisCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int AxisCount {
+      get { return axisCount_; }
+      set {
+        axisCount_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_count" field.</summary>
+    public const int ButtonCountFieldNumber = 18;
+    private int buttonCount_;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int ButtonCount {
+      get { return buttonCount_; }
+      set {
+        buttonCount_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "gamepad_mode" field.</summary>
+    public const int GamepadModeFieldNumber = 19;
+    private global::AstroMount.GamepadMode gamepadMode_ = global::AstroMount.GamepadMode.GamepadRaw;
+    /// <summary>
+    /// Current navigation mode
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::AstroMount.GamepadMode GamepadMode {
+      get { return gamepadMode_; }
+      set {
+        gamepadMode_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "bootstrap_calibrated" field.</summary>
+    public const int BootstrapCalibratedFieldNumber = 20;
+    private bool bootstrapCalibrated_;
+    /// <summary>
+    /// Whether bootstrap calibration is done
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool BootstrapCalibrated {
+      get { return bootstrapCalibrated_; }
+      set {
+        bootstrapCalibrated_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "tpoint_calibrated" field.</summary>
+    public const int TpointCalibratedFieldNumber = 21;
+    private bool tpointCalibrated_;
+    /// <summary>
+    /// Whether TPOINT calibration is done
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool TpointCalibrated {
+      get { return tpointCalibrated_; }
+      set {
+        tpointCalibrated_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "max_velocity" field.</summary>
+    public const int MaxVelocityFieldNumber = 22;
+    private double maxVelocity_;
+    /// <summary>
+    /// Current max velocity (deg/s) – adjustable via speed buttons
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double MaxVelocity {
+      get { return maxVelocity_; }
+      set {
+        maxVelocity_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_bootstrap_calibrate" field.</summary>
+    public const int ButtonBootstrapCalibrateFieldNumber = 23;
+    private bool buttonBootstrapCalibrate_;
+    /// <summary>
+    /// NEW: Extended button states for advanced mount operations
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonBootstrapCalibrate {
+      get { return buttonBootstrapCalibrate_; }
+      set {
+        buttonBootstrapCalibrate_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_tpoint_calibrate" field.</summary>
+    public const int ButtonTpointCalibrateFieldNumber = 24;
+    private bool buttonTpointCalibrate_;
+    /// <summary>
+    /// Trigger TPOINT calibration
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonTpointCalibrate {
+      get { return buttonTpointCalibrate_; }
+      set {
+        buttonTpointCalibrate_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_meridian_flip" field.</summary>
+    public const int ButtonMeridianFlipFieldNumber = 25;
+    private bool buttonMeridianFlip_;
+    /// <summary>
+    /// Execute meridian flip
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonMeridianFlip {
+      get { return buttonMeridianFlip_; }
+      set {
+        buttonMeridianFlip_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_mode_cycle" field.</summary>
+    public const int ButtonModeCycleFieldNumber = 26;
+    private bool buttonModeCycle_;
+    /// <summary>
+    /// Cycle through navigation modes
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonModeCycle {
+      get { return buttonModeCycle_; }
+      set {
+        buttonModeCycle_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_clear_errors" field.</summary>
+    public const int ButtonClearErrorsFieldNumber = 27;
+    private bool buttonClearErrors_;
+    /// <summary>
+    /// Clear error state
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonClearErrors {
+      get { return buttonClearErrors_; }
+      set {
+        buttonClearErrors_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "button_unpark" field.</summary>
+    public const int ButtonUnparkFieldNumber = 28;
+    private bool buttonUnpark_;
+    /// <summary>
+    /// Unpark mount
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool ButtonUnpark {
+      get { return buttonUnpark_; }
+      set {
+        buttonUnpark_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GamepadState);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GamepadState other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Connected != other.Connected) return false;
+      if (DeviceName != other.DeviceName) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(AxisLx, other.AxisLx)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(AxisLy, other.AxisLy)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(AxisRx, other.AxisRx)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(AxisRy, other.AxisRy)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(AxisTriggerL, other.AxisTriggerL)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(AxisTriggerR, other.AxisTriggerR)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(PovHat, other.PovHat)) return false;
+      if (ButtonStop != other.ButtonStop) return false;
+      if (ButtonEmergencyStop != other.ButtonEmergencyStop) return false;
+      if (ButtonPark != other.ButtonPark) return false;
+      if (ButtonSpeedUp != other.ButtonSpeedUp) return false;
+      if (ButtonSpeedDown != other.ButtonSpeedDown) return false;
+      if (ButtonManualToggle != other.ButtonManualToggle) return false;
+      if (ButtonHome != other.ButtonHome) return false;
+      if (AxisCount != other.AxisCount) return false;
+      if (ButtonCount != other.ButtonCount) return false;
+      if (GamepadMode != other.GamepadMode) return false;
+      if (BootstrapCalibrated != other.BootstrapCalibrated) return false;
+      if (TpointCalibrated != other.TpointCalibrated) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(MaxVelocity, other.MaxVelocity)) return false;
+      if (ButtonBootstrapCalibrate != other.ButtonBootstrapCalibrate) return false;
+      if (ButtonTpointCalibrate != other.ButtonTpointCalibrate) return false;
+      if (ButtonMeridianFlip != other.ButtonMeridianFlip) return false;
+      if (ButtonModeCycle != other.ButtonModeCycle) return false;
+      if (ButtonClearErrors != other.ButtonClearErrors) return false;
+      if (ButtonUnpark != other.ButtonUnpark) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Connected != false) hash ^= Connected.GetHashCode();
+      if (DeviceName.Length != 0) hash ^= DeviceName.GetHashCode();
+      if (AxisLx != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AxisLx);
+      if (AxisLy != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AxisLy);
+      if (AxisRx != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AxisRx);
+      if (AxisRy != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AxisRy);
+      if (AxisTriggerL != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AxisTriggerL);
+      if (AxisTriggerR != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(AxisTriggerR);
+      if (PovHat != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(PovHat);
+      if (ButtonStop != false) hash ^= ButtonStop.GetHashCode();
+      if (ButtonEmergencyStop != false) hash ^= ButtonEmergencyStop.GetHashCode();
+      if (ButtonPark != false) hash ^= ButtonPark.GetHashCode();
+      if (ButtonSpeedUp != false) hash ^= ButtonSpeedUp.GetHashCode();
+      if (ButtonSpeedDown != false) hash ^= ButtonSpeedDown.GetHashCode();
+      if (ButtonManualToggle != false) hash ^= ButtonManualToggle.GetHashCode();
+      if (ButtonHome != false) hash ^= ButtonHome.GetHashCode();
+      if (AxisCount != 0) hash ^= AxisCount.GetHashCode();
+      if (ButtonCount != 0) hash ^= ButtonCount.GetHashCode();
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) hash ^= GamepadMode.GetHashCode();
+      if (BootstrapCalibrated != false) hash ^= BootstrapCalibrated.GetHashCode();
+      if (TpointCalibrated != false) hash ^= TpointCalibrated.GetHashCode();
+      if (MaxVelocity != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(MaxVelocity);
+      if (ButtonBootstrapCalibrate != false) hash ^= ButtonBootstrapCalibrate.GetHashCode();
+      if (ButtonTpointCalibrate != false) hash ^= ButtonTpointCalibrate.GetHashCode();
+      if (ButtonMeridianFlip != false) hash ^= ButtonMeridianFlip.GetHashCode();
+      if (ButtonModeCycle != false) hash ^= ButtonModeCycle.GetHashCode();
+      if (ButtonClearErrors != false) hash ^= ButtonClearErrors.GetHashCode();
+      if (ButtonUnpark != false) hash ^= ButtonUnpark.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Connected != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Connected);
+      }
+      if (DeviceName.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(DeviceName);
+      }
+      if (AxisLx != 0D) {
+        output.WriteRawTag(25);
+        output.WriteDouble(AxisLx);
+      }
+      if (AxisLy != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(AxisLy);
+      }
+      if (AxisRx != 0D) {
+        output.WriteRawTag(41);
+        output.WriteDouble(AxisRx);
+      }
+      if (AxisRy != 0D) {
+        output.WriteRawTag(49);
+        output.WriteDouble(AxisRy);
+      }
+      if (AxisTriggerL != 0D) {
+        output.WriteRawTag(57);
+        output.WriteDouble(AxisTriggerL);
+      }
+      if (AxisTriggerR != 0D) {
+        output.WriteRawTag(65);
+        output.WriteDouble(AxisTriggerR);
+      }
+      if (PovHat != 0D) {
+        output.WriteRawTag(73);
+        output.WriteDouble(PovHat);
+      }
+      if (ButtonStop != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(ButtonStop);
+      }
+      if (ButtonEmergencyStop != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(ButtonEmergencyStop);
+      }
+      if (ButtonPark != false) {
+        output.WriteRawTag(96);
+        output.WriteBool(ButtonPark);
+      }
+      if (ButtonSpeedUp != false) {
+        output.WriteRawTag(104);
+        output.WriteBool(ButtonSpeedUp);
+      }
+      if (ButtonSpeedDown != false) {
+        output.WriteRawTag(112);
+        output.WriteBool(ButtonSpeedDown);
+      }
+      if (ButtonManualToggle != false) {
+        output.WriteRawTag(120);
+        output.WriteBool(ButtonManualToggle);
+      }
+      if (ButtonHome != false) {
+        output.WriteRawTag(128, 1);
+        output.WriteBool(ButtonHome);
+      }
+      if (AxisCount != 0) {
+        output.WriteRawTag(136, 1);
+        output.WriteInt32(AxisCount);
+      }
+      if (ButtonCount != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteInt32(ButtonCount);
+      }
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        output.WriteRawTag(152, 1);
+        output.WriteEnum((int) GamepadMode);
+      }
+      if (BootstrapCalibrated != false) {
+        output.WriteRawTag(160, 1);
+        output.WriteBool(BootstrapCalibrated);
+      }
+      if (TpointCalibrated != false) {
+        output.WriteRawTag(168, 1);
+        output.WriteBool(TpointCalibrated);
+      }
+      if (MaxVelocity != 0D) {
+        output.WriteRawTag(177, 1);
+        output.WriteDouble(MaxVelocity);
+      }
+      if (ButtonBootstrapCalibrate != false) {
+        output.WriteRawTag(184, 1);
+        output.WriteBool(ButtonBootstrapCalibrate);
+      }
+      if (ButtonTpointCalibrate != false) {
+        output.WriteRawTag(192, 1);
+        output.WriteBool(ButtonTpointCalibrate);
+      }
+      if (ButtonMeridianFlip != false) {
+        output.WriteRawTag(200, 1);
+        output.WriteBool(ButtonMeridianFlip);
+      }
+      if (ButtonModeCycle != false) {
+        output.WriteRawTag(208, 1);
+        output.WriteBool(ButtonModeCycle);
+      }
+      if (ButtonClearErrors != false) {
+        output.WriteRawTag(216, 1);
+        output.WriteBool(ButtonClearErrors);
+      }
+      if (ButtonUnpark != false) {
+        output.WriteRawTag(224, 1);
+        output.WriteBool(ButtonUnpark);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Connected != false) {
+        output.WriteRawTag(8);
+        output.WriteBool(Connected);
+      }
+      if (DeviceName.Length != 0) {
+        output.WriteRawTag(18);
+        output.WriteString(DeviceName);
+      }
+      if (AxisLx != 0D) {
+        output.WriteRawTag(25);
+        output.WriteDouble(AxisLx);
+      }
+      if (AxisLy != 0D) {
+        output.WriteRawTag(33);
+        output.WriteDouble(AxisLy);
+      }
+      if (AxisRx != 0D) {
+        output.WriteRawTag(41);
+        output.WriteDouble(AxisRx);
+      }
+      if (AxisRy != 0D) {
+        output.WriteRawTag(49);
+        output.WriteDouble(AxisRy);
+      }
+      if (AxisTriggerL != 0D) {
+        output.WriteRawTag(57);
+        output.WriteDouble(AxisTriggerL);
+      }
+      if (AxisTriggerR != 0D) {
+        output.WriteRawTag(65);
+        output.WriteDouble(AxisTriggerR);
+      }
+      if (PovHat != 0D) {
+        output.WriteRawTag(73);
+        output.WriteDouble(PovHat);
+      }
+      if (ButtonStop != false) {
+        output.WriteRawTag(80);
+        output.WriteBool(ButtonStop);
+      }
+      if (ButtonEmergencyStop != false) {
+        output.WriteRawTag(88);
+        output.WriteBool(ButtonEmergencyStop);
+      }
+      if (ButtonPark != false) {
+        output.WriteRawTag(96);
+        output.WriteBool(ButtonPark);
+      }
+      if (ButtonSpeedUp != false) {
+        output.WriteRawTag(104);
+        output.WriteBool(ButtonSpeedUp);
+      }
+      if (ButtonSpeedDown != false) {
+        output.WriteRawTag(112);
+        output.WriteBool(ButtonSpeedDown);
+      }
+      if (ButtonManualToggle != false) {
+        output.WriteRawTag(120);
+        output.WriteBool(ButtonManualToggle);
+      }
+      if (ButtonHome != false) {
+        output.WriteRawTag(128, 1);
+        output.WriteBool(ButtonHome);
+      }
+      if (AxisCount != 0) {
+        output.WriteRawTag(136, 1);
+        output.WriteInt32(AxisCount);
+      }
+      if (ButtonCount != 0) {
+        output.WriteRawTag(144, 1);
+        output.WriteInt32(ButtonCount);
+      }
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        output.WriteRawTag(152, 1);
+        output.WriteEnum((int) GamepadMode);
+      }
+      if (BootstrapCalibrated != false) {
+        output.WriteRawTag(160, 1);
+        output.WriteBool(BootstrapCalibrated);
+      }
+      if (TpointCalibrated != false) {
+        output.WriteRawTag(168, 1);
+        output.WriteBool(TpointCalibrated);
+      }
+      if (MaxVelocity != 0D) {
+        output.WriteRawTag(177, 1);
+        output.WriteDouble(MaxVelocity);
+      }
+      if (ButtonBootstrapCalibrate != false) {
+        output.WriteRawTag(184, 1);
+        output.WriteBool(ButtonBootstrapCalibrate);
+      }
+      if (ButtonTpointCalibrate != false) {
+        output.WriteRawTag(192, 1);
+        output.WriteBool(ButtonTpointCalibrate);
+      }
+      if (ButtonMeridianFlip != false) {
+        output.WriteRawTag(200, 1);
+        output.WriteBool(ButtonMeridianFlip);
+      }
+      if (ButtonModeCycle != false) {
+        output.WriteRawTag(208, 1);
+        output.WriteBool(ButtonModeCycle);
+      }
+      if (ButtonClearErrors != false) {
+        output.WriteRawTag(216, 1);
+        output.WriteBool(ButtonClearErrors);
+      }
+      if (ButtonUnpark != false) {
+        output.WriteRawTag(224, 1);
+        output.WriteBool(ButtonUnpark);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Connected != false) {
+        size += 1 + 1;
+      }
+      if (DeviceName.Length != 0) {
+        size += 1 + pb::CodedOutputStream.ComputeStringSize(DeviceName);
+      }
+      if (AxisLx != 0D) {
+        size += 1 + 8;
+      }
+      if (AxisLy != 0D) {
+        size += 1 + 8;
+      }
+      if (AxisRx != 0D) {
+        size += 1 + 8;
+      }
+      if (AxisRy != 0D) {
+        size += 1 + 8;
+      }
+      if (AxisTriggerL != 0D) {
+        size += 1 + 8;
+      }
+      if (AxisTriggerR != 0D) {
+        size += 1 + 8;
+      }
+      if (PovHat != 0D) {
+        size += 1 + 8;
+      }
+      if (ButtonStop != false) {
+        size += 1 + 1;
+      }
+      if (ButtonEmergencyStop != false) {
+        size += 1 + 1;
+      }
+      if (ButtonPark != false) {
+        size += 1 + 1;
+      }
+      if (ButtonSpeedUp != false) {
+        size += 1 + 1;
+      }
+      if (ButtonSpeedDown != false) {
+        size += 1 + 1;
+      }
+      if (ButtonManualToggle != false) {
+        size += 1 + 1;
+      }
+      if (ButtonHome != false) {
+        size += 2 + 1;
+      }
+      if (AxisCount != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(AxisCount);
+      }
+      if (ButtonCount != 0) {
+        size += 2 + pb::CodedOutputStream.ComputeInt32Size(ButtonCount);
+      }
+      if (GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        size += 2 + pb::CodedOutputStream.ComputeEnumSize((int) GamepadMode);
+      }
+      if (BootstrapCalibrated != false) {
+        size += 2 + 1;
+      }
+      if (TpointCalibrated != false) {
+        size += 2 + 1;
+      }
+      if (MaxVelocity != 0D) {
+        size += 2 + 8;
+      }
+      if (ButtonBootstrapCalibrate != false) {
+        size += 2 + 1;
+      }
+      if (ButtonTpointCalibrate != false) {
+        size += 2 + 1;
+      }
+      if (ButtonMeridianFlip != false) {
+        size += 2 + 1;
+      }
+      if (ButtonModeCycle != false) {
+        size += 2 + 1;
+      }
+      if (ButtonClearErrors != false) {
+        size += 2 + 1;
+      }
+      if (ButtonUnpark != false) {
+        size += 2 + 1;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GamepadState other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Connected != false) {
+        Connected = other.Connected;
+      }
+      if (other.DeviceName.Length != 0) {
+        DeviceName = other.DeviceName;
+      }
+      if (other.AxisLx != 0D) {
+        AxisLx = other.AxisLx;
+      }
+      if (other.AxisLy != 0D) {
+        AxisLy = other.AxisLy;
+      }
+      if (other.AxisRx != 0D) {
+        AxisRx = other.AxisRx;
+      }
+      if (other.AxisRy != 0D) {
+        AxisRy = other.AxisRy;
+      }
+      if (other.AxisTriggerL != 0D) {
+        AxisTriggerL = other.AxisTriggerL;
+      }
+      if (other.AxisTriggerR != 0D) {
+        AxisTriggerR = other.AxisTriggerR;
+      }
+      if (other.PovHat != 0D) {
+        PovHat = other.PovHat;
+      }
+      if (other.ButtonStop != false) {
+        ButtonStop = other.ButtonStop;
+      }
+      if (other.ButtonEmergencyStop != false) {
+        ButtonEmergencyStop = other.ButtonEmergencyStop;
+      }
+      if (other.ButtonPark != false) {
+        ButtonPark = other.ButtonPark;
+      }
+      if (other.ButtonSpeedUp != false) {
+        ButtonSpeedUp = other.ButtonSpeedUp;
+      }
+      if (other.ButtonSpeedDown != false) {
+        ButtonSpeedDown = other.ButtonSpeedDown;
+      }
+      if (other.ButtonManualToggle != false) {
+        ButtonManualToggle = other.ButtonManualToggle;
+      }
+      if (other.ButtonHome != false) {
+        ButtonHome = other.ButtonHome;
+      }
+      if (other.AxisCount != 0) {
+        AxisCount = other.AxisCount;
+      }
+      if (other.ButtonCount != 0) {
+        ButtonCount = other.ButtonCount;
+      }
+      if (other.GamepadMode != global::AstroMount.GamepadMode.GamepadRaw) {
+        GamepadMode = other.GamepadMode;
+      }
+      if (other.BootstrapCalibrated != false) {
+        BootstrapCalibrated = other.BootstrapCalibrated;
+      }
+      if (other.TpointCalibrated != false) {
+        TpointCalibrated = other.TpointCalibrated;
+      }
+      if (other.MaxVelocity != 0D) {
+        MaxVelocity = other.MaxVelocity;
+      }
+      if (other.ButtonBootstrapCalibrate != false) {
+        ButtonBootstrapCalibrate = other.ButtonBootstrapCalibrate;
+      }
+      if (other.ButtonTpointCalibrate != false) {
+        ButtonTpointCalibrate = other.ButtonTpointCalibrate;
+      }
+      if (other.ButtonMeridianFlip != false) {
+        ButtonMeridianFlip = other.ButtonMeridianFlip;
+      }
+      if (other.ButtonModeCycle != false) {
+        ButtonModeCycle = other.ButtonModeCycle;
+      }
+      if (other.ButtonClearErrors != false) {
+        ButtonClearErrors = other.ButtonClearErrors;
+      }
+      if (other.ButtonUnpark != false) {
+        ButtonUnpark = other.ButtonUnpark;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Connected = input.ReadBool();
+            break;
+          }
+          case 18: {
+            DeviceName = input.ReadString();
+            break;
+          }
+          case 25: {
+            AxisLx = input.ReadDouble();
+            break;
+          }
+          case 33: {
+            AxisLy = input.ReadDouble();
+            break;
+          }
+          case 41: {
+            AxisRx = input.ReadDouble();
+            break;
+          }
+          case 49: {
+            AxisRy = input.ReadDouble();
+            break;
+          }
+          case 57: {
+            AxisTriggerL = input.ReadDouble();
+            break;
+          }
+          case 65: {
+            AxisTriggerR = input.ReadDouble();
+            break;
+          }
+          case 73: {
+            PovHat = input.ReadDouble();
+            break;
+          }
+          case 80: {
+            ButtonStop = input.ReadBool();
+            break;
+          }
+          case 88: {
+            ButtonEmergencyStop = input.ReadBool();
+            break;
+          }
+          case 96: {
+            ButtonPark = input.ReadBool();
+            break;
+          }
+          case 104: {
+            ButtonSpeedUp = input.ReadBool();
+            break;
+          }
+          case 112: {
+            ButtonSpeedDown = input.ReadBool();
+            break;
+          }
+          case 120: {
+            ButtonManualToggle = input.ReadBool();
+            break;
+          }
+          case 128: {
+            ButtonHome = input.ReadBool();
+            break;
+          }
+          case 136: {
+            AxisCount = input.ReadInt32();
+            break;
+          }
+          case 144: {
+            ButtonCount = input.ReadInt32();
+            break;
+          }
+          case 152: {
+            GamepadMode = (global::AstroMount.GamepadMode) input.ReadEnum();
+            break;
+          }
+          case 160: {
+            BootstrapCalibrated = input.ReadBool();
+            break;
+          }
+          case 168: {
+            TpointCalibrated = input.ReadBool();
+            break;
+          }
+          case 177: {
+            MaxVelocity = input.ReadDouble();
+            break;
+          }
+          case 184: {
+            ButtonBootstrapCalibrate = input.ReadBool();
+            break;
+          }
+          case 192: {
+            ButtonTpointCalibrate = input.ReadBool();
+            break;
+          }
+          case 200: {
+            ButtonMeridianFlip = input.ReadBool();
+            break;
+          }
+          case 208: {
+            ButtonModeCycle = input.ReadBool();
+            break;
+          }
+          case 216: {
+            ButtonClearErrors = input.ReadBool();
+            break;
+          }
+          case 224: {
+            ButtonUnpark = input.ReadBool();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Connected = input.ReadBool();
+            break;
+          }
+          case 18: {
+            DeviceName = input.ReadString();
+            break;
+          }
+          case 25: {
+            AxisLx = input.ReadDouble();
+            break;
+          }
+          case 33: {
+            AxisLy = input.ReadDouble();
+            break;
+          }
+          case 41: {
+            AxisRx = input.ReadDouble();
+            break;
+          }
+          case 49: {
+            AxisRy = input.ReadDouble();
+            break;
+          }
+          case 57: {
+            AxisTriggerL = input.ReadDouble();
+            break;
+          }
+          case 65: {
+            AxisTriggerR = input.ReadDouble();
+            break;
+          }
+          case 73: {
+            PovHat = input.ReadDouble();
+            break;
+          }
+          case 80: {
+            ButtonStop = input.ReadBool();
+            break;
+          }
+          case 88: {
+            ButtonEmergencyStop = input.ReadBool();
+            break;
+          }
+          case 96: {
+            ButtonPark = input.ReadBool();
+            break;
+          }
+          case 104: {
+            ButtonSpeedUp = input.ReadBool();
+            break;
+          }
+          case 112: {
+            ButtonSpeedDown = input.ReadBool();
+            break;
+          }
+          case 120: {
+            ButtonManualToggle = input.ReadBool();
+            break;
+          }
+          case 128: {
+            ButtonHome = input.ReadBool();
+            break;
+          }
+          case 136: {
+            AxisCount = input.ReadInt32();
+            break;
+          }
+          case 144: {
+            ButtonCount = input.ReadInt32();
+            break;
+          }
+          case 152: {
+            GamepadMode = (global::AstroMount.GamepadMode) input.ReadEnum();
+            break;
+          }
+          case 160: {
+            BootstrapCalibrated = input.ReadBool();
+            break;
+          }
+          case 168: {
+            TpointCalibrated = input.ReadBool();
+            break;
+          }
+          case 177: {
+            MaxVelocity = input.ReadDouble();
+            break;
+          }
+          case 184: {
+            ButtonBootstrapCalibrate = input.ReadBool();
+            break;
+          }
+          case 192: {
+            ButtonTpointCalibrate = input.ReadBool();
+            break;
+          }
+          case 200: {
+            ButtonMeridianFlip = input.ReadBool();
+            break;
+          }
+          case 208: {
+            ButtonModeCycle = input.ReadBool();
+            break;
+          }
+          case 216: {
+            ButtonClearErrors = input.ReadBool();
+            break;
+          }
+          case 224: {
+            ButtonUnpark = input.ReadBool();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// Wrapper message for SetGamepadMode RPC
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class GamepadModeRequest : pb::IMessage<GamepadModeRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<GamepadModeRequest> _parser = new pb::MessageParser<GamepadModeRequest>(() => new GamepadModeRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<GamepadModeRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[61]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadModeRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadModeRequest(GamepadModeRequest other) : this() {
+      mode_ = other.mode_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public GamepadModeRequest Clone() {
+      return new GamepadModeRequest(this);
+    }
+
+    /// <summary>Field number for the "mode" field.</summary>
+    public const int ModeFieldNumber = 1;
+    private global::AstroMount.GamepadMode mode_ = global::AstroMount.GamepadMode.GamepadRaw;
+    /// <summary>
+    /// Desired gamepad navigation mode
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public global::AstroMount.GamepadMode Mode {
+      get { return mode_; }
+      set {
+        mode_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as GamepadModeRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(GamepadModeRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (Mode != other.Mode) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Mode != global::AstroMount.GamepadMode.GamepadRaw) hash ^= Mode.GetHashCode();
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Mode != global::AstroMount.GamepadMode.GamepadRaw) {
+        output.WriteRawTag(8);
+        output.WriteEnum((int) Mode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Mode != global::AstroMount.GamepadMode.GamepadRaw) {
+        output.WriteRawTag(8);
+        output.WriteEnum((int) Mode);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Mode != global::AstroMount.GamepadMode.GamepadRaw) {
+        size += 1 + pb::CodedOutputStream.ComputeEnumSize((int) Mode);
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(GamepadModeRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Mode != global::AstroMount.GamepadMode.GamepadRaw) {
+        Mode = other.Mode;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 8: {
+            Mode = (global::AstroMount.GamepadMode) input.ReadEnum();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 8: {
+            Mode = (global::AstroMount.GamepadMode) input.ReadEnum();
+            break;
+          }
         }
       }
     }
@@ -30818,7 +34661,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[60]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[62]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -31028,7 +34871,7 @@ namespace AstroMount {
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
     [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
     public static pbr::MessageDescriptor Descriptor {
-      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[61]; }
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[63]; }
     }
 
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
@@ -31202,6 +35045,253 @@ namespace AstroMount {
             break;
           case 8: {
             ForceRestart = input.ReadBool();
+            break;
+          }
+        }
+      }
+    }
+    #endif
+
+  }
+
+  /// <summary>
+  /// Mount homing request — sets the internal reference position for the
+  /// mount axes to known telescope coordinates.  Used after physically
+  /// pointing the telescope at a known celestial object (e.g. Polaris)
+  /// to establish a correct coordinate reference before tracking.
+  /// </summary>
+  [global::System.Diagnostics.DebuggerDisplayAttribute("{ToString(),nq}")]
+  public sealed partial class MountHomingRequest : pb::IMessage<MountHomingRequest>
+  #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      , pb::IBufferMessage
+  #endif
+  {
+    private static readonly pb::MessageParser<MountHomingRequest> _parser = new pb::MessageParser<MountHomingRequest>(() => new MountHomingRequest());
+    private pb::UnknownFieldSet _unknownFields;
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pb::MessageParser<MountHomingRequest> Parser { get { return _parser; } }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public static pbr::MessageDescriptor Descriptor {
+      get { return global::AstroMount.MountControllerReflection.Descriptor.MessageTypes[64]; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    pbr::MessageDescriptor pb::IMessage.Descriptor {
+      get { return Descriptor; }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public MountHomingRequest() {
+      OnConstruction();
+    }
+
+    partial void OnConstruction();
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public MountHomingRequest(MountHomingRequest other) : this() {
+      axis1_ = other.axis1_;
+      axis2_ = other.axis2_;
+      _unknownFields = pb::UnknownFieldSet.Clone(other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public MountHomingRequest Clone() {
+      return new MountHomingRequest(this);
+    }
+
+    /// <summary>Field number for the "axis1" field.</summary>
+    public const int Axis1FieldNumber = 1;
+    private double axis1_;
+    /// <summary>
+    /// Telescope axis1 position [degrees] (HA for equatorial, altitude for alt-az/casual)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double Axis1 {
+      get { return axis1_; }
+      set {
+        axis1_ = value;
+      }
+    }
+
+    /// <summary>Field number for the "axis2" field.</summary>
+    public const int Axis2FieldNumber = 2;
+    private double axis2_;
+    /// <summary>
+    /// Telescope axis2 position [degrees] (Dec for equatorial, azimuth for alt-az/casual)
+    /// </summary>
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public double Axis2 {
+      get { return axis2_; }
+      set {
+        axis2_ = value;
+      }
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override bool Equals(object other) {
+      return Equals(other as MountHomingRequest);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public bool Equals(MountHomingRequest other) {
+      if (ReferenceEquals(other, null)) {
+        return false;
+      }
+      if (ReferenceEquals(other, this)) {
+        return true;
+      }
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Axis1, other.Axis1)) return false;
+      if (!pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.Equals(Axis2, other.Axis2)) return false;
+      return Equals(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override int GetHashCode() {
+      int hash = 1;
+      if (Axis1 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Axis1);
+      if (Axis2 != 0D) hash ^= pbc::ProtobufEqualityComparers.BitwiseDoubleEqualityComparer.GetHashCode(Axis2);
+      if (_unknownFields != null) {
+        hash ^= _unknownFields.GetHashCode();
+      }
+      return hash;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public override string ToString() {
+      return pb::JsonFormatter.ToDiagnosticString(this);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void WriteTo(pb::CodedOutputStream output) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      output.WriteRawMessage(this);
+    #else
+      if (Axis1 != 0D) {
+        output.WriteRawTag(9);
+        output.WriteDouble(Axis1);
+      }
+      if (Axis2 != 0D) {
+        output.WriteRawTag(17);
+        output.WriteDouble(Axis2);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(output);
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalWriteTo(ref pb::WriteContext output) {
+      if (Axis1 != 0D) {
+        output.WriteRawTag(9);
+        output.WriteDouble(Axis1);
+      }
+      if (Axis2 != 0D) {
+        output.WriteRawTag(17);
+        output.WriteDouble(Axis2);
+      }
+      if (_unknownFields != null) {
+        _unknownFields.WriteTo(ref output);
+      }
+    }
+    #endif
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public int CalculateSize() {
+      int size = 0;
+      if (Axis1 != 0D) {
+        size += 1 + 8;
+      }
+      if (Axis2 != 0D) {
+        size += 1 + 8;
+      }
+      if (_unknownFields != null) {
+        size += _unknownFields.CalculateSize();
+      }
+      return size;
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(MountHomingRequest other) {
+      if (other == null) {
+        return;
+      }
+      if (other.Axis1 != 0D) {
+        Axis1 = other.Axis1;
+      }
+      if (other.Axis2 != 0D) {
+        Axis2 = other.Axis2;
+      }
+      _unknownFields = pb::UnknownFieldSet.MergeFrom(_unknownFields, other._unknownFields);
+    }
+
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    public void MergeFrom(pb::CodedInputStream input) {
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+      input.ReadRawMessage(this);
+    #else
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, input);
+            break;
+          case 9: {
+            Axis1 = input.ReadDouble();
+            break;
+          }
+          case 17: {
+            Axis2 = input.ReadDouble();
+            break;
+          }
+        }
+      }
+    #endif
+    }
+
+    #if !GOOGLE_PROTOBUF_REFSTRUCT_COMPATIBILITY_MODE
+    [global::System.Diagnostics.DebuggerNonUserCodeAttribute]
+    [global::System.CodeDom.Compiler.GeneratedCode("protoc", null)]
+    void pb::IBufferMessage.InternalMergeFrom(ref pb::ParseContext input) {
+      uint tag;
+      while ((tag = input.ReadTag()) != 0) {
+      if ((tag & 7) == 4) {
+        // Abort on any end group tag.
+        return;
+      }
+      switch(tag) {
+          default:
+            _unknownFields = pb::UnknownFieldSet.MergeFieldFrom(_unknownFields, ref input);
+            break;
+          case 9: {
+            Axis1 = input.ReadDouble();
+            break;
+          }
+          case 17: {
+            Axis2 = input.ReadDouble();
             break;
           }
         }

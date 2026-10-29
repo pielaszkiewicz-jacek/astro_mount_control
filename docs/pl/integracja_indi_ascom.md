@@ -25,19 +25,19 @@
 ```mermaid
 flowchart LR
     subgraph Klienci
-        K[KStars / Ekos / INDI Control Panel]
-        A[NINA / SGP / MaxIm DL / SkyX / PHD2]
+        K["KStars / Ekos / INDI Control Panel"]
+        A["NINA / SGP / MaxIm DL / SkyX / PHD2"]
     end
     subgraph Sterowniki
-        I[astro_mount_indi_driver (C++)]
-        AS[AstroMountTelescope.dll (C#)]
+        I["astro_mount_indi_driver (C++)"]
+        AS["AstroMountTelescope.dll (C#)"]
     end
     subgraph Komunikacja
-        IS[INDI server / indiserver]
-        AC[ASCOM Platform / Alpaca]
+        IS["INDI server / indiserver"]
+        AC["ASCOM Platform / Alpaca"]
     end
     subgraph Kontroler
-        M[astro_mount_controller<br/>gRPC :50051]
+        M["astro_mount_controller<br/>gRPC :50051"]
     end
     K --> IS
     IS --> I
@@ -90,7 +90,7 @@ Zbuduj i uruchom kontroler (pełny build projektu, patrz [`docs/pl/installation.
 # build (z katalogu projektu)
 cmake --build build -j6
 # uruchomienie (z katalogu projektu)
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 ```
 
 Zweryfikuj, że gRPC nasłuchuje:
@@ -99,7 +99,7 @@ Zweryfikuj, że gRPC nasłuchuje:
 grpc_cli call localhost:50051 CheckHealth "service: 'mount_controller'"
 ```
 
-> Do testów z HAL-em symulowanym użyj [`config/emulation.json`](../config/emulation.json).
+> Do testów z HAL-em symulowanym użyj [`config/mount/emulation.json`](../config/mount/emulation.json).
 
 ---
 
@@ -272,9 +272,9 @@ Driver to tylko „cienki” mostek — logika działa w kontrolerze, który mus
 
 ```bash
 # realny sprzęt:
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 # test bez sprzętu (HAL symulowany):
-./build/bin/astro_mount_controller config/emulation.json
+./build/bin/astro_mount_controller config/mount/emulation.json
 ```
 
 Zweryfikuj: `grpc_cli call localhost:50051 CheckHealth "service: 'mount_controller'"`.
@@ -490,9 +490,9 @@ pliku `/usr/share/indi/drivers.xml` (patrz [`register_driver.cmake.in`](../indi/
   ekspozycja, binning, subframe, frame type, upload, temperatura, `CCD_GAIN`, `CCD_OFFSET`,
   `FILTER_SLOT` / `FILTER_NAME`.
 
-> Kamera jest obecnie **symulowana** („Simulated Camera”). Sterownik INDI odbiera obraz (surowe
-> 16-bitowe piksele w `ExposureProgress.image`), ale obsługa fizycznego sprzętu ZWO/QHY wymaga
-> dokończenia warstwy HAL w `CameraService` (`camera/src/camera_service_impl.cpp`).
+> Domyślnie `CameraService` używa kamery **symulowanej** („Simulated Camera”). Po włączeniu
+> mostu INDI (sekcja poniżej) sterownik odbiera obraz z rzeczywistej kamery INDI
+> (np. PlayerOne/ZWO/QHY) przez `indiserver`.
 
 Instrukcja dla openSUSE (pełny proces instalacji) znajduje się w
 [`docs/pl/instalacja_opensuse.md`](instalacja_opensuse.md).
@@ -519,7 +519,7 @@ Przykład uruchomienia:
 indiserver indi_playerone
 
 # 2. kontroler z mostem kamery
-CAMERA_INDI_DEVICE="PlayerOne" ./build/bin/astro_mount_controller config/default.json
+CAMERA_INDI_DEVICE="PlayerOne" ./build/bin/astro_mount_controller config/mount/default.json
 ```
 
 Bez `CAMERA_INDI_DEVICE` kontroler pozostaje przy symulowanej kamerze.

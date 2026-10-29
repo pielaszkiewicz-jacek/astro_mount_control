@@ -59,7 +59,7 @@ flowchart TB
 
 ### 2.2 Sposoby przełączania trybów
 
-1. **Przez plik konfiguracyjny** ([`default.json`](../../config/default.json:169)):
+1. **Przez plik konfiguracyjny** ([`default.json`](../../config/mount/default.json:169)):
    ```json
    "hal": {
        "interface_type": "SIMULATED",   // lub "CANopen"
@@ -149,7 +149,7 @@ Tryb symulowany pozwala w pełni przetestować działanie kontrolera bez żadneg
 
 ### 4.1 Konfiguracja dla trybu symulowanego
 
-Utwórz plik [`config_simulated.json`](../../config/default.json):
+Utwórz plik [`config_simulated.json`](../../config/mount/default.json):
 
 ```json
 {
@@ -296,7 +296,7 @@ candump can0
 
 ### 5.3 Konfiguracja kontrolera dla CANopen
 
-Utwórz plik [`config_canopen.json`](../../config/default.json):
+Utwórz plik [`config_canopen.json`](../../config/mount/default.json):
 
 ```json
 {
@@ -439,7 +439,7 @@ candump can0,0x700~0x7FF
 
 ### 6.3 Parametry fizyczne osi — kalibracja
 
-Parametry w [`axis_physical_parameters`](../../config/default.json:66) muszą być dostosowane do konkretnego montażu:
+Parametry w [`axis_physical_parameters`](../../config/mount/default.json:66) muszą być dostosowane do konkretnego montażu:
 
 ```json
 "ha_axis": {
@@ -1093,7 +1093,7 @@ EOF
 sudo mkdir -p /opt/astro-mount /etc/astro-mount /var/log/astro-mount
 
 # ── Kopiuj domyślną konfigurację ──
-sudo cp config/default.json /etc/astro-mount/config.json
+sudo cp config/mount/default.json /etc/astro-mount/config.json
 
 # ── Utwórz użytkownika astro ──
 sudo groupadd -f astro
@@ -1384,7 +1384,7 @@ if __name__ == "__main__":
 | Symulowany HAL | [`src/hal/simulated_hal/`](../../src/hal/simulated_hal/) | Implementacja symulowana |
 | CANopen HAL | [`src/hal/canopen_hal/`](../../src/hal/canopen_hal/) | Implementacja CANopen |
 | Testy | [`tests/`](../../tests/) | 9 plików testowych |
-| Konfiguracja | [`config/default.json`](../../config/default.json) | Domyślna konfiguracja |
+| Konfiguracja | [`config/mount/default.json`](../../config/mount/default.json) | Domyślna konfiguracja |
 | Service systemd | [`scripts/astro-mount-controller.service`](../../scripts/astro-mount-controller.service) | Systemd unit |
 
 ---

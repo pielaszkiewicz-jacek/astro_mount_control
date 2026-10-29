@@ -18,6 +18,7 @@
 6. [Feature mapping (INDI ↔ ASCOM ↔ gRPC)](#6-feature-mapping)
 7. [Troubleshooting](#7-troubleshooting)
 8. [Key files](#8-key-files)
+9. [INDI CCD driver (astro_mount_ccd)](#9-indi-ccd-driver-astro_mount_ccd)
 
 ---
 
@@ -26,19 +27,19 @@
 ```mermaid
 flowchart LR
     subgraph Clients
-        K[KStars / Ekos / INDI Control Panel]
-        A[NINA / SGP / MaxIm DL / SkyX / PHD2]
+        K["KStars / Ekos / INDI Control Panel"]
+        A["NINA / SGP / MaxIm DL / SkyX / PHD2"]
     end
     subgraph Drivers
-        I[astro_mount_indi_driver (C++)]
-        AS[AstroMountTelescope.dll (C#)]
+        I["astro_mount_indi_driver (C++)"]
+        AS["AstroMountTelescope.dll (C#)"]
     end
     subgraph Transport
-        IS[INDI server / indiserver]
-        AC[ASCOM Platform / Alpaca]
+        IS["INDI server / indiserver"]
+        AC["ASCOM Platform / Alpaca"]
     end
     subgraph Controller
-        M[astro_mount_controller<br/>gRPC :50051]
+        M["astro_mount_controller<br/>gRPC :50051"]
     end
     K --> IS
     IS --> I
@@ -91,7 +92,7 @@ Build and run the controller (full build, see [`docs/en/installation.md`](instal
 # build (from the project root)
 cmake --build build -j6
 # run (from the project root)
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 ```
 
 Verify gRPC is listening:
@@ -100,7 +101,7 @@ Verify gRPC is listening:
 grpc_cli call localhost:50051 CheckHealth "service: 'mount_controller'"
 ```
 
-> For tests with a simulated HAL use [`config/emulation.json`](../config/emulation.json).
+> For tests with a simulated HAL use [`config/mount/emulation.json`](../config/mount/emulation.json).
 
 ---
 
@@ -296,6 +297,75 @@ Optional: `ssl=1` (or `tls=1`) enables TLS.
 
 ## 8. Key files
 
-- **INDI:** [`indi/astro_mount_driver.cpp`](../indi/astro_mount_driver.cpp), [`indi/astro_mount_driver.h`](../indi/astro_mount_driver.h), [`indi/MountGrpcClient.cpp`](../indi/MountGrpcClient.cpp), [`indi/IndiPropertyMapper.cpp`](../indi/IndiPropertyMapper.cpp), [`indi/CMakeLists.txt`](../indi/CMakeLists.txt)
+- **INDI:** [`indi/astro_mount_driver.cpp`](../indi/astro_mount_driver.cpp), [`indi/astro_mount_driver.h`](../indi/astro_mount_driver.h), [`indi/MountGrpcClient.cpp`](../indi/MountGrpcClient.cpp), [`indi/IndiPropertyMapper.cpp`](../indi/IndiPropertyMapper.cpp), [`indi/astro_mount_ccd.cpp`](../indi/astro_mount_ccd.cpp), [`indi/CameraGrpcClient.cpp`](../indi/CameraGrpcClient.cpp), [`indi/CMakeLists.txt`](../indi/CMakeLists.txt)
 - **ASCOM:** [`ascom/AstroMountTelescope.cs`](../ascom/AstroMountTelescope.cs), [`ascom/SetupDialog.cs`](../ascom/SetupDialog.cs), [`ascom/GrpcClient.cs`](../ascom/GrpcClient.cs), [`ascom/StateCache.cs`](../ascom/StateCache.cs), [`ascom/ConversionHelper.cs`](../ascom/ConversionHelper.cs), [`ascom/AstroMountTelescope.csproj`](../ascom/AstroMountTelescope.csproj)
 - **Shared:** [`proto/mount_controller.proto`](../proto/mount_controller.proto), [`src/main.cpp`](../src/main.cpp) (gRPC hosting on 50051)
+
+---
+
+## 9. INDI CCD driver (astro_mount_ccd)
+
+Alongside the mount driver there is an **INDI CCD driver** — [`indi/astro_mount_ccd.cpp`](../indi/astro_mount_ccd.cpp).
+It connects over gRPC to `CameraService` (hosted in-process on port `50051`) and exposes the camera to
+INDI clients (KStars/Ekos) as a standard CCD device.
+
+### Additional requirements
+
+- **cfitsio** — the `<fitsio.h>` header is required by INDI's `indiccd.h`:
+  ```bash
+  sudo apt install libcfitsio-dev   # Debian/Ubuntu
+  ```
+- INDI SDK (as for the mount driver) and gRPC/protobuf.
+
+### Build
+
+```bash
+cmake -S indi -B indi/build
+cmake --build indi/build -j"$(nproc)"
+```
+
+The build additionally produces the `astro_mount_ccd` binary (CMake target `astro_mount_ccd`).
+
+### Install and register
+
+```bash
+sudo cmake --install indi/build
+```
+
+Installs the binary to `/usr/bin`, [`astro_mount_ccd.xml`](../indi/astro_mount_ccd.xml) to `/usr/share/indi`,
+and idempotently registers the **“AstroMount CCD”** device in the `CCDs` group of `/usr/share/indi/drivers.xml`.
+
+### Configuration and usage
+
+- gRPC endpoint: `GRPC_HOST` / `GRPC_PORT` environment variables (default `localhost:50051`).
+- In the KStars/Ekos profile add **CCD** → “AstroMount CCD”.
+- After connecting, the driver fetches the sensor parameters (`GetCameraInfo`) and exposes CCD properties:
+  exposure, binning, subframe, frame type, upload, temperature, `CCD_GAIN`, `CCD_OFFSET`,
+  `FILTER_SLOT` / `FILTER_NAME`.
+
+> By default `CameraService` uses a **simulated camera**; when the INDI bridge is enabled
+> (see below), the driver receives images from a real INDI camera (e.g. PlayerOne/ZWO/QHY).
+
+### INDI → gRPC bridge (driving a real camera from the controller)
+
+`CameraService` can drive a **real INDI camera** (e.g. PlayerOne `indi_playerone`, ZWO `indi_asi`) as an
+indiserver client. Enable it via the controller environment variables:
+
+```bash
+CAMERA_INDI_DEVICE="PlayerOne"    # INDI device name (required, enables the bridge)
+CAMERA_INDI_HOST="localhost"      # indiserver host (default localhost)
+CAMERA_INDI_PORT=7624             # indiserver port (default 7624)
+```
+
+```bash
+# 1. indiserver with the camera driver (separate process)
+indiserver indi_playerone
+
+# 2. controller with the camera bridge
+CAMERA_INDI_DEVICE="PlayerOne" ./build/bin/astro_mount_controller config/mount/default.json
+```
+
+Without `CAMERA_INDI_DEVICE` the controller stays on the simulated camera.
+Bridge implementation: [`camera/indi_camera_client.cpp`](../camera/indi_camera_client.cpp) (an
+`INDI::BaseClient` client) and [`CameraServiceImpl`](../camera/src/camera_service_impl.cpp)
+(redirects exposure/filter/cooling to INDI). Building the controller now requires the `libindi` package.

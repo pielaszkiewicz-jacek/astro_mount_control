@@ -413,7 +413,7 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
     subgraph Layer1["📂 Layer 1: JSON File"]
-        L1["config/default.json<br/><code>Contains all default values</code><br/><code>Loaded at startup by main.cpp</code>"]
+        L1["config/mount/default.json<br/><code>Contains all default values</code><br/><code>Loaded at startup by main.cpp</code>"]
     end
 
     subgraph Layer2["⚙️ Layer 2: Configuration Class (Pimpl)"]
@@ -438,7 +438,7 @@ flowchart TD
 ### Adding a New Configuration Parameter
 
 1. Add field to the appropriate struct in [`configuration.h`](include/config/configuration.h)
-2. Add JSON key to [`default.json`](config/default.json)
+2. Add JSON key to [`default.json`](config/mount/default.json)
 3. Add getter/setter in [`configuration.cpp`](src/config/configuration.cpp)
 4. Add validation check in `validate()` method (same file, line 60)
 5. Add default value in `initializeDefaults()` method (same file, line 853)
@@ -668,7 +668,7 @@ See 11 guards in [`mount_controller.cpp`](src/controllers/mount_controller.cpp).
 
 Start by reading these key files in order:
 
-1. [`config/default.json`](config/default.json) — Understand the configuration structure
+1. [`config/mount/default.json`](config/mount/default.json) — Understand the configuration structure
 2. [`include/config/configuration.h`](include/config/configuration.h) — Configuration data types
 3. [`src/config/configuration.cpp`](src/config/configuration.cpp) — How config is loaded and validated
 4. [`include/controllers/mount_controller.h`](include/controllers/mount_controller.h) — Public API
@@ -758,7 +758,7 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`
 ### Modifying Configuration
 
 1. Add field to struct in [`configuration.h`](include/config/configuration.h)
-2. Add JSON key in [`default.json`](config/default.json)
+2. Add JSON key in [`default.json`](config/mount/default.json)
 3. Add getter/setter + validation in [`configuration.cpp`](src/config/configuration.cpp)
 4. Add default in `initializeDefaults()`
 5. Wire up in [`main.cpp`](src/main.cpp) and/or [`mount_controller.cpp`](src/controllers/mount_controller.cpp)
@@ -791,7 +791,7 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `chore`
 
 | Problem | Solution |
 |---------|----------|
-| Controller fails to initialize | Check `config/default.json` for valid values |
+| Controller fails to initialize | Check `config/mount/default.json` for valid values |
 | gRPC connection refused | Check port 50051 is open, service is running |
 | CAN bus errors | `sudo ip link set can0 up type can bitrate 125000` |
 | Tests hanging | Check for deadlock in mutex acquisition order |

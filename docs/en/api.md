@@ -1202,7 +1202,7 @@ To enable SSL on a server, provide:
 - Certificate file (PEM format, `.crt` or `.pem`)
 - Private key file (PEM format, `.key`)
 
-**Main server** — configure via `config/default.json`:
+**Main server** — configure via `config/mount/default.json`:
 ```json
 {
   "network": {

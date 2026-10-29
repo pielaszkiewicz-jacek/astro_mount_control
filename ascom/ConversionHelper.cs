@@ -15,14 +15,13 @@ namespace AstroMount
     ///   axis2 = Altitude in degrees
     ///   Conversion to RA/Dec requires full coordinate transform (alt-az → equatorial).
     /// 
-    /// Note: This is a simplified helper. The actual controller performs all
-    /// astrometric corrections internally. When querying GetState(), the controller
-    /// already provides current_position (axis1/axis2) which this helper converts
-    /// to the RA/Dec values expected by ASCOM.
+    /// The controller works in the apparent (JNow/of-date) frame. ASCOM clients
+    /// exchange J2000 coordinates, so this helper also provides J2000↔JNow
+    /// precession (IAU 1976) and equatorial→horizontal conversion.
     /// </summary>
     public class ConversionHelper
     {
-        private readonly double _latitude;  // Observer latitude in degrees
+        private double _latitude;  // Observer latitude in degrees
 
         /// <param name="latitude">Observer latitude in degrees (positive North).</param>
         public ConversionHelper(double latitude = 52.0)
@@ -61,6 +60,56 @@ namespace AstroMount
                 default:
                     return (0, 0);
             }
+        }
+
+        /// <summary>
+        /// Precess J2000 equatorial coordinates to the apparent frame (JNow, of date).
+        /// Uses the IAU 1976 precession angles for consistency with the controller.
+        /// </summary>
+        public (double RaHours, double DecDegrees) J2000ToJNow(double raHours, double decDegrees)
+        {
+            var angles = PrecessionAngles();
+            return Precess(raHours, decDegrees, angles.Zeta, angles.Z, angles.Theta);
+        }
+
+        /// <summary>
+        /// Precess apparent (JNow) equatorial coordinates to J2000.
+        /// Inverse of <see cref="J2000ToJNow"/>.
+        /// </summary>
+        public (double RaHours, double DecDegrees) JNowToJ2000(double raHours, double decDegrees)
+        {
+            var angles = PrecessionAngles();
+            // Inverse precession: swap and negate the rotation angles.
+            return Precess(raHours, decDegrees, -angles.Z, -angles.Zeta, -angles.Theta);
+        }
+
+        /// <summary>
+        /// Convert equatorial (JNow) coordinates to horizontal (Alt/Az).
+        /// </summary>
+        /// <param name="raHours">Right ascension in hours (of date).</param>
+        /// <param name="decDegrees">Declination in degrees (of date).</param>
+        /// <param name="lstHours">Local sidereal time in hours.</param>
+        /// <returns>Tuple (Altitude_deg, Azimuth_deg). Azimuth is measured from North, positive East.</returns>
+        public (double Altitude, double Azimuth) RaDecToHorizontal(
+            double raHours, double decDegrees, double lstHours)
+        {
+            double haHours = lstHours - raHours;
+            double haRad = HoursToRadians(haHours);
+            double decRad = DegreesToRadians(decDegrees);
+            double latRad = DegreesToRadians(_latitude);
+
+            double sinAlt = Math.Sin(decRad) * Math.Sin(latRad) +
+                            Math.Cos(decRad) * Math.Cos(latRad) * Math.Cos(haRad);
+            double altRad = Math.Asin(Clamp(sinAlt, -1.0, 1.0));
+
+            // Azimuth measured from South, positive West; add 180° to reference North.
+            double azRad = Math.Atan2(
+                Math.Sin(haRad),
+                Math.Cos(haRad) * Math.Sin(latRad) - Math.Tan(decRad) * Math.Cos(latRad));
+            double azDeg = RadiansToDegrees(azRad) + 180.0;
+            azDeg = ((azDeg % 360.0) + 360.0) % 360.0;
+
+            return (RadiansToDegrees(altRad), azDeg);
         }
 
         /// <summary>
@@ -132,6 +181,57 @@ namespace AstroMount
         }
 
         /// <summary>
+        /// Apply IAU 1976 precession to equatorial coordinates.
+        /// </summary>
+        private static (double RaHours, double DecDegrees) Precess(
+            double raHours, double decDegrees,
+            double zetaDeg, double zDeg, double thetaDeg)
+        {
+            double ra0 = raHours * 15.0 * Math.PI / 180.0;
+            double dec0 = decDegrees * Math.PI / 180.0;
+            double zeta = zetaDeg * Math.PI / 180.0;
+            double z = zDeg * Math.PI / 180.0;
+            double theta = thetaDeg * Math.PI / 180.0;
+
+            double sinDec0 = Math.Sin(dec0);
+            double cosDec0 = Math.Cos(dec0);
+            double a = ra0 + zeta;
+
+            double A = cosDec0 * Math.Sin(a);
+            double B = Math.Cos(theta) * cosDec0 * Math.Cos(a) - Math.Sin(theta) * sinDec0;
+            double C = Math.Sin(theta) * cosDec0 * Math.Cos(a) + Math.Cos(theta) * sinDec0;
+
+            double ra = Math.Atan2(A, B) + z;
+            double dec = Math.Asin(Clamp(C, -1.0, 1.0));
+
+            double raOut = ra * 12.0 / Math.PI;
+            raOut = ((raOut % 24.0) + 24.0) % 24.0;
+
+            return (raOut, dec * 180.0 / Math.PI);
+        }
+
+        /// <summary>
+        /// IAU 1976 precession angles (in degrees) for the current Julian date.
+        /// </summary>
+        private static (double Zeta, double Z, double Theta) PrecessionAngles()
+        {
+            double jd = JulianDateNow();
+            double t = (jd - 2451545.0) / 36525.0;
+
+            double zeta = (2306.2181 * t + 0.30188 * t * t + 0.017998 * t * t * t) / 3600.0;
+            double z = (2306.2181 * t + 1.09468 * t * t + 0.018203 * t * t * t) / 3600.0;
+            double theta = (2004.3109 * t - 0.42665 * t * t - 0.041833 * t * t * t) / 3600.0;
+
+            return (zeta, z, theta);
+        }
+
+        private static double JulianDateNow()
+        {
+            DateTime utcNow = DateTime.UtcNow;
+            return utcNow.ToOADate() + 2415018.5;
+        }
+
+        /// <summary>
         /// Normalize a value in hours to the range [0, range) or [-range/2, range/2].
         /// </summary>
         private double NormalizeHours(double hours, double range)
@@ -145,6 +245,11 @@ namespace AstroMount
                 hours -= range;
 
             return hours;
+        }
+
+        private static double HoursToRadians(double hours)
+        {
+            return hours * Math.PI / 12.0;
         }
 
         /// <summary>
@@ -169,6 +274,13 @@ namespace AstroMount
         private static double RadiansToHours(double radians)
         {
             return radians * 12.0 / Math.PI;
+        }
+
+        private static double Clamp(double value, double min, double max)
+        {
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
         }
 
         /// <summary>

@@ -132,6 +132,15 @@ protected:
     INumberVectorProperty HorizontalCoordNP{};
     INumber HorizontalCoordN[2]{}; // ALT, AZ
 
+    // Legacy INDI timed-guide pulse properties consumed by PHD2 (2.6.x).
+    // PHD2 does not use the modern GuideNSNP/GuideWENP; it sends
+    // TELESCOPE_TIMED_GUIDE_NS / TELESCOPE_TIMED_GUIDE_WE with elements
+    // TIMED_GUIDE_N/S and TIMED_GUIDE_W/E (pulse duration in ms).
+    INumberVectorProperty TimedGuideNSTP{};
+    INumber TimedGuideNSN[2]{}; // TIMED_GUIDE_N, TIMED_GUIDE_S
+    INumberVectorProperty TimedGuideWETP{};
+    INumber TimedGuideWEN[2]{}; // TIMED_GUIDE_W, TIMED_GUIDE_E
+
     // ============================================
     // Controller status (read-only) — surfaces ERROR state
     // ============================================

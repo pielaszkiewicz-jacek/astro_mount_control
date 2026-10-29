@@ -26,7 +26,7 @@ Do przeprowadzenia kalibracji muszą być uruchomione dwa procesy:
 
 | Usługa | Polecenie | Port | Rola |
 |--------|-----------|------|------|
-| Kontroler montażu (C++) | `./build/bin/astro_mount_controller config/default.json` | gRPC `50051` | Hostuje `PidCalibrationService` in-process oraz wykonuje zapisy do napędu |
+| Kontroler montażu (C++) | `./build/bin/astro_mount_controller config/mount/default.json` | gRPC `50051` | Hostuje `PidCalibrationService` in-process oraz wykonuje zapisy do napędu |
 | Web proxy (Node.js) | `cd web/proxy && npm start` | HTTP `8080` | Most HTTP/JSON → gRPC, serwuje interfejs WEB |
 
 Usługa bazy obiektów (`astro_object_database_server`) **nie jest wymagana** do
@@ -36,13 +36,13 @@ kalibracji PID.
 
 ```bash
 cd /home/jacek/development/astro_mount_control
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 ```
 
 Jeśli sterownik ma pracować z napędami MF7025v2 (LingKong), plik konfiguracyjny
 musi mieć typ HAL `MF7025V2` oraz poprawnie skonfigurowany interfejs CAN:
 
-- [`config/mf7025v2.json`](../config/mf7025v2.json) — przykładowa konfiguracja MF7025v2,
+- [`config/mount/mf7025v2.json`](../config/mount/mf7025v2.json) — przykładowa konfiguracja MF7025v2,
 - [`docs/pl/wsparcie_dla_mf7025v2.md`](wsparcie_dla_mf7025v2.md) — szczegóły HAL.
 
 Przed startem kontrolera interfejs CAN musi być włączony, np.:
@@ -90,7 +90,7 @@ Po starcie proxy interfejs WEB jest dostępny pod adresem
    - **Overall winner** — najlepsza kombinacja całej sesji,
    - tabela wszystkich przetestowanych kombinacji (prędkość zadana, Kp/Ki/Kd, średnia, odchylenie, score, liczba próbek).
 9. Aby zapisać wyniki do pliku JSON, uzupełnij opcjonalnie **Save path** (domyślnie
-   `config/pid_calibration_results.json`) i kliknij **💾 Save**.
+   `config/pidcal/pid_calibration_results.json`) i kliknij **💾 Save**.
 
 ---
 

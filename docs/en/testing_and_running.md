@@ -59,7 +59,7 @@ flowchart TB
 
 ### 2.2 Switching Modes
 
-1. **Via configuration file** ([`default.json`](../../config/default.json:169)):
+1. **Via configuration file** ([`default.json`](../../config/mount/default.json:169)):
    ```json
    "hal": {
        "interface_type": "SIMULATED",   // or "CANopen"
@@ -149,7 +149,7 @@ Simulated mode allows full controller testing without any hardware. Ideal for:
 
 ### 4.1 Configuration for Simulated Mode
 
-Create [`config_simulated.json`](../../config/default.json):
+Create [`config_simulated.json`](../../config/mount/default.json):
 
 ```json
 {
@@ -296,7 +296,7 @@ candump can0
 
 ### 5.3 CANopen Controller Configuration
 
-Create [`config_canopen.json`](../../config/default.json):
+Create [`config_canopen.json`](../../config/mount/default.json):
 
 ```json
 {
@@ -439,7 +439,7 @@ candump can0,0x700~0x7FF
 
 ### 6.3 Physical Axis Parameters — Calibration
 
-Parameters in [`axis_physical_parameters`](../../config/default.json:66) must match your specific mount:
+Parameters in [`axis_physical_parameters`](../../config/mount/default.json:66) must match your specific mount:
 
 ```json
 "ha_axis": {
@@ -1042,7 +1042,7 @@ EOF
 sudo mkdir -p /opt/astro-mount /etc/astro-mount /var/log/astro-mount
 
 # ── Copy default config ──
-sudo cp config/default.json /etc/astro-mount/config.json
+sudo cp config/mount/default.json /etc/astro-mount/config.json
 
 # ── Create astro user ──
 sudo groupadd -f astro
@@ -1334,7 +1334,7 @@ if __name__ == "__main__":
 | Simulated HAL | [`src/hal/simulated_hal/`](../../src/hal/simulated_hal/) | Simulated implementation |
 | CANopen HAL | [`src/hal/canopen_hal/`](../../src/hal/canopen_hal/) | CANopen implementation |
 | Tests | [`tests/`](../../tests/) | 9 test files |
-| Configuration | [`config/default.json`](../../config/default.json) | Default configuration |
+| Configuration | [`config/mount/default.json`](../../config/mount/default.json) | Default configuration |
 | Systemd service | [`scripts/astro-mount-controller.service`](../../scripts/astro-mount-controller.service) | Systemd unit |
 
 ---

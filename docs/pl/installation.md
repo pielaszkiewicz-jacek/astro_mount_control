@@ -27,7 +27,7 @@ flowchart TD
 
     subgraph INST["📋 Instalacja"]
         INSTALL["📄 sudo make install<br/>/usr/local/bin/"]:::install
-        CONF["⚙️ Konfiguracja<br/>Edytuj config/default.json<br/>Ustaw lokalizację, parametry, CAN"]:::install
+        CONF["⚙️ Konfiguracja<br/>Edytuj config/mount/default.json<br/>Ustaw lokalizację, parametry, CAN"]:::install
         SERVICE["🔄 Instalacja usługi systemd<br/>sudo systemctl enable astro-mount"]:::install
     end
 
@@ -108,7 +108,7 @@ chmod +x scripts/build_wsl.sh
 ### Krok 5: Uruchom
 
 ```bash
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 ```
 
 Następnie otwórz `http://localhost:8080` w przeglądarce Windows.
@@ -616,14 +616,14 @@ Następnie zbuduj tylko brakujące (np. tylko gRPC, jeśli `grpc-devel` jest nie
 
 ### Plik konfiguracyjny
 
-Główny plik konfiguracyjny znajduje się w `config/default.json`. Można go skopiować i zmodyfikować:
+Główny plik konfiguracyjny znajduje się w `config/mount/default.json`. Można go skopiować i zmodyfikować:
 
 ```bash
 # Kopiowanie domyślnej konfiguracji
-cp config/default.json config/my-config.json
+cp config/mount/default.json config/mount/my-config.json
 
 # Edycja konfiguracji
-nano config/my-config.json
+nano config/mount/my-config.json
 ```
 
 ### Przykładowa konfiguracja
@@ -827,7 +827,7 @@ iface can0 inet manual
 ./build/src/astro-mount-controller
 
 # Uruchomienie z własną konfiguracją
-./build/src/astro-mount-controller config/my-config.json
+./build/src/astro-mount-controller config/mount/my-config.json
 
 # Uruchomienie w tle
 nohup ./build/src/astro-mount-controller > mount.log 2>&1 &

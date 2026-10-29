@@ -407,7 +407,7 @@ flowchart TB
 
 ```mermaid
 flowchart TD
-    FILE["config/default.json<br/>JSON configuration file"]
+    FILE["config/mount/default.json<br/>JSON configuration file"]
     
     CFG["Configuration Loader<br/>src/config/configuration.cpp"]
     

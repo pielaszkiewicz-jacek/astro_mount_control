@@ -7,9 +7,9 @@ Astronomical Mount Controller to modularny system o architekturze hybrydowej, za
 ### Warstwy systemu
 
 1. **Warstwa aplikacji** — SPA webowe, GUI Qt, sterowniki ASCOM/INDI, klienci Python/C++
-2. **Warstwa API** — usługi gRPC (kontroler montażu, kopuła, derotator, focuser w procesie; baza obiektów, pogoda, zasilanie, sekwencer, kamera, PEC, ST4, powiadomienia, pulley)
+2. **Warstwa API** — usługi gRPC (kontroler montażu oraz kopuła, derotator, focuser, kamera, PEC, ST4, pulley, kalibracja PID, powiadomienia w procesie; baza obiektów, pogoda, zasilanie, sekwencer jako samodzielne procesy)
 3. **Warstwa logiki biznesowej** — MountController, kontrolery, modele matematyczne (TPOINT, Kalman, efemerydy)
-4. **Warstwa usług** — podsystemy w procesie (kopuła, derotator, focuser) + samodzielne usługi gRPC (pogoda, zasilanie, sekwencer, baza obiektów)
+4. **Warstwa usług** — podsystemy w procesie (kopuła, derotator, focuser, kamera, ST4, PEC, pulley, kalibracja PID, powiadomienia) + samodzielne usługi gRPC (pogoda, zasilanie, sekwencer, baza obiektów)
 5. **Warstwa komunikacji** — abstrakcja sprzętu (CANopen, szeregowa, Ethernet, gamepad, MF7025v2, symulowana)
 6. **Warstwa sprzętowa** — napędy serwo/kroki, enkodery, czujniki, focusery, kamery, kopuły, zasilanie
 
@@ -39,7 +39,7 @@ flowchart TB
     subgraph CORE["Kontroler montażu (astro_mount_controller)"]
         MC["MountController"]
         MODELS["TPOINT / Kalman / Efemerydy<br/>PEC / Obliczenia astronomiczne"]
-        INPROC["Podsystemy w procesie:<br/>Kopuła / Derotator / Focuser<br/>(serwowane na wspólnym :50051)"]
+        INPROC["Podsystemy w procesie:<br/>Kopuła / Derotator / Focuser / Kamera<br/>PEC / ST4 / Pulley / PIDCal / Powiadomienia<br/>(serwowane na wspólnym :50051)"]
         CLIENTSVC["Klienci usług zewnętrznych (pogoda / zasilanie)"]
     end
 
@@ -83,16 +83,16 @@ flowchart TB
 
 | Plik wykonywalny | Katalog | Domyślny port gRPC | Przeznaczenie |
 |-----------|-----------|-------------------|---------|
-| `astro_mount_controller` | [`src/`](src/main.cpp) | **50051** (zunifikowane API) | Centralny kontroler montażu (maszyna stanów, śledzenie, kalibracja) **plus podsystemy kopuły, derotatora i focusera w procesie** |
+| `astro_mount_controller` | [`src/`](src/main.cpp) | **50051** (zunifikowane API) | Centralny kontroler montażu (maszyna stanów, śledzenie, kalibracja) **plus podsystemy kopuły, derotatora, focusera, kamery, ST4, PEC, pulley, kalibracji PID i powiadomień w procesie** |
 | `astro_object_database_server` | [`db/`](db/src/main.cpp) | 50052 | Katalog obiektów astronomicznych oparty na SQLite |
 | `astro_weather_server` | [`weather/`](weather/src/main.cpp) | 50055 | Monitorowanie pogody, alerty, auto-park |
 | `astro_power_server` | [`power/`](power/src/main.cpp) | 50056 | Monitorowanie baterii/zasilania, przełączanie wyjść |
 | `astro_sequencer_server` | [`sequencer/`](sequencer/src/main.cpp) | 50057 | Zarządzanie sekwencjami obserwacji |
 | Proxy webowe | [`web/proxy/`](web/proxy/server.js) | 8080 (HTTP) | Most HTTP/JSON ↔ gRPC + hosting SPA |
 
-**Zunifikowane API gRPC na jednym porcie (50051).** Usługi kopuły, derotatora i focusera są zarejestrowane na **tym samym serwerze gRPC** co usługa kontrolera montażu, więc wszystkie cztery API są dostępne **wyłącznie na porcie 50051** przez pojedynczy kanał (np. `DomeService/GetStatus` przez 50051). Nie są używane żadne osobne porty — usługi w procesie są serwowane tylko przez wspólny port kontrolera montażu.
+**Zunifikowane API gRPC na jednym porcie (50051).** Usługi kopuły, derotatora, focusera, kamery, ST4, PEC, pulley, kalibracji PID i powiadomień są zarejestrowane na **tym samym serwerze gRPC** co usługa kontrolera montażu, więc wszystkie te API są dostępne **wyłącznie na porcie 50051** przez pojedynczy kanał (np. `DomeService/GetStatus` lub `CameraService/ListCameras` przez 50051). Nie są używane żadne osobne porty — usługi w procesie są serwowane tylko przez wspólny port kontrolera montażu.
 
-**Podsystemy kopuły, derotatora i focusera są hostowane w procesie wewnątrz `astro_mount_controller`** — nie są już osobnymi plikami wykonywalnymi i są serwowane tylko przez wspólny port 50051. Pogoda, zasilanie, sekwencer i baza obiektów pozostają samodzielnymi procesami gRPC. Wszystkie integracje są **domyślnie wyłączone** i włączane przez sekcję `external_services` w konfiguracji. Dla usług samodzielnych (pogoda, zasilanie) pole `address` to adres, z którym łączy się kontroler montażu. Proxy webowe włącza dodatkowe trasy/zakładki przez zmienne środowiskowe `EXT_SERVICE_*`.
+**Podsystemy kopuły, derotatora, focusera, kamery, ST4, PEC, pulley, kalibracji PID i powiadomień są hostowane w procesie wewnątrz `astro_mount_controller`** — nie są osobnymi plikami wykonywalnymi i są serwowane tylko przez wspólny port 50051. Pogoda, zasilanie, sekwencer i baza obiektów pozostają samodzielnymi procesami gRPC. Integracje kopuły, derotatora, focusera, ST4 i PEC są **domyślnie wyłączone** i włączane przez sekcję `external_services` w konfiguracji; kamera, pulley, kalibracja PID i powiadomienia są hostowane zawsze. Dla usług samodzielnych (pogoda, zasilanie) pole `address` to adres, z którym łączy się kontroler montażu. Proxy webowe włącza dodatkowe trasy/zakładki przez zmienne środowiskowe `EXT_SERVICE_*`.
 
 ---
 
@@ -270,7 +270,7 @@ HAL oddziela logikę biznesową od sprzętu. [`HALInterface`](include/hal/hal_in
 
 | Implementacja HAL | Transport / protokół | Źródło |
 |--------------------|----------------------|--------|
-| **CANopen** | CiA 301 / CiA 402 (SocketCAN + CANopenNode) | ⚠️ **Niezaimplementowany** — brak katalogu [`src/hal/canopen_hal/`](src/hal/canopen_hal/); fabryka rzuca wyjątek. Do CAN używaj MF7025v2 |
+| **CANopen** | CiA 301 / CiA 402 (SocketCAN) | [`src/hal/canopen_hal/`](src/hal/canopen_hal/) |
 | **MF7025v2** | Własny protokół CAN V2.36 (LingKong BLDC) | [`src/hal/mf7025v2_hal/`](src/hal/mf7025v2_hal/) |
 | **Szeregowe** | RS-232/485 Modbus RTU z CRC16 | [`src/hal/serial_hal/`](src/hal/serial_hal/) |
 | **Ethernet** | Modbus TCP z ponawianiem | [`src/hal/ethernet_hal/`](src/hal/ethernet_hal/) |
@@ -281,7 +281,7 @@ Dodatkowe HAL-e urządzeń używane przez usługi samodzielne i rdzeń:
 
 - **HAL kopuły** — [`src/hal/dome_hal/`](src/hal/dome_hal/) (szeregowe, rolloff, symulowane)
 - **HAL derotatora** — [`src/hal/derotator_hal/`](src/hal/derotator_hal/) (TMC5160, symulowane)
-- **HAL kamery** — [`src/hal/camera_hal/`](src/hal/camera_hal/) (ZWO ASI, symulowane)
+- **HAL kamery** — [`src/hal/camera_hal/`](src/hal/camera_hal/) (ZWO ASI, symulowane); usługa kamery w procesie steruje realną kamerą przez most INDI ([`camera/indi_camera_client.cpp`](camera/indi_camera_client.cpp)) do `indiserver`
 - **HAL focusera** — [`src/hal/focuser_hal/`](src/hal/focuser_hal/) (ZWO EAF, MoonLite, Pegasus, symulowane)
 - **HAL zasilania** — [`src/hal/power_hal/`](src/hal/power_hal/) (I²C, symulowane)
 - **HAL ST4** — [`src/hal/st4_hal/`](src/hal/st4_hal/) (GPIO sysfs/libgpiod, FTDI, MCP2221, Arduino, symulowane)
@@ -294,7 +294,7 @@ Dodatkowe HAL-e urządzeń używane przez usługi samodzielne i rdzeń:
 
 ### 9. Usługi podsystemów
 
-Kopuła, derotator i focuser są **hostowane w procesie** wewnątrz `astro_mount_controller` (ich implementacje usług są kompilowane do pliku wykonywalnego kontrolera montażu i rejestrowane na jego serwerze gRPC). Pogoda, zasilanie, sekwencer i baza obiektów pozostają **samodzielnymi procesami** z własnym `main.cpp`, wrapperem serwera i implementacją usługi, linkowanym z `astro_mount_core`.
+Kopuła, derotator, focuser, kamera, ST4, PEC, pulley, kalibracja PID i powiadomienia są **hostowane w procesie** wewnątrz `astro_mount_controller` (ich implementacje usług są kompilowane do pliku wykonywalnego kontrolera montażu i rejestrowane na jego serwerze gRPC). Pogoda, zasilanie, sekwencer i baza obiektów pozostają **samodzielnymi procesami** z własnym `main.cpp`, wrapperem serwera i implementacją usługi, linkowanym z `astro_mount_core`.
 
 #### 9.1 Usługa kopuły (w procesie, [`dome/`](dome/))
 - Serwowana w procesie na wspólnym porcie gRPC 50051
@@ -330,6 +330,24 @@ Kopuła, derotator i focuser są **hostowane w procesie** wewnątrz `astro_mount
 - Katalog obiektów astronomicznych oparty na SQLite (pełny CRUD z paginacją i wyszukiwaniem)
 - Obsługa wielu katalogów (Messier, NGC, IC, Caldwell, HYG, SAO itd.)
 - Obiekty ulubione, kategorie, import/eksport
+
+#### 9.8 Usługa kamery (w procesie, [`camera/`](camera/))
+- Serwowana w procesie na wspólnym porcie gRPC 50051
+- Most INDI: łączy się z `indiserver` (domyślnie `localhost:7624`, konfigurowalne przez zmienne środowiskowe `CAMERA_INDI_HOST`/`CAMERA_INDI_PORT`/`CAMERA_INDI_DEVICE`) i steruje realną kamerą CCD (ZWO/QHY/PlayerOne)
+- `StartExposure`, `AbortExposure`, `GetCameraInfo`, `SetFilter`, `GetFilterPosition`, `StartVideoPreview`, `StopVideoPreview`, `SetCooler`, `GetCoolerStatus`, `ListCameras`, `SelectCamera`, `ListProperties`, `SetProperty`
+- Właściwości INDI aktywnej kamery można odczytywać i ustawiać w czasie działania przez `ListProperties`/`SetProperty`
+
+#### 9.9 Usługa ST4 guidera (w procesie, [`st4guider/`](st4guider/))
+- Serwowana w procesie na wspólnym porcie gRPC 50051 (konfigurowalna, `external_services.st4_guider`)
+
+#### 9.10 Usługa PEC (w procesie, [`pec/`](pec/))
+- Serwowana w procesie na wspólnym porcie gRPC 50051 (konfigurowalna, `external_services.pec`)
+
+#### 9.11 Usługa pulley (w procesie, [`pulley/`](pulley/))
+- Serwowana w procesie na wspólnym porcie gRPC 50051 — symulowany aktuator liniowy (zawsze hostowana)
+
+#### 9.12 Usługa kalibracji PID (w procesie, [`pidcal/`](pidcal/))
+- Serwowana w procesie na wspólnym porcie gRPC 50051 — strojenie pętli PID napędów (zawsze hostowana)
 
 ### 10. Silnik powiadomień ([`src/notifications/`](src/notifications/))
 
@@ -367,6 +385,7 @@ Natywna aplikacja desktopowa Qt (Widgets/Network/Svg/Charts), `astro_mount_gui`,
 
 - **Teleskop** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp)) — `INDI::Telescope` dla Ekos/KStars: `MoveNS`/`MoveWE` (axis_id 0=RA/WE, 1=Dec/NS, ±1.0 deg/s), właściwość tekstowa `TPOINT_STATUS`, numeryczna `EnvironmentNP`, park/sync/abort. Cała komunikacja gRPC przez [`MountGrpcClient`](indi/MountGrpcClient.cpp).
 - **Rotator** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp)) — `INDI::Rotator`: `MoveRotator`, `HomeRotator`, `AbortRotator`; tryb `CONNECTION_NONE` (tylko gRPC).
+- **Kamera (CCD)** ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp)) — `INDI::CCD` dla Ekos/KStars: ekspozycje, chłodzenie, filtr; komunikacja gRPC przez [`CameraGrpcClient`](indi/CameraGrpcClient.cpp) z `CameraService` (w procesie).
 
 ---
 
@@ -598,7 +617,7 @@ flowchart TB
 
 ## Architektura sterowników zewnętrznych
 
-System zawiera cztery standardowe sterowniki astronomiczne łączące się z API gRPC jako zewnętrzni klienci.
+System zawiera pięć standardowych sterowników astronomicznych łączących się z API gRPC jako zewnętrzni klienci.
 
 ### 16. Sterownik ASCOM teleskopu ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
 
@@ -663,6 +682,21 @@ flowchart LR
 - `HomeRotator()` → gRPC `HomeDerotator(AUTO)`
 - Tryb `CONNECTION_NONE` — bez połączenia szeregowego/TCP, tylko gRPC
 - Możliwości: `ROTATOR_CAN_ABORT | ROTATOR_CAN_HOME`
+
+### 20. Sterownik INDI kamery (CCD) ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp))
+
+```mermaid
+flowchart LR
+    EKOS3["Ekos/KStars"] -->|"Protokół INDI"| CCD["AstroMountCCD<br/>INDI::CCD"]
+    CCD -->|"gRPC :50051"| CAM["CameraService<br/>(w procesie)"]
+    CCD --> CCD_CLIENT["CameraGrpcClient<br/>indi/CameraGrpcClient.cpp"]
+```
+
+**Kluczowe punkty integracji:**
+- `StartExposure()` → gRPC `StartExposure` (strumień `ExposureProgress`)
+- `SetTemperature()` → gRPC `SetCooler`
+- `SetFilterPosition()` → gRPC `SetFilter`
+- Podgląd wideo → gRPC `StartVideoPreview` / `StopVideoPreview`
 
 ---
 

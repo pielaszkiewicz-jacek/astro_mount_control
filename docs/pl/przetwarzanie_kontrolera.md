@@ -541,7 +541,7 @@ sequenceDiagram
 - `proto/mount_controller.grpc.pb.h`, `.grpc.pb.cc`: wygenerowany kod gRPC
 
 ### Pliki konfiguracyjne:
-- `config/default.json`: domyślna konfiguracja
+- `config/mount/default.json`: domyślna konfiguracja
 - `include/config/configuration.h`, `src/config/configuration.cpp`: system konfiguracji
 
 ### Struktury danych wewnętrznych:

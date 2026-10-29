@@ -209,13 +209,13 @@ After a successful build, binaries are in `build/bin/`:
 cd /mnt/c/Users/jacek/OneDrive/Documents/astro_mount_control/build
 
 # Run with default config (simulated hardware)
-./bin/astro_mount_controller ../config/default.json
+./bin/astro_mount_controller ../config/mount/default.json
 
 # Run with specific config
 ./bin/astro_mount_controller ../config/dual_servo_config.json
 
 # Run with test config (no hardware required)
-./bin/astro_mount_controller ../config/test_no_hardware.json
+./bin/astro_mount_controller ../config/mount/test_no_hardware.json
 ```
 
 The controller will start:

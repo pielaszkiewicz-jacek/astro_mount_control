@@ -446,7 +446,7 @@ The file is saved to `data/uploads/` and loaded via gRPC, then cleaned up.
 #### `GET /config`
 Get full configuration.
 
-**Response:** Full configuration object matching `config/default.json` structure.
+**Response:** Full configuration object matching `config/mount/default.json` structure.
 
 #### `PUT /config`
 Update configuration.

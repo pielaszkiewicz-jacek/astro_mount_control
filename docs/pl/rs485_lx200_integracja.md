@@ -237,7 +237,7 @@ libraries.push_back("lx200");
 
 ## 5. Konfiguracja
 
-### 5.1 JSON (`config/default.json`)
+### 5.1 JSON (`config/mount/default.json`)
 
 ```json
 "lx200": {

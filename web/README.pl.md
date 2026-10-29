@@ -445,7 +445,7 @@ Plik jest zapisywany w `data/uploads/` i ładowany przez gRPC, a następnie usuw
 #### `GET /config`
 Pobiera pełną konfigurację.
 
-**Odpowiedź:** Pełny obiekt konfiguracji zgodny ze strukturą `config/default.json`.
+**Odpowiedź:** Pełny obiekt konfiguracji zgodny ze strukturą `config/mount/default.json`.
 
 #### `PUT /config`
 Aktualizuje konfigurację.

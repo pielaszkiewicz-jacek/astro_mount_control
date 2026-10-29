@@ -194,6 +194,9 @@ namespace AstroMount
                     {
                         var config = _grpc.GetConfiguration();
                         _mountType = config.MountType;
+                        _siteLatitude = config.Latitude;
+                        _siteLongitude = config.Longitude;
+                        _siteElevation = config.Altitude;
                         _conv.SetLatitude(config.Latitude);
                     }
                     catch
@@ -223,12 +226,9 @@ namespace AstroMount
                 var state = _cache.GetState();
                 if (state == null) return 0;
 
-                // Compute LST from controller state or approximate from system time
-                double lst = ApproximateLst();
-
-                var (ra, _) = _conv.MountPositionToRaDec(
-                    state.CurrentPosition, _mountType, lst);
-                return ra;
+                var (raJNow, decJNow) = GetCurrentRaDec(state);
+                var (raJ2000, _) = _conv.JNowToJ2000(raJNow, decJNow);
+                return raJ2000;
             }
         }
 
@@ -243,10 +243,9 @@ namespace AstroMount
                 var state = _cache.GetState();
                 if (state == null) return 0;
 
-                double lst = ApproximateLst();
-                var (_, dec) = _conv.MountPositionToRaDec(
-                    state.CurrentPosition, _mountType, lst);
-                return dec;
+                var (raJNow, decJNow) = GetCurrentRaDec(state);
+                var (_, decJ2000) = _conv.JNowToJ2000(raJNow, decJNow);
+                return decJ2000;
             }
         }
 
@@ -286,7 +285,7 @@ namespace AstroMount
 
         /// <summary>
         /// Whether the mount is currently tracking.
-        /// Setting to true resumes tracking of the last target.
+        /// Setting to true resumes tracking at the current position.
         /// Setting to false stops tracking.
         /// </summary>
         public bool Tracking
@@ -300,14 +299,16 @@ namespace AstroMount
             {
                 if (value && !Tracking)
                 {
-                    // Resume tracking last target
+                    // Track the CURRENT on-sky position, not the last Goto target.
+                    // The controller works in the apparent (JNow) frame.
+                    var state = _cache.GetState() ?? _grpc.GetState();
+                    var (raJNow, decJNow) = GetCurrentRaDec(state);
                     var coords = new Coordinates
                     {
-                        Ra = _targetRa,
-                        Dec = _targetDec,
-                        ApplyPrecession = true,
-                        ApplyNutation = true,
-                        ApplyRefraction = true
+                        Ra = raJNow,
+                        Dec = decJNow,
+                        Epoch = 0.0,
+                        TrackingMode = 0 // SIDEREAL
                     };
                     _grpc.TrackObject(coords);
                 }
@@ -326,8 +327,12 @@ namespace AstroMount
             get
             {
                 var state = _cache.GetState();
-                if (state == null) return PierSide.pierWest;
-                return state.PierSide > 0 ? PierSide.pierEast : PierSide.pierWest;
+                if (state == null) return PierSide.pierUnknown;
+
+                // gRPC pier_side: 1 = East, -1 = West, 0 = unknown (mirrors INDI).
+                if (state.PierSide > 0) return PierSide.pierEast;
+                if (state.PierSide < 0) return PierSide.pierWest;
+                return PierSide.pierUnknown;
             }
         }
 
@@ -421,17 +426,19 @@ namespace AstroMount
         {
             EnsureConnected();
 
+            // ASCOM supplies J2000 coordinates. The controller's slew/track
+            // pipeline works in the apparent (JNow) frame and does NOT apply
+            // precession itself, so precess before sending (mirrors the INDI
+            // driver passing JNow through unchanged).
             _targetRa = raHours;
             _targetDec = decDegrees;
 
+            var (raNow, decNow) = _conv.J2000ToJNow(raHours, decDegrees);
             var coords = new Coordinates
             {
-                Ra = raHours,
-                Dec = decDegrees,
-                ApplyPrecession = true,
-                ApplyNutation = true,
-                ApplyRefraction = true,
-                Epoch = 2000.0
+                Ra = raNow,
+                Dec = decNow,
+                Epoch = 0.0
             };
 
             _grpc.SlewToCoordinates(coords);
@@ -483,7 +490,7 @@ namespace AstroMount
             // The controller expects corrections in arcseconds.
             // We approximate: at sidereal rate, 15 arcsec/sec = 1 second of RA
             // For a typical guide rate of 0.5x sidereal: 7.5 arcsec/sec
-            double guideRateArcsecPerSec = 7.5; // 0.5x sidereal default
+            double guideRateArcsecPerSec = 0.5 * 15.041067; // 0.5x sidereal (arcsec/s)
 
             double raCorrection = 0, decCorrection = 0;
             double correctionArcsec = guideRateArcsecPerSec * durationMs / 1000.0;
@@ -519,13 +526,41 @@ namespace AstroMount
         {
             EnsureConnected();
 
-            var state = _cache.GetState();
-            var mountPos = state?.CurrentPosition ?? new MountPosition();
+            var state = _cache.GetState() ?? _grpc.GetState();
+
+            // The server treats MountPosition.axis1/axis2 as TELESCOPE degrees
+            // (servo ÷ gear ratio). current_position holds RAW servo degrees and
+            // would corrupt the bootstrap SVD fit — use telescope axes instead
+            // (this mirrors the INDI driver's addSyncMeasurement).
+            var mountPos = new MountPosition
+            {
+                Axis1 = state?.TelescopeAxis1 ?? 0,
+                Axis2 = state?.TelescopeAxis2 ?? 0
+            };
+
+            // Expected catalog coordinates: ASCOM supplies J2000, the controller
+            // works in JNow, so precess the catalog position to the apparent frame.
+            var (raExpectedJNow, decExpectedJNow) = _conv.J2000ToJNow(raHours, decDegrees);
+            var expected = new Coordinates
+            {
+                Ra = raExpectedJNow,
+                Dec = decExpectedJNow,
+                Epoch = 0.0
+            };
+
+            // Observed: the telescope's current on-sky pointing (JNow).
+            var (raObserved, decObserved) = GetCurrentRaDec(state);
+            var observed = new Coordinates
+            {
+                Ra = raObserved,
+                Dec = decObserved,
+                Epoch = 0.0
+            };
 
             var measurement = new BootstrapMeasurement
             {
-                Observed = new Coordinates { Ra = raHours, Dec = decDegrees },
-                Expected = new Coordinates { Ra = raHours, Dec = decDegrees },
+                Observed = observed,
+                Expected = expected,
                 MountPosition = mountPos,
                 UseForInitialAlignment = true
             };
@@ -688,7 +723,7 @@ namespace AstroMount
         /// <summary>
         /// Not implemented.
         /// </summary>
-        public bool CanSetPark => false;
+        public bool CanSetPark => true;
 
         /// <summary>
         /// Not implemented.
@@ -753,7 +788,11 @@ namespace AstroMount
             get
             {
                 var state = _cache.GetState();
-                return state?.CurrentPosition?.Axis2 ?? 0;
+                if (state == null) return 0;
+
+                var (raJNow, decJNow) = GetCurrentRaDec(state);
+                var (alt, _) = _conv.RaDecToHorizontal(raJNow, decJNow, ApproximateLst());
+                return alt;
             }
         }
 
@@ -765,7 +804,11 @@ namespace AstroMount
             get
             {
                 var state = _cache.GetState();
-                return state?.CurrentPosition?.Axis1 ?? 0;
+                if (state == null) return 0;
+
+                var (raJNow, decJNow) = GetCurrentRaDec(state);
+                var (_, az) = _conv.RaDecToHorizontal(raJNow, decJNow, ApproximateLst());
+                return az;
             }
         }
 
@@ -939,6 +982,40 @@ namespace AstroMount
             if (!Connected)
                 throw new InvalidOperationException(
                     "Mount is not connected. Set Connected = true first.");
+        }
+
+        /// <summary>
+        /// Return the telescope's current on-sky position in the apparent (JNow)
+        /// frame. Prefers the controller's corrected current_ra/current_dec, and
+        /// falls back to telescope axes for older controllers.
+        /// </summary>
+        private (double RaHours, double DecDegrees) GetCurrentRaDec(ControllerState state)
+        {
+            if (state == null)
+                return (0, 0);
+
+            // current_ra/current_dec are the corrected on-sky position (JNow).
+            if (state.CurrentRa != 0.0 || state.CurrentDec != 0.0)
+            {
+                double ra = state.CurrentRa % 24.0;
+                if (ra < 0) ra += 24.0;
+                return (ra, state.CurrentDec);
+            }
+
+            // Fallback: telescope axes are TELESCOPE degrees (servo ÷ gear ratio),
+            // already normalized by the controller. current_position holds RAW
+            // servo degrees and must NOT be used here.
+            double haDeg = state.TelescopeAxis1;
+            double decDeg = state.TelescopeAxis2;
+            if (decDeg > 180.0) decDeg -= 360.0;
+
+            double haHours = haDeg / 15.0;
+            if (haHours > 12.0) haHours -= 24.0;
+            else if (haHours < -12.0) haHours += 24.0;
+
+            double raHours = ApproximateLst() - haHours;
+            raHours = ((raHours % 24.0) + 24.0) % 24.0;
+            return (raHours, decDeg);
         }
 
         /// <summary>

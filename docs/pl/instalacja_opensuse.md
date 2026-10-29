@@ -98,7 +98,7 @@ Instalacja:
 
 ### Plik konfiguracyjny
 
-Domyślna konfiguracja to [`config/default.json`](../config/default.json). Na
+Domyślna konfiguracja to [`config/mount/default.json`](../config/mount/default.json). Na
 openSUSE najważniejsze sekcje do ustawienia:
 
 ```json
@@ -122,7 +122,7 @@ openSUSE najważniejsze sekcje do ustawienia:
 Uruchomienie z konkretnym plikiem:
 
 ```bash
-./build/bin/astro_mount_controller config/canopen_stm42m.json
+./build/bin/astro_mount_controller config/mount/canopen_stm42m.json
 ```
 
 ### SocketCAN (jeśli używasz CANopen)

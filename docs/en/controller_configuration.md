@@ -3,12 +3,13 @@
 ## 1. Introduction
 
 The configuration file in JSON format defines all operating parameters of the astronomical mount controller.
-Default location: [`config/default.json`](config/default.json).
+Default location: [`config/mount/default.json`](config/mount/default.json).
 An alternative path can be passed as the first program argument (`argv[1]`).
 
 Configuration loading is handled in [`src/config/configuration.cpp`](src/config/configuration.cpp) via the
-`Configuration::Impl::loadFromFile()` class. The system supports hot-reload through [`ConfigMonitor`](src/config/config_monitor.cpp),
-which monitors the file for modification time changes and automatically reloads the configuration.
+`Configuration::Impl::loadFromFile()` class. [`ConfigMonitor`](src/config/config_monitor.cpp) monitors the file
+for modification time changes and, after a change, logs a warning that the controller must be restarted to
+apply changes (config-file changes are not hot-applied to running controllers and services).
 
 ---
 
@@ -33,7 +34,8 @@ All sections are optional. If a section is missing, default values defined in
 [`Configuration::Impl::initializeDefaults()`](src/config/configuration.cpp:891) are used.
 
 > **Note**: The `external_services` section enables the in-process subsystems (dome, derotator,
-> focuser) and the stand-alone service clients (weather, power). For in-process subsystems the
+> focuser, ST4 guider, PEC) and the stand-alone service clients (weather, power). Camera, pulley,
+> PID calibration and notifications are always hosted in-process. For in-process subsystems the
 > `address` is the gRPC listening address exposed to clients. See
 > [External Services Configuration](external_services_configuration.md).
 
@@ -139,7 +141,7 @@ openssl req -x509 -newkey rsa:4096 \
 
 #### Enabling SSL
 
-1. In `config/default.json` set:
+1. In `config/mount/default.json` set:
    ```json
    "network": {
        "enable_ssl": true,
@@ -607,7 +609,7 @@ File: [`config/dual_servo_config.json`](config/dual_servo_config.json)
 
 ### 10.2 Default Configuration (2 Axes, Addresses 1, 2)
 
-File: [`config/default.json`](config/default.json)
+File: [`config/mount/default.json`](config/mount/default.json)
 
 In the default configuration the `hal.axes[]` section is absent — the factory provides default axes
 with `can_node_id = 1` and `can_node_id = 2` respectively.
@@ -624,7 +626,7 @@ argv[1] (file path)
     │               ├── success → done
     │               └── error  → fallback to default.json
     │
-    └── missing → Configuration::loadFromFile("config/default.json")
+    └── missing → Configuration::loadFromFile("config/mount/default.json")
                     │
                     ├── success → done
                     └── error  → Configuration::initializeDefaults()
@@ -633,8 +635,8 @@ argv[1] (file path)
 
 After loading:
 1. [`ConfigMonitor`](src/config/config_monitor.cpp) monitors the file for changes
-2. [`ConfigNotifier`](src/config/config_monitor.cpp:205) notifies subscribers of changes
-3. [`ConfigManager`](src/config/config_monitor.cpp:266) manages the configuration lifecycle
+2. After a change the controller logs a warning that a restart is required (changes are not hot-applied)
+3. Config saves from the UI write to the file (`setConfigFilePath()` in [`src/main.cpp`](src/main.cpp:373))
 
 ---
 

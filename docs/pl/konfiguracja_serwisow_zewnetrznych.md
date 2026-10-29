@@ -18,7 +18,7 @@ Kontroler montażu obsługuje podsystemy pomocnicze włączane przez sekcję `ex
 | **Zasilanie** | samodzielny (`astro_power_server`) | 50056 | Monitoring baterii/zasilania, parkowanie przy niskim napięciu |
 | **Sekwencer** | samodzielny (`astro_sequencer_server`) | 50057 | Plan obserwacji i sekwencjonowanie |
 
-Domyślne włączenia są zsynchronizowane z web proxy: **derotator, focuser, ST4 guider i PEC — włączone** (w procesie); **kopuła, pogoda, zasilanie i sekwencer — wyłączone**. Włączanie/wyłączanie w pliku konfiguracyjnym kontrolera montażu (`config/default.json`) w sekcji `external_services`.
+Domyślne włączenia są zsynchronizowane z web proxy: **derotator, focuser, ST4 guider i PEC — włączone** (w procesie); **kopuła, pogoda, zasilanie i sekwencer — wyłączone**. Włączanie/wyłączanie w pliku konfiguracyjnym kontrolera montażu (`config/mount/default.json`) w sekcji `external_services`.
 
 ---
 
@@ -79,7 +79,7 @@ Integrację konfiguruje się w pliku JSON kontrolera montażu pod kluczem `exter
 
 ## 2. Serwis Pogodowy (`astro_weather_server`)
 
-### 2.1 Plik konfiguracyjny: `config/weather_config.json`
+### 2.1 Plik konfiguracyjny: `config/weather/weather_config.json`
 
 ```json
 {
@@ -159,12 +159,12 @@ Integrację konfiguruje się w pliku JSON kontrolera montażu pod kluczem `exter
 # Niestandardowy adres i konfiguracja
 ./build/bin/astro_weather_server \
     --address 0.0.0.0:50055 \
-    --config config/weather_config.json
+    --config config/weather/weather_config.json
 
 # Włączenie SSL
 ./build/bin/astro_weather_server \
     --address 0.0.0.0:50055 \
-    --config config/weather_config.json \
+    --config config/weather/weather_config.json \
     --ssl /path/to/cert.pem /path/to/key.pem
 
 # Systemd
@@ -186,7 +186,7 @@ Gdy włączony (`weather.enabled: true`), kontroler montażu:
 
 ## 3. Serwis Zasilania (`astro_power_server`)
 
-### 3.1 Plik konfiguracyjny: `config/power_config.json`
+### 3.1 Plik konfiguracyjny: `config/power/power_config.json`
 
 ```json
 {
@@ -213,7 +213,7 @@ Gdy włączony (`weather.enabled: true`), kontroler montażu:
 # Niestandardowy adres i konfiguracja
 ./build/bin/astro_power_server \
     --address 0.0.0.0:50056 \
-    --config config/power_config.json
+    --config config/power/power_config.json
 
 # Systemd
 sudo systemctl enable astro-power-server
@@ -251,7 +251,7 @@ Gdy włączony (`power.enabled: true`), kontroler montażu:
 
 ### 4.1 Włączenie Wszystkich Serwisów
 
-W `config/default.json`:
+W `config/mount/default.json`:
 
 ```json
 {
@@ -289,13 +289,13 @@ W `config/default.json`:
 
 ```bash
 # Uruchom zewnętrzne (samodzielne) serwisy pogody i zasilania
-./build/bin/astro_weather_server --config config/weather_config.json &
-./build/bin/astro_power_server --config config/power_config.json &
+./build/bin/astro_weather_server --config config/weather/weather_config.json &
+./build/bin/astro_power_server --config config/power/power_config.json &
 
 # Uruchom kontroler montażu.
 # Kopuła, derotator i focuser są hostowane W PROCESIE i serwowane na
 # wspólnym porcie gRPC 50051 — nie są potrzebne osobne procesy ani porty.
-./build/bin/astro_mount_controller config/default.json
+./build/bin/astro_mount_controller config/mount/default.json
 ```
 
 ### 4.3 Weryfikacja

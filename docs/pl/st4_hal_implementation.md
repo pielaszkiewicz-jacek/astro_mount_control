@@ -54,7 +54,7 @@ Projekt **posiada już w pełni działający mechanizm korekcji guidingu**:
    - Akceptuje `GuiderCorrection` przez protobuf
    - Wywołuje `controller_.applyGuiderCorrection()`
 
-4. **Konfiguracja** ([`config/test_no_hardware.json`](../../config/test_no_hardware.json:63)):
+4. **Konfiguracja** ([`config/mount/test_no_hardware.json`](../../config/mount/test_no_hardware.json:63)):
    ```json
    "guider": {
      "enabled": false,

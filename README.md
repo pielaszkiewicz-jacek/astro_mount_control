@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20ARM-lightgrey.svg)](docs/en/installation.md)
 
-A high-precision astronomical mount controller with sub-arcsecond tracking accuracy, TPOINT model calibration, extended Kalman filter, CANopen/CiA 402 hardware interface, and complete gRPC API for remote operation. Includes native **ASCOM** (C#) and **INDI** (C++) drivers for seamless integration with astronomy software ecosystems.
+A high-precision astronomical mount controller with sub-arcsecond tracking accuracy, TPOINT model calibration, extended Kalman filter, CANopen/CiA 402 hardware interface, and complete gRPC API for remote operation. Includes native **ASCOM** (C#) and **INDI** (C++) drivers — telescope, rotator and CCD camera — for seamless integration with astronomy software ecosystems.
 
 ---
 
@@ -48,16 +48,25 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
 - **ASCOM Rotator Driver** (C#, IRotatorV3) — absolute/rate positioning, homing, halt
 - **INDI Telescope Driver** (C++) — full Ekos/KStars integration with TPOINT_STATUS, environment, MoveNS/MoveWE
 - **INDI Rotator Driver** (C++) — angle control, homing via gRPC rotator service
+- **INDI Camera (CCD) Driver** (C++) — exposures, cooling, filter wheel via gRPC CameraService
 
 ### 🧩 Hybrid Service Architecture (config-gated, disabled by default)
 - **In-process subsystems** (hosted inside `astro_mount_controller`, all served on the unified gRPC port **50051**):
   - **Dome** ([`dome/`](dome/)) — dome control on the unified port **50051**, auto-sync with mount azimuth (fed in-process via `setMountAzimuth()`)
   - **Derotator** ([`derotator/`](derotator/)) — field derotation on the unified port **50051**, receives mount position updates in-process via `setMountPosition()`
   - **Focuser** ([`focuser/`](focuser/)) — focuser control and auto-focus on the unified port **50051**
+  - **Camera** ([`camera/`](camera/)) — INDI bridge to `indiserver` (ZWO/QHY/PlayerOne), exposures, cooling, filter wheel on the unified port **50051**
+  - **ST4 Guider** ([`st4guider/`](st4guider/)) — PHD2 autoguiding on the unified port **50051**
+  - **PEC** ([`pec/`](pec/)) — periodic error correction on the unified port **50051**
+  - **Pulley** ([`pulley/`](pulley/)) — simulated linear actuator on the unified port **50051**
+  - **PID Calibration** ([`pidcal/`](pidcal/)) — PID loop tuning on the unified port **50051**
+  - **Notifications** ([`src/notifications/`](src/notifications/)) — email/webhook/MQTT/log channels on the unified port **50051**
 - **Stand-alone services** (separate processes):
   - **Weather service** ([`weather/`](weather/)) — gRPC weather monitoring on port **50055**, rain/wind/cloud sensors, OpenWeatherMap/Weather.gov/IMGW API sources, auto-park on dangerous conditions, notification engine integration
   - **Power service** ([`power/`](power/)) — gRPC power management on port **50056**, battery voltage/current monitoring, low-battery auto-park
-- **All integrations** are configured via `ExternalIntegrationConfig` in `config/default.json` — each has `"enabled": false` by default
+  - **Sequencer** ([`sequencer/`](sequencer/)) — observation plans on port **50057**
+  - **Object database** ([`db/`](db/)) — SQLite catalog on port **50052**
+- **All integrations** are configured via `ExternalIntegrationConfig` in `config/mount/default.json` — each has `"enabled": false` by default
 
 ### 🛡️ Safety & Reliability
 - **11 NaN/Inf propagation guards** in tracking loop
@@ -145,7 +154,7 @@ print(f"Status: {state.status}, Position: axis1={state.current_position.axis1:.4
 
 ## Architecture Overview
 
-The system follows a **hybrid architecture**: the mount controller is the central process and hosts the dome, derotator and focuser subsystems **in-process**, while the weather, power, sequencer and object-database services run as independent processes communicating via gRPC.
+The system follows a **hybrid architecture**: the mount controller is the central process and hosts the dome, derotator, focuser, camera, ST4 guider, PEC, pulley, PID calibration and notification subsystems **in-process**, while the weather, power, sequencer and object-database services run as independent processes communicating via gRPC.
 
 ```mermaid
 flowchart TB
@@ -168,6 +177,9 @@ flowchart TB
         DOME["DomeService<br/>:50051<br/>Dome control"]
         DEROT["DerotatorService<br/>:50051<br/>Field derotation"]
         FOCUSER["FocuserService<br/>:50051<br/>Focuser control"]
+        CAMERA["CameraService<br/>:50051<br/>INDI bridge"]
+        ST4["ST4GuiderService<br/>:50051<br/>PHD2 guider"]
+        PEC["PecService<br/>:50051<br/>Periodic error"]
     end
 
     subgraph SVC["Stand-alone Services (config-gated, disabled by default)"]
@@ -186,7 +198,7 @@ flowchart TB
         KF["Kalman Filter<br/>EKF / Joseph form"]
         EPHEM["Ephemeris Tracker<br/>Moving objects"]
         ASTRO["Astro Calculations<br/>SOFA transforms"]
-        INPROCSVC["In-process subsystems:<br/>Dome / Derotator / Focuser"]
+        INPROCSVC["In-process subsystems:<br/>Dome / Derotator / Focuser / Camera<br/>ST4 / PEC / Pulley / PIDCal / Notifications"]
         CLIENTSVC["Integration Clients:<br/>WeatherClient / PowerStub"]
     end
 
@@ -231,8 +243,8 @@ flowchart TB
 
 **Key components:**
 - [`src/controllers/mount_controller.cpp`](src/controllers/mount_controller.cpp) — Core controller with state machine, tracking loop, meridian flip, soft limits, and 11 NaN/Inf guards
-- [`src/main.cpp`](src/main.cpp) — Orchestrates the main process: creates mount controller, gRPC server, hosts dome/derotator/focuser in-process, and creates optional weather/power external clients based on config
-- [`src/api/grpc_server.cpp`](src/api/grpc_server.cpp) — gRPC server that registers the mount controller service plus the in-process dome, derotator and focuser services (with additional listening ports)
+- [`src/main.cpp`](src/main.cpp) — Orchestrates the main process: creates mount controller, gRPC server, hosts dome/derotator/focuser/camera/ST4/PEC/pulley/PID-calibration/notifications in-process, and creates optional weather/power external clients based on config
+- [`src/api/grpc_server.cpp`](src/api/grpc_server.cpp) — gRPC server that registers the mount controller service plus all in-process subsystem services on the unified port 50051
 - [`src/config/configuration.cpp`](src/config/configuration.cpp) — JSON-based configuration with 25+ field validations and external services section
 - [`src/models/tpoint_model.cpp`](src/models/tpoint_model.cpp) — TPOINT pointing error model with QR decomposition solver
 - [`src/models/kalman_filter.cpp`](src/models/kalman_filter.cpp) — Extended Kalman filter with Joseph form covariance update
@@ -241,6 +253,8 @@ flowchart TB
 - [`dome/src/dome_service_impl.cpp`](dome/src/dome_service_impl.cpp) — In-process dome service (unified port 50051)
 - [`derotator/src/derotator_service_impl.cpp`](derotator/src/derotator_service_impl.cpp) — In-process derotator service (unified port 50051)
 - [`focuser/src/focuser_service_impl.cpp`](focuser/src/focuser_service_impl.cpp) — In-process focuser service (unified port 50051)
+- [`camera/src/camera_service_impl.cpp`](camera/src/camera_service_impl.cpp) — In-process camera service (INDI bridge, unified port 50051)
+- [`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp) — INDI CCD driver (Ekos/KStars) → CameraService
 - [`include/controllers/weather_client.h`](include/controllers/weather_client.h) — Weather service gRPC client with auto-park on danger
 - [`src/controllers/weather_client.cpp`](src/controllers/weather_client.cpp) — Weather polling loop, notification integration, auto-park callback
 
@@ -252,13 +266,18 @@ flowchart TB
 ├── ascom/             # ASCOM Telescope driver (C#, ITelescopeV3)
 │   └── AstroMountTelescope.cs
 ├── ascom_rotator/     # ASCOM Rotator driver (C#, IRotatorV3)
-├── config/            # JSON configuration files
-│   ├── default.json
-│   ├── weather_config.json     # Weather service config (disabled by default)
-│   ├── power_config.json       # Power service config (disabled by default)
-│   ├── dome_config.json        # Dome config (in-process subsystem)
-│   ├── derotator_config.json   # Derotator config (in-process subsystem)
-│   └── focuser_config.json     # Focuser config (in-process subsystem)
+├── config/            # JSON configuration files (organized by subsystem)
+│   ├── mount/            # Mount HAL configs (default.json, canopen*.json, mf7025v2*.json, emulation.json, test_no_hardware.json)
+│   ├── weather/          # weather_config.json (stand-alone service)
+│   ├── power/            # power_config.json (stand-alone service)
+│   ├── dome/             # dome_config.json (in-process subsystem)
+│   ├── derotator/        # derotator_config.json (in-process subsystem)
+│   ├── focuser/          # focuser_config.json (in-process subsystem)
+│   ├── st4guider/        # st4_guider_config.json (in-process subsystem)
+│   ├── pec/              # pec_config.json, pec_data.json (in-process subsystem)
+│   ├── pidcal/           # pid_calibration_results.json (in-process subsystem)
+│   ├── sequencer/        # sequencer_config.json (stand-alone service)
+│   └── backup/           # archived config snapshots
 ├── db/                # Object database (SQLite + gRPC)
 │   ├── proto/
 │   ├── src/
@@ -276,6 +295,13 @@ flowchart TB
 ├── focuser/           # Focuser subsystem - in-process in mount controller (unified port 50051)
 │   ├── include/
 │   └── src/
+├── camera/            # Camera subsystem - in-process INDI bridge (unified port 50051)
+│   ├── include/
+│   └── src/
+├── st4guider/         # ST4 autoguider subsystem - in-process (unified port 50051)
+├── pec/               # Periodic error correction subsystem - in-process (unified port 50051)
+├── pulley/            # Simulated linear actuator subsystem - in-process (unified port 50051)
+├── pidcal/            # PID calibration subsystem - in-process (unified port 50051)
 ├── include/           # C++ headers
 │   ├── config/
 │   ├── controllers/   # incl. weather_client.h, power_manager.h
@@ -285,7 +311,7 @@ flowchart TB
 │   ├── models/
 │   ├── notifications/
 │   └── weather/
-├── indi/              # INDI Telescope driver (C++, Ekos/KStars)
+├── indi/              # INDI Telescope + Camera (CCD) drivers (C++, Ekos/KStars)
 ├── indi_rotator/      # INDI Rotator driver (C++)
 ├── power/             # Stand-alone power management gRPC service (port 50056)
 │   ├── include/

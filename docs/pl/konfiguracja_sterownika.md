@@ -3,12 +3,13 @@
 ## 1. Wprowadzenie
 
 Plik konfiguracyjny w formacie JSON definiuje wszystkie parametry pracy sterownika montażu astronomicznego. 
-Domyślna lokalizacja: [`config/default.json`](config/default.json). 
+Domyślna lokalizacja: [`config/mount/default.json`](config/mount/default.json). 
 Można również przekazać alternatywną ścieżkę jako pierwszy argument wywołania programu (`argv[1]`).
 
-Ładowanie konfiguracji odbywa się w [`src/config/configuration.cpp`](src/config/configuration.cpp) poprzez klasę 
-`Configuration::Impl::loadFromFile()`. System wspiera hot-reload poprzez [`ConfigMonitor`](src/config/config_monitor.cpp), 
-który monitoruje plik pod kątem zmian czasu modyfikacji i automatycznie przeładowuje konfigurację.
+Ładowanie konfiguracji odbywa się w [`src/config/configuration.cpp`](src/config/configuration.cpp) poprzez klasę
+`Configuration::Impl::loadFromFile()`. [`ConfigMonitor`](src/config/config_monitor.cpp) monitoruje plik pod kątem
+zmian czasu modyfikacji i — po zmianie — loguje ostrzeżenie, że **należy zrestartować kontroler**, aby zastosować
+zmiany (zmiany z pliku nie są nakładane „na gorąco” na działające kontrolery i usługi).
 
 ---
 
@@ -33,7 +34,8 @@ Wszystkie sekcje są opcjonalne. W przypadku braku sekcji stosowane są wartośc
 [`Configuration::Impl::initializeDefaults()`](src/config/configuration.cpp:891).
 
 > **Nowość**: Sekcja `external_services` umożliwia włączenie podsystemów w procesie (kopuła,
-> derotator, focuser) oraz klientów usług samodzielnych (pogoda, zasilanie). Dla podsystemów
+> derotator, focuser, ST4 guider, PEC) oraz klientów usług samodzielnych (pogoda, zasilanie).
+> Kamera, pulley, kalibracja PID i powiadomienia są hostowane w procesie zawsze. Dla podsystemów
 > w procesie pole `address` to adres nasłuchu gRPC wystawiony klientom. Patrz
 > [Konfiguracja serwisów zewnętrznych](konfiguracja_serwisow_zewnetrznych.md).
 
@@ -139,7 +141,7 @@ openssl req -x509 -newkey rsa:4096 \
 
 #### Włączenie SSL
 
-1. W pliku `config/default.json` ustaw:
+1. W pliku `config/mount/default.json` ustaw:
    ```json
    "network": {
        "enable_ssl": true,
@@ -610,7 +612,7 @@ Plik: [`config/dual_servo_config.json`](config/dual_servo_config.json)
 
 ### 10.2 Domyślna konfiguracja (2 osie, adresy 1, 2)
 
-Plik: [`config/default.json`](config/default.json)
+Plik: [`config/mount/default.json`](config/mount/default.json)
 
 W domyślnej konfiguracji brak sekcji `hal.axes[]` — fabryka dostarcza domyślne osie
 z `can_node_id = 1` i `can_node_id = 2` odpowiednio.
@@ -627,7 +629,7 @@ argv[1] (ścieżka pliku)
     │               ├── sukces → gotowe
     │               └── błąd  → fallback do default.json
     │
-    └── brak    → Configuration::loadFromFile("config/default.json")
+    └── brak    → Configuration::loadFromFile("config/mount/default.json")
                     │
                     ├── sukces → gotowe
                     └── błąd  → Configuration::initializeDefaults()
@@ -636,8 +638,8 @@ argv[1] (ścieżka pliku)
 
 Po załadowaniu:
 1. [`ConfigMonitor`](src/config/config_monitor.cpp) monitoruje plik pod kątem zmian
-2. [`ConfigNotifier`](src/config/config_monitor.cpp:205) powiadamia subskrybentów o zmianach
-3. [`ConfigManager`](src/config/config_monitor.cpp:266) zarządza cyklem życia konfiguracji
+2. Po zmianie pliku kontroler loguje ostrzeżenie o konieczności restartu (zmiany nie są nakładane na gorąco)
+3. Zapis konfiguracji z UI zapisuje zmiany do pliku (`setConfigFilePath()` w [`src/main.cpp`](src/main.cpp:373))
 
 ---
 

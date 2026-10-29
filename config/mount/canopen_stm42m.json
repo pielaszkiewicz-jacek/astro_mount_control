@@ -15,6 +15,9 @@
             "address": "127.0.0.1:50055",
             "enabled": true,
             "poll_interval_ms": 10000
+        },
+        "st4_guider": {
+            "enabled": true
         }
     },
     "field_rotation": {

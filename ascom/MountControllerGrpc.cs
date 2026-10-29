@@ -63,8 +63,6 @@ namespace AstroMount {
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.StateLoadRequest> __Marshaller_astro_mount_StateLoadRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.StateLoadRequest.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.Measurement> __Marshaller_astro_mount_Measurement = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.Measurement.Parser));
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.BootstrapMeasurement> __Marshaller_astro_mount_BootstrapMeasurement = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.BootstrapMeasurement.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.BootstrapCalibrationResult> __Marshaller_astro_mount_BootstrapCalibrationResult = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.BootstrapCalibrationResult.Parser));
@@ -76,6 +74,8 @@ namespace AstroMount {
     static readonly grpc::Marshaller<global::AstroMount.AutoBootstrapRequest> __Marshaller_astro_mount_AutoBootstrapRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.AutoBootstrapRequest.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.AutoBootstrapStatus> __Marshaller_astro_mount_AutoBootstrapStatus = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.AutoBootstrapStatus.Parser));
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Marshaller<global::AstroMount.Measurement> __Marshaller_astro_mount_Measurement = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.Measurement.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.TPointParameters> __Marshaller_astro_mount_TPointParameters = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.TPointParameters.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
@@ -92,10 +92,6 @@ namespace AstroMount {
     static readonly grpc::Marshaller<global::AstroMount.GuiderCorrection> __Marshaller_astro_mount_GuiderCorrection = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.GuiderCorrection.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.Configuration> __Marshaller_astro_mount_Configuration = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.Configuration.Parser));
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.TrajectoryParams> __Marshaller_astro_mount_TrajectoryParams = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.TrajectoryParams.Parser));
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.Trajectory> __Marshaller_astro_mount_Trajectory = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.Trajectory.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.HealthCheckRequest> __Marshaller_astro_mount_HealthCheckRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.HealthCheckRequest.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
@@ -119,15 +115,7 @@ namespace AstroMount {
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.AxisStatus> __Marshaller_astro_mount_AxisStatus = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.AxisStatus.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.DerotatorConfig> __Marshaller_astro_mount_DerotatorConfig = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.DerotatorConfig.Parser));
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.FieldRotationParams> __Marshaller_astro_mount_FieldRotationParams = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.FieldRotationParams.Parser));
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.FieldRotationControlRequest> __Marshaller_astro_mount_FieldRotationControlRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.FieldRotationControlRequest.Parser));
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.DerotatorStatus> __Marshaller_astro_mount_DerotatorStatus = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.DerotatorStatus.Parser));
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Marshaller<global::AstroMount.DerotatorHomingRequest> __Marshaller_astro_mount_DerotatorHomingRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.DerotatorHomingRequest.Parser));
+    static readonly grpc::Marshaller<global::AstroMount.MountHomingRequest> __Marshaller_astro_mount_MountHomingRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.MountHomingRequest.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.HALConfig> __Marshaller_astro_mount_HALConfig = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.HALConfig.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
@@ -137,7 +125,11 @@ namespace AstroMount {
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.HALReinitRequest> __Marshaller_astro_mount_HALReinitRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.HALReinitRequest.Parser));
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Marshaller<global::AstroMount.GamepadModeRequest> __Marshaller_astro_mount_GamepadModeRequest = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.GamepadModeRequest.Parser));
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Marshaller<global::AstroMount.MountOrientation> __Marshaller_astro_mount_MountOrientation = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.MountOrientation.Parser));
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Marshaller<global::AstroMount.Lx200Status> __Marshaller_astro_mount_Lx200Status = grpc::Marshallers.Create(__Helper_SerializeMessage, context => __Helper_DeserializeMessage(context, global::AstroMount.Lx200Status.Parser));
 
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Method<global::AstroMount.Coordinates, global::Google.Protobuf.WellKnownTypes.Empty> __Method_SlewToCoordinates = new grpc::Method<global::AstroMount.Coordinates, global::Google.Protobuf.WellKnownTypes.Empty>(
@@ -184,6 +176,14 @@ namespace AstroMount {
         grpc::MethodType.Unary,
         __ServiceName,
         "Unpark",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_google_protobuf_Empty);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty> __Method_ExecuteMeridianFlip = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "ExecuteMeridianFlip",
         __Marshaller_google_protobuf_Empty,
         __Marshaller_google_protobuf_Empty);
 
@@ -484,52 +484,12 @@ namespace AstroMount {
         __Marshaller_astro_mount_AxisStatus);
 
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::AstroMount.DerotatorConfig, global::Google.Protobuf.WellKnownTypes.Empty> __Method_ConfigureDerotator = new grpc::Method<global::AstroMount.DerotatorConfig, global::Google.Protobuf.WellKnownTypes.Empty>(
+    static readonly grpc::Method<global::AstroMount.MountHomingRequest, global::Google.Protobuf.WellKnownTypes.Empty> __Method_Home = new grpc::Method<global::AstroMount.MountHomingRequest, global::Google.Protobuf.WellKnownTypes.Empty>(
         grpc::MethodType.Unary,
         __ServiceName,
-        "ConfigureDerotator",
-        __Marshaller_astro_mount_DerotatorConfig,
+        "Home",
+        __Marshaller_astro_mount_MountHomingRequest,
         __Marshaller_google_protobuf_Empty);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::AstroMount.FieldRotationParams, global::Google.Protobuf.WellKnownTypes.Empty> __Method_EnableFieldRotation = new grpc::Method<global::AstroMount.FieldRotationParams, global::Google.Protobuf.WellKnownTypes.Empty>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "EnableFieldRotation",
-        __Marshaller_astro_mount_FieldRotationParams,
-        __Marshaller_google_protobuf_Empty);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::AstroMount.FieldRotationControlRequest, global::Google.Protobuf.WellKnownTypes.Empty> __Method_ControlFieldRotation = new grpc::Method<global::AstroMount.FieldRotationControlRequest, global::Google.Protobuf.WellKnownTypes.Empty>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "ControlFieldRotation",
-        __Marshaller_astro_mount_FieldRotationControlRequest,
-        __Marshaller_google_protobuf_Empty);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.DerotatorStatus> __Method_GetDerotatorStatus = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.DerotatorStatus>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "GetDerotatorStatus",
-        __Marshaller_google_protobuf_Empty,
-        __Marshaller_astro_mount_DerotatorStatus);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::AstroMount.DerotatorHomingRequest, global::Google.Protobuf.WellKnownTypes.Empty> __Method_HomeDerotator = new grpc::Method<global::AstroMount.DerotatorHomingRequest, global::Google.Protobuf.WellKnownTypes.Empty>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "HomeDerotator",
-        __Marshaller_astro_mount_DerotatorHomingRequest,
-        __Marshaller_google_protobuf_Empty);
-
-    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.FieldRotationParams> __Method_GetFieldRotationParams = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.FieldRotationParams>(
-        grpc::MethodType.Unary,
-        __ServiceName,
-        "GetFieldRotationParams",
-        __Marshaller_google_protobuf_Empty,
-        __Marshaller_astro_mount_FieldRotationParams);
 
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.HALConfig> __Method_GetHALConfig = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.HALConfig>(
@@ -564,6 +524,46 @@ namespace AstroMount {
         __Marshaller_google_protobuf_Empty);
 
     [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty> __Method_RestartController = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "RestartController",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_google_protobuf_Empty);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty> __Method_HardRestartController = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "HardRestartController",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_google_protobuf_Empty);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty> __Method_StartGamepad = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "StartGamepad",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_google_protobuf_Empty);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty> __Method_StopGamepad = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "StopGamepad",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_google_protobuf_Empty);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::AstroMount.GamepadModeRequest, global::Google.Protobuf.WellKnownTypes.Empty> __Method_SetGamepadMode = new grpc::Method<global::AstroMount.GamepadModeRequest, global::Google.Protobuf.WellKnownTypes.Empty>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "SetGamepadMode",
+        __Marshaller_astro_mount_GamepadModeRequest,
+        __Marshaller_google_protobuf_Empty);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
     static readonly grpc::Method<global::AstroMount.MountOrientation, global::Google.Protobuf.WellKnownTypes.Empty> __Method_SetMountOrientation = new grpc::Method<global::AstroMount.MountOrientation, global::Google.Protobuf.WellKnownTypes.Empty>(
         grpc::MethodType.Unary,
         __ServiceName,
@@ -578,6 +578,30 @@ namespace AstroMount {
         "GetMountOrientation",
         __Marshaller_google_protobuf_Empty,
         __Marshaller_astro_mount_MountOrientation);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status> __Method_StartLx200 = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "StartLx200",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_astro_mount_Lx200Status);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status> __Method_StopLx200 = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "StopLx200",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_astro_mount_Lx200Status);
+
+    [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+    static readonly grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status> __Method_GetLx200Status = new grpc::Method<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status>(
+        grpc::MethodType.Unary,
+        __ServiceName,
+        "GetLx200Status",
+        __Marshaller_google_protobuf_Empty,
+        __Marshaller_astro_mount_Lx200Status);
 
     /// <summary>Service descriptor</summary>
     public static global::Google.Protobuf.Reflection.ServiceDescriptor Descriptor
@@ -631,6 +655,12 @@ namespace AstroMount {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
 
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> ExecuteMeridianFlip(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
       /// <summary>
       /// State management
       /// </summary>
@@ -668,6 +698,7 @@ namespace AstroMount {
       }
 
       /// <summary>
+      /// Measurement and calibration
       /// Bootstrap calibration API (for initial alignment)
       /// </summary>
       /// <param name="request">The request received from the client.</param>
@@ -835,7 +866,6 @@ namespace AstroMount {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
 
-
       /// <summary>
       /// Health check
       /// </summary>
@@ -945,73 +975,13 @@ namespace AstroMount {
       }
 
       /// <summary>
-      /// Configure derotator hardware
+      /// Home mount (set reference position for tracking origin)
       /// </summary>
       /// <param name="request">The request received from the client.</param>
       /// <param name="context">The context of the server-side call handler being invoked.</param>
       /// <returns>The response to send back to the client (wrapped by a task).</returns>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> ConfigureDerotator(global::AstroMount.DerotatorConfig request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      /// <summary>
-      /// Enable/disable field rotation compensation
-      /// </summary>
-      /// <param name="request">The request received from the client.</param>
-      /// <param name="context">The context of the server-side call handler being invoked.</param>
-      /// <returns>The response to send back to the client (wrapped by a task).</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> EnableFieldRotation(global::AstroMount.FieldRotationParams request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      /// <summary>
-      /// Control field rotation (position/rate control)
-      /// </summary>
-      /// <param name="request">The request received from the client.</param>
-      /// <param name="context">The context of the server-side call handler being invoked.</param>
-      /// <returns>The response to send back to the client (wrapped by a task).</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> ControlFieldRotation(global::AstroMount.FieldRotationControlRequest request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      /// <summary>
-      /// Get derotator status
-      /// </summary>
-      /// <param name="request">The request received from the client.</param>
-      /// <param name="context">The context of the server-side call handler being invoked.</param>
-      /// <returns>The response to send back to the client (wrapped by a task).</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::AstroMount.DerotatorStatus> GetDerotatorStatus(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      /// <summary>
-      /// Home derotator (find zero position)
-      /// </summary>
-      /// <param name="request">The request received from the client.</param>
-      /// <param name="context">The context of the server-side call handler being invoked.</param>
-      /// <returns>The response to send back to the client (wrapped by a task).</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> HomeDerotator(global::AstroMount.DerotatorHomingRequest request, grpc::ServerCallContext context)
-      {
-        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
-      }
-
-      /// <summary>
-      /// Get field rotation parameters (computed rates)
-      /// </summary>
-      /// <param name="request">The request received from the client.</param>
-      /// <param name="context">The context of the server-side call handler being invoked.</param>
-      /// <returns>The response to send back to the client (wrapped by a task).</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::System.Threading.Tasks.Task<global::AstroMount.FieldRotationParams> GetFieldRotationParams(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> Home(global::AstroMount.MountHomingRequest request, grpc::ServerCallContext context)
       {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
@@ -1065,6 +1035,61 @@ namespace AstroMount {
       }
 
       /// <summary>
+      /// ── Controller restart operations ──────────────────────────────
+      /// Soft restart: shutdown + reinitialize, preserving calibration data
+      /// </summary>
+      /// <param name="request">The request received from the client.</param>
+      /// <param name="context">The context of the server-side call handler being invoked.</param>
+      /// <returns>The response to send back to the client (wrapped by a task).</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> RestartController(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      /// <summary>
+      /// Hard restart: shutdown + reinitialize, discarding all calibration data
+      /// </summary>
+      /// <param name="request">The request received from the client.</param>
+      /// <param name="context">The context of the server-side call handler being invoked.</param>
+      /// <returns>The response to send back to the client (wrapped by a task).</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> HardRestartController(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      /// <summary>
+      /// Start / stop the gamepad manual-control loop (axis commands)
+      /// </summary>
+      /// <param name="request">The request received from the client.</param>
+      /// <param name="context">The context of the server-side call handler being invoked.</param>
+      /// <returns>The response to send back to the client (wrapped by a task).</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> StartGamepad(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> StopGamepad(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      /// <summary>
+      /// Set gamepad navigation mode (RAW / CELESTIAL / ALT_AZ)
+      /// </summary>
+      /// <param name="request">The request received from the client.</param>
+      /// <param name="context">The context of the server-side call handler being invoked.</param>
+      /// <returns>The response to send back to the client (wrapped by a task).</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::Google.Protobuf.WellKnownTypes.Empty> SetGamepadMode(global::AstroMount.GamepadModeRequest request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      /// <summary>
       /// Set mount orientation quaternion (for CASUAL mount type)
       /// </summary>
       /// <param name="request">The request received from the client.</param>
@@ -1084,6 +1109,43 @@ namespace AstroMount {
       /// <returns>The response to send back to the client (wrapped by a task).</returns>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
       public virtual global::System.Threading.Tasks.Task<global::AstroMount.MountOrientation> GetMountOrientation(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      /// <summary>
+      /// ── LX200 serial interface management ─────────────────────────
+      /// Start the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request received from the client.</param>
+      /// <param name="context">The context of the server-side call handler being invoked.</param>
+      /// <returns>The response to send back to the client (wrapped by a task).</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::AstroMount.Lx200Status> StartLx200(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      /// <summary>
+      /// Stop the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request received from the client.</param>
+      /// <param name="context">The context of the server-side call handler being invoked.</param>
+      /// <returns>The response to send back to the client (wrapped by a task).</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::AstroMount.Lx200Status> StopLx200(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
+      {
+        throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
+      }
+
+      /// <summary>
+      /// Get current LX200 server status
+      /// </summary>
+      /// <param name="request">The request received from the client.</param>
+      /// <param name="context">The context of the server-side call handler being invoked.</param>
+      /// <returns>The response to send back to the client (wrapped by a task).</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::System.Threading.Tasks.Task<global::AstroMount.Lx200Status> GetLx200Status(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::ServerCallContext context)
       {
         throw new grpc::RpcException(new grpc::Status(grpc::StatusCode.Unimplemented, ""));
       }
@@ -1265,6 +1327,26 @@ namespace AstroMount {
       {
         return CallInvoker.AsyncUnaryCall(__Method_Unpark, null, options, request);
       }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty ExecuteMeridianFlip(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return ExecuteMeridianFlip(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty ExecuteMeridianFlip(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_ExecuteMeridianFlip, null, options, request);
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ExecuteMeridianFlipAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return ExecuteMeridianFlipAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ExecuteMeridianFlipAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_ExecuteMeridianFlip, null, options, request);
+      }
       /// <summary>
       /// State management
       /// </summary>
@@ -1385,13 +1467,6 @@ namespace AstroMount {
       }
       /// <summary>
       /// Measurement and calibration
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The response received from the server.</returns>
-      /// <summary>
       /// Bootstrap calibration API (for initial alignment)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
@@ -1405,6 +1480,7 @@ namespace AstroMount {
         return AddBootstrapMeasurement(request, new grpc::CallOptions(headers, deadline, cancellationToken));
       }
       /// <summary>
+      /// Measurement and calibration
       /// Bootstrap calibration API (for initial alignment)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
@@ -1416,6 +1492,7 @@ namespace AstroMount {
         return CallInvoker.BlockingUnaryCall(__Method_AddBootstrapMeasurement, null, options, request);
       }
       /// <summary>
+      /// Measurement and calibration
       /// Bootstrap calibration API (for initial alignment)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
@@ -1429,6 +1506,7 @@ namespace AstroMount {
         return AddBootstrapMeasurementAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
       }
       /// <summary>
+      /// Measurement and calibration
       /// Bootstrap calibration API (for initial alignment)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
@@ -2424,7 +2502,7 @@ namespace AstroMount {
         return CallInvoker.AsyncUnaryCall(__Method_GetAxisStatus, null, options, request);
       }
       /// <summary>
-      /// Configure derotator hardware
+      /// Home mount (set reference position for tracking origin)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
       /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
@@ -2432,23 +2510,23 @@ namespace AstroMount {
       /// <param name="cancellationToken">An optional token for canceling the call.</param>
       /// <returns>The response received from the server.</returns>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty ConfigureDerotator(global::AstroMount.DerotatorConfig request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty Home(global::AstroMount.MountHomingRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
       {
-        return ConfigureDerotator(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+        return Home(request, new grpc::CallOptions(headers, deadline, cancellationToken));
       }
       /// <summary>
-      /// Configure derotator hardware
+      /// Home mount (set reference position for tracking origin)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
       /// <param name="options">The options for the call.</param>
       /// <returns>The response received from the server.</returns>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty ConfigureDerotator(global::AstroMount.DerotatorConfig request, grpc::CallOptions options)
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty Home(global::AstroMount.MountHomingRequest request, grpc::CallOptions options)
       {
-        return CallInvoker.BlockingUnaryCall(__Method_ConfigureDerotator, null, options, request);
+        return CallInvoker.BlockingUnaryCall(__Method_Home, null, options, request);
       }
       /// <summary>
-      /// Configure derotator hardware
+      /// Home mount (set reference position for tracking origin)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
       /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
@@ -2456,260 +2534,20 @@ namespace AstroMount {
       /// <param name="cancellationToken">An optional token for canceling the call.</param>
       /// <returns>The call object.</returns>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ConfigureDerotatorAsync(global::AstroMount.DerotatorConfig request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> HomeAsync(global::AstroMount.MountHomingRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
       {
-        return ConfigureDerotatorAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+        return HomeAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
       }
       /// <summary>
-      /// Configure derotator hardware
+      /// Home mount (set reference position for tracking origin)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
       /// <param name="options">The options for the call.</param>
       /// <returns>The call object.</returns>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ConfigureDerotatorAsync(global::AstroMount.DerotatorConfig request, grpc::CallOptions options)
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> HomeAsync(global::AstroMount.MountHomingRequest request, grpc::CallOptions options)
       {
-        return CallInvoker.AsyncUnaryCall(__Method_ConfigureDerotator, null, options, request);
-      }
-      /// <summary>
-      /// Enable/disable field rotation compensation
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty EnableFieldRotation(global::AstroMount.FieldRotationParams request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return EnableFieldRotation(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Enable/disable field rotation compensation
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty EnableFieldRotation(global::AstroMount.FieldRotationParams request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_EnableFieldRotation, null, options, request);
-      }
-      /// <summary>
-      /// Enable/disable field rotation compensation
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> EnableFieldRotationAsync(global::AstroMount.FieldRotationParams request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return EnableFieldRotationAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Enable/disable field rotation compensation
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> EnableFieldRotationAsync(global::AstroMount.FieldRotationParams request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_EnableFieldRotation, null, options, request);
-      }
-      /// <summary>
-      /// Control field rotation (position/rate control)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty ControlFieldRotation(global::AstroMount.FieldRotationControlRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return ControlFieldRotation(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Control field rotation (position/rate control)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty ControlFieldRotation(global::AstroMount.FieldRotationControlRequest request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_ControlFieldRotation, null, options, request);
-      }
-      /// <summary>
-      /// Control field rotation (position/rate control)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ControlFieldRotationAsync(global::AstroMount.FieldRotationControlRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return ControlFieldRotationAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Control field rotation (position/rate control)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> ControlFieldRotationAsync(global::AstroMount.FieldRotationControlRequest request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_ControlFieldRotation, null, options, request);
-      }
-      /// <summary>
-      /// Get derotator status
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::AstroMount.DerotatorStatus GetDerotatorStatus(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return GetDerotatorStatus(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Get derotator status
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::AstroMount.DerotatorStatus GetDerotatorStatus(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_GetDerotatorStatus, null, options, request);
-      }
-      /// <summary>
-      /// Get derotator status
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::AstroMount.DerotatorStatus> GetDerotatorStatusAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return GetDerotatorStatusAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Get derotator status
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::AstroMount.DerotatorStatus> GetDerotatorStatusAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_GetDerotatorStatus, null, options, request);
-      }
-      /// <summary>
-      /// Home derotator (find zero position)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty HomeDerotator(global::AstroMount.DerotatorHomingRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return HomeDerotator(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Home derotator (find zero position)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::Google.Protobuf.WellKnownTypes.Empty HomeDerotator(global::AstroMount.DerotatorHomingRequest request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_HomeDerotator, null, options, request);
-      }
-      /// <summary>
-      /// Home derotator (find zero position)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> HomeDerotatorAsync(global::AstroMount.DerotatorHomingRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return HomeDerotatorAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Home derotator (find zero position)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> HomeDerotatorAsync(global::AstroMount.DerotatorHomingRequest request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_HomeDerotator, null, options, request);
-      }
-      /// <summary>
-      /// Get field rotation parameters (computed rates)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::AstroMount.FieldRotationParams GetFieldRotationParams(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return GetFieldRotationParams(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Get field rotation parameters (computed rates)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The response received from the server.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual global::AstroMount.FieldRotationParams GetFieldRotationParams(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
-      {
-        return CallInvoker.BlockingUnaryCall(__Method_GetFieldRotationParams, null, options, request);
-      }
-      /// <summary>
-      /// Get field rotation parameters (computed rates)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
-      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
-      /// <param name="cancellationToken">An optional token for canceling the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::AstroMount.FieldRotationParams> GetFieldRotationParamsAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
-      {
-        return GetFieldRotationParamsAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
-      }
-      /// <summary>
-      /// Get field rotation parameters (computed rates)
-      /// </summary>
-      /// <param name="request">The request to send to the server.</param>
-      /// <param name="options">The options for the call.</param>
-      /// <returns>The call object.</returns>
-      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
-      public virtual grpc::AsyncUnaryCall<global::AstroMount.FieldRotationParams> GetFieldRotationParamsAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
-      {
-        return CallInvoker.AsyncUnaryCall(__Method_GetFieldRotationParams, null, options, request);
+        return CallInvoker.AsyncUnaryCall(__Method_Home, null, options, request);
       }
       /// <summary>
       /// Get current HAL configuration
@@ -2904,6 +2742,222 @@ namespace AstroMount {
         return CallInvoker.AsyncUnaryCall(__Method_ReinitializeHAL, null, options, request);
       }
       /// <summary>
+      /// ── Controller restart operations ──────────────────────────────
+      /// Soft restart: shutdown + reinitialize, preserving calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty RestartController(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return RestartController(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// ── Controller restart operations ──────────────────────────────
+      /// Soft restart: shutdown + reinitialize, preserving calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty RestartController(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_RestartController, null, options, request);
+      }
+      /// <summary>
+      /// ── Controller restart operations ──────────────────────────────
+      /// Soft restart: shutdown + reinitialize, preserving calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> RestartControllerAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return RestartControllerAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// ── Controller restart operations ──────────────────────────────
+      /// Soft restart: shutdown + reinitialize, preserving calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> RestartControllerAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_RestartController, null, options, request);
+      }
+      /// <summary>
+      /// Hard restart: shutdown + reinitialize, discarding all calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty HardRestartController(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return HardRestartController(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Hard restart: shutdown + reinitialize, discarding all calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty HardRestartController(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_HardRestartController, null, options, request);
+      }
+      /// <summary>
+      /// Hard restart: shutdown + reinitialize, discarding all calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> HardRestartControllerAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return HardRestartControllerAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Hard restart: shutdown + reinitialize, discarding all calibration data
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> HardRestartControllerAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_HardRestartController, null, options, request);
+      }
+      /// <summary>
+      /// Start / stop the gamepad manual-control loop (axis commands)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty StartGamepad(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StartGamepad(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Start / stop the gamepad manual-control loop (axis commands)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty StartGamepad(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_StartGamepad, null, options, request);
+      }
+      /// <summary>
+      /// Start / stop the gamepad manual-control loop (axis commands)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> StartGamepadAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StartGamepadAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Start / stop the gamepad manual-control loop (axis commands)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> StartGamepadAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_StartGamepad, null, options, request);
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty StopGamepad(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StopGamepad(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty StopGamepad(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_StopGamepad, null, options, request);
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> StopGamepadAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StopGamepadAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> StopGamepadAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_StopGamepad, null, options, request);
+      }
+      /// <summary>
+      /// Set gamepad navigation mode (RAW / CELESTIAL / ALT_AZ)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty SetGamepadMode(global::AstroMount.GamepadModeRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return SetGamepadMode(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Set gamepad navigation mode (RAW / CELESTIAL / ALT_AZ)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::Google.Protobuf.WellKnownTypes.Empty SetGamepadMode(global::AstroMount.GamepadModeRequest request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_SetGamepadMode, null, options, request);
+      }
+      /// <summary>
+      /// Set gamepad navigation mode (RAW / CELESTIAL / ALT_AZ)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> SetGamepadModeAsync(global::AstroMount.GamepadModeRequest request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return SetGamepadModeAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Set gamepad navigation mode (RAW / CELESTIAL / ALT_AZ)
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::Google.Protobuf.WellKnownTypes.Empty> SetGamepadModeAsync(global::AstroMount.GamepadModeRequest request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_SetGamepadMode, null, options, request);
+      }
+      /// <summary>
       /// Set mount orientation quaternion (for CASUAL mount type)
       /// </summary>
       /// <param name="request">The request to send to the server.</param>
@@ -2999,6 +3053,154 @@ namespace AstroMount {
       {
         return CallInvoker.AsyncUnaryCall(__Method_GetMountOrientation, null, options, request);
       }
+      /// <summary>
+      /// ── LX200 serial interface management ─────────────────────────
+      /// Start the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::AstroMount.Lx200Status StartLx200(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StartLx200(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// ── LX200 serial interface management ─────────────────────────
+      /// Start the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::AstroMount.Lx200Status StartLx200(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_StartLx200, null, options, request);
+      }
+      /// <summary>
+      /// ── LX200 serial interface management ─────────────────────────
+      /// Start the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::AstroMount.Lx200Status> StartLx200Async(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StartLx200Async(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// ── LX200 serial interface management ─────────────────────────
+      /// Start the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::AstroMount.Lx200Status> StartLx200Async(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_StartLx200, null, options, request);
+      }
+      /// <summary>
+      /// Stop the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::AstroMount.Lx200Status StopLx200(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StopLx200(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Stop the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::AstroMount.Lx200Status StopLx200(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_StopLx200, null, options, request);
+      }
+      /// <summary>
+      /// Stop the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::AstroMount.Lx200Status> StopLx200Async(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return StopLx200Async(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Stop the LX200 serial protocol server
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::AstroMount.Lx200Status> StopLx200Async(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_StopLx200, null, options, request);
+      }
+      /// <summary>
+      /// Get current LX200 server status
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::AstroMount.Lx200Status GetLx200Status(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return GetLx200Status(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Get current LX200 server status
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The response received from the server.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual global::AstroMount.Lx200Status GetLx200Status(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.BlockingUnaryCall(__Method_GetLx200Status, null, options, request);
+      }
+      /// <summary>
+      /// Get current LX200 server status
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="headers">The initial metadata to send with the call. This parameter is optional.</param>
+      /// <param name="deadline">An optional deadline for the call. The call will be cancelled if deadline is hit.</param>
+      /// <param name="cancellationToken">An optional token for canceling the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::AstroMount.Lx200Status> GetLx200StatusAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::Metadata headers = null, global::System.DateTime? deadline = null, global::System.Threading.CancellationToken cancellationToken = default(global::System.Threading.CancellationToken))
+      {
+        return GetLx200StatusAsync(request, new grpc::CallOptions(headers, deadline, cancellationToken));
+      }
+      /// <summary>
+      /// Get current LX200 server status
+      /// </summary>
+      /// <param name="request">The request to send to the server.</param>
+      /// <param name="options">The options for the call.</param>
+      /// <returns>The call object.</returns>
+      [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
+      public virtual grpc::AsyncUnaryCall<global::AstroMount.Lx200Status> GetLx200StatusAsync(global::Google.Protobuf.WellKnownTypes.Empty request, grpc::CallOptions options)
+      {
+        return CallInvoker.AsyncUnaryCall(__Method_GetLx200Status, null, options, request);
+      }
       /// <summary>Creates a new instance of client from given <c>ClientBaseConfiguration</c>.</summary>
       [global::System.CodeDom.Compiler.GeneratedCode("grpc_csharp_plugin", null)]
       protected override MountControllerServiceClient NewInstance(ClientBaseConfiguration configuration)
@@ -3019,6 +3221,7 @@ namespace AstroMount {
           .AddMethod(__Method_Stop, serviceImpl.Stop)
           .AddMethod(__Method_Park, serviceImpl.Park)
           .AddMethod(__Method_Unpark, serviceImpl.Unpark)
+          .AddMethod(__Method_ExecuteMeridianFlip, serviceImpl.ExecuteMeridianFlip)
           .AddMethod(__Method_GetState, serviceImpl.GetState)
           .AddMethod(__Method_WatchState, serviceImpl.WatchState)
           .AddMethod(__Method_SaveState, serviceImpl.SaveState)
@@ -3056,18 +3259,21 @@ namespace AstroMount {
           .AddMethod(__Method_StopAxis, serviceImpl.StopAxis)
           .AddMethod(__Method_EmergencyStop, serviceImpl.EmergencyStop)
           .AddMethod(__Method_GetAxisStatus, serviceImpl.GetAxisStatus)
-          .AddMethod(__Method_ConfigureDerotator, serviceImpl.ConfigureDerotator)
-          .AddMethod(__Method_EnableFieldRotation, serviceImpl.EnableFieldRotation)
-          .AddMethod(__Method_ControlFieldRotation, serviceImpl.ControlFieldRotation)
-          .AddMethod(__Method_GetDerotatorStatus, serviceImpl.GetDerotatorStatus)
-          .AddMethod(__Method_HomeDerotator, serviceImpl.HomeDerotator)
-          .AddMethod(__Method_GetFieldRotationParams, serviceImpl.GetFieldRotationParams)
+          .AddMethod(__Method_Home, serviceImpl.Home)
           .AddMethod(__Method_GetHALConfig, serviceImpl.GetHALConfig)
           .AddMethod(__Method_SetHALConfig, serviceImpl.SetHALConfig)
           .AddMethod(__Method_GetHALStatus, serviceImpl.GetHALStatus)
           .AddMethod(__Method_ReinitializeHAL, serviceImpl.ReinitializeHAL)
+          .AddMethod(__Method_RestartController, serviceImpl.RestartController)
+          .AddMethod(__Method_HardRestartController, serviceImpl.HardRestartController)
+          .AddMethod(__Method_StartGamepad, serviceImpl.StartGamepad)
+          .AddMethod(__Method_StopGamepad, serviceImpl.StopGamepad)
+          .AddMethod(__Method_SetGamepadMode, serviceImpl.SetGamepadMode)
           .AddMethod(__Method_SetMountOrientation, serviceImpl.SetMountOrientation)
-          .AddMethod(__Method_GetMountOrientation, serviceImpl.GetMountOrientation).Build();
+          .AddMethod(__Method_GetMountOrientation, serviceImpl.GetMountOrientation)
+          .AddMethod(__Method_StartLx200, serviceImpl.StartLx200)
+          .AddMethod(__Method_StopLx200, serviceImpl.StopLx200)
+          .AddMethod(__Method_GetLx200Status, serviceImpl.GetLx200Status).Build();
     }
 
     /// <summary>Register service method with a service binder with or without implementation. Useful when customizing the service binding logic.
@@ -3083,6 +3289,7 @@ namespace AstroMount {
       serviceBinder.AddMethod(__Method_Stop, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.Stop));
       serviceBinder.AddMethod(__Method_Park, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.Park));
       serviceBinder.AddMethod(__Method_Unpark, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.Unpark));
+      serviceBinder.AddMethod(__Method_ExecuteMeridianFlip, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.ExecuteMeridianFlip));
       serviceBinder.AddMethod(__Method_GetState, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.ControllerState>(serviceImpl.GetState));
       serviceBinder.AddMethod(__Method_WatchState, serviceImpl == null ? null : new grpc::ServerStreamingServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.ControllerState>(serviceImpl.WatchState));
       serviceBinder.AddMethod(__Method_SaveState, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.StateSaveRequest, global::AstroMount.StateSaveResponse>(serviceImpl.SaveState));
@@ -3120,18 +3327,21 @@ namespace AstroMount {
       serviceBinder.AddMethod(__Method_StopAxis, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.AxisStopRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.StopAxis));
       serviceBinder.AddMethod(__Method_EmergencyStop, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.EmergencyStopRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.EmergencyStop));
       serviceBinder.AddMethod(__Method_GetAxisStatus, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.AxisStatus>(serviceImpl.GetAxisStatus));
-      serviceBinder.AddMethod(__Method_ConfigureDerotator, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.DerotatorConfig, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.ConfigureDerotator));
-      serviceBinder.AddMethod(__Method_EnableFieldRotation, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.FieldRotationParams, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.EnableFieldRotation));
-      serviceBinder.AddMethod(__Method_ControlFieldRotation, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.FieldRotationControlRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.ControlFieldRotation));
-      serviceBinder.AddMethod(__Method_GetDerotatorStatus, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.DerotatorStatus>(serviceImpl.GetDerotatorStatus));
-      serviceBinder.AddMethod(__Method_HomeDerotator, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.DerotatorHomingRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.HomeDerotator));
-      serviceBinder.AddMethod(__Method_GetFieldRotationParams, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.FieldRotationParams>(serviceImpl.GetFieldRotationParams));
+      serviceBinder.AddMethod(__Method_Home, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.MountHomingRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.Home));
       serviceBinder.AddMethod(__Method_GetHALConfig, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.HALConfig>(serviceImpl.GetHALConfig));
       serviceBinder.AddMethod(__Method_SetHALConfig, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.HALConfigRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.SetHALConfig));
       serviceBinder.AddMethod(__Method_GetHALStatus, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.HALStatus>(serviceImpl.GetHALStatus));
       serviceBinder.AddMethod(__Method_ReinitializeHAL, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.HALReinitRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.ReinitializeHAL));
+      serviceBinder.AddMethod(__Method_RestartController, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.RestartController));
+      serviceBinder.AddMethod(__Method_HardRestartController, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.HardRestartController));
+      serviceBinder.AddMethod(__Method_StartGamepad, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.StartGamepad));
+      serviceBinder.AddMethod(__Method_StopGamepad, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.StopGamepad));
+      serviceBinder.AddMethod(__Method_SetGamepadMode, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.GamepadModeRequest, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.SetGamepadMode));
       serviceBinder.AddMethod(__Method_SetMountOrientation, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::AstroMount.MountOrientation, global::Google.Protobuf.WellKnownTypes.Empty>(serviceImpl.SetMountOrientation));
       serviceBinder.AddMethod(__Method_GetMountOrientation, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.MountOrientation>(serviceImpl.GetMountOrientation));
+      serviceBinder.AddMethod(__Method_StartLx200, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status>(serviceImpl.StartLx200));
+      serviceBinder.AddMethod(__Method_StopLx200, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status>(serviceImpl.StopLx200));
+      serviceBinder.AddMethod(__Method_GetLx200Status, serviceImpl == null ? null : new grpc::UnaryServerMethod<global::Google.Protobuf.WellKnownTypes.Empty, global::AstroMount.Lx200Status>(serviceImpl.GetLx200Status));
     }
 
   }

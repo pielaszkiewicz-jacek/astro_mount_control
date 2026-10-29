@@ -181,6 +181,28 @@ bool AstroMountINDI::initProperties()
     // Pulse-guiding interface (defines GuideNSNP / GuideWENP).
     INDI::GuiderInterface::initProperties("Guide");
 
+    // PHD2 identifies INDI mounts by the GUIDER_INTERFACE flag (its INDI device
+    // filter only accepts mount candidates that expose GUIDER_INTERFACE and not
+    // CCD_INTERFACE). Set it AFTER the base classes — INDI::Telescope::initProperties()
+    // overwrites the interface with TELESCOPE_INTERFACE, so this must come later.
+    setDriverInterface(getDriverInterface() | INDI::BaseDevice::GUIDER_INTERFACE);
+
+    // Legacy INDI timed-guide pulse properties consumed by PHD2 (2.6.x).
+    // PHD2 sends TELESCOPE_TIMED_GUIDE_NS / TELESCOPE_TIMED_GUIDE_WE with
+    // elements TIMED_GUIDE_N/S and TIMED_GUIDE_W/E (pulse duration in ms);
+    // the modern GuideNSNP/GuideWENP above are not used by PHD2.
+    IUFillNumber(&TimedGuideNSN[0], "TIMED_GUIDE_N", "North (ms)", "%g", 0, 60000, 1, 0);
+    IUFillNumber(&TimedGuideNSN[1], "TIMED_GUIDE_S", "South (ms)", "%g", 0, 60000, 1, 0);
+    IUFillNumberVector(&TimedGuideNSTP, TimedGuideNSN, 2,
+                       getDeviceName(), "TELESCOPE_TIMED_GUIDE_NS",
+                       "Timed Guide N/S", "Guide", IP_RW, 60, IPS_IDLE);
+
+    IUFillNumber(&TimedGuideWEN[0], "TIMED_GUIDE_W", "West (ms)", "%g", 0, 60000, 1, 0);
+    IUFillNumber(&TimedGuideWEN[1], "TIMED_GUIDE_E", "East (ms)", "%g", 0, 60000, 1, 0);
+    IUFillNumberVector(&TimedGuideWETP, TimedGuideWEN, 2,
+                       getDeviceName(), "TELESCOPE_TIMED_GUIDE_WE",
+                       "Timed Guide W/E", "Guide", IP_RW, 60, IPS_IDLE);
+
     // Debug control — adds the DEBUG switch so LOG_DEBUG/LOGF_DEBUG output can
     // be toggled from the INDI client at runtime.
     addDebugControl();
@@ -367,6 +389,8 @@ bool AstroMountINDI::updateProperties()
         defineProperty(&AutoBootstrapSP);
         defineProperty(&GamepadSP);
         defineProperty(&Lx200SP);
+        defineProperty(&TimedGuideNSTP);
+        defineProperty(&TimedGuideWETP);
 
         // Poll initial state
         pollController();
@@ -389,6 +413,8 @@ bool AstroMountINDI::updateProperties()
         deleteProperty(AutoBootstrapSP.name);
         deleteProperty(GamepadSP.name);
         deleteProperty(Lx200SP.name);
+        deleteProperty(TimedGuideNSTP.name);
+        deleteProperty(TimedGuideWETP.name);
     }
 
     return true;
@@ -409,6 +435,33 @@ bool AstroMountINDI::ISNewNumber(const char* dev, const char* name,
         // GuiderInterface, which maps them onto GuideNorth/South/East/West.
         if (INDI::GuiderInterface::processNumber(dev, name, values, names, n))
             return true;
+
+        // Legacy PHD2 timed-guide properties (TELESCOPE_TIMED_GUIDE_NS/_WE).
+        // PHD2 sends one element with the pulse duration in ms (the others 0).
+        if (!strcmp(name, TimedGuideNSTP.name))
+        {
+            IUUpdateNumber(&TimedGuideNSTP, values, names, n);
+            const uint32_t msN = static_cast<uint32_t>(TimedGuideNSN[0].value);
+            const uint32_t msS = static_cast<uint32_t>(TimedGuideNSN[1].value);
+            IPState rc = IPS_OK;
+            if (msN > 0) rc = GuideNorth(msN);
+            else if (msS > 0) rc = GuideSouth(msS);
+            TimedGuideNSTP.s = rc;
+            IDSetNumber(&TimedGuideNSTP, nullptr);
+            return true;
+        }
+        if (!strcmp(name, TimedGuideWETP.name))
+        {
+            IUUpdateNumber(&TimedGuideWETP, values, names, n);
+            const uint32_t msW = static_cast<uint32_t>(TimedGuideWEN[0].value);
+            const uint32_t msE = static_cast<uint32_t>(TimedGuideWEN[1].value);
+            IPState rc = IPS_OK;
+            if (msW > 0) rc = GuideWest(msW);
+            else if (msE > 0) rc = GuideEast(msE);
+            TimedGuideWETP.s = rc;
+            IDSetNumber(&TimedGuideWETP, nullptr);
+            return true;
+        }
 
         // Handle J2000 coordinate input — precess to JNow and slew.
         if (!strcmp(name, EquatorialCoordsJ2000NP.name))
