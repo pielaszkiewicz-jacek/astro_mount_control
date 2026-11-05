@@ -1125,6 +1125,26 @@ bool AstroMountINDI::SetTrackEnabled(bool enabled)
     {
         if (enabled)
         {
+            // Read the mode/rates the operator actually selected in the client.
+            // The INDI base class only forwards SetTrackMode()/SetTrackRate()
+            // while the mount is already tracking, so a mode/rate chosen while
+            // the mount is idle never reaches the cached m_trackMode/m_customTrack*.
+            // Without this, enabling tracking after selecting Custom (while
+            // idle) silently fell back to sidereal and ignored the custom rates.
+            int selectedMode = -1;
+            for (size_t i = 0; i < TrackModeSP.size(); ++i)
+            {
+                if (TrackModeSP[i].s == ISS_ON)
+                {
+                    selectedMode = static_cast<int>(i);
+                    break;
+                }
+            }
+            if (selectedMode >= 0)
+                m_trackMode = static_cast<uint8_t>(selectedMode);
+            m_customTrackRaArcsecPerSec = TrackRateNP[0].value;
+            m_customTrackDecArcsecPerSec = TrackRateNP[1].value;
+
             // Track the CURRENT on-sky position, not the last Goto target.
             // KStars "Track" (and "Slew and Track" once the slew settles)
             // enables sidereal tracking where the telescope currently points.

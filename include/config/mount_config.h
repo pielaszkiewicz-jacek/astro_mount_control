@@ -87,6 +87,26 @@ enum class MountType {
 };
 
 /**
+ * @brief Axis role convention for CASUAL mounts.
+ *
+ * Both conventions describe a pointing direction in the mount frame with the
+ * same unit-vector construction
+ *     v = (cos(θ1)·cos(θ2), cos(θ1)·sin(θ2), sin(θ1))
+ * where θ1 is the "latitude-like" angle and θ2 is the "longitude-like" angle.
+ * The conventions differ only in which physical axis plays which role:
+ *
+ *   ALT_AZ_LIKE    axis1 = θ1 (altitude-like), axis2 = θ2 (azimuth-like).
+ *   EQUATORIAL_LIKE axis1 = θ2 (hour-angle-like), axis2 = θ1 (declination-like).
+ *
+ * The orientation quaternion is identical in both cases; it only rotates the
+ * ENU frame into the mount frame.
+ */
+enum class AxisConvention {
+    ALT_AZ_LIKE,
+    EQUATORIAL_LIKE
+};
+
+/**
  * @brief Pure mount parameters — type, location, rates, encoders, axis physics
  *
  * Contains only parameters that describe the physical mount hardware
@@ -96,6 +116,9 @@ enum class MountType {
 struct MountConfig {
     // Mount type
     MountType mount_type{MountType::EQUATORIAL};
+
+    // Axis role convention for CASUAL mounts (ignored for EQUATORIAL/ALT_AZ).
+    AxisConvention axis_convention{AxisConvention::ALT_AZ_LIKE};
     
     // Location
     double latitude{0.0};

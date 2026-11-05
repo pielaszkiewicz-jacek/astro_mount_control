@@ -49,12 +49,14 @@ public:
      */
     MountKinematics(config::MountType mount_type, double latitude_deg,
                     double gear_ha, double gear_dec,
-                    const std::array<double, 4>& quaternion = {0.0, 0.0, 0.0, 1.0})
+                    const std::array<double, 4>& quaternion = {0.0, 0.0, 0.0, 1.0},
+                    config::AxisConvention axis_convention = config::AxisConvention::ALT_AZ_LIKE)
         : mount_type_(mount_type),
           latitude_deg_(latitude_deg),
           gear_ha_(gear_ha > 0.0 ? gear_ha : 1.0),
           gear_dec_(gear_dec > 0.0 ? gear_dec : 1.0),
-          quaternion_(quaternion) {}
+          quaternion_(quaternion),
+          axis_convention_(axis_convention) {}
 
     /**
      * @brief Compute tracking rates for both axes [servo deg/s].
@@ -145,7 +147,7 @@ private:
 
         const auto [true_alt, true_az] =
             AstronomicalCalculations::mountOrientationToHorizontal(
-                axis1_tel, axis2_tel, q_enu_to_mount);
+                axis1_tel, axis2_tel, q_enu_to_mount, axis_convention_);
 
         const double alt_rad = true_alt * kPi / 180.0;
         const double az_rad  = true_az * kPi / 180.0;
@@ -164,12 +166,20 @@ private:
         }
 
         const double omega = 7.2921150e-5 * trackingModeFactor(mode);
-        const double alt_rate_rad = omega * cos_lat * std::cos(az_rad);
-        const double az_rate_rad  = -omega * cos_lat * std::sin(alt_rad) / cos_alt;
 
         const double sin_alt = std::sin(alt_rad);
         const double cos_az_h = std::cos(az_rad);
         const double sin_az_h = std::sin(az_rad);
+
+        // Sidereal velocity of a fixed celestial target in the true horizontal
+        // frame (azimuth measured from North through East, matching SOFA
+        // iauHd2ae used by equatorialToHorizontal()):
+        //   dAlt/dt = ω·cos(lat)·sin(az)
+        //   dAz/dt  = ω·sin(lat) − ω·cos(lat)·cos(az)·tan(alt)
+        // cos_alt is clamped above to avoid the zenith singularity.
+        const double alt_rate_rad = omega * cos_lat * sin_az_h;
+        const double az_rate_rad  = omega * (std::sin(lat_rad)
+                                             - cos_lat * cos_az_h * sin_alt / cos_alt);
 
         const double vx = -sin_alt * cos_az_h * alt_rate_rad - cos_alt * sin_az_h * az_rate_rad;
         const double vy = -sin_alt * sin_az_h * alt_rate_rad + cos_alt * cos_az_h * az_rate_rad;
@@ -216,8 +226,15 @@ private:
                                    / cos_m1 * 180.0 / kPi;
 
         TrackingRates out;
-        out.axis1 = m1_rate_deg * gear_ha_;
-        out.axis2 = m2_rate_deg * gear_dec_;
+        if (axis_convention_ == config::AxisConvention::EQUATORIAL_LIKE) {
+            // axis1 = HA-like (longitude-like θ2), axis2 = Dec-like (latitude-like θ1)
+            out.axis1 = m2_rate_deg * gear_ha_;
+            out.axis2 = m1_rate_deg * gear_dec_;
+        } else {
+            // axis1 = altitude-like (latitude-like θ1), axis2 = azimuth-like (longitude-like θ2)
+            out.axis1 = m1_rate_deg * gear_ha_;
+            out.axis2 = m2_rate_deg * gear_dec_;
+        }
         return out;
     }
 
@@ -226,6 +243,7 @@ private:
     double gear_ha_;
     double gear_dec_;
     std::array<double, 4> quaternion_;
+    config::AxisConvention axis_convention_;
 };
 
 } // namespace core

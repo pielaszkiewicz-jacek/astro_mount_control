@@ -446,7 +446,8 @@
         "tracking_pos_velocity_factor": 1.0,
         "tracking_pos_velocity_margin": 1.0,
         "tracking_update_ms": 5,
-        "type": "equatorial",
+        "axis_convention": "equatorial",
+        "type": "casual",
         "use_encoders": true
     },
     "network": {

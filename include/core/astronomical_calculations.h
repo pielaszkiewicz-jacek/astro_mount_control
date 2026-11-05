@@ -6,6 +6,8 @@
 #include <vector>
 #include <memory>
 
+#include "config/mount_config.h"
+
 namespace astro_mount {
 namespace core {
 
@@ -139,7 +141,8 @@ public:
      */
     static std::pair<double, double> mountOrientationToHorizontal(
         double mount_altitude, double mount_azimuth,
-        const std::array<double, 4>& mountOrientation);
+        const std::array<double, 4>& mountOrientation,
+        config::AxisConvention convention = config::AxisConvention::ALT_AZ_LIKE);
 
     /**
      * @brief Convert mount-oriented alt/az to celestial equatorial coordinates
@@ -154,8 +157,10 @@ public:
      * @param mountOrientation Mount orientation quaternion [qx, qy, qz, qw]
      * @return Equatorial coordinates (ra in hours, dec in degrees)
      */
-    std::pair<double, double> mountOrientationToEquatorial(double mount_altitude, double mount_azimuth,
-                                                            double jd, const std::array<double, 4>& mountOrientation);
+    std::pair<double, double> mountOrientationToEquatorial(
+        double mount_altitude, double mount_azimuth,
+        double jd, const std::array<double, 4>& mountOrientation,
+        config::AxisConvention convention = config::AxisConvention::ALT_AZ_LIKE);
 
     /**
      * @brief Convert celestial equatorial to mount-oriented alt/az coordinates
@@ -170,8 +175,10 @@ public:
      * @param mountOrientation Mount orientation quaternion [qx, qy, qz, qw]
      * @return Mount-oriented coordinates (altitude, azimuth) in degrees
      */
-    std::pair<double, double> equatorialToMountOrientation(double ra, double dec,
-                                                           double jd, const std::array<double, 4>& mountOrientation);
+    std::pair<double, double> equatorialToMountOrientation(
+        double ra, double dec,
+        double jd, const std::array<double, 4>& mountOrientation,
+        config::AxisConvention convention = config::AxisConvention::ALT_AZ_LIKE);
 
     /**
      * @brief Calculate Earth rotation angle

@@ -498,7 +498,8 @@ std::array<double, 3> rotateVectorByQuaternion(const std::array<double, 3>& v,
 
 std::pair<double, double> AstronomicalCalculations::mountOrientationToHorizontal(
     double mount_altitude, double mount_azimuth,
-    const std::array<double, 4>& mountOrientation) {
+    const std::array<double, 4>& mountOrientation,
+    config::AxisConvention convention) {
     
     // Normalize quaternion before use.
     double norm = std::sqrt(mountOrientation[0] * mountOrientation[0] +
@@ -514,14 +515,22 @@ std::pair<double, double> AstronomicalCalculations::mountOrientationToHorizontal
     double qz = mountOrientation[2] * inv_norm;
     double qw = mountOrientation[3] * inv_norm;
     
-    // Convert mount-frame alt/az to Cartesian unit vector.
-    double alt_rad = mount_altitude * D2R;
-    double az_rad = mount_azimuth * D2R;
+    // Build the mount-frame unit vector from (axis1, axis2).
+    //   ALT_AZ_LIKE:    θ1 = axis1 (altitude-like), θ2 = axis2 (azimuth-like)
+    //   EQUATORIAL_LIKE: θ1 = axis2 (Dec-like), θ2 = axis1 (HA-like)
+    double theta1_rad, theta2_rad;
+    if (convention == config::AxisConvention::EQUATORIAL_LIKE) {
+        theta1_rad = mount_azimuth * D2R;   // Dec-like from axis2
+        theta2_rad = mount_altitude * D2R;  // HA-like from axis1
+    } else {
+        theta1_rad = mount_altitude * D2R;  // altitude-like from axis1
+        theta2_rad = mount_azimuth * D2R;   // azimuth-like from axis2
+    }
     
     std::array<double, 3> mount_vec = {{
-        std::cos(alt_rad) * std::cos(az_rad),
-        std::cos(alt_rad) * std::sin(az_rad),
-        std::sin(alt_rad)
+        std::cos(theta1_rad) * std::cos(theta2_rad),
+        std::cos(theta1_rad) * std::sin(theta2_rad),
+        std::sin(theta1_rad)
     }};
     
     // Apply inverse quaternion rotation to get true horizontal vector.
@@ -539,11 +548,12 @@ std::pair<double, double> AstronomicalCalculations::mountOrientationToHorizontal
 
 std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial(
     double mount_altitude, double mount_azimuth,
-    double jd, const std::array<double, 4>& mountOrientation) {
+    double jd, const std::array<double, 4>& mountOrientation,
+    config::AxisConvention convention) {
     
     // Step 1: Convert mount-frame → true horizontal via inverse quaternion
     auto [horiz_alt, horiz_az] = mountOrientationToHorizontal(
-        mount_altitude, mount_azimuth, mountOrientation);
+        mount_altitude, mount_azimuth, mountOrientation, convention);
     
     // Step 2: Convert true horizontal to equatorial (remove refraction)
     return horizontalToEquatorial(horiz_alt, horiz_az, jd, false);
@@ -551,7 +561,8 @@ std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial
 
 std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation(
     double ra, double dec,
-    double jd, const std::array<double, 4>& mountOrientation) {
+    double jd, const std::array<double, 4>& mountOrientation,
+    config::AxisConvention convention) {
     
     // Step 0: Normalize quaternion before use.
     // A non-unit quaternion causes direction error and non-uniform scaling.
@@ -587,13 +598,18 @@ std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation
     // Step 3: Apply quaternion rotation to get mount-frame vector
     std::array<double, 3> mount_vec = rotateVectorByQuaternion(horiz_vec, norm_q);
     
-    // Step 4: Convert back to alt/az in mount frame
-    double mount_alt = std::asin(mount_vec[2]) * R2D;
-    double mount_az = std::atan2(mount_vec[1], mount_vec[0]) * R2D;
-    if (mount_az < 0.0) mount_az += 360.0;
-    if (mount_az >= 360.0) mount_az -= 360.0;
+    // Step 4: Convert back to spherical angles in the mount frame.
+    double theta1 = std::asin(mount_vec[2]) * R2D;          // latitude-like
+    double theta2 = std::atan2(mount_vec[1], mount_vec[0]) * R2D;  // longitude-like
+    if (theta2 < 0.0) theta2 += 360.0;
+    if (theta2 >= 360.0) theta2 -= 360.0;
     
-    return {mount_alt, mount_az};
+    if (convention == config::AxisConvention::EQUATORIAL_LIKE) {
+        // axis1 = HA-like (θ2), axis2 = Dec-like (θ1)
+        return {theta2, theta1};
+    }
+    // axis1 = altitude-like (θ1), axis2 = azimuth-like (θ2)
+    return {theta1, theta2};
 }
 
 double AstronomicalCalculations::calculateEarthRotationAngle(double jd) {

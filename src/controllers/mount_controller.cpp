@@ -861,7 +861,8 @@ public:
                     // Multiply by gear_ratio to convert telescope degrees → servo degrees.
                     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                     auto [mount_alt, mount_az] = astro_calc_->equatorialToMountOrientation(
-                        ra, dec, jd, mount_orientation_.quaternion);
+                        ra, dec, jd, mount_orientation_.quaternion,
+                        config_.mount_config.axis_convention);
                     const double ha_gear_se = config_.mount_config.ha_axis_params.gear_ratio;
                     const double dec_gear_se = config_.mount_config.dec_axis_params.gear_ratio;
                     axis1_target_ = mount_alt * ha_gear_se - home_offset_axis1_;   // Altitude in mount frame → servo (no wrapping)
@@ -1656,7 +1657,8 @@ public:
                 // multiply by gear_ratio to convert to servo degrees for CANopen.
                 double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                 auto [mount_alt, mount_az] = astro_calc_->equatorialToMountOrientation(
-                    ra, dec, jd, mount_orientation_.quaternion);
+                    ra, dec, jd, mount_orientation_.quaternion,
+                    config_.mount_config.axis_convention);
                 const double ha_gear_cas = config_.mount_config.ha_axis_params.gear_ratio;
                 const double dec_gear_cas = config_.mount_config.dec_axis_params.gear_ratio;
                 axis1_target_ = mount_alt * ha_gear_cas - home_offset_axis1_;   // Altitude in mount frame → servo (no wrapping)
@@ -2380,7 +2382,8 @@ public:
                     double mount_alt_tel = axis1_position_ / haGear();
                     double mount_az_tel  = axis2_position_ / decGear();
                     auto eq = astro_calc_->mountOrientationToEquatorial(
-                        mount_alt_tel, mount_az_tel, jd, q_corr);
+                        mount_alt_tel, mount_az_tel, jd, q_corr,
+                        config_.mount_config.axis_convention);
                     current_ra = eq.first;
                     current_dec = eq.second;
                     convert_ok = std::isfinite(current_ra) && std::isfinite(current_dec);
@@ -2440,7 +2443,8 @@ public:
                                 // Convert through mount orientation quaternion
                                 auto mf = astro_calc_->equatorialToMountOrientation(
                                     current_ra, current_dec, jd,
-                                    mount_orientation_.quaternion);
+                                    mount_orientation_.quaternion,
+                                    config_.mount_config.axis_convention);
                                 new_alt = mf.first;
                                 new_az = mf.second;
                                 convert_back_ok = std::isfinite(new_alt) && std::isfinite(new_az);
@@ -2893,7 +2897,6 @@ public:
                             // before the next update arrives, producing stop-start oscillation.
                             double jd = core::AstronomicalCalculations::getCurrentJulianDate();
                             double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
-                            constexpr double SIDEREAL_HOURS_PER_SEC = 24.0 / 86164.0905;
 
                             // Profile velocity = configurable factor × sidereal servo rate.
                             const double ha_gear = haGear();
@@ -2902,6 +2905,20 @@ public:
                                 ? config_.mount_config.tracking_pos_velocity_factor : 1.0;
                             const double pos_vel_margin = config_.mount_config.tracking_pos_velocity_margin > 0.0
                                 ? config_.mount_config.tracking_pos_velocity_margin : 1.0;
+
+                            // Actual configured celestial tracking rates for this
+                            // session (servo deg/s), computed by startTracking() for
+                            // the active mode (SIDEREAL/SOLAR/LUNAR/CUSTOM).  Position
+                            // target advancement must follow these rates instead of a
+                            // hardcoded sidereal rate — otherwise CUSTOM drift rates
+                            // are ignored and the Dec axis never moves in CUSTOM mode.
+                            const double tracking_rate_cap_adv = config_.mount_config.max_tracking_rate > 0.0
+                                ? config_.mount_config.max_tracking_rate
+                                : sidereal_servo_rate;
+                            const double advance_rate_axis1 = std::min(
+                                std::abs(axis1_rate_) > 1e-12 ? std::abs(axis1_rate_) : sidereal_servo_rate,
+                                tracking_rate_cap_adv);
+                            const double ha_rate_hours_per_sec = advance_rate_axis1 / (15.0 * ha_gear);
 
                             // The lead must exceed pos_vel × update_interval, otherwise the
                             // drive catches up to the fixed target and stalls between updates
@@ -2924,7 +2941,7 @@ public:
                                 ? config_.mount_config.tracking_pos_lead_seconds : 2.0;
                             const double POS_LEAD_SECONDS = std::max(configured_lead_s, pos_vel_factor * measured_update_s + 0.5);
 
-                            double ha_hours = lst - snap_target_ra + POS_LEAD_SECONDS * SIDEREAL_HOURS_PER_SEC;
+                            double ha_hours = lst - snap_target_ra + POS_LEAD_SECONDS * ha_rate_hours_per_sec;
                             while (ha_hours > 12.0) ha_hours -= 24.0;
                             while (ha_hours < -12.0) ha_hours += 24.0;
                             
@@ -2962,16 +2979,22 @@ public:
                             // offset), causing the Dec axis to keep rotating.
                             double new_axis1_target = ha_hours * 15.0 * ha_gear - home_offset_axis1_;
 
-                            // Dec target: hold the FIXED pier-side-resolved target that
-                            // startTracking() computed.  Dec is stationary during
-                            // sidereal tracking, so a fixed target is the stable choice.
-                            // Recomputing it every update from the live drive position
-                            // forms a feedback loop (target moves → drive moves → target
-                            // recomputes → …) that can make the Dec axis rotate.  Any
-                            // implausible value (e.g. a corrupt home offset) is caught
-                            // and re-anchored to the physical drive position by the
-                            // safety guard below.
+                            // Dec target: advance at the configured Dec tracking rate
+                            // (servo deg/s).  SIDEREAL/SOLAR/LUNAR have axis2_rate_ == 0,
+                            // so Dec stays fixed as before.  CUSTOM with a non-zero Dec
+                            // drift rate now moves the Dec axis in position mode.  The
+                            // target is advanced incrementally (not recomputed from the
+                            // live drive position) so a CUSTOM Dec drift does not form a
+                            // feedback loop.
                             double new_axis2_target = axis2_target_;
+                            if (std::abs(axis2_rate_) > 1e-12) {
+                                const double dec_advance_rate = std::min(
+                                    std::abs(axis2_rate_), tracking_rate_cap_adv);
+                                const double advance_s = measured_update_s + configured_lead_s;
+                                new_axis2_target = axis2_target_ +
+                                    std::copysign(dec_advance_rate, axis2_rate_) * advance_s;
+                                axis2_target_ = new_axis2_target;
+                            }
 
                             // Guard against non-finite targets before they reach the
                             // drive.  A NaN/Inf target (e.g. from a corrupted TPOINT
@@ -4034,7 +4057,8 @@ public:
             } else {
                 // ALT_AZ / CASUAL: reverse the mount orientation quaternion.
                 auto eq = astro_calc_->mountOrientationToEquatorial(
-                    raw_tel_axis1, raw_tel_axis2, jd, mount_orientation_.quaternion);
+                    raw_tel_axis1, raw_tel_axis2, jd, mount_orientation_.quaternion,
+                    config_.mount_config.axis_convention);
                 ra_hours = eq.first;
                 dec_deg = eq.second;
             }
@@ -4383,8 +4407,10 @@ public:
         // Now Wahba/SVD is used for EVERY mount type because:
         //   - mount_vec = f(mount_ha, mount_dec) is computed identically
         //     for CASUAL (HA, Dec), EQUATORIAL (HA, Dec), and ALT_AZ (Az, Alt).
-        //   - horiz_vec = f(observed_ra, observed_dec) is always the true
-        //     horizontal ENU vector at the measurement time/location.
+        //   - horiz_vec = f(expected_ra, expected_dec) is always the true
+        //     horizontal ENU vector at the measurement time/location. The catalog
+        //     expected_* is ground truth; observed_* is derived from the current
+        //     (not yet calibrated) orientation and would make the fit circular.
         //   - Wahba's problem finds the optimal rotation R: mount_frame → true_horizontal.
         //   - For EQUATORIAL: R absorbs encoder offset as an additional rotation
         //     around the (coincident) mount axes — mathematically exact for any offset.
@@ -4392,10 +4418,10 @@ public:
         //     translation on the sphere rather than a pure rotation (see caveat below).
         //
         // Algorithm:
-        //   1. Convert (observed_ra, observed_dec) at measurement time to true horizontal (alt, az)
+        //   1. Convert (expected_ra, expected_dec) at measurement time to true horizontal (alt, az)
         //   2. Convert (mount_ha, mount_dec) to unit vector in mount frame
         //   3. Build cross-covariance matrix B = sum(mount_vec * horiz_vec^T)
-        //   4. SVD(B) = U * S * V^T  →  optimal rotation R = V * U^T
+        //   4. SVD(B) = U * S * V^T  →  optimal rotation R = U * V^T
         //   5. Convert R to quaternion Q
         //   6. Q represents rotation: mount frame → true horizontal frame
         
@@ -4422,43 +4448,82 @@ public:
                     m.timestamp.time_since_epoch()).count();
                 double jd = 2440587.5 + ms_since_epoch / 86400000.0;
                 
-                // Step 1: Convert (observed_ra, observed_dec) → true horizontal (alt, az)
-                double ra_hours = m.observed_ra;
-                double dec_deg = m.observed_dec;
+                // Step 1: Convert the star's true (catalog) position to horizontal.
+                // Use expected_* (the catalog coordinates the user centered on),
+                // NOT observed_* — observed_* is derived from the controller's
+                // current orientation quaternion, which is exactly what we are
+                // trying to solve for. Using it creates a circular dependency and
+                // corrupts the fit whenever the current orientation is wrong.
+                double ra_hours = m.expected_ra;
+                double dec_deg = m.expected_dec;
                 
                 auto [true_alt, true_az] = astro_calc_->equatorialToHorizontal(
                     ra_hours, dec_deg, jd, true);
                 
-                // Convert alt/az to ENU unit vector in true horizontal frame
-                // ENU: x=East, y=North, z=Up
+                // Convert alt/az to a unit vector in the true horizontal frame
+                // using the SAME component convention as equatorialToMountOrientation()
+                // and mountOrientationToHorizontal(): x=North, y=East, z=Up
+                // (azimuth measured from North through East, matching SOFA iauHd2ae).
+                // The previous x=East/y=North layout was inconsistent with those
+                // transforms, so an estimated non-identity quaternion was applied
+                // in the wrong basis and CASUAL tracking drifted after calibration.
                 double alt_rad = true_alt * M_PI / 180.0;
                 double az_rad = true_az * M_PI / 180.0;
                 Eigen::Vector3d horiz_vec(
-                    std::sin(az_rad) * std::cos(alt_rad),   // East
                     std::cos(az_rad) * std::cos(alt_rad),   // North
+                    std::sin(az_rad) * std::cos(alt_rad),   // East
                     std::sin(alt_rad)                        // Up
                 );
                 
                 // Step 2: Convert mount position (mount_ha = axis1, mount_dec = axis2)
-                // to a unit vector in mount frame.
-                // In mount frame: axis1 = altitude-like, axis2 = azimuth-like
+                // to a unit vector in mount frame using the configured axis
+                // convention. Same component convention as above (x=North-like,
+                // y=East-like, z=Up-like).
                 double axis1_deg = m.mount_ha;
                 double axis2_deg = m.mount_dec;
                 double a1_rad = axis1_deg * M_PI / 180.0;
                 double a2_rad = axis2_deg * M_PI / 180.0;
+                double theta1_rad, theta2_rad;
+                if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                    // axis1 = HA-like (θ2), axis2 = Dec-like (θ1)
+                    theta1_rad = a2_rad;
+                    theta2_rad = a1_rad;
+                } else {
+                    // axis1 = altitude-like (θ1), axis2 = azimuth-like (θ2)
+                    theta1_rad = a1_rad;
+                    theta2_rad = a2_rad;
+                }
                 Eigen::Vector3d mount_vec(
-                    std::sin(a2_rad) * std::cos(a1_rad),   // axis2 (longitude-like)
-                    std::cos(a2_rad) * std::cos(a1_rad),   // axis2 orthogonal
-                    std::sin(a1_rad)                        // axis1 (altitude-like)
+                    std::cos(theta1_rad) * std::cos(theta2_rad),   // North-like
+                    std::cos(theta1_rad) * std::sin(theta2_rad),   // East-like
+                    std::sin(theta1_rad)                           // Up-like
                 );
                 
                 // Step 3: Accumulate B += mount_vec * horiz_vec^T
                 // Use equal weights for all measurements
                 B += mount_vec * horiz_vec.transpose();
                 total_weight += 1.0;
+
+                // Diagnostic: expose the raw measurement and the angular
+                // separation between the mount-frame vector and the true
+                // horizontal vector. A large separation (> a few degrees)
+                // means the recorded mount position does not correspond to the
+                // catalog star — the most common cause of a degenerate fit.
+                {
+                    double dot = mount_vec.dot(horiz_vec);
+                    dot = std::max(-1.0, std::min(1.0, dot));
+                    const double sep_deg = std::acos(dot) * 180.0 / M_PI;
+                    MOUNT_LOG_INFO(
+                        "Bootstrap meas: expected RA={:.6f}h Dec={:.4f}° "
+                        "mount axis1={:.4f}° axis2={:.4f}° "
+                        "true alt={:.4f}° az={:.4f}° | mount↔sky sep={:.3f}°",
+                        m.expected_ra, m.expected_dec,
+                        m.mount_ha, m.mount_dec,
+                        true_alt, true_az, sep_deg);
+                }
             }
             
-            // Step 4: SVD to find optimal rotation R = V * U^T
+            // Step 4: SVD to find optimal rotation R = U * V^T (Wahba/Kabsch)
             Eigen::JacobiSVD<Eigen::Matrix3d> svd(B, Eigen::ComputeFullU | Eigen::ComputeFullV);
             
             // Check condition number of the cross-covariance matrix B.
@@ -4481,13 +4546,17 @@ public:
                 // will detect poor alignment via large RMS error.
             }
             
-            Eigen::Matrix3d R = svd.matrixV() * svd.matrixU().transpose();
+            // Wahba/Kabsch optimal rotation: R = U * V^T (NOT V * U^T — the
+            // transposed order returns the inverse rotation).  B was built as
+            // sum(mount_vec * horiz_vec^T), so R maps true-horizontal → mount.
+            Eigen::Matrix3d R = svd.matrixU() * svd.matrixV().transpose();
             
-            // Ensure proper rotation (det = +1)
+            // Ensure proper rotation (det = +1) by flipping the last column of U
+            // (equivalent to D = diag(1, 1, det(U)·det(V)) in Kabsch's form).
             if (R.determinant() < 0) {
-                Eigen::Matrix3d V = svd.matrixV();
-                V.col(2) = -V.col(2);
-                R = V * svd.matrixU().transpose();
+                Eigen::Matrix3d U = svd.matrixU();
+                U.col(2) = -U.col(2);
+                R = U * svd.matrixV().transpose();
             }
             
             // Step 5: Convert rotation matrix R to quaternion Q = [qx, qy, qz, qw]
@@ -4539,10 +4608,12 @@ public:
                     m.timestamp.time_since_epoch()).count();
                 double jd = 2440587.5 + ms_since_epoch / 86400000.0;
                 
-                // Expected mount position from observed sky position using estimated Q
+                // Expected mount position from the catalog sky position using the
+                // estimated Q (expected_* is the ground-truth star position).
                 auto [expected_axis1, expected_axis2] = astro_calc_->equatorialToMountOrientation(
-                    m.observed_ra, m.observed_dec, jd,
-                    estimated_q.quaternion);
+                    m.expected_ra, m.expected_dec, jd,
+                    estimated_q.quaternion,
+                    config_.mount_config.axis_convention);
                 
                 double d1 = expected_axis1 - m.mount_ha;
                 double d2 = expected_axis2 - m.mount_dec;
@@ -7629,7 +7700,8 @@ private:
             config_.mount_config.latitude,
             config_.mount_config.ha_axis_params.gear_ratio,
             config_.mount_config.dec_axis_params.gear_ratio,
-            mount_orientation_.quaternion)
+            mount_orientation_.quaternion,
+            config_.mount_config.axis_convention)
             .trackingRates(mode, axis1_tel, axis2_tel,
                            custom_rate_ra_arcsec_s, custom_rate_dec_arcsec_s,
                            config_.mount_config.max_tracking_rate);
@@ -8885,7 +8957,8 @@ private:
                         // CELESTIAL / PRECISION: LX → dRA/dt, LY → dDec/dt
                         double speed_factor = (gamepad_mode_ == 3) ? 0.1 : 1.0;  // PRECISION = 1/10th speed
                         auto [current_ra, current_dec] = astro_calc_->mountOrientationToEquatorial(
-                            axis1_position_, axis2_position_, jd, mount_orientation_.quaternion);
+                            axis1_position_, axis2_position_, jd, mount_orientation_.quaternion,
+                            config_.mount_config.axis_convention);
                         
                         double dRA = vel0 * gamepad_max_velocity_ * speed_factor * dt / 15.0;
                         double dDec = vel1 * gamepad_max_velocity_ * speed_factor * dt;
@@ -8893,13 +8966,15 @@ private:
                         double new_dec = std::clamp(current_dec + dDec, -90.0, 90.0);
                         
                         auto [new_axis1, new_axis2] = astro_calc_->equatorialToMountOrientation(
-                            new_ra, new_dec, jd, mount_orientation_.quaternion);
+                            new_ra, new_dec, jd, mount_orientation_.quaternion,
+                            config_.mount_config.axis_convention);
                         axis1_target = new_axis1;
                         axis2_target = new_axis2;
                     } else if (gamepad_mode_ == 2) {
                         // ALT_AZ: LY → dAlt/dt (deg/s), LX → dAz/dt (deg/s)
                         auto [current_ra, current_dec] = astro_calc_->mountOrientationToEquatorial(
-                            axis1_position_, axis2_position_, jd, mount_orientation_.quaternion);
+                            axis1_position_, axis2_position_, jd, mount_orientation_.quaternion,
+                            config_.mount_config.axis_convention);
                         auto [current_alt, current_az] = astro_calc_->equatorialToHorizontal(
                             current_ra, current_dec, jd, false);
                         
@@ -8911,7 +8986,8 @@ private:
                         auto [new_ra, new_dec] = astro_calc_->horizontalToEquatorial(
                             new_alt, new_az, jd, false);
                         auto [new_axis1, new_axis2] = astro_calc_->equatorialToMountOrientation(
-                            new_ra, new_dec, jd, mount_orientation_.quaternion);
+                            new_ra, new_dec, jd, mount_orientation_.quaternion,
+                            config_.mount_config.axis_convention);
                         axis1_target = new_axis1;
                         axis2_target = new_axis2;
                     }

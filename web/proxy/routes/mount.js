@@ -146,4 +146,46 @@ router.post('/unpark', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/mount/orientation
+ * Get current mount orientation quaternion (for CASUAL mount type).
+ */
+router.get('/mount/orientation', async (req, res) => {
+  try {
+    const orientation = await grpcCall('GetMountOrientation', {});
+    res.json({
+      qx: Number(orientation.qx || 0),
+      qy: Number(orientation.qy || 0),
+      qz: Number(orientation.qz || 0),
+      qw: Number(orientation.qw || 1),
+    });
+  } catch (err) {
+    errorResponse(res, 502, 'Get mount orientation failed', err.message);
+  }
+});
+
+/**
+ * POST /api/mount/orientation
+ * Set mount orientation quaternion (for CASUAL mount type).
+ * Body: { qx, qy, qz, qw }
+ */
+router.post('/mount/orientation', async (req, res) => {
+  try {
+    const { qx, qy, qz, qw } = req.body || {};
+
+    if (qx === undefined || qy === undefined || qz === undefined || qw === undefined) {
+      return errorResponse(res, 400, 'Missing required fields: qx, qy, qz, qw');
+    }
+    const components = [qx, qy, qz, qw];
+    if (!components.every((c) => typeof c === 'number' && Number.isFinite(c))) {
+      return errorResponse(res, 400, 'Quaternion components must be finite numbers');
+    }
+
+    await grpcCall('SetMountOrientation', { qx, qy, qz, qw });
+    res.json({ success: true, message: 'Mount orientation updated', qx, qy, qz, qw });
+  } catch (err) {
+    errorResponse(res, 502, 'Set mount orientation failed', err.message);
+  }
+});
+
 module.exports = router;

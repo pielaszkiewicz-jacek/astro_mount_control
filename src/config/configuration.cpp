@@ -248,6 +248,7 @@ public:
         auto mount = config_.value("mount", json::object());
         
         config.type = mount.value("type", "equatorial");
+        config.axis_convention = mount.value("axis_convention", "altaz");
         config.latitude = mount.value("latitude", 52.0);
         config.longitude = mount.value("longitude", 21.0);
         config.altitude = mount.value("altitude", 100.0);
@@ -481,6 +482,7 @@ public:
     void setMountConfig(const MountConfig& config) {
         json mount;
         mount["type"] = config.type;
+        mount["axis_convention"] = config.axis_convention;
         mount["latitude"] = config.latitude;
         mount["longitude"] = config.longitude;
         mount["altitude"] = config.altitude;

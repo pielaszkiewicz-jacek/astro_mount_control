@@ -534,9 +534,10 @@ Dla montażów równikowych, rotacja pola wynosi zero (z wyjątkiem efektów atm
 Dla montażu CASUAL, prędkości śledzenia są obliczane dynamicznie w pętli śledzenia:
 
 ```
-1. Oblicz prędkości śledzenia w rzeczywistym układzie horyzontalnym (Alt/Az)
-   - Prędkość Alt:  d(alt)/dt = ω_⊕ · cos(φ) · cos(az)
-   - Prędkość Az:   d(az)/dt  = -ω_⊕ · (cos(φ) · sin(az) · sin(alt) + sin(φ) · cos(alt)) / cos(alt)
+1. Oblicz prędkości śledzenia w rzeczywistym układzie horyzontalnym (Alt/Az,
+   azymut mierzony od północy przez wschód):
+   - Prędkość Alt:  d(alt)/dt = ω_⊕ · cos(φ) · sin(az)
+   - Prędkość Az:   d(az)/dt  = ω_⊕ · sin(φ) − ω_⊕ · cos(φ) · cos(az) · tan(alt)
 2. Transformuj wektor prędkości przez kwaternion orientacji Q⁻¹ do układu montażu
 3. Uzyskaj prędkości (axis1_rate, axis2_rate) w układzie montażu
 ```

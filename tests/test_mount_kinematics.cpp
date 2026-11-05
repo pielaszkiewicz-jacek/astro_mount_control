@@ -65,14 +65,25 @@ TEST(MountKinematicsTest, EquatorialCustomZeroFallsBack)
 
 TEST(MountKinematicsTest, AltAzSiderealAtEquatorEastHorizon)
 {
-    // latitude 0, altitude 0, azimuth 0: alt_rate = ω, az_rate = 0, so the
-    // axis1 servo rate is ω·(180/π)·gear and axis2 is zero.
+    // latitude 0, altitude 0, azimuth 90° (East horizon): alt_rate = ω,
+    // az_rate = 0, so the axis1 servo rate is ω·(180/π)·gear and axis2 is zero.
     MountKinematics kin(config::MountType::ALT_AZ, 0.0, kGear, kGear);
-    const TrackingRates rates = kin.trackingRates(config::TrackingMode::SIDEREAL, 0.0, 0.0);
+    const TrackingRates rates = kin.trackingRates(config::TrackingMode::SIDEREAL, 0.0, 90.0);
 
     const double omega = 7.2921150e-5;
     const double expected_axis1 = omega * (180.0 / kPi) * kGear;
     EXPECT_NEAR(rates.axis1, expected_axis1, 1e-9);
+    EXPECT_NEAR(rates.axis2, 0.0, 1e-9);
+}
+
+TEST(MountKinematicsTest, AltAzSiderealAtEquatorNorthHorizon)
+{
+    // latitude 0, altitude 0, azimuth 0° (North horizon): the north celestial
+    // pole is stationary there, so both axis rates must be zero.
+    MountKinematics kin(config::MountType::ALT_AZ, 0.0, kGear, kGear);
+    const TrackingRates rates = kin.trackingRates(config::TrackingMode::SIDEREAL, 0.0, 0.0);
+
+    EXPECT_NEAR(rates.axis1, 0.0, 1e-9);
     EXPECT_NEAR(rates.axis2, 0.0, 1e-9);
 }
 
@@ -110,6 +121,34 @@ TEST(MountKinematicsTest, CasualRotatedQuaternionIsApplied)
     const TrackingRates c = casual.trackingRates(config::TrackingMode::SIDEREAL, 30.0, 45.0);
 
     EXPECT_GT(std::abs(c.axis1 - a.axis1) + std::abs(c.axis2 - a.axis2), 1e-9);
+}
+
+TEST(MountKinematicsTest, EquatorialConventionPolarAlignedSiderealRate)
+{
+    // A polar-aligned equatorial mount at latitude 52° under the
+    // EQUATORIAL_LIKE axis convention: axis1 = HA, axis2 = Dec. The
+    // orientation quaternion is a 180° rotation about (sin19°, 0, cos19°),
+    // which maps the ENU frame onto the equatorial mount frame. The HA rate
+    // must be constant sidereal and the Dec rate zero for any HA/Dec.
+    const double half = (90.0 - kLatitude) / 2.0 * kPi / 180.0;
+    const std::array<double, 4> q_polar{std::sin(half), 0.0, std::cos(half), 0.0};
+
+    MountKinematics kin(config::MountType::CASUAL, kLatitude, kGear, kGear,
+                        q_polar, config::AxisConvention::EQUATORIAL_LIKE);
+
+    const double positions[][2] = {
+        {0.0, 45.0}, {45.0, 20.0}, {-80.0, 11.0}, {120.0, -30.0},
+    };
+    const double omega = 7.2921150e-5;
+    const double expected_axis1 = omega * (180.0 / kPi) * kGear;
+    for (const auto& pos : positions) {
+        const TrackingRates rates =
+            kin.trackingRates(config::TrackingMode::SIDEREAL, pos[0], pos[1]);
+        EXPECT_NEAR(rates.axis1, expected_axis1, 1e-9)
+            << "HA rate @ (" << pos[0] << ", " << pos[1] << ")";
+        EXPECT_NEAR(rates.axis2, 0.0, 1e-9)
+            << "Dec rate @ (" << pos[0] << ", " << pos[1] << ")";
+    }
 }
 
 TEST(MountKinematicsTest, SolarAndLunarScalePositionDependentRates)

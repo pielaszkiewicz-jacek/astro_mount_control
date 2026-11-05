@@ -250,6 +250,10 @@ int main(int argc, char* argv[]) {
             mount_cfg.mount_type = config::MountType::ALT_AZ;
         else
             mount_cfg.mount_type = config::MountType::UNKNOWN;
+        if (cfg_mount.axis_convention == "equatorial")
+            mount_cfg.axis_convention = config::AxisConvention::EQUATORIAL_LIKE;
+        else
+            mount_cfg.axis_convention = config::AxisConvention::ALT_AZ_LIKE;
         mount_cfg.latitude = cfg_mount.latitude;
         mount_cfg.longitude = cfg_mount.longitude;
         mount_cfg.altitude = cfg_mount.altitude;

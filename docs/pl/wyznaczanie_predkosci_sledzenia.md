@@ -70,6 +70,10 @@ Podtryby:
 - **Position mode (domyślny, `equatorial_tracking_velocity_mode=false`)** — host
   co ~50 iteracji przelicza `HA = LST − RA (+lead)` i wysyła `setPosition`;
   faktyczny ruch generuje napęd. Prędkość hosta nie jest wysyłana co iterację.
+  Lead dla HA i dryft Dec są liczone z prędkości aktywnego trybu
+  (`axis1_rate_`/`axis2_rate_` ustawionych w `startTracking()`), więc tryb
+  CUSTOM z niezerowym dryftem Dec faktycznie przesuwa oś Dec także w trybie
+  pozycyjnym.
 - **Velocity mode (`=true`)** — `cmd_rate = snapshot stałej prędkości + drift_trim`,
   gdzie `drift_trim = clamp(0.5·(expected − actual), ±1 °/s)` liczony raz na
   sekundę; publikacja przez `publishVelocityCommand`.
@@ -88,9 +92,11 @@ Liczone co iterację w `computeMountFrameRates()` z kwaternionem tożsamościowy
 1. `alt = axis1_position/gear_ha`, `az = axis2_position/gear_dec` (== prawdziwe alt/az).
 2. `ω = 7.292115e-5 · trackingModeFactor(mode)`
    (SIDEREAL 1.0, SOLAR 0.9972, LUNAR 0.9760, CUSTOM 1.0, OFF 0).
-3. Prędkości w prawdziwym układzie horyzontalnym:
-   - `alt_rate = ω · cos(φ) · cos(az)`
-   - `az_rate  = −ω · cos(φ) · sin(alt) / cos(alt)` (`cos(alt)` przycięte do `cos(89.5°)`).
+3. Prędkości w prawdziwym układzie horyzontalnym (azymut mierzony od północy
+   przez wschód, zgodnie z `iauHd2ae` w `equatorialToHorizontal()`):
+   - `alt_rate = ω · cos(φ) · sin(az)`
+   - `az_rate  = ω · sin(φ) − ω · cos(φ) · cos(az) · tan(alt)`
+     (`cos(alt)` przycięte do `cos(89.5°)` ze względu na osobliwość zenitalną).
 4. Budowany wektor prędkości ENU, rzutowany na osie (dla `Q=I`):
    - `axis1_rate = alt_rate · gear_ha`
    - `axis2_rate = az_rate · gear_dec`

@@ -88,9 +88,9 @@ Gałąź CASUAL w pętli trackingu ([`mount_controller.cpp:1782`](src/controller
 
 ```cpp
 // Prędkości ALT_AZ w true horizontal frame [rad/s]
-// mount_controller.cpp:1671-1672
-double alt_rate_rad = omega * cos_lat * std::cos(az_rad);
-double az_rate_rad  = -omega * cos_lat * std::sin(alt_rad) / cos_alt;
+// (azymut od północy przez wschód, zgodnie z SOFA iauHd2ae)
+double alt_rate_rad = omega * cos_lat * std::sin(az_rad);
+double az_rate_rad  = omega * (std::sin(lat_rad) - cos_lat * std::cos(az_rad) * std::sin(alt_rad) / cos_alt);
 
 // Inline quaternion rotation: v' = v + 2*qw*(q×v) + 2*(q×(q×v))
 // mount_controller.cpp:1691-1702
@@ -287,9 +287,9 @@ if (EQUATORIAL) {
     // Wszystkie aplikowane jako offset pozycji axis1/axis2
 }
 else if (ALT_AZ) {
-    // Obliczanie prędkości zależnych od pozycji:
-    //   d(alt)/dt = ω · cos(lat) · cos(az)
-    //   d(az)/dt  = -ω · cos(lat) · sin(alt) / cos(alt)
+    // Obliczanie prędkości zależnych od pozycji (az od północy przez wschód):
+    //   d(alt)/dt = ω · cos(lat) · sin(az)
+    //   d(az)/dt  = ω · sin(lat) − ω · cos(lat) · cos(az) · tan(alt)
     // Żadnych korekcji — tylko czysto geometryczne prędkości
 }
 else if (CASUAL) {

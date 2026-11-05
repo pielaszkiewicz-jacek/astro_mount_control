@@ -339,6 +339,37 @@ TEST_F(MountControllerTest, TrackingUpdatesPosition) {
         << "Tracking should increase axis1 position over time";
 }
 
+TEST_F(MountControllerTest, CustomDecDriftMovesDecAxisInPositionMode) {
+    // Regression test: EQUATORIAL position-mode tracking used to hold the Dec
+    // target fixed and advance the RA target at a hardcoded sidereal rate,
+    // ignoring CUSTOM rates entirely.  A CUSTOM Dec drift rate therefore never
+    // moved the Dec axis.  With the fix, the Dec target advances at the
+    // configured custom Dec rate (servo deg/s).
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    // Custom Dec drift = 30 arcsec/s → 0.008333°/s at gear_ratio=1.0.
+    EXPECT_TRUE(controller_->startTracking(ra, 0.0, config::TrackingMode::CUSTOM,
+                                           0.0 /* RA: fall back to configured default */,
+                                           30.0 /* Dec: arcsec/s */));
+
+    std::this_thread::sleep_for(1500ms);
+    controller_->refreshPositions();
+    auto status1 = controller_->getStatus();
+    std::this_thread::sleep_for(1500ms);
+    controller_->refreshPositions();
+    auto status2 = controller_->getStatus();
+
+    EXPECT_GT(status2.axis2_position, status1.axis2_position)
+        << "CUSTOM Dec drift should increase axis2 position over time";
+}
+
 TEST_F(MountControllerTest, StartTrackingWhileSlewingRejected) {
     controller_->initialize(config_);
     controller_->slewToEquatorial(12.0, 45.0);

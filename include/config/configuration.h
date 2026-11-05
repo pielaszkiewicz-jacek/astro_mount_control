@@ -76,6 +76,8 @@ public:
 
     struct MountConfig {
         std::string type;
+        // Axis role convention for CASUAL mounts ("altaz" | "equatorial").
+        std::string axis_convention{"altaz"};
         double latitude;
         double longitude;
         double altitude;

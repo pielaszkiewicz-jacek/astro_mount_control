@@ -160,17 +160,23 @@ Algorytm (zaimplementowany w [`runBootstrapCalibration()`](src/controllers/mount
 
 ```
 Dla każdego pomiaru:
-  1. Konwersja (observed_ra, observed_dec) → rzeczywisty horyzontalny (alt, az)
-     z uwzględnieniem refrakcji atmosferycznej
-  2. Konwersja (alt, az) → wektor jednostkowy ENU:
-     horiz_vec = [sin(az)·cos(alt), cos(az)·cos(alt), sin(alt)]ᵀ
-  3. Konwersja pozycji montażu (mount_ha, mount_dec) → wektor w układzie montażu:
-     mount_vec = [sin(a2)·cos(a1), cos(a2)·cos(a1), sin(a1)]ᵀ
+  1. Konwersja (expected_ra, expected_dec — katalogowa pozycja gwiazdy, którą
+     użytkownik wycentrował) → rzeczywisty horyzontalny (alt, az)
+     z uwzględnieniem refrakcji atmosferycznej.
+     `observed_*` NIE jest używane, bo pochodzi z aktualnej orientacji
+     kontrolera i tworzyłoby zależność cykliczną w estymacji.
+  2. Konwersja (alt, az) → wektor jednostkowy w układzie horyzontalnym
+     (ta sama konwencja co `equatorialToMountOrientation()`:
+     x=North, y=East, z=Up; azymut od północy przez wschód):
+     horiz_vec = [cos(az)·cos(alt), sin(az)·cos(alt), sin(alt)]ᵀ
+  3. Konwersja pozycji montażu (mount_ha = axis1, mount_dec = axis2) → wektor
+     w układzie montażu (ta sama konwencja składowych):
+     mount_vec = [cos(a1)·cos(a2), cos(a1)·sin(a2), sin(a1)]ᵀ
   4. Akumulacja macierzy kowariancji:
      B = Σ mount_vec · horiz_vecᵀ
 
 SVD(B) = U · S · Vᵀ
-Optymalna rotacja: R = V · Uᵀ (z korektą znaku dla det(R) = +1)
+Optymalna rotacja: R = U · Vᵀ (Wahba/Kabsch; z korektą znaku dla det(R) = +1)
 
 Konwersja R → kwaternion Q = [qx, qy, qz, qw]
 ```
