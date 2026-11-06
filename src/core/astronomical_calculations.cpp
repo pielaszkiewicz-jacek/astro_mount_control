@@ -551,12 +551,14 @@ std::pair<double, double> AstronomicalCalculations::mountOrientationToEquatorial
     double jd, const std::array<double, 4>& mountOrientation,
     config::AxisConvention convention) {
     
-    // Step 1: Convert mount-frame → true horizontal via inverse quaternion
+    // Step 1: Convert mount-frame → apparent horizontal via inverse quaternion
     auto [horiz_alt, horiz_az] = mountOrientationToHorizontal(
         mount_altitude, mount_azimuth, mountOrientation, convention);
     
-    // Step 2: Convert true horizontal to equatorial (remove refraction)
-    return horizontalToEquatorial(horiz_alt, horiz_az, jd, false);
+    // Step 2: Convert apparent horizontal to equatorial, removing atmospheric
+    // refraction to recover the catalog position. Symmetric with
+    // equatorialToMountOrientation(), which applies refraction on the way in.
+    return horizontalToEquatorial(horiz_alt, horiz_az, jd, true);
 }
 
 std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation(
@@ -582,12 +584,16 @@ std::pair<double, double> AstronomicalCalculations::equatorialToMountOrientation
         mountOrientation[3] * inv_norm
     }};
     
-    // Step 1: Convert celestial RA/Dec to true horizontal coordinates
-    auto [true_alt, true_az] = equatorialToHorizontal(ra, dec, jd, false);
+    // Step 1: Convert celestial RA/Dec to APPARENT (refracted) horizontal
+    // coordinates. Refraction is applied to match runBootstrapCalibration(),
+    // which fits the orientation quaternion against the apparent (visually
+    // centered) star position. mountOrientationToEquatorial() removes it
+    // symmetrically so the round-trip recovers the catalog RA/Dec.
+    auto [app_alt, app_az] = equatorialToHorizontal(ra, dec, jd, true);
     
-    // Step 2: Convert true horizontal alt/az to Cartesian unit vector
-    double alt_rad = true_alt * D2R;
-    double az_rad = true_az * D2R;
+    // Step 2: Convert apparent horizontal alt/az to Cartesian unit vector
+    double alt_rad = app_alt * D2R;
+    double az_rad = app_az * D2R;
     
     std::array<double, 3> horiz_vec = {{
         std::cos(alt_rad) * std::cos(az_rad),     // north

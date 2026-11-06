@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include "core/astronomical_calculations.h"
 #include <cmath>
+#include <Eigen/Dense>
+#include <Eigen/SVD>
 
 using namespace astro_mount::core;
 
@@ -642,30 +644,36 @@ TEST_F(AstronomicalCalculationsTest, CombinedPrecessionAndProperMotion) {
 TEST_F(AstronomicalCalculationsTest, IdentityQuaternionRoundTrip) {
     // With identity quaternion Q = (0, 0, 0, 1), the mount frame IS the
     // ENU frame. The transform should reduce to standard alt/az <-> equatorial.
-    double ra = 10.0;   // hours
-    double dec = 45.0;  // degrees
     double jd = AstronomicalCalculations::getCurrentJulianDate();
+    // Place the star on the meridian (HA = 0 → culmination) so it is high in the
+    // sky; this keeps atmospheric refraction small and its forward/inverse
+    // asymmetry far below the round-trip tolerance.
+    double lst = AstronomicalCalculations::calculateLST(jd, 21.0122);
+    double ra = lst;     // hours (culmination)
+    double dec = 45.0;   // degrees
     
     std::array<double, 4> identity_q = {{0.0, 0.0, 0.0, 1.0}};
     
-    // RA/Dec -> mount-frame alt/az (should equal true alt/az)
+    // RA/Dec -> mount-frame alt/az (should equal apparent alt/az: refraction applied)
     auto [mount_alt, mount_az] = calc->equatorialToMountOrientation(ra, dec, jd, identity_q);
     
-    // Get the true horizontal coordinates for comparison
-    auto [true_alt, true_az] = calc->equatorialToHorizontal(ra, dec, jd, false);
+    // Get the apparent horizontal coordinates for comparison
+    auto [app_alt, app_az] = calc->equatorialToHorizontal(ra, dec, jd, true);
     
-    // With identity quaternion, mount alt/az should equal true alt/az
-    EXPECT_NEAR(mount_alt, true_alt, 1e-10)
-        << "Identity quaternion: mount altitude should match true altitude";
-    EXPECT_NEAR(mount_az, true_az, 1e-10)
-        << "Identity quaternion: mount azimuth should match true azimuth";
+    // With identity quaternion, mount alt/az should equal apparent alt/az
+    EXPECT_NEAR(mount_alt, app_alt, 1e-10)
+        << "Identity quaternion: mount altitude should match apparent altitude";
+    EXPECT_NEAR(mount_az, app_az, 1e-10)
+        << "Identity quaternion: mount azimuth should match apparent azimuth";
     
-    // Mount-frame alt/az -> equatorial (round-trip)
+    // Mount-frame alt/az -> equatorial (round-trip). The quaternion rotation is
+    // inverted exactly; only a tiny second-order refraction asymmetry remains
+    // (refraction is added at the true altitude and removed at the apparent one).
     auto [ra_back, dec_back] = calc->mountOrientationToEquatorial(mount_alt, mount_az, jd, identity_q);
     
-    EXPECT_NEAR(ra_back, ra, 1e-10)
+    EXPECT_NEAR(ra_back, ra, 1e-5)
         << "Identity quaternion round-trip: RA mismatch";
-    EXPECT_NEAR(dec_back, dec, 1e-10)
+    EXPECT_NEAR(dec_back, dec, 1e-5)
         << "Identity quaternion round-trip: Dec mismatch";
 }
 
@@ -685,21 +693,24 @@ TEST_F(AstronomicalCalculationsTest, KnownQuaternionTransform) {
         std::cos(half_theta)
     }};
     
-    double ra = 12.0;   // hours
-    double dec = 0.0;   // degrees (on celestial equator)
     double jd = AstronomicalCalculations::getCurrentJulianDate();
+    // Culmination (HA = 0) keeps the dec=0° star reasonably high in the sky,
+    // limiting the refraction asymmetry in the round-trip check below.
+    double lst = AstronomicalCalculations::calculateLST(jd, 21.0122);
+    double ra = lst;   // hours (culmination)
+    double dec = 0.0;  // degrees (on celestial equator)
     
-    // Get true alt/az for comparison
-    auto [true_alt, true_az] = calc->equatorialToHorizontal(ra, dec, jd);
+    // Get apparent alt/az for comparison
+    auto [app_alt, app_az] = calc->equatorialToHorizontal(ra, dec, jd);
     
     // Transform through quaternion
     auto [mount_alt, mount_az] = calc->equatorialToMountOrientation(ra, dec, jd, q);
     
     // The quaternion rotation should produce different mount coordinates
-    // than the true alt/az (unless the star is at a special position).
+    // than the apparent alt/az (unless the star is at a special position).
     // Since we tilted East, the mount altitude should differ.
-    bool alt_changed = std::abs(mount_alt - true_alt) > 1e-6;
-    bool az_changed = std::abs(mount_az - true_az) > 1e-6;
+    bool alt_changed = std::abs(mount_alt - app_alt) > 1e-6;
+    bool az_changed = std::abs(mount_az - app_az) > 1e-6;
     EXPECT_TRUE(alt_changed || az_changed)
         << "Non-identity quaternion should change coordinates";
     
@@ -714,10 +725,11 @@ TEST_F(AstronomicalCalculationsTest, KnownQuaternionTransform) {
     // Round-trip: mount alt/az -> equatorial
     auto [ra_back, dec_back] = calc->mountOrientationToEquatorial(mount_alt, mount_az, jd, q);
     
-    // Round-trip should recover original RA/Dec
-    EXPECT_NEAR(ra_back, ra, 1e-8)
+    // Round-trip should recover original RA/Dec. At dec=0° culmination the
+    // refraction asymmetry is still ~0.06", so a 1e-4° tolerance is used.
+    EXPECT_NEAR(ra_back, ra, 1e-4)
         << "Quaternion round-trip: RA mismatch";
-    EXPECT_NEAR(dec_back, dec, 1e-8)
+    EXPECT_NEAR(dec_back, dec, 1e-4)
         << "Quaternion round-trip: Dec mismatch";
 }
 
@@ -729,12 +741,12 @@ TEST_F(AstronomicalCalculationsTest, EquatorialToMountOrientationIdentity) {
     std::array<double, 4> identity_q = {{0.0, 0.0, 0.0, 1.0}};
     double jd = AstronomicalCalculations::getCurrentJulianDate();
     
-    // Test at zenith (should be well-behaved)
+    // Test at the celestial pole (should be well-behaved)
     auto [alt, az] = calc->equatorialToMountOrientation(0.0, 90.0, jd, identity_q);
-    auto [true_alt, true_az] = calc->equatorialToHorizontal(0.0, 90.0, jd, false);
+    auto [app_alt, app_az] = calc->equatorialToHorizontal(0.0, 90.0, jd, true);
     
-    EXPECT_NEAR(alt, true_alt, 1e-10);
-    EXPECT_NEAR(az, true_az, 1e-10);
+    EXPECT_NEAR(alt, app_alt, 1e-10);
+    EXPECT_NEAR(az, app_az, 1e-10);
 }
 
 // -----------------------------------------------------------
@@ -743,7 +755,10 @@ TEST_F(AstronomicalCalculationsTest, EquatorialToMountOrientationIdentity) {
 
 TEST_F(AstronomicalCalculationsTest, MultipleQuaternionOrientations) {
     double jd = AstronomicalCalculations::getCurrentJulianDate();
-    double ra = 10.5;
+    // Culmination (HA = 0) keeps the star high so the refraction asymmetry in
+    // the round-trip check remains negligible.
+    double lst = AstronomicalCalculations::calculateLST(jd, 21.0122);
+    double ra = lst;   // hours (culmination)
     double dec = 30.0;
     
     // Test several different orientation quaternions
@@ -772,8 +787,8 @@ TEST_F(AstronomicalCalculationsTest, MultipleQuaternionOrientations) {
         // Round-trip
         auto [ra_back, dec_back] = calc->mountOrientationToEquatorial(mount_alt, mount_az, jd, q);
         
-        // Round-trip error should be tiny — use 1e-5 tolerance for non-identity quaternions
-        // due to accumulated numerical precision in equatorial↔horizontal→Cartesian↔quaternion chain
+        // Round-trip error should be tiny — use 1e-5 tolerance; the star is placed
+        // at culmination so the refraction forward/backward asymmetry is negligible.
         EXPECT_NEAR(ra_back, ra, 1e-5)
             << "RA round-trip error for q=[" << q[0] << "," << q[1] << "," << q[2] << "," << q[3] << "]";
         EXPECT_NEAR(dec_back, dec, 1e-5)
@@ -790,12 +805,99 @@ TEST_F(AstronomicalCalculationsTest, MountOrientationToEquatorialIdentity) {
     double jd = AstronomicalCalculations::getCurrentJulianDate();
     
     // At alt=45 deg, az=180 deg (South), with identity quaternion the mount
-    // frame equals ENU, so the mount alt/az are true horizontal.
-    // These should convert back to the same equatorial as horizontalToEquatorial.
-    auto [true_ra, true_dec] = calc->horizontalToEquatorial(45.0, 180.0, jd, false);
+    // frame equals ENU, so the mount alt/az are apparent horizontal.
+    // These should convert back to the same equatorial as horizontalToEquatorial
+    // with refraction removal applied.
+    auto [app_ra, app_dec] = calc->horizontalToEquatorial(45.0, 180.0, jd, true);
     auto [mount_ra, mount_dec] = calc->mountOrientationToEquatorial(45.0, 180.0, jd, identity_q);
     
-    EXPECT_NEAR(mount_ra, true_ra, 1e-10);
-    EXPECT_NEAR(mount_dec, true_dec, 1e-10);
+    EXPECT_NEAR(mount_ra, app_ra, 1e-10);
+    EXPECT_NEAR(mount_dec, app_dec, 1e-10);
+}
+
+// -----------------------------------------------------------
+// Diagnostic: Wahba/SVD bootstrap recovers a known quaternion
+// for the EQUATORIAL_LIKE axis convention (axis1 = HA-like,
+// axis2 = Dec-like). Mirrors runBootstrapCalibration() exactly.
+// -----------------------------------------------------------
+
+TEST_F(AstronomicalCalculationsTest, BootstrapWahbaRecoversKnownQuaternionEquatorialLike) {
+    using astro_mount::config::AxisConvention;
+    // Known non-trivial orientation: 45° rotation about the East axis.
+    const double half = 22.5 * M_PI / 180.0;
+    const std::array<double, 4> q_known{{std::sin(half), 0.0, 0.0, std::cos(half)}};
+
+    double jd = AstronomicalCalculations::getCurrentJulianDate();
+
+    const double stars[][2] = {
+        {0.0, 45.0}, {4.0, 15.0}, {8.0, -20.0}, {12.0, 50.0}, {16.0, -40.0},
+    };
+
+    Eigen::Matrix3d B = Eigen::Matrix3d::Zero();
+    for (const auto& s : stars) {
+        const double ra = s[0], dec = s[1];
+        auto [m1, m2] = calc->equatorialToMountOrientation(
+            ra, dec, jd, q_known, AxisConvention::EQUATORIAL_LIKE);
+        // EQUATORIAL_LIKE: axis1 (m1) = HA-like θ2, axis2 (m2) = Dec-like θ1.
+        const double theta1 = m2 * M_PI / 180.0;
+        const double theta2 = m1 * M_PI / 180.0;
+        const Eigen::Vector3d mount_vec(
+            std::cos(theta1) * std::cos(theta2),
+            std::cos(theta1) * std::sin(theta2),
+            std::sin(theta1));
+
+        auto [alt, az] = calc->equatorialToHorizontal(ra, dec, jd, true);
+        const double alt_rad = alt * M_PI / 180.0;
+        const double az_rad = az * M_PI / 180.0;
+        const Eigen::Vector3d horiz_vec(
+            std::cos(az_rad) * std::cos(alt_rad),
+            std::sin(az_rad) * std::cos(alt_rad),
+            std::sin(alt_rad));
+
+        B += mount_vec * horiz_vec.transpose();
+    }
+
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(B, Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Matrix3d R = svd.matrixU() * svd.matrixV().transpose();
+    if (R.determinant() < 0) {
+        Eigen::Matrix3d U = svd.matrixU();
+        U.col(2) = -U.col(2);
+        R = U * svd.matrixV().transpose();
+    }
+
+    double qx, qy, qz, qw;
+    const double trace = R(0,0) + R(1,1) + R(2,2);
+    if (trace > 0.0) {
+        const double S = std::sqrt(trace + 1.0) * 2.0;
+        qw = 0.25 * S;
+        qx = (R(2,1) - R(1,2)) / S;
+        qy = (R(0,2) - R(2,0)) / S;
+        qz = (R(1,0) - R(0,1)) / S;
+    } else if (R(0,0) > R(1,1) && R(0,0) > R(2,2)) {
+        const double S = std::sqrt(1.0 + R(0,0) - R(1,1) - R(2,2)) * 2.0;
+        qw = (R(2,1) - R(1,2)) / S;
+        qx = 0.25 * S;
+        qy = (R(0,1) + R(1,0)) / S;
+        qz = (R(0,2) + R(2,0)) / S;
+    } else if (R(1,1) > R(2,2)) {
+        const double S = std::sqrt(1.0 + R(1,1) - R(0,0) - R(2,2)) * 2.0;
+        qw = (R(0,2) - R(2,0)) / S;
+        qx = (R(0,1) + R(1,0)) / S;
+        qy = 0.25 * S;
+        qz = (R(1,2) + R(2,1)) / S;
+    } else {
+        const double S = std::sqrt(1.0 + R(2,2) - R(0,0) - R(1,1)) * 2.0;
+        qw = (R(1,0) - R(0,1)) / S;
+        qx = (R(0,2) + R(2,0)) / S;
+        qy = (R(1,2) + R(2,1)) / S;
+        qz = 0.25 * S;
+    }
+    const double n = std::sqrt(qx*qx + qy*qy + qz*qz + qw*qw);
+    qx /= n; qy /= n; qz /= n; qw /= n;
+
+    // Quaternions q and -q represent the same rotation.
+    const double dot = qx*q_known[0] + qy*q_known[1] + qz*q_known[2] + qw*q_known[3];
+    EXPECT_NEAR(std::abs(dot), 1.0, 1e-6)
+        << "recovered q=[" << qx << "," << qy << "," << qz << "," << qw << "]";
 }
 

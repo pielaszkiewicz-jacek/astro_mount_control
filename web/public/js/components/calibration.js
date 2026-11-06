@@ -70,6 +70,8 @@ const CalibrationComponent = (() => {
   let currentBootstrapMode = 0;
   /** Whether the mount has absolute encoders (AUTOMATIC mode prerequisite) */
   let encoderTypeAbsolute = false;
+  /** Cached CASUAL mount-type flag (null = not yet resolved) */
+  let cachedIsCasual = null;
 
   // ─── Polling ─────────────────────────────────────────────────────────────
 
@@ -456,6 +458,27 @@ const CalibrationComponent = (() => {
   // ─── Slew and Add Measurement ────────────────────────────────────────────
 
   /**
+   * Resolve whether the mount is configured as CASUAL (randomly oriented).
+   * Fetches the controller configuration once and caches the result.
+   * @returns {Promise<boolean>}
+   */
+  async function isCasualMount() {
+    if (cachedIsCasual !== null) {
+      return cachedIsCasual;
+    }
+    try {
+      const config = await Api.getConfig();
+      const rawType = config && config.mount_type;
+      const s = (typeof rawType === 'string') ? rawType.toUpperCase() : rawType;
+      cachedIsCasual = (s === 'CASUAL' || s === 3);
+    } catch (err) {
+      console.warn('[Calibration] Failed to resolve mount type:', err.message);
+      cachedIsCasual = false;
+    }
+    return cachedIsCasual;
+  }
+
+  /**
    * Slew to the selected object, then add a measurement.
    * The mount records the actual position after slewing, and we send
    * the expected coordinates from the database object.
@@ -473,6 +496,16 @@ const CalibrationComponent = (() => {
     if (ra == null || dec == null) {
       App.showToast(I18n.t('cal.msg.no_coords'), 'error');
       return;
+    }
+
+    // CASUAL bootstrap: the post-slew axis position is computed from the current
+    // (uncalibrated) orientation quaternion, so "Slew & Add Measurement" records a
+    // self-confirming measurement that never reflects the physical orientation.
+    // Require manual centering + "Add Measurement Direct" for the first bootstrap.
+    if (type === 'bs' && await isCasualMount()) {
+      App.showToast(I18n.t('cal.msg.casual_slew_warning'), 'error', 6000);
+      const proceed = window.confirm(I18n.t('cal.msg.casual_slew_confirm'));
+      if (!proceed) return;
     }
 
     // First slew to the object

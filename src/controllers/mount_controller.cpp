@@ -865,16 +865,28 @@ public:
                         config_.mount_config.axis_convention);
                     const double ha_gear_se = config_.mount_config.ha_axis_params.gear_ratio;
                     const double dec_gear_se = config_.mount_config.dec_axis_params.gear_ratio;
-                    axis1_target_ = mount_alt * ha_gear_se - home_offset_axis1_;   // Altitude in mount frame → servo (no wrapping)
-                    
-                    // Azimuth-like axis (axis2 for CASUAL): find target nearest to current
-                    // position to avoid the drive unwinding many revolutions.
-                    double full_turn_se = 360.0 * dec_gear_se;
-                    double raw_az_target_se = mount_az * dec_gear_se - home_offset_axis2_;
-                    double diff_se = raw_az_target_se - std::fmod(axis2_position_, full_turn_se);
-                    if (diff_se < 0.0) diff_se += full_turn_se;
-                    if (diff_se > full_turn_se / 2.0) diff_se -= full_turn_se;
-                    axis2_target_ = axis2_position_ + diff_se;  // shortest path to azimuth target
+                    if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                        // axis1 = hour-angle-like (θ2): periodic → shortest-path wrap so the
+                        // drive does not unwind turns crossing the 0°/360° boundary.
+                        double full_turn_a1_se = 360.0 * ha_gear_se;
+                        double raw_a1_se = mount_alt * ha_gear_se - home_offset_axis1_;
+                        double diff_a1_se = raw_a1_se - std::fmod(axis1_position_, full_turn_a1_se);
+                        if (diff_a1_se < 0.0) diff_a1_se += full_turn_a1_se;
+                        if (diff_a1_se > full_turn_a1_se / 2.0) diff_a1_se -= full_turn_a1_se;
+                        axis1_target_ = axis1_position_ + diff_a1_se;
+                        // axis2 = declination-like (θ1): resolve to nearest pier-side equivalent.
+                        const double dec_gear_safe_se = dec_gear_se > 0.0 ? dec_gear_se : 360.0;
+                        axis2_target_ = resolveDecTarget(mount_az, axis2_position_ / dec_gear_safe_se) * dec_gear_safe_se - home_offset_axis2_;
+                    } else {
+                        // ALT_AZ_LIKE: axis1 = altitude-like (no wrapping), axis2 = azimuth-like (shortest path).
+                        axis1_target_ = mount_alt * ha_gear_se - home_offset_axis1_;
+                        double full_turn_se = 360.0 * dec_gear_se;
+                        double raw_az_target_se = mount_az * dec_gear_se - home_offset_axis2_;
+                        double diff_se = raw_az_target_se - std::fmod(axis2_position_, full_turn_se);
+                        if (diff_se < 0.0) diff_se += full_turn_se;
+                        if (diff_se > full_turn_se / 2.0) diff_se -= full_turn_se;
+                        axis2_target_ = axis2_position_ + diff_se;
+                    }
                 } else {  // ALT_AZ
                     // Convert RA/Dec to true horizontal coordinates (altitude, azimuth).
                     // Refraction is NOT applied here — it's compensated during tracking.
@@ -1104,15 +1116,26 @@ public:
                     // (identical to ALT_AZ and to startTracking() for CASUAL).
                     const double ha_gear_sh = config_.mount_config.ha_axis_params.gear_ratio;
                     const double dec_gear_sh = config_.mount_config.dec_axis_params.gear_ratio;
-                    // Altitude-like axis: no wrapping (physical range [0°, 90°]).
-                    axis1_target_ = mount_alt * ha_gear_sh - home_offset_axis1_;
-                    // Azimuth-like axis: shortest path so the drive does not unwind turns.
-                    double full_turn_sh = 360.0 * dec_gear_sh;
-                    double raw_az_target_sh = mount_az * dec_gear_sh - home_offset_axis2_;
-                    double diff_sh = raw_az_target_sh - std::fmod(axis2_position_, full_turn_sh);
-                    if (diff_sh < 0.0) diff_sh += full_turn_sh;
-                    if (diff_sh > full_turn_sh / 2.0) diff_sh -= full_turn_sh;
-                    axis2_target_ = axis2_position_ + diff_sh;  // shortest path to azimuth target
+                    if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                        // axis1 = hour-angle-like (θ2 = mount_az): shortest path; axis2 = dec-like (θ1 = mount_alt).
+                        double full_turn_a1_sh = 360.0 * ha_gear_sh;
+                        double raw_a1_sh = mount_az * ha_gear_sh - home_offset_axis1_;
+                        double diff_a1_sh = raw_a1_sh - std::fmod(axis1_position_, full_turn_a1_sh);
+                        if (diff_a1_sh < 0.0) diff_a1_sh += full_turn_a1_sh;
+                        if (diff_a1_sh > full_turn_a1_sh / 2.0) diff_a1_sh -= full_turn_a1_sh;
+                        axis1_target_ = axis1_position_ + diff_a1_sh;
+                        const double dec_gear_safe_sh = dec_gear_sh > 0.0 ? dec_gear_sh : 360.0;
+                        axis2_target_ = resolveDecTarget(mount_alt, axis2_position_ / dec_gear_safe_sh) * dec_gear_safe_sh - home_offset_axis2_;
+                    } else {
+                        // axis1 = altitude-like (θ1 = mount_alt): no wrapping; axis2 = azimuth-like (θ2 = mount_az): shortest path.
+                        axis1_target_ = mount_alt * ha_gear_sh - home_offset_axis1_;
+                        double full_turn_sh = 360.0 * dec_gear_sh;
+                        double raw_az_target_sh = mount_az * dec_gear_sh - home_offset_axis2_;
+                        double diff_sh = raw_az_target_sh - std::fmod(axis2_position_, full_turn_sh);
+                        if (diff_sh < 0.0) diff_sh += full_turn_sh;
+                        if (diff_sh > full_turn_sh / 2.0) diff_sh -= full_turn_sh;
+                        axis2_target_ = axis2_position_ + diff_sh;
+                    }
                 } else {
                     // ALT_AZ mounts: canonical convention axis1 = altitude, axis2 = azimuth.
                     // The CANopen drive expects servo degrees, so multiply by gear_ratio.
@@ -1661,16 +1684,27 @@ public:
                     config_.mount_config.axis_convention);
                 const double ha_gear_cas = config_.mount_config.ha_axis_params.gear_ratio;
                 const double dec_gear_cas = config_.mount_config.dec_axis_params.gear_ratio;
-                axis1_target_ = mount_alt * ha_gear_cas - home_offset_axis1_;   // Altitude in mount frame → servo (no wrapping)
-                
-                // Azimuth-like axis (axis2 for CASUAL): find target nearest to current
-                // position to avoid the drive unwinding many revolutions.
-                double full_turn_cas = 360.0 * dec_gear_cas;
-                double raw_az_cas = mount_az * dec_gear_cas - home_offset_axis2_;
-                double diff_cas = raw_az_cas - std::fmod(axis2_position_, full_turn_cas);
-                if (diff_cas < 0.0) diff_cas += full_turn_cas;
-                if (diff_cas > full_turn_cas / 2.0) diff_cas -= full_turn_cas;
-                axis2_target_ = axis2_position_ + diff_cas;  // shortest path to azimuth target
+                if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                    // axis1 = hour-angle-like (θ2): periodic → shortest-path wrap.
+                    double full_turn_a1_cas = 360.0 * ha_gear_cas;
+                    double raw_a1_cas = mount_alt * ha_gear_cas - home_offset_axis1_;
+                    double diff_a1_cas = raw_a1_cas - std::fmod(axis1_position_, full_turn_a1_cas);
+                    if (diff_a1_cas < 0.0) diff_a1_cas += full_turn_a1_cas;
+                    if (diff_a1_cas > full_turn_a1_cas / 2.0) diff_a1_cas -= full_turn_a1_cas;
+                    axis1_target_ = axis1_position_ + diff_a1_cas;
+                    // axis2 = declination-like (θ1): resolve to nearest pier-side equivalent.
+                    const double dec_gear_safe_cas = dec_gear_cas > 0.0 ? dec_gear_cas : 360.0;
+                    axis2_target_ = resolveDecTarget(mount_az, axis2_position_ / dec_gear_safe_cas) * dec_gear_safe_cas - home_offset_axis2_;
+                } else {
+                    // ALT_AZ_LIKE: axis1 = altitude-like (no wrapping), axis2 = azimuth-like (shortest path).
+                    axis1_target_ = mount_alt * ha_gear_cas - home_offset_axis1_;
+                    double full_turn_cas = 360.0 * dec_gear_cas;
+                    double raw_az_cas = mount_az * dec_gear_cas - home_offset_axis2_;
+                    double diff_cas = raw_az_cas - std::fmod(axis2_position_, full_turn_cas);
+                    if (diff_cas < 0.0) diff_cas += full_turn_cas;
+                    if (diff_cas > full_turn_cas / 2.0) diff_cas -= full_turn_cas;
+                    axis2_target_ = axis2_position_ + diff_cas;
+                }
             } else {  // ALT_AZ
                 // axis1 = altitude, axis2 = azimuth — convert telescope degrees → servo degrees
                 const double ha_gear_az = config_.mount_config.ha_axis_params.gear_ratio;
@@ -2440,7 +2474,10 @@ public:
                                 new_az = ha.second;
                                 convert_back_ok = std::isfinite(new_alt) && std::isfinite(new_az);
                             } else {  // CASUAL
-                                // Convert through mount orientation quaternion
+                                // Convert through mount orientation quaternion.
+                                // equatorialToMountOrientation() applies atmospheric refraction
+                                // internally (apparent horizontal frame), matching the bootstrap
+                                // calibration fit in runBootstrapCalibration().
                                 auto mf = astro_calc_->equatorialToMountOrientation(
                                     current_ra, current_dec, jd,
                                     mount_orientation_.quaternion,
@@ -2449,20 +2486,9 @@ public:
                                 new_az = mf.second;
                                 convert_back_ok = std::isfinite(new_alt) && std::isfinite(new_az);
                                 
-                                // For CASUAL, refraction is applied during the equatorial→horizontal
-                                // step inside equatorialToMountOrientation. We need to ensure refraction
-                                // is accounted for. The function equatorialToMountOrientation internally
-                                // calls equatorialToHorizontal with apply_refraction=true.
-                                // To give the caller full control, we re-do the conversion without
-                                // refraction in equatorialToMountOrientation and add it manually.
-                                if (convert_back_ok && config_.safety_config.enable_refraction_correction) {
-                                    // equatorialToMountOrientation always applies refraction internally.
-                                    // If refraction is disabled, we need to reverse it.
-                                    // Since the current implementation always applies refraction,
-                                    // we trust the output when refraction is enabled.
-                                    // When disabled, we'd need the reverse, but for now the internal
-                                    // call uses apply_refraction=true by default, so we're consistent.
-                                }
+                                // The inverse mountOrientationToEquatorial() (used earlier in this
+                                // loop to derive current_ra/dec) removes refraction symmetrically,
+                                // so no manual refraction compensation is needed here.
                             }
                             
                             if (convert_back_ok) {
@@ -2475,6 +2501,18 @@ public:
                                 double current_az_telescope  = axis2_position_ / dec_gear_off;
                                 double alt_offset_telescope = new_alt - current_alt_telescope;
                                 double az_offset_telescope  = new_az - current_az_telescope;
+
+                                // For EQUATORIAL_LIKE CASUAL, axis1 is hour-angle-like and
+                                // periodic, while axis2 is declination-like and may be reported
+                                // on the opposite pier side (180°−Dec). Normalize both before the
+                                // clamps so a ±360° / ±180° window mismatch does not turn into a
+                                // constant per-iteration drift (the "object escaping" symptom).
+                                if (config_.mount_config.mount_type == config::MountType::CASUAL &&
+                                    config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                                    while (alt_offset_telescope > 180.0) alt_offset_telescope -= 360.0;
+                                    while (alt_offset_telescope < -180.0) alt_offset_telescope += 360.0;
+                                    az_offset_telescope = new_az - foldDecLike(current_az_telescope);
+                                }
                                 
                                 // Clamp corrections in telescope degrees:
                                 // nutation is at most ~17", refraction at most ~0.5° at low altitude
@@ -3970,11 +4008,26 @@ public:
             raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
             if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
         } else {  // CASUAL
-            // Altitude-like in [0°, 90°], Azimuth-like in [0°, 360°)
-            if (raw_tel_axis1 > 90.0) raw_tel_axis1 = 90.0;
-            if (raw_tel_axis1 < 0.0) raw_tel_axis1 = 0.0;
-            raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
-            if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
+            if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                // axis1 = hour-angle-like (θ2 = atan2) → normalize to [0°, 360°)
+                // exactly like the EQUATORIAL branch. axis2 = declination-like
+                // (θ1 = asin) → fold to [-90°, 90°]. Clamping the HA-like axis to a
+                // ±90° window corrupts it, which breaks the bootstrap quaternion fit
+                // and the on-sky position reported to INDI.
+                raw_tel_axis1 = std::fmod(raw_tel_axis1, 360.0);
+                if (raw_tel_axis1 < 0.0) raw_tel_axis1 += 360.0;
+                if (raw_tel_axis2 > 90.0) raw_tel_axis2 = 180.0 - raw_tel_axis2;
+                if (raw_tel_axis2 < -90.0) raw_tel_axis2 = -180.0 - raw_tel_axis2;
+                raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
+                if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
+            } else {
+                // axis1 = altitude-like (θ1 = asin) → spans [-90°, 90°]; axis2 is
+                // azimuth-like (θ2 = atan2) → normalize to [0°, 360°).
+                if (raw_tel_axis1 > 90.0) raw_tel_axis1 = 90.0;
+                if (raw_tel_axis1 < -90.0) raw_tel_axis1 = -90.0;
+                raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
+                if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
+            }
         }
 
         status.telescope_axis1_position = raw_tel_axis1;
@@ -7451,10 +7504,23 @@ public:
                 raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
                 if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
             } else {  // CASUAL
-                if (raw_tel_axis1 > 90.0) raw_tel_axis1 = 90.0;
-                if (raw_tel_axis1 < 0.0) raw_tel_axis1 = 0.0;
-                raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
-                if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
+                if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                    // axis1 = hour-angle-like (θ2) → [0°, 360°); axis2 = dec-like (θ1)
+                    // → fold to [-90°, 90°] then wrap (mirrors getStatus()).
+                    raw_tel_axis1 = std::fmod(raw_tel_axis1, 360.0);
+                    if (raw_tel_axis1 < 0.0) raw_tel_axis1 += 360.0;
+                    if (raw_tel_axis2 > 90.0) raw_tel_axis2 = 180.0 - raw_tel_axis2;
+                    if (raw_tel_axis2 < -90.0) raw_tel_axis2 = -180.0 - raw_tel_axis2;
+                    raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
+                    if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
+                } else {
+                    // axis1 = altitude-like (θ1) → [-90°, 90°]; axis2 = azimuth-like (θ2)
+                    // → [0°, 360°).
+                    if (raw_tel_axis1 > 90.0) raw_tel_axis1 = 90.0;
+                    if (raw_tel_axis1 < -90.0) raw_tel_axis1 = -90.0;
+                    raw_tel_axis2 = std::fmod(raw_tel_axis2, 360.0);
+                    if (raw_tel_axis2 < 0.0) raw_tel_axis2 += 360.0;
+                }
             }
             
             status.telescope_axis1_position = raw_tel_axis1;
