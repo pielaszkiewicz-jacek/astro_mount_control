@@ -41,6 +41,19 @@
 #   Środowisko działa domyślnie z katalogu ~/astro-mount-controller
 #   (tworzonego przez 'make localuser'). Inny katalog można wskazać zmienną
 #   środowiskową ASTRO_MOUNT_HOME (export ASTRO_MOUNT_HOME=/ścieżka/katalogu).
+#
+# Pliki konfiguracyjne — ścieżki można nadpisać zmiennymi środowiskowymi:
+#   ASTRO_MOUNT_CONFIG      plik konfiguracyjny sterownika montażu
+#                           (domyślnie: config/mount/canopen_stm42m.json;
+#                           opcja --config ma pierwszeństwo)
+#   ASTRO_WEATHER_CONFIG    plik konfiguracyjny serwera pogodowego
+#   ASTRO_POWER_CONFIG      plik konfiguracyjny serwera zasilania
+#   ASTRO_SEQUENCER_CONFIG  plik konfiguracyjny sekwensera
+#   ASTRO_DEROTATOR_CONFIG  plik konfiguracyjny derotatora
+#   ASTRO_DB_FILE           plik bazy obiektów astronomicznych
+#
+#   Ścieżki mogą być bezwzględne lub względne (względne są interpretowane
+#   względem katalogu roboczego procesów, tj. katalogu zawierającego config/).
 # ============================================================================
 
 set -uo pipefail
@@ -83,7 +96,15 @@ DATA_DIR="$(first_dir "${CONTROLLER_HOME}/data" "${PROJECT_DIR}/data" || echo "$
 RUNTIME_ROOT="$(dirname "${CONFIG_DIR}")"
 
 DEFAULT_MOUNT_CONFIG="${CONFIG_DIR}/mount/canopen_stm42m.json"
-MOUNT_CONFIG="${DEFAULT_MOUNT_CONFIG}"
+MOUNT_CONFIG="${ASTRO_MOUNT_CONFIG:-${DEFAULT_MOUNT_CONFIG}}"
+
+# Pliki konfiguracyjne pozostałych komponentów (można nadpisać zmiennymi
+# środowiskowymi — patrz nagłówek skryptu).
+WEATHER_CONFIG="${ASTRO_WEATHER_CONFIG:-${CONFIG_DIR}/weather/weather_config.json}"
+POWER_CONFIG="${ASTRO_POWER_CONFIG:-${CONFIG_DIR}/power/power_config.json}"
+SEQUENCER_CONFIG="${ASTRO_SEQUENCER_CONFIG:-${CONFIG_DIR}/sequencer/sequencer_config.json}"
+DEROTATOR_CONFIG="${ASTRO_DEROTATOR_CONFIG:-${CONFIG_DIR}/derotator/derotator_config.json}"
+DB_FILE="${ASTRO_DB_FILE:-${DATA_DIR}/astronomy_objects.db}"
 DO_BUILD=false
 
 # Kolejność startu.
@@ -247,27 +268,27 @@ start_component() {
         db)
             cmd=("${BIN_DIR}/astro_object_database_server"
                  --address "0.0.0.0:50052"
-                 --db "${DATA_DIR}/astronomy_objects.db")
+                 --db "${DB_FILE}")
             ;;
         weather)
             cmd=("${BIN_DIR}/astro_weather_server"
                  --address "0.0.0.0:50055"
-                 --config "${CONFIG_DIR}/weather/weather_config.json")
+                 --config "${WEATHER_CONFIG}")
             ;;
         power)
             cmd=("${BIN_DIR}/astro_power_server"
                  --address "0.0.0.0:50056"
-                 --config "${CONFIG_DIR}/power/power_config.json")
+                 --config "${POWER_CONFIG}")
             ;;
         sequencer)
             cmd=("${BIN_DIR}/astro_sequencer_server"
                  --address "0.0.0.0:50057"
-                 --config "${CONFIG_DIR}/sequencer/sequencer_config.json")
+                 --config "${SEQUENCER_CONFIG}")
             ;;
         derotator)
             cmd=("${BIN_DIR}/astro_derotator_server"
                  --address "0.0.0.0:50054"
-                 --config "${CONFIG_DIR}/derotator/derotator_config.json")
+                 --config "${DEROTATOR_CONFIG}")
             ;;
         web)
             cwd="${CONTROLLER_HOME}/web/proxy"
@@ -464,6 +485,8 @@ fi
 
 # Dla statusu nie wymagamy konfiguracji montażu.
 if [ "$COMMAND" != "status" ]; then
+    # Rozwiąż aliasy i ścieżki względne podane przez ASTRO_MOUNT_CONFIG/--config.
+    MOUNT_CONFIG="$(resolve_mount_config "$MOUNT_CONFIG")"
     if [ ! -f "$MOUNT_CONFIG" ]; then
         error "Plik konfiguracyjny sterownika nie istnieje: ${MOUNT_CONFIG}"
         error "Podaj właściwą ścieżkę przez --config (domyślnie: config/mount/canopen_stm42m.json)"

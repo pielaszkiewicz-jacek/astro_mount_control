@@ -175,6 +175,55 @@ TEST(MountKinematicsTest, OffYieldsZeroRatesForPositionDependentMounts)
     EXPECT_DOUBLE_EQ(rates.axis2, 0.0);
 }
 
+TEST(MountKinematicsTest, CasualCustomZeroDriftEqualsSidereal)
+{
+    // CUSTOM with the exact sidereal RA rate and zero Dec drift must reduce to
+    // SIDEREAL for any mount orientation (the added drift term is identically
+    // zero).  This is the round-trip invariant for the CUSTOM drift math.
+    const double half = 0.5 * (90.0 * kPi / 180.0);
+    const std::array<double, 4> pitch90{std::sin(half), 0.0, 0.0, std::cos(half)};
+    MountKinematics kin(config::MountType::CASUAL, kLatitude, kGear, kGear,
+                        pitch90, config::AxisConvention::EQUATORIAL_LIKE);
+
+    const double sidereal_arcsec_s = 7.2921150e-5 * (180.0 / kPi) * 3600.0;
+    const double positions[][2] = {{10.0, 30.0}, {50.0, -20.0}, {-30.0, 70.0}};
+    for (const auto& pos : positions) {
+        const TrackingRates sidereal =
+            kin.trackingRates(config::TrackingMode::SIDEREAL, pos[0], pos[1]);
+        const TrackingRates custom = kin.trackingRates(
+            config::TrackingMode::CUSTOM, pos[0], pos[1], sidereal_arcsec_s, 0.0);
+        EXPECT_NEAR(custom.axis1, sidereal.axis1, 1e-9)
+            << "axis1 @ (" << pos[0] << ", " << pos[1] << ")";
+        EXPECT_NEAR(custom.axis2, sidereal.axis2, 1e-9)
+            << "axis2 @ (" << pos[0] << ", " << pos[1] << ")";
+    }
+}
+
+TEST(MountKinematicsTest, EquatorialConventionCustomDriftRates)
+{
+    // A polar-aligned EQUATORIAL_LIKE mount has its axes aligned with HA/Dec,
+    // so CUSTOM rates map 1:1 onto the axes: axis1 = RA tracking rate,
+    // axis2 = Dec drift rate.
+    const double half = (90.0 - kLatitude) / 2.0 * kPi / 180.0;
+    const std::array<double, 4> q_polar{std::sin(half), 0.0, std::cos(half), 0.0};
+    MountKinematics kin(config::MountType::CASUAL, kLatitude, kGear, kGear,
+                        q_polar, config::AxisConvention::EQUATORIAL_LIKE);
+
+    const double sidereal_arcsec_s = 7.2921150e-5 * (180.0 / kPi) * 3600.0;
+    const double ra_rate = sidereal_arcsec_s + 1.0;  // +1 arcsec/s eastward drift
+    const double dec_rate = 2.5;                     // 2.5 arcsec/s Dec drift
+
+    const double positions[][2] = {{0.0, 45.0}, {45.0, 20.0}, {-80.0, 11.0}};
+    for (const auto& pos : positions) {
+        const TrackingRates rates = kin.trackingRates(
+            config::TrackingMode::CUSTOM, pos[0], pos[1], ra_rate, dec_rate);
+        EXPECT_NEAR(rates.axis1, ra_rate / 3600.0 * kGear, 1e-9)
+            << "HA rate @ (" << pos[0] << ", " << pos[1] << ")";
+        EXPECT_NEAR(rates.axis2, dec_rate / 3600.0 * kGear, 1e-9)
+            << "Dec rate @ (" << pos[0] << ", " << pos[1] << ")";
+    }
+}
+
 } // namespace test
 } // namespace core
 } // namespace astro_mount

@@ -79,7 +79,8 @@ public:
             return equatorialRates(mode, custom_rate_ra_arcsec_s,
                                    custom_rate_dec_arcsec_s, max_tracking_rate);
         }
-        return mountFrameRates(mode, axis1_tel, axis2_tel);
+        return mountFrameRates(mode, axis1_tel, axis2_tel,
+                               custom_rate_ra_arcsec_s, custom_rate_dec_arcsec_s);
     }
 
 private:
@@ -137,7 +138,9 @@ private:
     // ALT_AZ / CASUAL: position-dependent sidereal rates.  Numerically
     // identical to the legacy computeMountFrameRates() implementation.
     TrackingRates mountFrameRates(config::TrackingMode mode,
-                                  double axis1_tel, double axis2_tel) const {
+                                  double axis1_tel, double axis2_tel,
+                                  double custom_rate_ra_arcsec_s,
+                                  double custom_rate_dec_arcsec_s) const {
         constexpr double kPi = 3.14159265358979323846;
 
         const bool casual = (mount_type_ == config::MountType::CASUAL);
@@ -190,9 +193,54 @@ private:
         const double az_rate_rad  = omega * (std::sin(lat_rad)
                                              - cos_lat * cos_az_h * sin_alt / cos_alt);
 
-        const double vx = -sin_alt * cos_az_h * alt_rate_rad - cos_alt * sin_az_h * az_rate_rad;
-        const double vy = -sin_alt * sin_az_h * alt_rate_rad + cos_alt * cos_az_h * az_rate_rad;
-        const double vz = cos_alt * alt_rate_rad;
+        double vx = -sin_alt * cos_az_h * alt_rate_rad - cos_alt * sin_az_h * az_rate_rad;
+        double vy = -sin_alt * sin_az_h * alt_rate_rad + cos_alt * cos_az_h * az_rate_rad;
+        double vz = cos_alt * alt_rate_rad;
+
+        if (mode == config::TrackingMode::CUSTOM) {
+            // CUSTOM: the caller supplies the total RA tracking rate and the
+            // Dec drift rate in arcsec/s.  The sidereal base computed above
+            // already contains the Earth-rotation term (dHA/dt = ω), so add
+            // only the drift RELATIVE to sidereal for RA plus the Dec drift,
+            // mapped into the ENU frame through the same spherical derivatives
+            // that produce the sidereal velocity.
+            const double ra_rate_rad = (custom_rate_ra_arcsec_s != 0.0)
+                ? custom_rate_ra_arcsec_s / 3600.0 * kPi / 180.0
+                : omega;                       // 0 → sidereal (unchanged)
+            const double dec_rate_rad = custom_rate_dec_arcsec_s / 3600.0 * kPi / 180.0;
+
+            // Recover the celestial (Dec, HA) of the current pointing from the
+            // horizontal frame (inverse of the SOFA iauHd2ae convention used by
+            // equatorialToHorizontal(): north/east/up components are
+            //   n = -cos H cos δ sin φ + sin δ cos φ
+            //   e = -sin H cos δ
+            //   u =  cos H cos δ cos φ + sin δ sin φ).
+            const double sin_lat = std::sin(lat_rad);
+            const double sin_dec = sin_alt * sin_lat + cos_alt * cos_az_h * cos_lat;
+            const double cos_dec_cos_h = sin_alt * cos_lat - cos_alt * cos_az_h * sin_lat;
+            const double sin_h_cos_dec = -cos_alt * sin_az_h;
+            const double one_minus_sin2 = 1.0 - sin_dec * sin_dec;
+            double cos_dec = std::sqrt(one_minus_sin2 > 0.0 ? one_minus_sin2 : 0.0);
+            if (cos_dec < 1e-12) cos_dec = 1e-12;
+            const double sin_h = sin_h_cos_dec / cos_dec;
+            const double cos_h = cos_dec_cos_h / cos_dec;
+
+            // Partial derivatives of the ENU unit vector w.r.t. HA and Dec.
+            const double dn_dh = sin_h * cos_dec * sin_lat;
+            const double de_dh = -cos_h * cos_dec;
+            const double du_dh = -sin_h * cos_dec * cos_lat;
+
+            const double dn_dd = cos_h * sin_dec * sin_lat + cos_dec * cos_lat;
+            const double de_dd = sin_h * sin_dec;
+            const double du_dd = -cos_h * sin_dec * cos_lat + cos_dec * sin_lat;
+
+            const double ra_drift = ra_rate_rad - omega;
+            const double dec_drift = dec_rate_rad;
+
+            vx += dn_dh * ra_drift + dn_dd * dec_drift;
+            vy += de_dh * ra_drift + de_dd * dec_drift;
+            vz += du_dh * ra_drift + du_dd * dec_drift;
+        }
 
         double qx = q_enu_to_mount[0];
         double qy = q_enu_to_mount[1];

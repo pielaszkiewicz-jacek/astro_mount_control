@@ -182,14 +182,16 @@ struct MountConfig {
     //   tracking_pos_velocity_factor — profile velocity multiplier over the
     //     sidereal servo rate (1.0 = exact sidereal, continuous motion;
     //     1.5 = legacy catch-up behaviour producing stop-start motion).
-    //   tracking_pos_lead_seconds — fixed target lead [s] for position-mode
-    //     target updates.
+    //   tracking_pos_lead_seconds — target lead [s] for position-mode target
+    //     updates.  This is a deliberate systematic offset (the drive is
+    //     commanded slightly ahead of the true sidereal position to avoid the
+    //     stop-start "sawtooth"); keep it as small as the drive permits.
     //   tracking_pos_velocity_margin — bounded scaling factor applied to the
     //     actual tracking rate when deriving the position-mode profile
     //     velocity (1.0 = exact tracking rate; the result is clamped so it
     //     never exceeds max_tracking_rate).
     double tracking_pos_velocity_factor{1.0};
-    double tracking_pos_lead_seconds{2.0};
+    double tracking_pos_lead_seconds{0.5};
     double tracking_pos_velocity_margin{1.0};
 
     // Per-axis rotation direction inversion.

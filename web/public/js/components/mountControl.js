@@ -54,6 +54,12 @@ const MountControlComponent = (() => {
   /** Timestamp of the last issued step move, used to debounce duplicate events. */
   let lastStepMoveAt = 0;
 
+  /** Promise chain serializing axis move/stop commands so a stop issued on
+   *  release is always sent after an in-flight move has been acknowledged.
+   *  This closes the race that left an axis running when a button was released
+   *  quickly on a touch screen. */
+  let axisCommandChain = Promise.resolve();
+
   // ─── Help Content ───────────────────────────────────────────────────
 
   function buildControlHelpContent() {
@@ -826,6 +832,10 @@ const MountControlComponent = (() => {
     if (refToggle) {
       refToggle.addEventListener('change', onSpeedRefToggleChanged);
     }
+
+    // Bind axis direction buttons and emergency stop exactly once.
+    bindAxisButtons();
+
     // Load gear ratios for telescope-axis speed conversion
     loadGearRatios();
   }
@@ -874,11 +884,17 @@ const MountControlComponent = (() => {
         info.textContent = `(÷${avgGear.toFixed(0)}:1 → telescope)`;
       }
     }
+  }
 
+  /**
+   * Bind the axis direction buttons and emergency-stop button exactly once.
+   * Previously this ran inside updateGearInfoLabel(), so every speed-reference
+   * toggle re-attached the listeners and stacked duplicate handlers.
+   */
+  function bindAxisButtons() {
     const estopBtn = $('#btn-emergency-stop');
     if (estopBtn) estopBtn.addEventListener('click', handleEmergencyStop);
 
-    // Bind axis direction buttons with press-and-hold support
     bindAxisButton('btn-axis-up',    1,  1);   // Axis 1 (Dec/Alt), positive direction
     bindAxisButton('btn-axis-down',  1, -1);   // Axis 1 (Dec/Alt), negative direction
     bindAxisButton('btn-axis-left',  0, -1);   // Axis 0 (HA/RA/Az), negative direction
@@ -896,24 +912,50 @@ const MountControlComponent = (() => {
     const btn = $(`#${buttonId}`);
     if (!btn) return;
 
-    // Mouse events
-    btn.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      startAxisMovement(axisId, direction);
-    });
-    btn.addEventListener('mouseup', () => stopAxisMovement(axisId));
-    btn.addEventListener('mouseleave', () => stopAxisMovement(axisId));
+    // Press-and-hold buttons must behave identically on touch screens and with
+    // a mouse. Disable browser gestures/text selection so releasing a finger
+    // reliably produces pointerup instead of being stolen by scrolling/zooming.
+    btn.style.touchAction = 'none';
+    btn.style.webkitUserSelect = 'none';
+    btn.style.userSelect = 'none';
+    btn.style.webkitTouchCallout = 'none';
+    btn.addEventListener('contextmenu', (e) => e.preventDefault());
 
-    // Touch events
-    btn.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      startAxisMovement(axisId, direction);
-    }, { passive: false });
-    btn.addEventListener('touchend', (e) => {
-      e.preventDefault();
-      stopAxisMovement(axisId);
-    }, { passive: false });
-    btn.addEventListener('touchcancel', () => stopAxisMovement(axisId));
+    const stop = () => stopAxisMovement(axisId);
+
+    if (window.PointerEvent) {
+      // Pointer Events unify mouse/touch/pen input. Capturing the pointer makes
+      // pointerup/pointercancel fire on the button even if the finger or cursor
+      // slides off before release.
+      btn.addEventListener('pointerdown', (e) => {
+        if (e.pointerType === 'mouse' && e.button !== 0) return; // left button only
+        e.preventDefault();
+        if (btn.setPointerCapture && e.pointerId !== undefined) {
+          try { btn.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ }
+        }
+        startAxisMovement(axisId, direction);
+      });
+      btn.addEventListener('pointerup', stop);
+      btn.addEventListener('pointercancel', stop);
+      btn.addEventListener('lostpointercapture', stop);
+    } else {
+      // Fallback for older browsers / WebViews without Pointer Events.
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        startAxisMovement(axisId, direction);
+      });
+      btn.addEventListener('mouseup', stop);
+      btn.addEventListener('mouseleave', stop);
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        startAxisMovement(axisId, direction);
+      }, { passive: false });
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stop();
+      }, { passive: false });
+      btn.addEventListener('touchcancel', stop);
+    }
   }
 
   /**
@@ -1003,20 +1045,47 @@ const MountControlComponent = (() => {
 
   /**
    * Get the current acceleration from the slider.
-   * @returns {number} Acceleration in °/s²
+   * When the telescope-axis speed reference is active, the slider value is
+   * expressed in telescope °/s² and must be converted to servo °/s² for the
+   * API (the same gear-ratio conversion used for speed), otherwise the drive
+   * accelerates far too slowly for the displayed speed.
+   *
+   * @param {number} [axisId=0] - Axis ID (0=HA, 1=Dec) for the correct gear ratio
+   * @returns {number} Acceleration in servo °/s²
    */
-  function getCurrentAcceleration() {
+  function getCurrentAcceleration(axisId = 0) {
     const slider = $('#axis-accel');
-    return slider ? parseFloat(slider.value) : 50.0;
+    let accel = slider ? parseFloat(slider.value) : 50.0;
+    if (speedRefTelescope) {
+      const gear = (axisId === 1) ? decAxisGearRatio : haAxisGearRatio;
+      accel *= gear;
+      // Do not exceed the servo-domain slider maximum (the drive's max_acceleration).
+      const maxServo = slider ? parseFloat(slider.max) : 10000;
+      if (maxServo > 0) accel = Math.min(accel, maxServo);
+    }
+    return accel;
   }
 
   /**
    * Get the current deceleration from the slider.
-   * @returns {number} Deceleration in °/s²
+   * Converted to servo °/s² when the telescope-axis speed reference is active,
+   * so releasing a button stops the axis promptly instead of coasting for many
+   * seconds (a 50 °/s² servo deceleration at ~4800 °/s would take ~95 s).
+   *
+   * @param {number} [axisId=0] - Axis ID (0=HA, 1=Dec) for the correct gear ratio
+   * @returns {number} Deceleration in servo °/s²
    */
-  function getCurrentDeceleration() {
+  function getCurrentDeceleration(axisId = 0) {
     const slider = $('#axis-decel');
-    return slider ? parseFloat(slider.value) : 50.0;
+    let decel = slider ? parseFloat(slider.value) : 50.0;
+    if (speedRefTelescope) {
+      const gear = (axisId === 1) ? decAxisGearRatio : haAxisGearRatio;
+      decel *= gear;
+      // Do not exceed the servo-domain slider maximum (the drive's max_acceleration).
+      const maxServo = slider ? parseFloat(slider.max) : 10000;
+      if (maxServo > 0) decel = Math.min(decel, maxServo);
+    }
+    return decel;
   }
 
   /**
@@ -1111,8 +1180,10 @@ const MountControlComponent = (() => {
       return;
     }
 
-    // Velocity mode: prevent duplicate, then start continuous movement
-    if (activeAxisTimer) {
+    // Velocity mode: stop any previously active axis before starting a new one.
+    // In uncalibrated mode the controller maintains velocity until StopAxis, so
+    // switching buttons (or multi-touch) must first halt the previous axis.
+    if (activeAxisId >= 0 && activeAxisId !== axisId) {
       console.log('[AxisCtrl] startAxisMovement: stopping previous movement on axis %d', activeAxisId);
       stopAxisMovement(activeAxisId);
     }
@@ -1156,13 +1227,28 @@ const MountControlComponent = (() => {
     }
 
     if (!isCalibrated && activeAxisId >= 0) {
-      const deceleration = getCurrentDeceleration();
-      Api.stopAxis(axisId, deceleration).catch(() => {});
+      const deceleration = getCurrentDeceleration(axisId);
+      // Enqueue the stop after any in-flight move command so it is always
+      // processed by the backend after the move it is meant to terminate.
+      enqueueAxisCommand(() => Api.stopAxis(axisId, deceleration)).catch(() => {});
     }
     // Calibrated velocity mode: handled by clearing the interval above
 
     activeAxisId = -1;
     activeDirection = 0;
+  }
+
+  /**
+   * Append an axis command (move or stop) to a shared promise chain so commands
+   * reach the backend in the exact order the user triggered them. This matters
+   * on touch screens, where touchstart/touchend can be only ~80 ms apart: the
+   * stop request must never arrive before the move it is meant to terminate.
+   */
+  function enqueueAxisCommand(fn) {
+    const run = axisCommandChain.then(() => fn());
+    // Keep the chain alive even if a previous command failed.
+    axisCommandChain = run.then(() => {}, () => {});
+    return run;
   }
 
   /**
@@ -1173,20 +1259,21 @@ const MountControlComponent = (() => {
    * @param {number} axisId
    * @param {number} direction
    */
-  async function performVelocityMove(axisId, direction) {
+  function performVelocityMove(axisId, direction) {
     const speed = getCurrentSpeed(axisId);
     const velocity = direction * speed;
-    const acceleration = getCurrentAcceleration();
+    const acceleration = getCurrentAcceleration(axisId);
     console.log('[AxisCtrl] performVelocityMove: axisId=%d, direction=%d, speed=%f, velocity=%f, accel=%f, isCalibrated=%s',
                 axisId, direction, speed, velocity, acceleration, isCalibrated);
 
-    try {
-      await Api.moveAxis(axisId, velocity, acceleration);
-      console.log('[AxisCtrl] performVelocityMove: SUCCESS axisId=%d, velocity=%f, accel=%f', axisId, velocity, acceleration);
-    } catch (err) {
-      console.error('[AxisCtrl] performVelocityMove: FAILED axisId=%d, velocity=%f, error=%s', axisId, velocity, err.message);
-      App.showToast(`Axis move failed: ${err.message}`, 'error');
-    }
+    return enqueueAxisCommand(() => Api.moveAxis(axisId, velocity, acceleration))
+      .then(() => {
+        console.log('[AxisCtrl] performVelocityMove: SUCCESS axisId=%d, velocity=%f, accel=%f', axisId, velocity, acceleration);
+      })
+      .catch((err) => {
+        console.error('[AxisCtrl] performVelocityMove: FAILED axisId=%d, velocity=%f, error=%s', axisId, velocity, err.message);
+        App.showToast(`Axis move failed: ${err.message}`, 'error');
+      });
   }
 
   /**
@@ -1307,8 +1394,8 @@ const MountControlComponent = (() => {
         servoStep = stepSize * gear;
       }
       const offset = direction * servoStep;
-      const acceleration = getCurrentAcceleration();
-      const deceleration = getCurrentDeceleration();
+      const acceleration = getCurrentAcceleration(axisId);
+      const deceleration = getCurrentDeceleration(axisId);
       console.log('[AxisCtrl] performStepMove uncalibrated: offset=%f°, speed=%f °/s, accel=%f °/s², decel=%f °/s²',
                   offset, speed, acceleration, deceleration);
 
