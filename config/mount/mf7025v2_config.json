@@ -13,7 +13,7 @@
         "longitude": 21.0,
         "altitude": 100.0,
         "max_slew_rate": 5.0,
-        "max_tracking_rate": 1.504,
+        "max_tracking_rate": 1.505,
         "slew_acceleration": 1.0,
         "park_position_axis1": 0.0,
         "park_position_axis2": 90.0,

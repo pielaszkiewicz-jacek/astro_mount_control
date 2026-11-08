@@ -32,7 +32,7 @@
     "encoder_resolution": 16384,
 
     "max_slew_rate": 5.0,
-    "max_tracking_rate": 1.504,
+    "max_tracking_rate": 1.505,
     "slew_acceleration": 1.0,
     "tracking_acceleration": 0.001,
 

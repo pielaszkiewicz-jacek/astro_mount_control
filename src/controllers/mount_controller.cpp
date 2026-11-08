@@ -906,7 +906,7 @@ public:
                         // drive does not unwind turns crossing the 0°/360° boundary.
                         double full_turn_a1_se = 360.0 * ha_gear_se;
                         double raw_a1_se = mount_alt * ha_gear_se - home_offset_axis1_;
-                        axis1_target_ = wrapShortestPath(raw_a1_se, axis1_position_, full_turn_a1_se);
+                        axis1_target_ = wrapShortestPath(raw_a1_se, axis1_position_ - home_offset_axis1_, full_turn_a1_se);
                         // axis2 = declination-like (θ1): resolve to nearest pier-side equivalent.
                         const double dec_gear_safe_se = dec_gear_se > 0.0 ? dec_gear_se : 360.0;
                         axis2_target_ = resolveDecTarget(mount_az, axis2_position_ / dec_gear_safe_se) * dec_gear_safe_se - home_offset_axis2_;
@@ -915,7 +915,7 @@ public:
                         axis1_target_ = mount_alt * ha_gear_se - home_offset_axis1_;
                         double full_turn_se = 360.0 * dec_gear_se;
                         double raw_az_target_se = mount_az * dec_gear_se - home_offset_axis2_;
-                        axis2_target_ = wrapShortestPath(raw_az_target_se, axis2_position_, full_turn_se);
+                        axis2_target_ = wrapShortestPath(raw_az_target_se, axis2_position_ - home_offset_axis2_, full_turn_se);
                     }
                 } else {  // ALT_AZ
                     // Convert RA/Dec to true horizontal coordinates (altitude, azimuth).
@@ -934,7 +934,7 @@ public:
                     // position to avoid the drive unwinding many revolutions.
                     double full_turn_az = 360.0 * dec_gear_az;
                     double raw_az_target_eq = true_az * dec_gear_az - home_offset_axis2_;
-                    axis2_target_ = wrapShortestPath(raw_az_target_eq, axis2_position_, full_turn_az);
+                    axis2_target_ = wrapShortestPath(raw_az_target_eq, axis2_position_ - home_offset_axis2_, full_turn_az);
                 }
                 
                 // Check soft limits before initiating slew.
@@ -1148,7 +1148,7 @@ public:
                         // axis1 = hour-angle-like (θ2 = mount_az): shortest path; axis2 = dec-like (θ1 = mount_alt).
                         double full_turn_a1_sh = 360.0 * ha_gear_sh;
                         double raw_a1_sh = mount_az * ha_gear_sh - home_offset_axis1_;
-                        axis1_target_ = wrapShortestPath(raw_a1_sh, axis1_position_, full_turn_a1_sh);
+                        axis1_target_ = wrapShortestPath(raw_a1_sh, axis1_position_ - home_offset_axis1_, full_turn_a1_sh);
                         const double dec_gear_safe_sh = dec_gear_sh > 0.0 ? dec_gear_sh : 360.0;
                         axis2_target_ = resolveDecTarget(mount_alt, axis2_position_ / dec_gear_safe_sh) * dec_gear_safe_sh - home_offset_axis2_;
                     } else {
@@ -1156,7 +1156,7 @@ public:
                         axis1_target_ = mount_alt * ha_gear_sh - home_offset_axis1_;
                         double full_turn_sh = 360.0 * dec_gear_sh;
                         double raw_az_target_sh = mount_az * dec_gear_sh - home_offset_axis2_;
-                        axis2_target_ = wrapShortestPath(raw_az_target_sh, axis2_position_, full_turn_sh);
+                        axis2_target_ = wrapShortestPath(raw_az_target_sh, axis2_position_ - home_offset_axis2_, full_turn_sh);
                     }
                 } else {
                     // ALT_AZ mounts: canonical convention axis1 = altitude, axis2 = azimuth.
@@ -1168,7 +1168,7 @@ public:
                     // Azimuth axis (axis2): shortest path so the drive does not unwind turns.
                     double full_turn_h = 360.0 * dec_gear_h;
                     double raw_az_target_h = azimuth * dec_gear_h - home_offset_axis2_;
-                    axis2_target_ = wrapShortestPath(raw_az_target_h, axis2_position_, full_turn_h);
+                    axis2_target_ = wrapShortestPath(raw_az_target_h, axis2_position_ - home_offset_axis2_, full_turn_h);
                 }
                 
                 // Check soft limits before initiating slew.
@@ -1707,7 +1707,7 @@ public:
                     // axis1 = hour-angle-like (θ2): periodic → shortest-path wrap.
                     double full_turn_a1_cas = 360.0 * ha_gear_cas;
                     double raw_a1_cas = mount_alt * ha_gear_cas - home_offset_axis1_;
-                    axis1_target_ = wrapShortestPath(raw_a1_cas, axis1_position_, full_turn_a1_cas);
+                    axis1_target_ = wrapShortestPath(raw_a1_cas, axis1_position_ - home_offset_axis1_, full_turn_a1_cas);
                     // axis2 = declination-like (θ1): resolve to nearest pier-side equivalent.
                     const double dec_gear_safe_cas = dec_gear_cas > 0.0 ? dec_gear_cas : 360.0;
                     axis2_target_ = resolveDecTarget(mount_az, axis2_position_ / dec_gear_safe_cas) * dec_gear_safe_cas - home_offset_axis2_;
@@ -1716,7 +1716,7 @@ public:
                     axis1_target_ = mount_alt * ha_gear_cas - home_offset_axis1_;
                     double full_turn_cas = 360.0 * dec_gear_cas;
                     double raw_az_cas = mount_az * dec_gear_cas - home_offset_axis2_;
-                    axis2_target_ = wrapShortestPath(raw_az_cas, axis2_position_, full_turn_cas);
+                    axis2_target_ = wrapShortestPath(raw_az_cas, axis2_position_ - home_offset_axis2_, full_turn_cas);
                 }
                 // Store the celestial target so the tracking loop can re-anchor
                 // the mount to the true sky position each update (closed loop),
@@ -1732,7 +1732,7 @@ public:
                 // Azimuth axis (axis2 for ALT_AZ): find target nearest to current position
                 double full_turn_az = 360.0 * dec_gear_az;
                 double raw_az_eq = dec * dec_gear_az - home_offset_axis2_;
-                axis2_target_ = wrapShortestPath(raw_az_eq, axis2_position_, full_turn_az);  // shortest path to azimuth target
+                axis2_target_ = wrapShortestPath(raw_az_eq, axis2_position_ - home_offset_axis2_, full_turn_az);  // shortest path to azimuth target
 
                 // Derive and store the equatorial target so the tracking loop can
                 // re-anchor the mount to the true sky position each update (closed
@@ -2044,6 +2044,7 @@ public:
             last_tpoint_correction_axis2_ = 0.0;
             last_refraction_correction_axis1_ = 0.0;
             last_refraction_correction_axis2_ = 0.0;
+            corrections_primed_ = false;
 
             tracking_active_ = true;
             // Reset the split-loop command snapshot (no stale command on start).
@@ -2190,6 +2191,28 @@ public:
                     } catch (const std::exception& e) {
                         // Non-critical: log at debug level, continue with existing values
                         MOUNT_LOG_DEBUG("HAL sensor read error: {}", e.what());
+                    }
+                }
+
+                // Legacy single-loop: read the raw drive positions at a low cadence
+                // for the KF measurement (split-loop uses telemetry instead).
+                // Reads can block ~1 s per axis, so decimate to ~1 Hz (20 iterations
+                // at the default 50 ms legacy period).
+                if (++legacy_encoder_read_counter_ >= 20) {
+                    legacy_encoder_read_counter_ = 0;
+                    if (hal_axis1_motor_ && hal_axis2_motor_ &&
+                        hal_axis1_motor_->isEnabled() && hal_axis2_motor_->isEnabled()) {
+                        try {
+                            const double r1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                            const double r2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                            if (std::isfinite(r1) && std::isfinite(r2)) {
+                                have_encoder_measurement = true;
+                                enc_meas1 = r1;
+                                enc_meas2 = r2;
+                            }
+                        } catch (const std::exception& e) {
+                            MOUNT_LOG_DEBUG("Legacy KF encoder read: {}", e.what());
+                        }
                     }
                 }
                 }  // end legacy inline I/O (split_tracking_loop == false)
@@ -3263,65 +3286,54 @@ public:
                             // Slew & Track moves are ≤180° telescope on either
                             // axis, so a 360° HA / 180° Dec window is safe.
                             {
-                                const double max_jump1 = 360.0 * ha_gear;
-                                const double max_jump2 = 180.0 * dec_gear;
                                 // ref1/ref2 are trustworthy only when they come from a
                                 // live motor read (have_act).  When an axis is disabled
                                 // its cached position is stale and must not be used to
                                 // re-anchor targets or to judge desync.
                                 const bool trust_ref = have_act;
-                                if (trust_ref &&
-                                    (std::abs(new_axis1_target - ref1) > max_jump1 ||
-                                     std::abs(new_axis2_target - ref2) > max_jump2)) {
-                                    // Throttle the log: a persistent desync fires every
-                                    // position update (~10 Hz) and the log flood can
-                                    // stall the calc thread and make the gRPC/INDI
-                                    // controller unresponsive.
-                                    if (diag_log_counter_ % 10 == 0) {
-                                        MOUNT_LOG_ERROR("Rejecting implausible tracking position "
-                                                        "target (axis1={:.2f} ref={:.2f}, "
-                                                        "axis2={:.2f} ref={:.2f}) — internal/drive "
-                                                        "position desync? Re-anchoring to the "
-                                                        "physical drive position.",
-                                                        new_axis1_target, ref1,
-                                                        new_axis2_target, ref2);
-                                    }
-                                    // Recover instead of skipping the update: anchor
-                                    // the offending axis to the physical drive position
-                                    // so tracking keeps flowing.  Dec is stationary
-                                    // during equatorial tracking, so re-anchoring it to
-                                    // ref2 is always safe; the RA target is already
-                                    // kept within ±half turn by the re-wrap above and
-                                    // the lead clamp, so the axis1 branch is a last
-                                    // resort that should normally never trigger.
-                                    if (std::abs(new_axis1_target - ref1) > max_jump1) {
+                                if (trust_ref) {
+                                    // Whole-turn drift was already re-anchored above;
+                                    // the values here are the remaining FRACTIONAL
+                                    // offsets.  A Dec residual larger than a few
+                                    // telescope degrees means the home offset's
+                                    // fractional part is corrupt — whole-turn wrapping
+                                    // cannot fix that, so flag it for re-home.
+                                    const double residual1 = new_axis1_target - ref1;
+                                    const double residual2 = new_axis2_target - ref2;
+                                    const double max_frac_ha  = 180.0 * ha_gear;  // half turn
+                                    const double max_frac_dec = 5.0 * dec_gear;   // 5° telescope
+                                    if (std::abs(residual1) > max_frac_ha) {
+                                        // RA periodic axis: re-anchor to the physical drive.
                                         new_axis1_target = ref1;
                                     }
-                                    if (std::abs(new_axis2_target - ref2) > max_jump2) {
-                                        // Dec is stationary during equatorial tracking, so a
-                                        // target more than 180° telescope from the drive means
-                                        // the frame is broken (corrupt home offset / counter
-                                        // desync).  Re-anchoring chases the spinning drive and
-                                        // lets the axis keep rotating; halt immediately so the
-                                        // operator can re-home with a stationary mount.
-                                        MOUNT_LOG_ERROR("Dec-axis position desync — stopping drives "
-                                                        "and tracking. Re-home the mount before "
-                                                        "tracking again.");
-                                        publishStop();
-                                        {
-                                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
-                                            if (state_ == MountStatus::State::TRACKING ||
-                                                state_ == MountStatus::State::MERIDIAN_FLIP) {
-                                                state_ = MountStatus::State::ERROR;
-                                                error_message_ =
-                                                    "Dec-axis position desync — re-home required";
+                                    if (std::abs(residual2) > max_frac_dec) {
+                                        if (++dec_desync_count_ > 30) {
+                                            MOUNT_LOG_ERROR("Dec-axis fractional desync persisted "
+                                                            "(residual={:.2f}° servo) — stopping. "
+                                                            "Re-home the mount before tracking again.",
+                                                            residual2);
+                                            publishStop();
+                                            {
+                                                std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                                                if (state_ == MountStatus::State::TRACKING ||
+                                                    state_ == MountStatus::State::MERIDIAN_FLIP) {
+                                                    state_ = MountStatus::State::ERROR;
+                                                    error_message_ =
+                                                        "Dec-axis position desync — re-home required";
+                                                }
                                             }
+                                            tracking_active_ = false;
+                                            break;
                                         }
-                                        tracking_active_ = false;
-                                        break;
+                                        if (diag_log_counter_ % 10 == 0) {
+                                            MOUNT_LOG_WARN("Dec-axis desync detected (residual={:.2f}° "
+                                                           "servo, count={}) — continuing; re-home if "
+                                                           "persistent.",
+                                                           residual2, dec_desync_count_);
+                                        }
+                                    } else {
+                                        dec_desync_count_ = 0;
                                     }
-                                } else {
-                                    dec_desync_count_ = 0;
                                 }
                             }
 
@@ -3409,14 +3421,14 @@ public:
                                 if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
                                     double full_turn_cl = 360.0 * ha_gear_cl;
                                     double raw_cl = malt_cl * ha_gear_cl - home_offset_axis1_;
-                                    new_axis1_target = wrapShortestPath(raw_cl, axis1_position_, full_turn_cl);
+                                    new_axis1_target = wrapShortestPath(raw_cl, axis1_position_ - home_offset_axis1_, full_turn_cl);
                                     const double dec_safe_cl = dec_gear_cl > 0.0 ? dec_gear_cl : 360.0;
                                     new_axis2_target = resolveDecTarget(maz_cl, axis2_position_ / dec_safe_cl) * dec_safe_cl - home_offset_axis2_;
                                 } else {
                                     new_axis1_target = malt_cl * ha_gear_cl - home_offset_axis1_;
                                     double full_turn_cl = 360.0 * dec_gear_cl;
                                     double raw_cl = maz_cl * dec_gear_cl - home_offset_axis2_;
-                                    new_axis2_target = wrapShortestPath(raw_cl, axis2_position_, full_turn_cl);
+                                    new_axis2_target = wrapShortestPath(raw_cl, axis2_position_ - home_offset_axis2_, full_turn_cl);
                                 }
                                 axis1_target_ = new_axis1_target;
                                 axis2_target_ = new_axis2_target;
@@ -3594,9 +3606,14 @@ public:
                                     double ha_hours_eq = lst_eq - snap_target_ra;
                                     while (ha_hours_eq > 12.0) ha_hours_eq -= 24.0;
                                     while (ha_hours_eq < -12.0) ha_hours_eq += 24.0;
-                                    const double tgt1_eq = ha_hours_eq * 15.0 * ha_gear_eq - home_offset_axis1_;
+                                    // Targets are computed in the TELESCOPE servo
+                                    // frame (no home_offset), matching act1/act2 from
+                                    // readActualAxisPositions().
+                                    const double tgt1_eq = wrapShortestPath(
+                                        ha_hours_eq * 15.0 * ha_gear_eq, act1,
+                                        360.0 * ha_gear_eq);
                                     const double tgt2_eq = resolveDecTarget(
-                                        snap_target_dec, act2 / dec_gear_eq) * dec_gear_eq - home_offset_axis2_;
+                                        snap_target_dec, act2 / dec_gear_eq) * dec_gear_eq;
                                     double err1 = tgt1_eq - act1;
                                     double err2 = tgt2_eq - act2;
 
@@ -3722,18 +3739,18 @@ public:
                                             config_.mount_config.axis_convention);
                                         const double ha_gear_v = haGear();
                                         const double dec_gear_v = decGear();
+                                        // Targets in TELESCOPE servo frame (no
+                                        // home_offset), matching act1/act2.
                                         double tgt1 = 0.0, tgt2 = 0.0;
                                         if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
                                             double full_v = 360.0 * ha_gear_v;
-                                            double raw_v = malt_v * ha_gear_v - home_offset_axis1_;
-                                            tgt1 = wrapShortestPath(raw_v, act1, full_v);
+                                            tgt1 = wrapShortestPath(malt_v * ha_gear_v, act1, full_v);
                                             const double dec_safe_v = dec_gear_v > 0.0 ? dec_gear_v : 360.0;
-                                            tgt2 = resolveDecTarget(maz_v, act2 / dec_safe_v) * dec_safe_v - home_offset_axis2_;
+                                            tgt2 = resolveDecTarget(maz_v, act2 / dec_safe_v) * dec_safe_v;
                                         } else {
-                                            tgt1 = malt_v * ha_gear_v - home_offset_axis1_;
+                                            tgt1 = malt_v * ha_gear_v;
                                             double full_v = 360.0 * dec_gear_v;
-                                            double raw_v = maz_v * dec_gear_v - home_offset_axis2_;
-                                            tgt2 = wrapShortestPath(raw_v, act2, full_v);
+                                            tgt2 = wrapShortestPath(maz_v * dec_gear_v, act2, full_v);
                                         }
                                         err1 = tgt1 - act1;
                                         err2 = tgt2 - act2;
@@ -3749,9 +3766,9 @@ public:
                                             config_.safety_config.enable_refraction_correction);
                                         const double ha_gear_v = haGear();
                                         const double dec_gear_v = decGear();
-                                        const double tgt1 = alt_v * ha_gear_v - home_offset_axis1_;
+                                        const double tgt1 = alt_v * ha_gear_v;
                                         const double tgt2 = wrapShortestPath(
-                                            az_v * dec_gear_v - home_offset_axis2_, act2,
+                                            az_v * dec_gear_v, act2,
                                             360.0 * dec_gear_v);
                                         err1 = tgt1 - act1;
                                         err2 = tgt2 - act2;
@@ -8597,7 +8614,8 @@ private:
         }
         // Apply only the DELTA (change from last iteration) to prevent
         // cumulative correction accumulation (E1 fix).
-        double nutation_delta = nutation_correction_axis1 - last_nutation_correction_axis1_;
+        double nutation_delta = corrections_primed_
+            ? (nutation_correction_axis1 - last_nutation_correction_axis1_) : 0.0;
         axis1_position_ += nutation_delta;
         last_nutation_correction_axis1_ = nutation_correction_axis1;
         last_nutation_correction_axis2_ = 0.0;  // nutation in Dec is handled via current_dec
@@ -8646,8 +8664,10 @@ private:
             double tp_correction_axis2 = (corrected_dec - dec_for_tp) * dec_gear_tp;
             
             // Apply only the DELTA to prevent cumulative correction (E1 fix)
-            double tp_delta1 = tp_correction_axis1 - last_tpoint_correction_axis1_;
-            double tp_delta2 = tp_correction_axis2 - last_tpoint_correction_axis2_;
+            double tp_delta1 = corrections_primed_
+                ? (tp_correction_axis1 - last_tpoint_correction_axis1_) : 0.0;
+            double tp_delta2 = corrections_primed_
+                ? (tp_correction_axis2 - last_tpoint_correction_axis2_) : 0.0;
             axis1_position_ += tp_delta1;
             axis2_position_ += tp_delta2;
             last_tpoint_correction_axis1_ = tp_correction_axis1;
@@ -8722,8 +8742,10 @@ private:
                 double refr_correction_axis2 = dec_correction * dec_gear_ref;
                 
                 // Apply only the DELTA to prevent cumulative correction
-                double refr_delta1 = refr_correction_axis1 - last_refraction_correction_axis1_;
-                double refr_delta2 = refr_correction_axis2 - last_refraction_correction_axis2_;
+                double refr_delta1 = corrections_primed_
+                    ? (refr_correction_axis1 - last_refraction_correction_axis1_) : 0.0;
+                double refr_delta2 = corrections_primed_
+                    ? (refr_correction_axis2 - last_refraction_correction_axis2_) : 0.0;
                 axis1_position_ += refr_delta1;
                 axis2_position_ += refr_delta2;
                 last_refraction_correction_axis1_ = refr_correction_axis1;
@@ -8740,6 +8762,7 @@ private:
                 }
             }
         }
+        corrections_primed_ = true;
         return true;
     }
 
@@ -8951,6 +8974,7 @@ private:
     double last_tpoint_correction_axis2_{0.0};
     double last_refraction_correction_axis1_{0.0};
     double last_refraction_correction_axis2_{0.0};
+    bool corrections_primed_{false};   // true after the first correction cycle primes the deltas
     
     // Cached last-sent CANopen/HAL motor rates for rate-change detection.
     // The tracking loop sends setVelocity / setVelocityTarget every 100ms
@@ -9642,6 +9666,7 @@ private:
     bool pos_mode_logged_{false};
     size_t diag_log_counter_{0};
     int dec_desync_count_{0};   // consecutive Dec-axis desync detections
+    int legacy_encoder_read_counter_{0};  // decimation counter for legacy KF reads
     bool vel_mode_logged_{false};
     bool alt_az_pos_mode_logged_{false};
     bool alt_az_vel_mode_logged_{false};

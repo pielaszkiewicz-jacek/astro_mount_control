@@ -711,11 +711,16 @@ const DebugTestComponent = (() => {
       const enuN = -sinLat * cosLST * cx - sinLat * sinLST * cy + cosLat * cz;
       const enuU =  cosLat * cosLST * cx + cosLat * sinLST * cy + sinLat * cz;
 
-      // Step 3: Apply rotation matrix R (ENU → Mount frame)
+      // Step 3: Apply rotation matrix R (ENU → Mount frame).
+      // IMPORTANT: the backend expresses the horizontal vector in the order
+      // (North, East, Up) — see equatorialToMountOrientation() in
+      // src/core/astronomical_calculations.cpp.  The frontend must use the same
+      // component order, otherwise the displayed transform and the backend's
+      // actual slew target disagree (DIAG: MISMATCH).
       const m = rotationMatrix;
-      const mfX = m[0] * enuE + m[1] * enuN + m[2] * enuU;
-      const mfY = m[3] * enuE + m[4] * enuN + m[5] * enuU;
-      const mfZ = m[6] * enuE + m[7] * enuN + m[8] * enuU;
+      const mfX = m[0] * enuN + m[1] * enuE + m[2] * enuU;
+      const mfY = m[3] * enuN + m[4] * enuE + m[5] * enuU;
+      const mfZ = m[6] * enuN + m[7] * enuE + m[8] * enuU;
 
       // Normalize
       const mfNorm = Math.sqrt(mfX*mfX + mfY*mfY + mfZ*mfZ);
@@ -731,18 +736,31 @@ const DebugTestComponent = (() => {
       const altLike = Math.asin(nz) * 180 / Math.PI;
 
       // ── Assign axes to match backend convention ──────────────────
-      // Backend: telescope.axis1 = altitude-like, telescope.axis2 = azimuth-like
-      axis1Deg = altLike;
-      axis2Deg = azLike;
+      if (mountType === 1) {
+        // ALT_AZ: axis1 = altitude-like, axis2 = azimuth-like.
+        axis1Deg = altLike;
+        axis2Deg = azLike;
 
-      // ── Normalize to match backend getStatus() [0°, 360°) ──────
-      // Altitude-like: clamp to [0°, 90°], then normalize to [0°, 360°)
-      let altNorm = axis1Deg;
-      if (altNorm > 90) altNorm = 90;
-      if (altNorm < 0) altNorm = 0;
-      axis1Deg = ((altNorm % 360) + 360) % 360;
-      // Azimuth-like: normalize to [0°, 360°)
-      axis2Deg = ((axis2Deg % 360) + 360) % 360;
+        // Altitude: clamp to [0°, 90°].
+        if (axis1Deg > 90) axis1Deg = 90;
+        if (axis1Deg < 0) axis1Deg = 0;
+        // Azimuth: normalize to [0°, 360°).
+        axis2Deg = ((axis2Deg % 360) + 360) % 360;
+      } else {
+        // CASUAL (EQUATORIAL_LIKE — the Tests tab labels are "HA-like" /
+        // "Dec-like"): axis1 = HA-like (θ2 = atan2), axis2 = Dec-like
+        // (θ1 = asin).  The previous code assigned these backwards and
+        // clamped the Dec-like axis to [0°, 90°], which showed 0° for
+        // every object with negative Dec.
+        axis1Deg = azLike;
+        axis2Deg = altLike;
+
+        // HA-like: normalize to [0°, 360°).
+        axis1Deg = ((axis1Deg % 360) + 360) % 360;
+        // Dec-like: fold to [-90°, 90°].
+        if (axis2Deg > 90) axis2Deg = 180 - axis2Deg;
+        else if (axis2Deg < -90) axis2Deg = -180 - axis2Deg;
+      }
 
       logOutput(`Transform (${mountType === 1 ? 'ALT_AZ' : 'CASUAL'}): RA=${raHours.toFixed(3)}h, Dec=${decDeg.toFixed(3)}° → Axis1=${axis1Deg.toFixed(4)}°, Axis2=${axis2Deg.toFixed(4)}°`);
       logOutput(`  Celestial vector: [${cx.toFixed(4)}, ${cy.toFixed(4)}, ${cz.toFixed(4)}]`);

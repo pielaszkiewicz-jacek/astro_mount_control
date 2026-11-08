@@ -909,7 +909,7 @@
         "latitude": 54.350833333333334,
         "longitude": 18.64388888888889,
         "max_slew_rate": 1000.0,
-        "max_tracking_rate": 1.504,
+        "max_tracking_rate": 1.505,
         "meridian_flip_delay_minutes": 5.0,
         "meridian_flip_enabled": true,
         "meridian_flip_hysteresis_degrees": 0.5,
