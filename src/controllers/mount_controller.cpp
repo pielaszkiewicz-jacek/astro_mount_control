@@ -4861,28 +4861,18 @@ public:
                     std::sin(theta1_rad)                           // Up-like
                 );
                 
-                // Reject outlier measurements whose mount-frame direction is far
-                // from the catalog direction — the most common cause of a
-                // degenerate fit (the recorded mount position does not correspond
-                // to the star).
-                double dot = mount_vec.dot(horiz_vec);
-                dot = std::max(-1.0, std::min(1.0, dot));
-                const double sep_deg = std::acos(dot) * 180.0 / M_PI;
-                constexpr double BOOTSTRAP_MAX_SEP_DEG = 15.0;
-                if (sep_deg > BOOTSTRAP_MAX_SEP_DEG) {
-                    MOUNT_LOG_WARN("Bootstrap measurement rejected: mount↔sky "
-                                   "separation {:.2f}° > {:.1f}° "
-                                   "(expected RA={:.6f}h Dec={:.4f}°).",
-                                   sep_deg, BOOTSTRAP_MAX_SEP_DEG,
-                                   m.expected_ra, m.expected_dec);
-                    continue;
-                }
-
                 // Step 3: Accumulate B += mount_vec * horiz_vec^T
-                // Use equal weights for all measurements
+                // Use equal weights for all measurements.  NOTE: the mount↔sky
+                // separation is EXPECTED to be large before calibration — the
+                // uncalibrated mount frame is rotated relative to the sky frame,
+                // and that unknown rotation is exactly what the SVD solves for.
+                // Measurements must NOT be rejected based on this separation.
                 B += mount_vec * horiz_vec.transpose();
                 total_weight += 1.0;
 
+                double dot = mount_vec.dot(horiz_vec);
+                dot = std::max(-1.0, std::min(1.0, dot));
+                const double sep_deg = std::acos(dot) * 180.0 / M_PI;
                 MOUNT_LOG_INFO(
                     "Bootstrap meas: expected RA={:.6f}h Dec={:.4f}° "
                     "mount axis1={:.4f}° axis2={:.4f}° "
@@ -4890,14 +4880,6 @@ public:
                     m.expected_ra, m.expected_dec,
                     m.mount_ha, m.mount_dec,
                     true_alt, true_az, sep_deg);
-            }
-
-            if (total_weight < 3.0) {
-                MOUNT_LOG_ERROR("Bootstrap calibration: only {} valid measurements "
-                                "(need at least 3). Re-center the mount on each star "
-                                "and retry.",
-                                static_cast<int>(total_weight));
-                return false;
             }
             
             // Step 4: SVD to find optimal rotation R = U * V^T (Wahba/Kabsch)
