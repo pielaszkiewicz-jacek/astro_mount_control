@@ -261,10 +261,20 @@ struct SoftLimitPolicy {
     bool wrap_axis1{true};
 };
 
-inline SoftLimitPolicy softLimitPolicyFor(config::MountType type) {
+inline SoftLimitPolicy softLimitPolicyFor(config::MountType type,
+                                          config::AxisConvention axis_convention) {
     switch (type) {
         case config::MountType::ALT_AZ:
+            return {false, false, false};
         case config::MountType::CASUAL:
+            // CASUAL in EQUATORIAL_LIKE convention has axis1 = HA-like
+            // (periodic → wrap, not limited) and axis2 = Dec-like
+            // (folded + limited) — the same policy as EQUATORIAL.  In
+            // ALT_AZ_LIKE convention axis1 is altitude-like (limited) and
+            // axis2 is the periodic azimuth-like axis.
+            if (axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                return {true, true, true};
+            }
             return {false, false, false};
         case config::MountType::EQUATORIAL:
         case config::MountType::UNKNOWN:
@@ -281,6 +291,20 @@ inline double foldDecLike(double a) {
     if (a > 90.0) a = 180.0 - a;
     else if (a < -90.0) a = -180.0 - a;
     return a;
+}
+
+/// Return the periodic target 'raw' (in [0, full_turn)) shifted to the
+/// equivalent nearest the multi-turn reference position 'ref'.  std::fmod
+/// keeps the sign of its dividend, so the previous ad-hoc wrapping broke
+/// for negative multi-turn positions (e.g. a drive counter at -37 000°),
+/// producing a target hundreds of turns away.
+inline double wrapShortestPath(double raw, double ref, double full_turn) {
+    double ref_mod = std::fmod(ref, full_turn);
+    if (ref_mod < 0.0) ref_mod += full_turn;
+    double diff = raw - ref_mod;
+    if (diff > full_turn / 2.0) diff -= full_turn;
+    else if (diff < -full_turn / 2.0) diff += full_turn;
+    return ref + diff;
 }
 
 /// Pure soft-limit computation.  Inputs are TELESCOPE (not servo) degrees.
@@ -403,6 +427,12 @@ public:
     
     bool initialize(const ControllerConfig& config) {
         config_ = config;
+        // Initialize the runtime orientation from the configured quaternion so a
+        // persisted CASUAL calibration (config mount.orientation_quaternion) is
+        // actually applied on startup.  runBootstrapCalibration() and
+        // SetMountOrientation() update this member at runtime; previously the
+        // configured value was silently ignored until one of those ran.
+        mount_orientation_ = config.mount_config.mount_orientation;
         hal_config_ = config.hal_config;
         state_ = MountStatus::State::IDLE;
         notifyStatusChanged();  // UNINITIALIZED → IDLE
@@ -938,7 +968,8 @@ public:
                     // mounts there is no HA wrap and the periodic azimuth axis2 is
                     // never limited.
                     const SoftLimitPolicy policy =
-                        softLimitPolicyFor(config_.mount_config.mount_type);
+                        softLimitPolicyFor(config_.mount_config.mount_type,
+                                           config_.mount_config.axis_convention);
                     if (policy.wrap_axis1) {
                         telescope_axis1 = wrapHaTargetToLimits(axis1_target_);
                     }
@@ -1688,10 +1719,7 @@ public:
                     // axis1 = hour-angle-like (θ2): periodic → shortest-path wrap.
                     double full_turn_a1_cas = 360.0 * ha_gear_cas;
                     double raw_a1_cas = mount_alt * ha_gear_cas - home_offset_axis1_;
-                    double diff_a1_cas = raw_a1_cas - std::fmod(axis1_position_, full_turn_a1_cas);
-                    if (diff_a1_cas < 0.0) diff_a1_cas += full_turn_a1_cas;
-                    if (diff_a1_cas > full_turn_a1_cas / 2.0) diff_a1_cas -= full_turn_a1_cas;
-                    axis1_target_ = axis1_position_ + diff_a1_cas;
+                    axis1_target_ = wrapShortestPath(raw_a1_cas, axis1_position_, full_turn_a1_cas);
                     // axis2 = declination-like (θ1): resolve to nearest pier-side equivalent.
                     const double dec_gear_safe_cas = dec_gear_cas > 0.0 ? dec_gear_cas : 360.0;
                     axis2_target_ = resolveDecTarget(mount_az, axis2_position_ / dec_gear_safe_cas) * dec_gear_safe_cas - home_offset_axis2_;
@@ -1700,11 +1728,13 @@ public:
                     axis1_target_ = mount_alt * ha_gear_cas - home_offset_axis1_;
                     double full_turn_cas = 360.0 * dec_gear_cas;
                     double raw_az_cas = mount_az * dec_gear_cas - home_offset_axis2_;
-                    double diff_cas = raw_az_cas - std::fmod(axis2_position_, full_turn_cas);
-                    if (diff_cas < 0.0) diff_cas += full_turn_cas;
-                    if (diff_cas > full_turn_cas / 2.0) diff_cas -= full_turn_cas;
-                    axis2_target_ = axis2_position_ + diff_cas;
+                    axis2_target_ = wrapShortestPath(raw_az_cas, axis2_position_, full_turn_cas);
                 }
+                // Store the celestial target so the tracking loop can re-anchor
+                // the mount to the true sky position each update (closed loop),
+                // instead of relying only on open-loop rate integration.
+                tracking_target_ra_hours_ = ra;
+                tracking_target_dec_deg_ = dec;
             } else {  // ALT_AZ
                 // axis1 = altitude, axis2 = azimuth — convert telescope degrees → servo degrees
                 const double ha_gear_az = config_.mount_config.ha_axis_params.gear_ratio;
@@ -1714,10 +1744,7 @@ public:
                 // Azimuth axis (axis2 for ALT_AZ): find target nearest to current position
                 double full_turn_az = 360.0 * dec_gear_az;
                 double raw_az_eq = dec * dec_gear_az - home_offset_axis2_;
-                double diff_az = raw_az_eq - std::fmod(axis2_position_, full_turn_az);
-                if (diff_az < 0.0) diff_az += full_turn_az;
-                if (diff_az > full_turn_az / 2.0) diff_az -= full_turn_az;
-                axis2_target_ = axis2_position_ + diff_az;  // shortest path to azimuth target
+                axis2_target_ = wrapShortestPath(raw_az_eq, axis2_position_, full_turn_az);  // shortest path to azimuth target
             }
             
             // Check soft limits before starting tracking (unified policy:
@@ -1732,7 +1759,8 @@ public:
                 double telescope_axis1 = (axis1_target_ + home_offset_axis1_) / ha_gear_lim3;
                 double telescope_axis2 = (axis2_target_ + home_offset_axis2_) / dec_gear_lim3;
                 const SoftLimitPolicy policy =
-                    softLimitPolicyFor(config_.mount_config.mount_type);
+                    softLimitPolicyFor(config_.mount_config.mount_type,
+                                       config_.mount_config.axis_convention);
                 if (policy.wrap_axis1) {
                     telescope_axis1 = wrapHaTargetToLimits(axis1_target_);
                 }
@@ -1967,6 +1995,15 @@ public:
                 }
             } else {
                 // ALT_AZ / CASUAL: use velocity mode (unchanged).
+                // Reset the drift-correction state so the new session's reference
+                // trajectory starts from the current physical position rather than
+                // stale integrated values left over from a previous session.
+                drift_correction_initialized_ = false;
+                drift_expected_axis1_ = 0.0;
+                drift_expected_axis2_ = 0.0;
+                drift_trim_axis1_ = 0.0;
+                drift_trim_axis2_ = 0.0;
+                last_drift_correction_time_ = std::chrono::steady_clock::time_point{};
                 bool velocity_set_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
                     bool ok1 = hal_axis1_motor_->setVelocity(axis1_tracking_rate, config_.mount_config.tracking_acceleration);
@@ -2321,11 +2358,18 @@ public:
                     }
                 }
                 
-                // For Alt-Az and CASUAL mounts, normalize to valid angular ranges.
-                // axis1_position_ is in servo degrees; convert to telescope degrees
-                // for clamping, then convert back.
+                // For Alt-Az mounts (and CASUAL in the alt-az-like convention),
+                // normalize to valid angular ranges.  axis1_position_ is in servo
+                // degrees; convert to telescope degrees for clamping, then back.
+                //
+                // CASUAL with EQUATORIAL_LIKE is deliberately SKIPPED: axis1 is
+                // hour-angle-like (periodic) and axis2 is declination-like, both of
+                // which are valid for any multi-turn absolute value.  Clamping HA
+                // to an altitude window corrupts tracking, and folding Dec without a
+                // matching 180° HA shift would flip the mount-frame direction.
                 if (config_.mount_config.mount_type == config::MountType::ALT_AZ ||
-                    config_.mount_config.mount_type == config::MountType::CASUAL) {
+                    (config_.mount_config.mount_type == config::MountType::CASUAL &&
+                     config_.mount_config.axis_convention != config::AxisConvention::EQUATORIAL_LIKE)) {
                     const double alt_gear = haGear();
                     const double az_gear = decGear();
                     
@@ -2355,7 +2399,8 @@ public:
                 // the drive slews between pier sides.
                 if (config_.safety_config.soft_limits_enabled && !meridian_flip_in_progress_ && flip_soft_limit_cooldown_ <= 0) {
                     const SoftLimitPolicy sl_policy =
-                        softLimitPolicyFor(config_.mount_config.mount_type);
+                        softLimitPolicyFor(config_.mount_config.mount_type,
+                                           config_.mount_config.axis_convention);
                     bool limit_violation = (soft_limit_distance_axis1_ < 0.0) ||
                         (sl_policy.limit_axis2 && soft_limit_distance_axis2_ < 0.0);
                     if (limit_violation) {
@@ -2423,18 +2468,14 @@ public:
                     convert_ok = std::isfinite(current_ra) && std::isfinite(current_dec);
                     
                     if (convert_ok) {
-                        // --- Step 1: Apply nutation correction ---
-                        // Nutation changes apparent RA/Dec by up to ~17", affecting where
-                        // the target appears on the sky regardless of mount type.
-                        {
-                            auto [app_ra, app_dec] = astro_calc_->applyNutation(
-                                current_ra, current_dec, jd);
-                            double ra_corr_hours = app_ra - current_ra;
-                            if (ra_corr_hours > 12.0) ra_corr_hours -= 24.0;
-                            if (ra_corr_hours < -12.0) ra_corr_hours += 24.0;
-                            current_ra += ra_corr_hours;
-                            current_dec = app_dec;
-                        }
+                        // --- Step 1: Nutation is already folded into the transforms ---
+                        // mountOrientationToEquatorial() and
+                        // equatorialToMountOrientation() both derive sidereal time from
+                        // iauGst94() (GAST = apparent sidereal time), so the RA/Dec
+                        // produced here is already true-of-date (apparent).  Applying
+                        // applyNutation() again (which maps mean → apparent) would
+                        // double-count nutation (~17") and inject a constant pointing
+                        // offset on every iteration.
                         
                         // --- Step 2: Apply TPOINT corrections (in HA/Dec frame) ---
                         // TPoint models mount geometry errors in equatorial frame.
@@ -2503,15 +2544,28 @@ public:
                                 double az_offset_telescope  = new_az - current_az_telescope;
 
                                 // For EQUATORIAL_LIKE CASUAL, axis1 is hour-angle-like and
-                                // periodic, while axis2 is declination-like and may be reported
-                                // on the opposite pier side (180°−Dec). Normalize both before the
-                                // clamps so a ±360° / ±180° window mismatch does not turn into a
-                                // constant per-iteration drift (the "object escaping" symptom).
+                                // periodic, while axis2 is declination-like and may sit on the
+                                // opposite pier side (|Dec-like| > 90°).  Folding the Dec-like
+                                // axis alone flips the pointing direction unless the HA-like
+                                // axis is shifted by 180° as well; without that coupling the
+                                // offset stays ~180° and the ±1° clamp turns it into a constant
+                                // per-iteration drift (the "object escaping" symptom).
                                 if (config_.mount_config.mount_type == config::MountType::CASUAL &&
                                     config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
-                                    while (alt_offset_telescope > 180.0) alt_offset_telescope -= 360.0;
-                                    while (alt_offset_telescope < -180.0) alt_offset_telescope += 360.0;
-                                    az_offset_telescope = new_az - foldDecLike(current_az_telescope);
+                                    double raw_az_360 = std::fmod(current_az_telescope, 360.0);
+                                    if (raw_az_360 < 0.0) raw_az_360 += 360.0;
+                                    const double folded_az = foldDecLike(current_az_telescope);
+                                    // When the fold crossed the ±90° boundary, the equivalent
+                                    // pointing is on the opposite pier side: HA-like + 180°.
+                                    const bool dec_on_other_pier =
+                                        (raw_az_360 > 90.0 && raw_az_360 < 270.0);
+                                    const double current_ha_folded =
+                                        current_alt_telescope + (dec_on_other_pier ? 180.0 : 0.0);
+                                    double ha_delta = new_alt - current_ha_folded;
+                                    while (ha_delta > 180.0) ha_delta -= 360.0;
+                                    while (ha_delta < -180.0) ha_delta += 360.0;
+                                    alt_offset_telescope = ha_delta;
+                                    az_offset_telescope = new_az - folded_az;
                                 }
                                 
                                 // Clamp corrections in telescope degrees:
@@ -2863,6 +2917,13 @@ public:
                     // Store current axis targets for the I/O block below
                     snap_pos_target_axis1_ = axis1_target_;
                     snap_pos_target_axis2_ = axis2_target_;
+                } else if (config_.mount_config.mount_type == config::MountType::CASUAL) {
+                    // CASUAL also stores the celestial target (set in the
+                    // startTracking() CASUAL branch) so the position-mode update
+                    // can re-anchor the mount to the true sky position each cycle
+                    // (closed loop), instead of integrating open-loop rates.
+                    snap_target_ra = tracking_target_ra_hours_;
+                    snap_target_dec = tracking_target_dec_deg_;
                 }
                 }   // state_mutex_ scope ends, lock released
                 
@@ -3299,19 +3360,49 @@ public:
                                 ? config_.mount_config.tracking_pos_lead_seconds : 2.0;
                             const double advance_s = measured_update_s + configured_lead_s;
 
-                            // Advance both mount-frame targets by the
-                            // position-dependent tracking rates.  Clamp the
-                            // rates used for advancing so a zenith singularity
-                            // (exploding azimuth rate) cannot jump the target.
-                            const double adv_rate_cap = config_.mount_config.max_tracking_rate > 0.0
-                                ? config_.mount_config.max_tracking_rate
-                                : 0.004178074 * std::max(haGear(), 1.0);
-                            const double adv_rate_1 = std::clamp(snap_rate_1, -adv_rate_cap, adv_rate_cap);
-                            const double adv_rate_2 = std::clamp(snap_rate_2, -adv_rate_cap, adv_rate_cap);
-                            axis1_target_ += adv_rate_1 * advance_s;
-                            axis2_target_ += adv_rate_2 * advance_s;
-                            double new_axis1_target = axis1_target_;
-                            double new_axis2_target = axis2_target_;
+                            double new_axis1_target = 0.0;
+                            double new_axis2_target = 0.0;
+                            if (config_.mount_config.mount_type == config::MountType::CASUAL) {
+                                // Closed-loop target: recompute the absolute
+                                // mount-frame position from the tracked celestial
+                                // coordinates each update. This anchors the drive
+                                // to the true sky position, so small rate errors or
+                                // drive lag cannot accumulate into a runaway.
+                                double jd_cl = core::AstronomicalCalculations::getCurrentJulianDate();
+                                auto [malt_cl, maz_cl] = astro_calc_->equatorialToMountOrientation(
+                                    snap_target_ra, snap_target_dec, jd_cl,
+                                    mount_orientation_.quaternion,
+                                    config_.mount_config.axis_convention);
+                                const double ha_gear_cl = haGear();
+                                const double dec_gear_cl = decGear();
+                                if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                                    double full_turn_cl = 360.0 * ha_gear_cl;
+                                    double raw_cl = malt_cl * ha_gear_cl - home_offset_axis1_;
+                                    new_axis1_target = wrapShortestPath(raw_cl, axis1_position_, full_turn_cl);
+                                    const double dec_safe_cl = dec_gear_cl > 0.0 ? dec_gear_cl : 360.0;
+                                    new_axis2_target = resolveDecTarget(maz_cl, axis2_position_ / dec_safe_cl) * dec_safe_cl - home_offset_axis2_;
+                                } else {
+                                    new_axis1_target = malt_cl * ha_gear_cl - home_offset_axis1_;
+                                    double full_turn_cl = 360.0 * dec_gear_cl;
+                                    double raw_cl = maz_cl * dec_gear_cl - home_offset_axis2_;
+                                    new_axis2_target = wrapShortestPath(raw_cl, axis2_position_, full_turn_cl);
+                                }
+                                axis1_target_ = new_axis1_target;
+                                axis2_target_ = new_axis2_target;
+                            } else {
+                                // ALT_AZ: advance incrementally by the
+                                // position-dependent tracking rates (clamped so a
+                                // zenith singularity cannot jump the target).
+                                const double adv_rate_cap = config_.mount_config.max_tracking_rate > 0.0
+                                    ? config_.mount_config.max_tracking_rate
+                                    : 0.004178074 * std::max(haGear(), 1.0);
+                                const double adv_rate_1 = std::clamp(snap_rate_1, -adv_rate_cap, adv_rate_cap);
+                                const double adv_rate_2 = std::clamp(snap_rate_2, -adv_rate_cap, adv_rate_cap);
+                                axis1_target_ += adv_rate_1 * advance_s;
+                                axis2_target_ += adv_rate_2 * advance_s;
+                                new_axis1_target = axis1_target_;
+                                new_axis2_target = axis2_target_;
+                            }
 
                             // Re-wrap the azimuth-like axis (axis2 for ALT_AZ /
                             // CASUAL) to the physical drive's multi-turn window.
@@ -3361,6 +3452,16 @@ public:
                                 const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(decGear(), 1.0) * 4.0;
                                 double ref1 = raw_servo_axis1_position_ - home_offset_axis1_;
                                 double ref2 = raw_servo_axis2_position_ - home_offset_axis2_;
+                                // raw_servo_axis* is not refreshed during split-loop
+                                // tracking, so prefer the live drive position here.
+                                // A stale reference kept the profile at tracking
+                                // velocity instead of max slew rate for the initial
+                                // "Slew & Track" approach.
+                                double live1 = 0.0, live2 = 0.0;
+                                if (readActualAxisPositions(live1, live2)) {
+                                    ref1 = live1 - home_offset_axis1_;
+                                    ref2 = live2 - home_offset_axis2_;
+                                }
                                 if (std::abs(new_axis1_target - ref1) > close1) pos_vel_axis1 = config_.mount_config.max_slew_rate;
                                 if (std::abs(new_axis2_target - ref2) > close2) pos_vel_axis2 = config_.mount_config.max_slew_rate;
                             }
@@ -3510,7 +3611,99 @@ public:
                             smoothed_rate_1 = last_sent_rate_1_ + RATE_SMOOTHING_ALPHA * (snap_rate_1 - last_sent_rate_1_);
                             smoothed_rate_2 = last_sent_rate_2_ + RATE_SMOOTHING_ALPHA * (snap_rate_2 - last_sent_rate_2_);
                         }
-                        
+
+                        // ── Drift correction (position-loop closure) ─────────
+                        // Pure velocity steering is an open position loop: any
+                        // velocity error (wrong quaternion, refraction frame,
+                        // drive PID inaccuracy) integrates into unbounded drift.
+                        // Integrate a reference trajectory from the commanded
+                        // velocity and periodically trim the velocity command
+                        // from the measured drive position, closing the loop at
+                        // low bandwidth (once per second).
+                        if (!drift_correction_initialized_) {
+                            double init1 = 0.0, init2 = 0.0;
+                            if (readActualAxisPositions(init1, init2)) {
+                                drift_expected_axis1_ = init1;
+                                drift_expected_axis2_ = init2;
+                                drift_correction_initialized_ = true;
+                                last_drift_correction_time_ = now;
+                            }
+                        } else {
+                            drift_expected_axis1_ += (smoothed_rate_1 + drift_trim_axis1_) * dt;
+                            drift_expected_axis2_ += (smoothed_rate_2 + drift_trim_axis2_) * dt;
+                        }
+
+                        if (drift_correction_initialized_) {
+                            constexpr double DRIFT_CORRECTION_INTERVAL_S = 1.0;
+                            constexpr double DRIFT_KP = 0.5;              // 1/s
+                            constexpr double DRIFT_DEADBAND_DEG = 0.005;  // servo deg
+                            constexpr double DRIFT_MAX_TRIM_DPS = 1.0;    // servo deg/s
+                            double since_corr = std::chrono::duration<double>(now - last_drift_correction_time_).count();
+                            if (since_corr >= DRIFT_CORRECTION_INTERVAL_S) {
+                                double act1 = 0.0, act2 = 0.0;
+                                if (readActualAxisPositions(act1, act2)) {
+                                    last_drift_correction_time_ = now;
+                                    double err1 = drift_expected_axis1_ - act1;
+                                    double err2 = drift_expected_axis2_ - act2;
+
+                                    // For CASUAL, close the loop against the
+                                    // ABSOLUTE sky target (recomputed from the
+                                    // tracked RA/Dec), not against the internally
+                                    // integrated reference. The integrated
+                                    // reference inherits drive-lag error and can
+                                    // run away when the drive does not execute the
+                                    // commanded velocity exactly.
+                                    if (config_.mount_config.mount_type == config::MountType::CASUAL) {
+                                        double jd_v = core::AstronomicalCalculations::getCurrentJulianDate();
+                                        auto [malt_v, maz_v] = astro_calc_->equatorialToMountOrientation(
+                                            snap_target_ra, snap_target_dec, jd_v,
+                                            mount_orientation_.quaternion,
+                                            config_.mount_config.axis_convention);
+                                        const double ha_gear_v = haGear();
+                                        const double dec_gear_v = decGear();
+                                        double tgt1 = 0.0, tgt2 = 0.0;
+                                        if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                                            double full_v = 360.0 * ha_gear_v;
+                                            double raw_v = malt_v * ha_gear_v - home_offset_axis1_;
+                                            tgt1 = wrapShortestPath(raw_v, act1, full_v);
+                                            const double dec_safe_v = dec_gear_v > 0.0 ? dec_gear_v : 360.0;
+                                            tgt2 = resolveDecTarget(maz_v, act2 / dec_safe_v) * dec_safe_v - home_offset_axis2_;
+                                        } else {
+                                            tgt1 = malt_v * ha_gear_v - home_offset_axis1_;
+                                            double full_v = 360.0 * dec_gear_v;
+                                            double raw_v = maz_v * dec_gear_v - home_offset_axis2_;
+                                            tgt2 = wrapShortestPath(raw_v, act2, full_v);
+                                        }
+                                        err1 = tgt1 - act1;
+                                        err2 = tgt2 - act2;
+                                    }
+
+                                    drift_trim_axis1_ = (std::abs(err1) > DRIFT_DEADBAND_DEG)
+                                        ? DRIFT_KP * err1 : 0.0;
+                                    drift_trim_axis2_ = (std::abs(err2) > DRIFT_DEADBAND_DEG)
+                                        ? DRIFT_KP * err2 : 0.0;
+
+                                    if (drift_trim_axis1_ > DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis1_ = DRIFT_MAX_TRIM_DPS;
+                                    else if (drift_trim_axis1_ < -DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis1_ = -DRIFT_MAX_TRIM_DPS;
+                                    if (drift_trim_axis2_ > DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis2_ = DRIFT_MAX_TRIM_DPS;
+                                    else if (drift_trim_axis2_ < -DRIFT_MAX_TRIM_DPS)
+                                        drift_trim_axis2_ = -DRIFT_MAX_TRIM_DPS;
+
+                                    if (++drift_diag_counter_ % 10 == 0) {
+                                        MOUNT_LOG_INFO("Drift correction (ALT_AZ/CASUAL): err1={:.4f}° err2={:.4f}° "
+                                                       "trim1={:.4f}°/s trim2={:.4f}°/s",
+                                                       err1, err2, drift_trim_axis1_, drift_trim_axis2_);
+                                    }
+                                }
+                            }
+                        }
+
+                        const double cmd_rate_1 = smoothed_rate_1 + drift_trim_axis1_;
+                        const double cmd_rate_2 = smoothed_rate_2 + drift_trim_axis2_;
+
                         // Use a meaningful threshold (1e-6 deg/s servo) instead of 1e-12
                         // to reduce CAN bus traffic while still catching real changes.
                         const double RATE_CHANGE_THRESHOLD = 1e-6;
@@ -3518,21 +3711,21 @@ public:
                         // or rate change beyond threshold.  Without the isfinite()
                         // guard, NaN-NaN=NaN causes rate_changed to stay false forever.
                         bool rate_changed = first_iteration ||
-                                           (std::abs(smoothed_rate_1 - last_sent_rate_1_) > RATE_CHANGE_THRESHOLD) ||
-                                           (std::abs(smoothed_rate_2 - last_sent_rate_2_) > RATE_CHANGE_THRESHOLD);
+                                           (std::abs(cmd_rate_1 - last_sent_rate_1_) > RATE_CHANGE_THRESHOLD) ||
+                                           (std::abs(cmd_rate_2 - last_sent_rate_2_) > RATE_CHANGE_THRESHOLD);
                         if (rate_changed) {
                             if (config_.tracking_config.split_tracking_loop) {
-                                publishVelocityCommand(smoothed_rate_1, smoothed_rate_2, snap_tracking_accel);
-                                last_sent_rate_1_ = smoothed_rate_1;
-                                last_sent_rate_2_ = smoothed_rate_2;
+                                publishVelocityCommand(cmd_rate_1, cmd_rate_2, snap_tracking_accel);
+                                last_sent_rate_1_ = cmd_rate_1;
+                                last_sent_rate_2_ = cmd_rate_2;
                             } else {
                                 try {
                                     if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                        hal_axis1_motor_->setVelocity(smoothed_rate_1, snap_tracking_accel);
-                                        hal_axis2_motor_->setVelocity(smoothed_rate_2, snap_tracking_accel);
+                                        hal_axis1_motor_->setVelocity(cmd_rate_1, snap_tracking_accel);
+                                        hal_axis2_motor_->setVelocity(cmd_rate_2, snap_tracking_accel);
                                     }
-                                    last_sent_rate_1_ = smoothed_rate_1;
-                                    last_sent_rate_2_ = smoothed_rate_2;
+                                    last_sent_rate_1_ = cmd_rate_1;
+                                    last_sent_rate_2_ = cmd_rate_2;
                                 } catch (const std::exception& e) {
                                     MOUNT_LOG_WARN("HAL motor control error during tracking: {}", e.what());
                                 }
@@ -3986,6 +4179,13 @@ public:
 
         double raw_tel_axis1 = raw_servo1 / ha_gear;
         double raw_tel_axis2 = raw_servo2 / dec_gear;
+        // Preserve the raw telescope positions for the on-sky computation
+        // below.  The display normalization (next block) folds the Dec-like axis
+        // for EQUATORIAL_LIKE CASUAL; reusing those folded values in
+        // mountOrientationToEquatorial would mirror the direction (folding Dec
+        // without a matching 180° HA shift is not a pure rotation).
+        const double on_sky_axis1 = raw_tel_axis1;
+        const double on_sky_axis2 = raw_tel_axis2;
         MOUNT_LOG_DEBUG("getStatus telescope: raw_servo1={:.2f} raw_servo2={:.2f} ha_gear={:.1f} dec_gear={:.1f} → tel1={:.4f}° tel2={:.4f}°",
             raw_servo1, raw_servo2, ha_gear, dec_gear, raw_tel_axis1, raw_tel_axis2);
 
@@ -4110,7 +4310,7 @@ public:
             } else {
                 // ALT_AZ / CASUAL: reverse the mount orientation quaternion.
                 auto eq = astro_calc_->mountOrientationToEquatorial(
-                    raw_tel_axis1, raw_tel_axis2, jd, mount_orientation_.quaternion,
+                    on_sky_axis1, on_sky_axis2, jd, mount_orientation_.quaternion,
                     config_.mount_config.axis_convention);
                 ra_hours = eq.first;
                 dec_deg = eq.second;
@@ -4423,7 +4623,8 @@ public:
     // Bootstrap calibration API
     bool addBootstrapMeasurement(double observed_ra, double observed_dec,
                                  double expected_ra, double expected_dec,
-                                 double mount_ha = 0.0, double mount_dec = 0.0) {
+                                 double mount_ha = 0.0, double mount_dec = 0.0,
+                                 bool observed_is_absolute = false) {
         std::lock_guard<std::shared_mutex> lock(*state_mutex_);
         // For bootstrap measurements, use default environmental parameters
         double temperature = 15.0;
@@ -4439,7 +4640,7 @@ public:
         bootstrap_measurements_.push_back({
             observed_ra, observed_dec, expected_ra, expected_dec,
             mount_ha, mount_dec, temperature, pressure, humidity,
-            0.0, 0.0, 0.0, 2000.0,  // Default astrometric parameters
+            0.0, 0.0, 0.0, 2000.0, observed_is_absolute,
             std::chrono::system_clock::now()
         });
         
@@ -4501,14 +4702,19 @@ public:
                     m.timestamp.time_since_epoch()).count();
                 double jd = 2440587.5 + ms_since_epoch / 86400000.0;
                 
-                // Step 1: Convert the star's true (catalog) position to horizontal.
-                // Use expected_* (the catalog coordinates the user centered on),
-                // NOT observed_* — observed_* is derived from the controller's
-                // current orientation quaternion, which is exactly what we are
-                // trying to solve for. Using it creates a circular dependency and
-                // corrupts the fit whenever the current orientation is wrong.
-                double ra_hours = m.expected_ra;
-                double dec_deg = m.expected_dec;
+                // Step 1: Convert the star's true sky position to horizontal.
+                //
+                // Two measurement sources, two different ground truths:
+                //  - Manual/Hybrid: the operator physically centered the catalog
+                //    target, so expected_* is the true sky position. observed_* is
+                //    derived from the controller's current orientation quaternion
+                //    (circular) and must NOT be used.
+                //  - Plate-solve (observed_is_absolute=true): the mount was NOT
+                //    centered on the catalog target (the pre-calibration slew is
+                //    inaccurate), so observed_* is the true plate-solved position
+                //    and expected_* would corrupt the fit by the slew error.
+                double ra_hours = m.observed_is_absolute ? m.observed_ra : m.expected_ra;
+                double dec_deg = m.observed_is_absolute ? m.observed_dec : m.expected_dec;
                 
                 auto [true_alt, true_az] = astro_calc_->equatorialToHorizontal(
                     ra_hours, dec_deg, jd, true);
@@ -4590,13 +4796,13 @@ public:
             double cond = (max_sv > 0.0) ? (min_sv / max_sv) : 0.0;
             const double MIN_COND = 1e-6;
             if (cond < MIN_COND) {
-                MOUNT_LOG_WARN("Bootstrap SVD ill-conditioned: "
+                MOUNT_LOG_ERROR("Bootstrap SVD ill-conditioned: "
                          "cond={:.2e} < min={:.2e}, sv=[{:.2e}, {:.2e}, {:.2e}]. "
-                         "Star measurements may be nearly collinear — "
-                         "distribute calibration stars across the sky.",
+                         "Star measurements are nearly collinear — the 3-DOF "
+                         "orientation cannot be determined reliably. Distribute "
+                         "calibration stars across the sky and retry.",
                          cond, MIN_COND, sv(0), sv(1), sv(2));
-                // Continue with best-effort rotation; the residual check below
-                // will detect poor alignment via large RMS error.
+                return false;
             }
             
             // Wahba/Kabsch optimal rotation: R = U * V^T (NOT V * U^T — the
@@ -4653,8 +4859,13 @@ public:
             estimated_q.quaternion = {{qx, qy, qz, qw}};
             bootstrap_estimated_orientation_ = estimated_q;
             
-            // Compute residual error: for each measurement, project the mount
-            // position through the estimated quaternion and compare with observed
+            // Compute residual error as the angular separation between the
+            // mount-frame pointing direction recorded in the measurement and the
+            // direction predicted from the catalog coordinates through the
+            // estimated quaternion.  Comparing raw angles directly is wrong: the
+            // Dec-like axis is reported folded/wrapped to [0°, 360°), while
+            // equatorialToMountOrientation() returns it in [-90°, 90°] — a
+            // perfectly good fit would then report a spurious ±360° residual.
             double residual_sum_sq = 0.0;
             for (const auto& m : bootstrap_measurements_) {
                 auto ms_since_epoch = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -4667,10 +4878,37 @@ public:
                     m.expected_ra, m.expected_dec, jd,
                     estimated_q.quaternion,
                     config_.mount_config.axis_convention);
-                
-                double d1 = expected_axis1 - m.mount_ha;
-                double d2 = expected_axis2 - m.mount_dec;
-                residual_sum_sq += d1*d1 + d2*d2;
+
+                double theta1_expected, theta2_expected;
+                double theta1_measured, theta2_measured;
+                if (config_.mount_config.axis_convention == config::AxisConvention::EQUATORIAL_LIKE) {
+                    // axis1 = HA-like (θ2), axis2 = Dec-like (θ1)
+                    theta1_expected = expected_axis2 * M_PI / 180.0;
+                    theta2_expected = expected_axis1 * M_PI / 180.0;
+                    theta1_measured = m.mount_dec * M_PI / 180.0;
+                    theta2_measured = m.mount_ha * M_PI / 180.0;
+                } else {
+                    // axis1 = altitude-like (θ1), axis2 = azimuth-like (θ2)
+                    theta1_expected = expected_axis1 * M_PI / 180.0;
+                    theta2_expected = expected_axis2 * M_PI / 180.0;
+                    theta1_measured = m.mount_ha * M_PI / 180.0;
+                    theta2_measured = m.mount_dec * M_PI / 180.0;
+                }
+
+                const auto unit_vec = [](double t1, double t2) {
+                    return std::array<double, 3>{{
+                        std::cos(t1) * std::cos(t2),
+                        std::cos(t1) * std::sin(t2),
+                        std::sin(t1)}};
+                };
+                const auto v_expected = unit_vec(theta1_expected, theta2_expected);
+                const auto v_measured = unit_vec(theta1_measured, theta2_measured);
+                double dot = v_expected[0] * v_measured[0] +
+                             v_expected[1] * v_measured[1] +
+                             v_expected[2] * v_measured[2];
+                dot = std::max(-1.0, std::min(1.0, dot));
+                const double sep_deg = std::acos(dot) * 180.0 / M_PI;
+                residual_sum_sq += sep_deg * sep_deg;
             }
             double rms_error_deg = std::sqrt(residual_sum_sq / bootstrap_measurements_.size());
             bootstrap_estimated_quaternion_error_arcsec_ = rms_error_deg * 3600.0;
@@ -4801,7 +5039,7 @@ public:
         tpoint_measurements_.push_back({
             observed_ra, observed_dec, expected_ra, expected_dec,
             mount_ha, mount_dec, temperature, pressure, humidity,
-            proper_motion_ra, proper_motion_dec, parallax, epoch,
+            proper_motion_ra, proper_motion_dec, parallax, epoch, false,
             std::chrono::system_clock::now()
         });
         
@@ -7685,7 +7923,8 @@ public:
         // Convert servo positions to telescope/mount degrees and delegate the
         // pure zone/rate computation to the unit-testable helper.
         const SoftLimitPolicy policy =
-            softLimitPolicyFor(config_.mount_config.mount_type);
+            softLimitPolicyFor(config_.mount_config.mount_type,
+                               config_.mount_config.axis_convention);
         const SoftLimitEvaluation eval = computeSoftLimits(
             axis1_pos / haGear(), axis2_pos / decGear(), policy,
             config_.safety_config);
@@ -7741,7 +7980,8 @@ private:
     // degrees.  Uses the single per-mount policy (softLimitPolicyFor): axis1 is
     // always limited; axis2 only when it is not the periodic azimuth-like axis.
     bool targetExceedsSoftLimits(double telescope_axis1, double telescope_axis2) const {
-        const SoftLimitPolicy policy = softLimitPolicyFor(config_.mount_config.mount_type);
+        const SoftLimitPolicy policy = softLimitPolicyFor(config_.mount_config.mount_type,
+                                                          config_.mount_config.axis_convention);
         if (policy.fold_axis2) telescope_axis2 = foldDecLike(telescope_axis2);
         const config::SafetyConfig& s = config_.safety_config;
         bool violation = (telescope_axis1 < s.soft_limit_axis1_min ||
@@ -7927,7 +8167,8 @@ private:
                 // the periodic azimuth-like axis2 is not limited for ALT_AZ/CASUAL).
                 if (config_.safety_config.soft_limits_enabled) {
                     const SoftLimitPolicy sl_policy =
-                        softLimitPolicyFor(config_.mount_config.mount_type);
+                        softLimitPolicyFor(config_.mount_config.mount_type,
+                                           config_.mount_config.axis_convention);
                     bool limit_violation = (soft_limit_distance_axis1_ < 0.0) ||
                         (sl_policy.limit_axis2 && soft_limit_distance_axis2_ < 0.0);
                     if (limit_violation) {
@@ -8471,6 +8712,7 @@ private:
         double proper_motion_dec;
         double parallax;
         double epoch;
+        bool observed_is_absolute{false};  // observed_* comes from a plate solver
         std::chrono::system_clock::time_point timestamp;
     };
     
@@ -9264,10 +9506,12 @@ void MountController::refreshPositions() {
 // Bootstrap calibration methods
 bool MountController::addBootstrapMeasurement(double observed_ra, double observed_dec,
                                               double expected_ra, double expected_dec,
-                                              double mount_ha, double mount_dec) {
+                                              double mount_ha, double mount_dec,
+                                              bool observed_is_absolute) {
     return pimpl->addBootstrapMeasurement(observed_ra, observed_dec,
                                          expected_ra, expected_dec,
-                                         mount_ha, mount_dec);
+                                         mount_ha, mount_dec,
+                                         observed_is_absolute);
 }
 
 bool MountController::runBootstrapCalibration() {

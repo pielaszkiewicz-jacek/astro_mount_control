@@ -432,7 +432,8 @@ grpc::Status MountControllerServiceImpl::AddBootstrapMeasurement(grpc::ServerCon
                 request->observed().dec(),
                 request->expected().ra(),
                 request->expected().dec(),
-                mount_ha, mount_dec)) {
+                mount_ha, mount_dec,
+                request->observed_is_absolute())) {
             return grpc::Status::OK;
         } else {
             return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to add bootstrap measurement");

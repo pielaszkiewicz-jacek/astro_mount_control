@@ -287,13 +287,26 @@ TEST_F(GrpcIntegrationTest, AddBootstrapMeasurement) {
 }
 
 TEST_F(GrpcIntegrationTest, RunBootstrapCalibration) {
-    // Add minimum measurements needed for bootstrap calibration
+    // Add minimum measurements needed for bootstrap calibration.  Provide
+    // explicit, well-separated sky and mount positions so the Wahba/SVD
+    // cross-covariance matrix is well-conditioned; near-collinear measurements
+    // (e.g. RA and Dec both increasing linearly) are correctly rejected by
+    // runBootstrapCalibration().
+    const double obs_ra[3]   = {12.0,  5.0, 18.0};
+    const double obs_dec[3]  = {45.0, 20.0, 70.0};
+    const double exp_ra[3]   = {12.1,  5.05, 18.05};
+    const double exp_dec[3]  = {45.1, 20.05, 70.05};
+    const double mount_a1[3] = { 0.0, -7.0,  6.0};
+    const double mount_a2[3] = {45.0, 20.0, 70.0};
+
     for (int i = 0; i < 3; i++) {
         astro_mount::BootstrapMeasurement req;
-        req.mutable_observed()->set_ra(10.0 + i);
-        req.mutable_observed()->set_dec(20.0 + i);
-        req.mutable_expected()->set_ra(10.1 + i);
-        req.mutable_expected()->set_dec(20.1 + i);
+        req.mutable_observed()->set_ra(obs_ra[i]);
+        req.mutable_observed()->set_dec(obs_dec[i]);
+        req.mutable_expected()->set_ra(exp_ra[i]);
+        req.mutable_expected()->set_dec(exp_dec[i]);
+        req.mutable_mount_position()->set_axis1(mount_a1[i]);
+        req.mutable_mount_position()->set_axis2(mount_a2[i]);
 
         grpc::ClientContext ctx;
         google::protobuf::Empty resp;

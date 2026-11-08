@@ -710,9 +710,13 @@ TEST_F(MountControllerTest, BootstrapCalibrationWithOneMeasurement) {
 
 TEST_F(MountControllerTest, BootstrapCalibrationWithThreeMeasurements) {
     controller_->initialize(config_);
-    controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1);
-    controller_->addBootstrapMeasurement(10.0, 30.0, 10.05, 30.05);
-    controller_->addBootstrapMeasurement(8.0, 60.0, 8.05, 60.05);
+    // Provide explicit, well-separated mount positions so the Wahba/SVD
+    // cross-covariance matrix is well-conditioned.  The old default left
+    // mount_ha = 0 for every measurement, which is a degenerate (planar) set
+    // and is now correctly rejected by runBootstrapCalibration().
+    controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1, 0.0, 45.1);
+    controller_->addBootstrapMeasurement(10.0, 30.0, 10.05, 30.05, 30.0, 30.05);
+    controller_->addBootstrapMeasurement(8.0, 60.0, 8.05, 60.05, -30.0, 60.05);
     EXPECT_TRUE(controller_->runBootstrapCalibration());
     EXPECT_TRUE(controller_->isBootstrapCalibrated());
 }

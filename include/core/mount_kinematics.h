@@ -145,6 +145,15 @@ private:
             ? quaternion_
             : std::array<double, 4>{0.0, 0.0, 0.0, 1.0};
 
+        // NOTE (refraction frame): mountOrientationToHorizontal() returns the
+        // direction the mount physically points at.  For ALT_AZ (Q = identity)
+        // this is the TRUE horizontal direction and the sidereal derivative
+        // formulas below are exact.  For a CASUAL mount whose quaternion was
+        // fitted by runBootstrapCalibration(), Q maps the mount frame into the
+        // APPARENT (refracted) horizontal frame, so the derivative is evaluated
+        // at the refracted altitude — a small (arcsec/hour) rate bias that is
+        // now bounded by the velocity-mode drift correction in the controller
+        // rather than accumulating without limit.
         const auto [true_alt, true_az] =
             AstronomicalCalculations::mountOrientationToHorizontal(
                 axis1_tel, axis2_tel, q_enu_to_mount, axis_convention_);

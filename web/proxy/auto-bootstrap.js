@@ -158,6 +158,7 @@ async function addMeasurement(s, observedOverride) {
       observed: { ra: observedRa, dec: observedDec },
       expected: { ra: target.ra, dec: target.dec },
       mount_position: { axis1: mountHa, axis2: mountDec },
+      observed_is_absolute: !!observedOverride,
     });
   } else {
     await grpcCall('AddTPointMeasurement', {

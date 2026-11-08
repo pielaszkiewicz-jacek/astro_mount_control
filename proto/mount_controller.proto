@@ -940,6 +940,9 @@ message BootstrapMeasurement {
     bool use_for_initial_alignment = 6; // Should be used for initial alignment
     string star_catalog_id = 7;         // Catalog ID for identification
     double star_magnitude = 8;          // Star magnitude (for weighting)
+    bool observed_is_absolute = 9;      // True when observed_* is an absolute
+                                        // plate-solved position (not derived from
+                                        // the current orientation quaternion).
 }
 
 // Bootstrap calibration result

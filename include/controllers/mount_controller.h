@@ -325,7 +325,8 @@ public:
      */
     bool addBootstrapMeasurement(double observed_ra, double observed_dec,
                                  double expected_ra, double expected_dec,
-                                 double mount_ha = 0.0, double mount_dec = 0.0);
+                                 double mount_ha = 0.0, double mount_dec = 0.0,
+                                 bool observed_is_absolute = false);
     
     /**
      * @brief Run bootstrap calibration to get initial orientation
