@@ -2676,10 +2676,22 @@ public:
                     time_to_meridian_ = 24.0;
                     pier_side_ = 1;
                 } else if (config_.safety_config.meridian_flip_enabled) {
-                    // axis1_position_ is in servo degrees; convert to telescope HA degrees
+                    // axis1_position_ is in servo degrees; convert to telescope HA degrees.
                     const double ha_gear_mf = haGear();
-                    double ha = axis1_position_ / ha_gear_mf; // Telescope HA in degrees
-                    
+                    double ha = axis1_position_ / ha_gear_mf; // Telescope HA in degrees (multi-turn)
+                    // Fold HA to the canonical [-180°, +180°] meridian window.
+                    // axis1_position_ accumulates unbounded multi-turn servo degrees
+                    // (and includes the home offset), so the raw telescope value is
+                    // e.g. 356.9° when the mount is actually 3.1° EAST of the
+                    // meridian.  Comparing that raw value directly against the
+                    // ±hysteresis zone made the flip logic read it as "west of the
+                    // meridian" and trigger a spurious meridian flip — the observed
+                    // "mount suddenly slews away from the object by several to a
+                    // dozen degrees" incident.
+                    ha = std::fmod(ha, 360.0);
+                    if (ha > 180.0) ha -= 360.0;
+                    else if (ha < -180.0) ha += 360.0;
+
                     // Calculate time to meridian (positive = before, negative = past)
                     time_to_meridian_ = -ha / 15.0;
                     
@@ -2812,10 +2824,10 @@ public:
                             // at this point (the enclosing MERIDIAN_FLIP block runs
                             // inside the tracking loop's lock scope). Do NOT acquire
                             // it again — that would deadlock on a non-recursive mutex.
-                            axis1_position_ = flip_ha_target_;
-                            axis2_position_ = flip_dec_target_;
-                            raw_servo_axis1_position_ = flip_ha_target_;
-                            raw_servo_axis2_position_ = flip_dec_target_;
+                            axis1_position_ = flip_ha_target_ + home_offset_axis1_;
+                            axis2_position_ = flip_dec_target_ + home_offset_axis2_;
+                            raw_servo_axis1_position_ = flip_ha_target_ + home_offset_axis1_;
+                            raw_servo_axis2_position_ = flip_dec_target_ + home_offset_axis2_;
                         }
                     }
 
@@ -2829,19 +2841,38 @@ public:
                             bool reached1 = hal_axis1_motor_->targetReached();
                             bool reached2 = hal_axis2_motor_->targetReached();
                             if (reached1 && reached2) {
-                                axis1_position_ = flip_ha_target_;
-                                axis2_position_ = flip_dec_target_;
-                                raw_servo_axis1_position_ = flip_ha_target_;
-                                raw_servo_axis2_position_ = flip_dec_target_;
+                                // Flip targets are raw drive-frame values; internal
+                                // positions live in the home-offset-adjusted frame.
+                                axis1_position_ = flip_ha_target_ + home_offset_axis1_;
+                                axis2_position_ = flip_dec_target_ + home_offset_axis2_;
+                                raw_servo_axis1_position_ = flip_ha_target_ + home_offset_axis1_;
+                                raw_servo_axis2_position_ = flip_dec_target_ + home_offset_axis2_;
                             }
                         } catch (const std::exception&) {
                             // Ignore
                         }
                     }
 
-                    // Compute distance to flip targets (servo degrees) from encoder feedback.
-                    double d1 = flip_ha_target_ - axis1_position_;
-                    double d2 = flip_dec_target_ - axis2_position_;
+                    // Compute distance to flip targets (servo degrees) from the
+                    // PHYSICAL drive position.  flip targets are raw drive-frame
+                    // values, while axisN_position_ is home-offset-adjusted; mixing
+                    // the two frames left a residual equal to the fractional part of
+                    // the home offset and broke the completion detection.
+                    double d1 = 0.0, d2 = 0.0;
+                    bool have_flip_dist = false;
+                    if (hal_axis1_motor_ && hal_axis2_motor_) {
+                        try {
+                            d1 = flip_ha_target_ - applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                            d2 = flip_dec_target_ - applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                            have_flip_dist = std::isfinite(d1) && std::isfinite(d2);
+                        } catch (const std::exception&) {
+                            // Fall through to the internal-position estimate.
+                        }
+                    }
+                    if (!have_flip_dist) {
+                        d1 = flip_ha_target_ - (axis1_position_ - home_offset_axis1_);
+                        d2 = flip_dec_target_ - (axis2_position_ - home_offset_axis2_);
+                    }
 
                     // Normalize d1 to shortest path in servo degrees
                     double ha_gear_flip = haGear();
@@ -2875,6 +2906,17 @@ public:
                         // Set axis targets to flip targets (now matching current position)
                         axis1_target_ = flip_ha_target_;
                         axis2_target_ = flip_dec_target_;
+
+                        // Sync the internal positions to the flip targets in the
+                        // home-offset-adjusted frame.  The targetReached() branch
+                        // above may not have fired on the same iteration (the
+                        // distance check now gates completion independently), and
+                        // the post-flip RA recomputation below relies on a correct
+                        // axis1_position_.
+                        axis1_position_ = flip_ha_target_ + home_offset_axis1_;
+                        axis2_position_ = flip_dec_target_ + home_offset_axis2_;
+                        raw_servo_axis1_position_ = flip_ha_target_ + home_offset_axis1_;
+                        raw_servo_axis2_position_ = flip_dec_target_ + home_offset_axis2_;
 
                         // Update the celestial tracking target to the post-flip
                         // pier side.  The tracking loop computes
