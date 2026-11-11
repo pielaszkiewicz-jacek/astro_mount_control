@@ -8,7 +8,7 @@
 #include "proto/st4_guider.grpc.pb.h"
 
 namespace astro_mount {
-namespace controllers { class St4Guider; }
+namespace controllers { class St4Guider; class MountController; }
 namespace hal { class St4Control; }
 } // namespace astro_mount
 
@@ -23,7 +23,9 @@ namespace astro_st4guider {
 
 class St4GuiderServiceImpl final : public astro_mount::St4GuiderService::Service {
 public:
-    explicit St4GuiderServiceImpl(const std::string& config_path);
+    explicit St4GuiderServiceImpl(
+        const std::string& config_path,
+        astro_mount::controllers::MountController* mount_controller = nullptr);
     ~St4GuiderServiceImpl() override;
 
     grpc::Status StartGuiding(grpc::ServerContext* context,
@@ -50,7 +52,12 @@ private:
     bool configureFromJson(const std::string& config_path);
     void populateStatus(astro_mount::St4Status* status) const;
 
+    /// @brief Wire guider_->setPulseSink() to the mount controller so physical
+    /// ST4 pulses also drive the internal controller (not only the GPIO port).
+    void wirePulseSink();
+
     std::unique_ptr<astro_mount::controllers::St4Guider> guider_;
+    astro_mount::controllers::MountController* mount_controller_{nullptr};
     std::string interface_type_{"simulated"};
     // PHD2 endpoint — configurable (default localhost:4400).
     std::string phd2_host_{"localhost"};

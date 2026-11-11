@@ -31,6 +31,11 @@ public:
 
     bool pulse(hal::St4Direction dir, int duration_ms);
 
+    /// @brief Attach an optional in-process consumer invoked for every pulse
+    /// request. Used to forward physical ST4 pulses to the mount controller so
+    /// the ST4 path also drives the internal drives (not just the GPIO port).
+    void setPulseSink(std::function<void(hal::St4Direction, int)> sink);
+
     /**
      * @brief Run ST4 calibration (arcsec/ms per axis).
      *
@@ -116,6 +121,7 @@ private:
 
     Stats stats_;
     St4CalibrationParams calibration_;
+    std::function<void(hal::St4Direction, int)> pulse_sink_;  // guarded by mutex_
     mutable std::mutex mutex_;   // guards stats_, calibration_, guide params
 };
 

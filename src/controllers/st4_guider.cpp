@@ -327,7 +327,22 @@ bool St4Guider::isPHD2Connected() const {
     return phd2_connected_.load();
 }
 
+void St4Guider::setPulseSink(std::function<void(hal::St4Direction, int)> sink) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    pulse_sink_ = std::move(sink);
+}
+
 bool St4Guider::pulse(hal::St4Direction dir, int duration_ms) {
+    // Forward every pulse to the optional in-process sink (the mount controller)
+    // so physical ST4 guiding also reaches the internal drives. The sink is
+    // copied out under the lock to avoid holding it during the callback.
+    std::function<void(hal::St4Direction, int)> sink;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        sink = pulse_sink_;
+    }
+    if (sink) sink(dir, duration_ms);
+
     if (hal_->pulse(dir, duration_ms)) {
         std::lock_guard<std::mutex> lock(mutex_);
         stats_.pulses_sent++;

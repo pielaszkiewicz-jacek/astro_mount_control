@@ -47,6 +47,12 @@
 
   --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+  /* UI scaling: responsive base scale × user-controlled scale.
+     --ui-scale drives the root font-size (rem) and icon dimensions. */
+  --base-scale: 1;
+  --user-scale: 1;
+  --ui-scale: calc(var(--base-scale) * var(--user-scale));
 }
 
 /* ─── Red/Night-Vision Theme ────────────────────────────────────────────── */
@@ -114,8 +120,27 @@ body.red-theme {
 
 .theme-toggle svg {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: calc(16px * var(--ui-scale));
+  height: calc(16px * var(--ui-scale));
+}
+
+/* Font/icon scale toggle button (header) */
+.ui-scale-toggle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* Scale fixed-size inline SVG icons with the UI scale factor. */
+.tab-icon-svg svg {
+  width: calc(18px * var(--ui-scale));
+  height: calc(18px * var(--ui-scale));
+}
+
+.splash-logo svg {
+  width: calc(72px * var(--ui-scale));
+  height: calc(72px * var(--ui-scale));
 }
 
 /* Smooth transition for body when switching themes */
@@ -131,7 +156,7 @@ body {
 }
 
 html {
-  font-size: 16px;
+  font-size: calc(16px * var(--ui-scale));
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
 }
@@ -2115,8 +2140,8 @@ body.mobile-mode .tab-btn {
 }
 
 body.mobile-mode .tab-icon-svg {
-  width: 14px !important;
-  height: 14px !important;
+  width: calc(18px * var(--ui-scale)) !important;
+  height: calc(18px * var(--ui-scale)) !important;
 }
 
 body.mobile-mode .tab-scroll-btn {
@@ -2146,6 +2171,20 @@ body.mobile-mode .config-group-body {
   gap: 10px !important;
 }
 
+/* ─── Responsive UI scale: larger fonts/icons on tablet & phone ───────────── */
+/* The base scale multiplies with the user-controlled --user-scale. */
+@media (max-width: 1023px) {
+  :root {
+    --base-scale: 1.1;
+  }
+}
+
+@media (max-width: 599px) {
+  :root {
+    --base-scale: 1.2;
+  }
+}
+
 /* ─── Responsive: Tablet (≥600px) ────────────────────────────────────────── */
 @media (min-width: 600px) {
   .card-grid {
@@ -2172,8 +2211,8 @@ body.mobile-mode .config-group-body {
   }
 
   .tab-icon-svg {
-    width: 16px;
-    height: 16px;
+    width: calc(18px * var(--ui-scale));
+    height: calc(18px * var(--ui-scale));
   }
 }
 
@@ -3418,5 +3457,113 @@ body.red-theme .splash-logo svg {
   background: var(--color-border, #2a2a2a);
   border-radius: 6px;
   overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sky Map
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.skymap-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skymap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.skymap-toolbar .btn.active {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.skymap-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  padding: 2px 2px 0;
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.skymap-filters-label {
+  color: var(--color-text-muted);
+}
+
+.skymap-filter-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.skymap-filter-check input {
+  cursor: pointer;
+}
+
+.skymap-filter-range {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+}
+
+.skymap-filter-range input {
+  width: 64px;
+  padding: 3px 6px;
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.skymap-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  max-height: 70vh;
+  margin: 0 auto;
+}
+
+#skymap-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: crosshair;
+  touch-action: none; /* enable drag/pinch pan & zoom without page gestures */
+}
+
+.skymap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: center;
+  padding: 8px 4px 0;
+}
+
+.skymap-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.skymap-legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 

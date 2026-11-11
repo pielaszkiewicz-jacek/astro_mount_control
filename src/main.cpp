@@ -436,7 +436,7 @@ int main(int argc, char* argv[]) {
         if (ext_config.st4_guider_enabled) {
             try {
                 st4_guider_service_impl = std::make_unique<astro_st4guider::St4GuiderServiceImpl>(
-                    "config/st4guider/st4_guider_config.json");
+                    "config/st4guider/st4_guider_config.json", mount_controller.get());
                 logger->info("ST4 guider subsystem hosted in-process (served on unified gRPC port)");
             } catch (const std::exception& e) {
                 logger->warn("Failed to initialise in-process ST4 guider service: {}", e.what());

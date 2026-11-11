@@ -1393,9 +1393,16 @@ TEST_F(MountControllerTest, MeridianFlipDetection) {
 
     EXPECT_FALSE(controller_->isMeridianFlipPending());
 
-    // Start tracking - axis1_position_ (HA) will increase at sidereal rate
-    // After ~3 iterations (300ms), HA exceeds 0.0001° hysteresis
-    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
+    // Start tracking at RA ≈ LST so HA starts at ~0° and increases at the
+    // sidereal rate — deterministic regardless of wall-clock time.  A fixed
+    // RA=10h made HA depend on the current LST, so the test only passed when
+    // LST happened to be near 10h.
+    const double jd_flip_detect = core::AstronomicalCalculations::getCurrentJulianDate();
+    double ra_flip_detect = core::AstronomicalCalculations::calculateLST(
+        jd_flip_detect, config_.mount_config.longitude);
+    ra_flip_detect = std::fmod(ra_flip_detect, 24.0);
+    if (ra_flip_detect < 0.0) ra_flip_detect += 24.0;
+    controller_->startTracking(ra_flip_detect, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for HA to cross the hysteresis threshold
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
@@ -1415,7 +1422,12 @@ TEST_F(MountControllerTest, MeridianFlipExecuted) {
     config_.mount_config.max_slew_rate = 3600.0; // Fast flip (360 deg/iteration)
     controller_->initialize(config_);
 
-    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
+    const double jd_flip_exec = core::AstronomicalCalculations::getCurrentJulianDate();
+    double ra_flip_exec = core::AstronomicalCalculations::calculateLST(
+        jd_flip_exec, config_.mount_config.longitude);
+    ra_flip_exec = std::fmod(ra_flip_exec, 24.0);
+    if (ra_flip_exec < 0.0) ra_flip_exec += 24.0;
+    controller_->startTracking(ra_flip_exec, 45.0, config::TrackingMode::SIDEREAL);
 
     // Wait for HA to cross hysteresis → state becomes MERIDIAN_FLIP → flip completes
     std::this_thread::sleep_for(std::chrono::milliseconds(1500));
@@ -1548,7 +1560,12 @@ TEST_F(MountControllerTest, MeridianFlipStatusFields) {
     EXPECT_EQ(status.pier_side, 1); // Default East
     EXPECT_DOUBLE_EQ(status.time_to_meridian, 0.0);
 
-    controller_->startTracking(10.0, 45.0, config::TrackingMode::SIDEREAL);
+    const double jd_flip_status = core::AstronomicalCalculations::getCurrentJulianDate();
+    double ra_flip_status = core::AstronomicalCalculations::calculateLST(
+        jd_flip_status, config_.mount_config.longitude);
+    ra_flip_status = std::fmod(ra_flip_status, 24.0);
+    if (ra_flip_status < 0.0) ra_flip_status += 24.0;
+    controller_->startTracking(ra_flip_status, 45.0, config::TrackingMode::SIDEREAL);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(800));
 
@@ -1596,20 +1613,21 @@ TEST_F(MountControllerTest, SoftLimitWarningDuringTracking) {
 }
 
 TEST_F(MountControllerTest, SoftLimitDecelerationDuringTracking) {
-    // Verify deceleration flag activates and rate is scaled when axis is near limit.
-    // axis2 starts at park_position_axis2 (90°). Set axis2_max just above 90°
-    // so the initial position is within the deceleration zone.
-    config_.safety_config.soft_limit_axis2_min = -5.0;           // Far below
-    config_.safety_config.soft_limit_axis2_max = 95.0;            // axis2=90°, distance to max = 5°
-    config_.safety_config.soft_limit_warning_degrees = 10.0;      // Warning zone: 10°
-    config_.safety_config.soft_limit_deceleration_degrees = 6.0;   // Decel zone: 6° (90° → 5° < 6°)
+    // Verify the deceleration flag activates when axis2 is inside the
+    // deceleration zone.  The fixture parks at Dec=0° and the authoritative HAL
+    // reports 0° (see SetUp), so place the nearest limit 5° away (min=-5°) and
+    // track a target at Dec=0° so the Dec axis does not slew out of the zone.
+    config_.safety_config.soft_limit_axis2_min = -5.0;
+    config_.safety_config.soft_limit_axis2_max = 95.0;
+    config_.safety_config.soft_limit_warning_degrees = 10.0;
+    config_.safety_config.soft_limit_deceleration_degrees = 6.0;
     config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
-    config_.safety_config.meridian_flip_enabled = false;          // Disable meridian flip to avoid interference
+    config_.safety_config.meridian_flip_enabled = false;  // Avoid flip interference
     controller_->initialize(config_);
 
-    // Start tracking with CUSTOM mode (rate=0 for axis2), axis2 stays at 90°.
-    // Distance to axis2_max = 95 - 90 = 5° which is < 6° decel zone.
-    bool started = controller_->startTracking(12.0, 45.0, config::TrackingMode::CUSTOM);
+    // Dec target = 0° keeps axis2 at the park position (0°), i.e. 5° from the
+    // min limit → inside the 6° deceleration zone and the 10° warning zone.
+    bool started = controller_->startTracking(12.0, 0.0, config::TrackingMode::CUSTOM);
     EXPECT_TRUE(started) << "startTracking should succeed";
 
     // Wait for tracking loop iterations (100ms each)
@@ -1618,19 +1636,20 @@ TEST_F(MountControllerTest, SoftLimitDecelerationDuringTracking) {
     auto status = controller_->getStatus();
     EXPECT_TRUE(status.soft_limit_warning_active)
         << "Warning should be active: axis2=" << status.axis2_position
-        << "°, max2=" << config_.safety_config.soft_limit_axis2_max
-        << "°, dist2=" << status.soft_limit_distance_axis2;
+        << "°, min2=" << config_.safety_config.soft_limit_axis2_min
+        << ", dist2=" << status.soft_limit_distance_axis2;
     EXPECT_TRUE(status.soft_limit_deceleration_active)
         << "Deceleration should be active: axis2=" << status.axis2_position
-        << "°, max2=" << config_.safety_config.soft_limit_axis2_max
-        << "°, dist2=" << status.soft_limit_distance_axis2;
-    // Distance to axis2 limit should be positive and less than decel zone
+        << "°, min2=" << config_.safety_config.soft_limit_axis2_min
+        << ", dist2=" << status.soft_limit_distance_axis2;
+    // Distance to the nearest axis2 limit should be positive and inside the
+    // deceleration zone.
     EXPECT_GT(status.soft_limit_distance_axis2, 0.0);
     EXPECT_LT(status.soft_limit_distance_axis2, config_.safety_config.soft_limit_deceleration_degrees)
         << "dist2=" << status.soft_limit_distance_axis2
         << " decel=" << config_.safety_config.soft_limit_deceleration_degrees
         << " axis2_pos=" << status.axis2_position
-        << " axis2_max=" << config_.safety_config.soft_limit_axis2_max;
+        << " axis2_min=" << config_.safety_config.soft_limit_axis2_min;
     // State should still be TRACKING
     EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
 }
@@ -1649,6 +1668,11 @@ TEST_F(MountControllerTest, SoftLimitErrorOnExceeded) {
     config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
     config_.mount_config.max_tracking_rate = 5.0;             // 5°/s → crosses 5° limit in ~1s
     config_.safety_config.meridian_flip_enabled = false;
+    // Velocity mode: the axis advances continuously at max_tracking_rate (5°/s)
+    // so it actually crosses the tight 5° soft limit.  Position mode anchors the
+    // target to the celestial HA (sidereal advance), so the axis never reaches
+    // the limit and the hard-limit ERROR would never trigger.
+    config_.mount_config.tracking_mode = "velocity";
     controller_->initialize(config_);
 
     // Compute RA near current LST so that HA ≈ 0 and axis1_target ≈ 0°.
@@ -1691,6 +1715,10 @@ TEST_F(MountControllerTest, ClearErrorsRecoversFromError) {
     config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
     config_.mount_config.max_tracking_rate = 30.0;
     config_.safety_config.meridian_flip_enabled = false;
+    // Velocity mode: the axis advances continuously at max_tracking_rate so it
+    // crosses the 25° soft limit and enters ERROR.  In position mode the target
+    // is anchored to the celestial HA and never reaches the limit.
+    config_.mount_config.tracking_mode = "velocity";
     controller_->initialize(config_);
 
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();
@@ -1741,6 +1769,10 @@ TEST_F(MountControllerTest, StopRecoversFromError) {
     config_.safety_config.soft_limit_tracking_rate_factor = 0.1;
     config_.mount_config.max_tracking_rate = 30.0;
     config_.safety_config.meridian_flip_enabled = false;
+    // Velocity mode: the axis advances continuously at max_tracking_rate so it
+    // crosses the 25° soft limit and enters ERROR.  In position mode the target
+    // is anchored to the celestial HA and never reaches the limit.
+    config_.mount_config.tracking_mode = "velocity";
     controller_->initialize(config_);
 
     double jd = core::AstronomicalCalculations::getCurrentJulianDate();

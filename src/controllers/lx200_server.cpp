@@ -11,6 +11,7 @@
 #include <sstream>
 #include <iomanip>
 #include <chrono>
+#include <cstdlib>
 
 namespace astro_mount {
 namespace controllers {
@@ -219,6 +220,22 @@ std::string LX200Server::processCommand(const std::string& cmd) {
     if (cmd == "Q")  return handleStop();
     if (cmd == "RS") return handleGetSlewStatus();
 
+    // Pulse-guide commands: :MGn[,duration]# :MGs[,duration]# :MGe[,duration]# :MGw[,duration]#
+    // North/South/East/West; optional duration in ms (default 100 ms single nudge).
+    if (cmd.rfind("MG", 0) == 0 && cmd.size() >= 3) {
+        const char dir = cmd[2];
+        if (dir == 'n' || dir == 's' || dir == 'e' || dir == 'w') {
+            int duration_ms = 100;
+            const std::string rest = cmd.substr(3);
+            if (!rest.empty() && rest[0] == ',') {
+                duration_ms = std::atoi(rest.c_str() + 1);
+            }
+            if (duration_ms <= 0) duration_ms = 100;
+            return handleGuidePulse(dir, duration_ms);
+        }
+        return "";
+    }
+
     // Unknown command — LX200 convention: return nothing for unsupported commands
     return "";
 }
@@ -278,6 +295,28 @@ std::string LX200Server::handleSlew() {
 std::string LX200Server::handleStop() {
     controller_.stop();
     return "";
+}
+
+std::string LX200Server::handleGuidePulse(char direction, int duration_ms) {
+    // Convert the LX200 pulse guide to an RA/Dec correction (arcsec) using the
+    // same 0.5× sidereal convention as ASCOM/INDI SendGuiderCorrection:
+    // north/east = positive, south/west = negative.
+    constexpr double kGuideRateArcsecPerSec = 0.5 * 15.041067;
+    const double arcsec = kGuideRateArcsecPerSec * duration_ms / 1000.0;
+    double ra = 0.0, dec = 0.0;
+    switch (direction) {
+        case 'n': dec =  arcsec; break;
+        case 's': dec = -arcsec; break;
+        case 'e': ra  =  arcsec; break;
+        case 'w': ra  = -arcsec; break;
+        default:  return "0";
+    }
+    try {
+        controller_.applyGuiderCorrection(ra, dec);
+        return "1";
+    } catch (...) {
+        return "0";
+    }
 }
 
 std::string LX200Server::handleGetSlewStatus() {

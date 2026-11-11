@@ -1,6 +1,7 @@
 #include "st4guider/include/st4_guider_service_impl.h"
 #include "controllers/st4_guider.h"
 #include "controllers/st4_calibration.h"
+#include "controllers/mount_controller.h"
 #include "hal/st4_control.h"
 #include <fstream>
 #include <iostream>
@@ -16,7 +17,10 @@ using astro_mount::hal::St4Control;
 using astro_mount::hal::St4Direction;
 using astro_mount::hal::SimulatedSt4;
 
-St4GuiderServiceImpl::St4GuiderServiceImpl(const std::string& config_path) {
+St4GuiderServiceImpl::St4GuiderServiceImpl(
+    const std::string& config_path,
+    astro_mount::controllers::MountController* mount_controller)
+    : mount_controller_(mount_controller) {
     try {
         if (!configureFromJson(config_path)) {
             std::cerr << "[St4GuiderServiceImpl] Using simulated ST4 interface\n";
@@ -29,6 +33,9 @@ St4GuiderServiceImpl::St4GuiderServiceImpl(const std::string& config_path) {
     } catch (const std::exception& e) {
         std::cerr << "[St4GuiderServiceImpl] Error: " << e.what() << "\n";
     }
+    // Forward every ST4 pulse to the in-process mount controller so the
+    // physical ST4 path also reaches the internal drives (gap closure).
+    wirePulseSink();
 }
 
 St4GuiderServiceImpl::~St4GuiderServiceImpl() {
@@ -70,6 +77,30 @@ bool St4GuiderServiceImpl::configureFromJson(const std::string& config_path) {
     connected_ = hal->isConnected();
     guider_ = std::make_unique<St4Guider>(std::move(hal));
     return true;
+}
+
+void St4GuiderServiceImpl::wirePulseSink() {
+    if (!guider_ || !mount_controller_) return;
+
+    astro_mount::controllers::MountController* mc = mount_controller_;
+    guider_->setPulseSink([mc](astro_mount::hal::St4Direction dir, int duration_ms) {
+        if (!mc || duration_ms <= 0) return;
+        // Convert the ST4 pulse (direction + duration) to the same arcsec
+        // correction convention used by ASCOM/INDI SendGuiderCorrection:
+        // guideNorth/East = positive, guideSouth/West = negative, at
+        // 0.5× sidereal (7.5205 arcsec/s).
+        constexpr double kGuideRateArcsecPerSec = 0.5 * 15.041067;
+        const double arcsec =
+            kGuideRateArcsecPerSec * static_cast<double>(duration_ms) / 1000.0;
+        double ra = 0.0, dec = 0.0;
+        switch (dir) {
+            case astro_mount::hal::St4Direction::NORTH: dec =  arcsec; break;
+            case astro_mount::hal::St4Direction::SOUTH: dec = -arcsec; break;
+            case astro_mount::hal::St4Direction::EAST:  ra  =  arcsec; break;
+            case astro_mount::hal::St4Direction::WEST:  ra  = -arcsec; break;
+        }
+        mc->applyGuiderCorrection(ra, dec);
+    });
 }
 
 grpc::Status St4GuiderServiceImpl::StartGuiding(

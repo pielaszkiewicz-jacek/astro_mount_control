@@ -81,6 +81,7 @@ const App = (() => {
     initTabs();
     initRedThemeToggle();
     initMobileModeToggle();
+    initUiScaleToggle();
     initFullscreenToggle();
     initLangToggle();
     // Enhance angle inputs with DMS/HMS format support
@@ -89,6 +90,8 @@ const App = (() => {
     console.log('[App] MountControlComponent.init() done');
     DatabaseComponent.init();
     console.log('[App] DatabaseComponent.init() done');
+    SkyMapComponent.init();
+    console.log('[App] SkyMapComponent.init() done');
     CalibrationComponent.init();
     console.log('[App] CalibrationComponent.init() done');
     TrackingComponent.init();
@@ -463,6 +466,41 @@ const App = (() => {
       const isActive = document.body.classList.toggle('mobile-mode');
       toggle.classList.toggle('active', isActive);
       localStorage.setItem('mobile-mode', isActive ? 'true' : 'false');
+    });
+  }
+
+  /**
+   * Initialize the font/icon scale toggle.
+   * Cycles --user-scale through a set of levels and persists the choice in
+   * localStorage.  The root font-size (rem) and SVG icon dimensions are both
+   * driven by calc(16px * --ui-scale), so text and icons enlarge together.
+   */
+  function initUiScaleToggle() {
+    const toggle = $('#ui-scale-toggle');
+    if (!toggle) return;
+
+    const LEVELS = [1, 1.15, 1.3, 1.5];
+    const KEY = 'ui-scale';
+
+    const applyScale = (scale) => {
+      document.documentElement.style.setProperty('--user-scale', String(scale));
+      toggle.classList.toggle('active', scale !== 1);
+      localStorage.setItem(KEY, String(scale));
+      const pct = Math.round(scale * 100);
+      toggle.setAttribute('title', `${I18n.t('ui.scale.title')} (${pct}%)`);
+      toggle.setAttribute('aria-label', `${I18n.t('ui.scale.title')} (${pct}%)`);
+    };
+
+    // Restore saved preference
+    let current = 1;
+    const saved = parseFloat(localStorage.getItem(KEY) || '1');
+    if (LEVELS.includes(saved)) current = saved;
+    applyScale(current);
+
+    toggle.addEventListener('click', () => {
+      const idx = LEVELS.indexOf(current);
+      current = LEVELS[(idx + 1) % LEVELS.length];
+      applyScale(current);
     });
   }
 

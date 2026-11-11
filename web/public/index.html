@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#1a1a2e">
   <meta name="description" content="Astronomical Mount Controller - Web Interface">
   <title>Astro Mount Control</title>
 
   <!-- Styles -->
-  <link rel="stylesheet" href="css/style.css?v=20261029-rho5">
+  <link rel="stylesheet" href="css/style.css?v=20261111-ui-scale">
 </head>
 <body>
   <!-- ─── Splash Screen ───────────────────────────────────────────────── -->
@@ -58,6 +58,7 @@
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
         </svg>
       </button>
+      <button id="ui-scale-toggle" class="theme-toggle ui-scale-toggle" data-i18n-title="ui.scale.title" title="Enlarge font and icons" aria-label="Enlarge font and icons">Aa</button>
       <span id="connection-indicator" class="connection-badge disconnected" data-i18n-title="conn.controller" title="Mount controller connection status">
         <span class="badge-dot"></span>
         <span class="badge-label" data-i18n="status.disconnected">Disconnected</span>
@@ -114,6 +115,14 @@
           </svg>
         </span>
         <span class="tab-label" data-i18n="tab.database">Database</span>
+      </button>
+      <button class="tab-btn" data-tab="skymap" role="tab" aria-selected="false" aria-controls="panel-skymap">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none"/>
+          </svg>
+        </span>
+        <span class="tab-label" data-i18n="tab.sky_map">Sky Map</span>
       </button>
       <button class="tab-btn" data-tab="tracking" role="tab" aria-selected="false" aria-controls="panel-tracking">
         <span class="tab-icon-svg">
@@ -2272,6 +2281,42 @@
         </div>
       </section>
 
+      <!-- Sky Map Panel -->
+      <section id="panel-skymap" class="tab-panel" role="tabpanel" aria-labelledby="tab-skymap">
+        <div class="card-grid">
+          <div class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title" data-i18n="skymap.title">Sky Map</h2>
+              <div class="skymap-toolbar">
+                <button id="skymap-mode-eq" class="btn btn-sm btn-primary active" data-i18n="skymap.mode_eq">RA/Dec</button>
+                <button id="skymap-mode-polar" class="btn btn-sm btn-secondary" data-i18n="skymap.mode_polar">Polar</button>
+                <button id="skymap-mode-obs" class="btn btn-sm btn-secondary" data-i18n="skymap.mode_obs">Observer</button>
+                <button id="skymap-refresh" class="btn btn-sm btn-secondary" data-i18n="skymap.refresh">Refresh</button>
+              </div>
+            </div>
+            <div class="card-body skymap-body">
+              <div class="skymap-filters">
+                <span class="skymap-filters-label" data-i18n="skymap.filter_types">Types:</span>
+                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="star" checked> <span data-i18n="skymap.type_star">Star</span></label>
+                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="galaxy" checked> <span data-i18n="skymap.type_galaxy">Galaxy</span></label>
+                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="nebula" checked> <span data-i18n="skymap.type_nebula">Nebula</span></label>
+                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="cluster" checked> <span data-i18n="skymap.type_cluster">Cluster</span></label>
+                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="planet" checked> <span data-i18n="skymap.type_planet">Planet</span></label>
+                <label class="skymap-filter-range"><span data-i18n="skymap.mag_range">Mag</span>
+                  <input type="number" id="skymap-mag-min" value="-2" step="0.5" min="-30" max="30">
+                  <span>–</span>
+                  <input type="number" id="skymap-mag-max" value="16" step="0.5" min="-30" max="30">
+                </label>
+              </div>
+              <div class="skymap-stage">
+                <canvas id="skymap-canvas" aria-label="All-sky map of database objects"></canvas>
+              </div>
+              <div id="skymap-legend" class="skymap-legend"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <!-- Tracking Panel -->
       <section id="panel-tracking" class="tab-panel" role="tabpanel" aria-labelledby="tab-tracking">
         <div class="card-grid">
@@ -3006,6 +3051,9 @@
   <script src="js/components/pidCalibration.js"></script>
   <script src="js/components/lx200.js"></script>
   <script src="js/components/notifications.js"></script>
-  <script src="js/app.js?v=20261014"></script>
+  <script src="js/data/constellationBoundaries.js"></script>
+  <script src="js/data/constellationLines.js"></script>
+  <script src="js/components/skyMap.js"></script>
+  <script src="js/app.js?v=20261111-ui-scale"></script>
 </body>
 </html>

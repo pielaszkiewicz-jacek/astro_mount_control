@@ -155,6 +155,17 @@ struct PositionKalmanFilter {
         x(3) = rate2;
     }
 
+    /// Inject a guider correction as a deterministic position control input.
+    /// The correction (servo degrees) shifts the filter's position state before
+    /// the next measurement update, so the correction is applied in full as
+    /// commanded motion rather than being attenuated as measurement noise by
+    /// the Kalman gain.  Call after predict() and before update().
+    void applyControlInput(double delta1, double delta2) {
+        if (!initialized) return;
+        x(0) += delta1;
+        x(1) += delta2;
+    }
+
     double pos1() const { return x(0); }
     double pos2() const { return x(1); }
     double rate1() const { return x(2); }
@@ -2045,6 +2056,9 @@ public:
             last_refraction_correction_axis1_ = 0.0;
             last_refraction_correction_axis2_ = 0.0;
             corrections_primed_ = false;
+            // Reset the persistent guider offset for the new tracking session.
+            guider_pos_offset_axis1_ = 0.0;
+            guider_pos_offset_axis2_ = 0.0;
 
             tracking_active_ = true;
             // Reset the split-loop command snapshot (no stale command on start).
@@ -2304,12 +2318,18 @@ public:
                 current_rate_1 *= rate_factor;
                 current_rate_2 *= rate_factor;
                 
-                // Update positions: rate-based kinematic advance + guider position offset.
-                // The guider offset is applied as a direct position correction (degrees)
-                // rather than a rate modulation, ensuring the correction magnitude is
-                // independent of the loop iteration interval (dt).
-                axis1_position_ += current_rate_1 * dt + guider_offset_1;
-                axis2_position_ += current_rate_2 * dt + guider_offset_2;
+                // Update positions: rate-based kinematic advance only.  Guider
+                // position offsets are injected into the Kalman filter as a
+                // deterministic control input below (or added directly to the
+                // position when the filter is unavailable), so the correction is
+                // applied exactly once and independent of the loop interval (dt).
+                axis1_position_ += current_rate_1 * dt;
+                axis2_position_ += current_rate_2 * dt;
+                // Accumulate the persistent guider offset so position/velocity
+                // targets below are shifted by the total guide correction, not
+                // just for a single iteration.
+                guider_pos_offset_axis1_ += guider_offset_1;
+                guider_pos_offset_axis2_ += guider_offset_2;
                 
                 // Update raw (absolute) servo positions to keep telescope-position
                 // calculations accurate ONLY for the simulated path (no hardware
@@ -2378,6 +2398,10 @@ public:
                     // the actual tracking rates and degrade prediction accuracy.
                     position_kf_->setRates(current_rate_1, current_rate_2);
                     position_kf_->predict(dt);
+                    // Guider corrections enter the filter as a deterministic control
+                    // input, so they are applied in full as commanded motion instead
+                    // of being attenuated by the Kalman gain as if they were noise.
+                    position_kf_->applyControlInput(guider_offset_1, guider_offset_2);
                     if (have_encoder_measurement) {
                         // Use the io-thread encoder telemetry as the authoritative
                         // measurement.  home_offset_* is added so the measurement
@@ -2386,10 +2410,20 @@ public:
                         const double meas2 = enc_meas2 + home_offset_axis2_;
                         position_kf_->update(meas1, meas2);
                     } else {
-                        position_kf_->update(axis1_position_, axis2_position_);
+                        // The integrated position advanced only by rate*dt above;
+                        // add the guider offset back so the measurement is consistent
+                        // with the injected control input (innovation ~0 and the
+                        // correction survives in the filter output).
+                        position_kf_->update(axis1_position_ + guider_offset_1,
+                                             axis2_position_ + guider_offset_2);
                     }
                     axis1_position_ = position_kf_->pos1();
                     axis2_position_ = position_kf_->pos2();
+                } else {
+                    // Kalman filter unavailable — apply the guider correction
+                    // directly to the integrated position (legacy behaviour).
+                    axis1_position_ += guider_offset_1;
+                    axis2_position_ += guider_offset_2;
                 }
                 
                 // Guard against NaN/Inf propagation from Kalman filter.
@@ -3379,6 +3413,13 @@ public:
                                 }
                             }
 
+                            // Apply the persistent guider offset.  Guide corrections
+                            // must shift the ABSOLUTE tracking target and stay
+                            // applied; otherwise the next recomputed target would
+                            // command the drive back and cancel the pulse.
+                            new_axis1_target += guider_pos_offset_axis1_;
+                            new_axis2_target += guider_pos_offset_axis2_;
+
                             // Diagnostic: log tracking target vs actual drive position
                             // every ~10 position updates (~1 s at ≥10 Hz) to detect drive lag.
                             diag_log_counter_++;
@@ -3653,9 +3694,10 @@ public:
                                     // readActualAxisPositions().
                                     const double tgt1_eq = wrapShortestPath(
                                         ha_hours_eq * 15.0 * ha_gear_eq, act1,
-                                        360.0 * ha_gear_eq);
+                                        360.0 * ha_gear_eq) + guider_pos_offset_axis1_;
                                     const double tgt2_eq = resolveDecTarget(
-                                        snap_target_dec, act2 / dec_gear_eq) * dec_gear_eq;
+                                        snap_target_dec, act2 / dec_gear_eq) * dec_gear_eq
+                                        + guider_pos_offset_axis2_;
                                     double err1 = tgt1_eq - act1;
                                     double err2 = tgt2_eq - act2;
 
@@ -8985,7 +9027,14 @@ private:
     // independent of the loop iteration interval (dt).
     double guider_delta_axis1_{0.0};
     double guider_delta_axis2_{0.0};
-    
+    // Persistent guider position offset (servo degrees), accumulated from the
+    // per-iteration guider_delta_axis* values and applied to EVERY position /
+    // velocity target.  A guide correction must shift the absolute tracking
+    // target persistently — a one-shot target shift would be undone by the next
+    // recomputed absolute target, moving the drive back and cancelling the pulse.
+    double guider_pos_offset_axis1_{0.0};
+    double guider_pos_offset_axis2_{0.0};
+
     // Previous astronomical correction values for delta tracking (E1 fix).
     // Instead of adding the full correction each iteration (which accumulates
     // because current_ra is recomputed from the already-corrected axis1_position_),

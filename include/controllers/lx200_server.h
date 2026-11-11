@@ -126,6 +126,7 @@ private:
     std::string handleSlew();
     std::string handleStop();
     std::string handleGetSlewStatus();
+    std::string handleGuidePulse(char direction, int duration_ms);
 
     // Parsing helpers
     static double parseRA(const std::string& str);   // HH:MM:SS → hours
