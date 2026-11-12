@@ -433,12 +433,14 @@ const CATALOG_FIELD_MAPPINGS = {
     'magnitude': 'V-Mag',
     'spectral_type': 'Spectrum',
     'distance': 'Dist',
+    'type': 'Star',
   },
   sao: {
     'name': 'Name',
     'ra': 'RA',
     'dec': 'Dec',
     'magnitude': 'V-Mag',
+    'type': 'Star',
   },
   hipparcos: {
     'name': 'Name',
@@ -446,6 +448,7 @@ const CATALOG_FIELD_MAPPINGS = {
     'dec': 'Dec',
     'magnitude': 'V-Mag',
     'spectral_type': 'Spectrum',
+    'type': 'Star',
   },
   bright_stars: {
     'name': 'Name',
@@ -453,12 +456,14 @@ const CATALOG_FIELD_MAPPINGS = {
     'dec': 'Dec',
     'magnitude': 'V-Mag',
     'spectral_type': 'Spectrum',
+    'type': 'Star',
   },
   double_stars: {
     'name': 'Name',
     'ra': 'RA',
     'dec': 'Dec',
     'magnitude': 'V-Mag',
+    'type': 'Double',
   },
   solar_system: {
     'name': 'Name',

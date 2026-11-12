@@ -563,7 +563,52 @@ public:
             // so the full CiA 402 enable sequence runs exactly once through
             // the HAL abstraction.
         }
-        
+
+        // ── Slew profile safety clamp ─────────────────────────────────────
+        // The commanded slew profile (mount.max_slew_rate / slew_acceleration /
+        // tracking_acceleration) must stay below the drive's own limits
+        // (motor_config.max_velocity / max_acceleration).  When the two are
+        // configured at the same value the drive can trip its internal fault
+        // (following error / stall) during an aggressive "Slew & Track"
+        // transition, and the HAL safety monitor then reports ERROR.  Clamp the
+        // effective profile to 80% of the tightest motor limit so there is
+        // always headroom — this is a backstop; the config should also carry a
+        // sensible margin.
+        {
+            double motor_max_vel = std::numeric_limits<double>::max();
+            double motor_max_acc = std::numeric_limits<double>::max();
+            if (hal_axis1_motor_) {
+                motor_max_vel = std::min(motor_max_vel, hal_axis1_motor_->getConfiguration().max_velocity);
+                motor_max_acc = std::min(motor_max_acc, hal_axis1_motor_->getConfiguration().max_acceleration);
+            }
+            if (hal_axis2_motor_) {
+                motor_max_vel = std::min(motor_max_vel, hal_axis2_motor_->getConfiguration().max_velocity);
+                motor_max_acc = std::min(motor_max_acc, hal_axis2_motor_->getConfiguration().max_acceleration);
+            }
+            constexpr double kSlewSafetyFactor = 0.8;
+            if (std::isfinite(motor_max_vel) && motor_max_vel > 0.0) {
+                const double capped_vel = motor_max_vel * kSlewSafetyFactor;
+                if (config_.mount_config.max_slew_rate > capped_vel) {
+                    MOUNT_LOG_WARN("Clamping max_slew_rate {:.1f}°/s to {:.1f}°/s "
+                                   "(80% of motor limit {:.1f}°/s)",
+                                   config_.mount_config.max_slew_rate, capped_vel, motor_max_vel);
+                    config_.mount_config.max_slew_rate = capped_vel;
+                }
+            }
+            if (std::isfinite(motor_max_acc) && motor_max_acc > 0.0) {
+                const double capped_acc = motor_max_acc * kSlewSafetyFactor;
+                if (config_.mount_config.slew_acceleration > capped_acc) {
+                    MOUNT_LOG_WARN("Clamping slew_acceleration {:.1f}°/s² to {:.1f}°/s² "
+                                   "(80% of motor limit {:.1f}°/s²)",
+                                   config_.mount_config.slew_acceleration, capped_acc, motor_max_acc);
+                    config_.mount_config.slew_acceleration = capped_acc;
+                }
+                if (config_.mount_config.tracking_acceleration > capped_acc) {
+                    config_.mount_config.tracking_acceleration = capped_acc;
+                }
+            }
+        }
+
         // Enable HAL motors and sync positions.  All drive control is routed
         // through the HAL abstractions (MotorControl/EncoderReader/SafetyMonitor).
         if (hal_axis1_motor_ && hal_axis2_motor_) {

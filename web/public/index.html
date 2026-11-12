@@ -2285,33 +2285,56 @@
       <section id="panel-skymap" class="tab-panel" role="tabpanel" aria-labelledby="tab-skymap">
         <div class="card-grid">
           <div class="card full-width">
-            <div class="card-header">
-              <h2 class="card-title" data-i18n="skymap.title">Sky Map</h2>
-              <div class="skymap-toolbar">
-                <button id="skymap-mode-eq" class="btn btn-sm btn-primary active" data-i18n="skymap.mode_eq">RA/Dec</button>
-                <button id="skymap-mode-polar" class="btn btn-sm btn-secondary" data-i18n="skymap.mode_polar">Polar</button>
-                <button id="skymap-mode-obs" class="btn btn-sm btn-secondary" data-i18n="skymap.mode_obs">Observer</button>
-                <button id="skymap-refresh" class="btn btn-sm btn-secondary" data-i18n="skymap.refresh">Refresh</button>
+            <div id="skymap-panel" class="skymap-panel">
+              <div class="skymap-panel-header">
+                <h2 class="card-title" data-i18n="skymap.title">Sky Map</h2>
+                <div class="skymap-toolbar">
+                  <button id="skymap-mode-eq" class="btn btn-sm btn-primary active" data-i18n="skymap.mode_eq">RA/Dec</button>
+                  <button id="skymap-mode-polar" class="btn btn-sm btn-secondary" data-i18n="skymap.mode_polar">Polar</button>
+                  <button id="skymap-mode-obs" class="btn btn-sm btn-secondary" data-i18n="skymap.mode_obs">Observer</button>
+                  <label class="skymap-source-label"><span data-i18n="skymap.source_label">Objects:</span>
+                    <select id="skymap-source" class="form-input form-select skymap-source-select">
+                      <option value="database" selected data-i18n="skymap.source_db">Database</option>
+                      <option value="library" data-i18n="skymap.source_lib">Library</option>
+                    </select>
+                  </label>
+                  <button id="skymap-refresh" class="btn btn-sm btn-secondary" type="button" title="Refresh" data-i18n-title="skymap.refresh_title">↻</button>
+                  <button id="skymap-maximize" class="btn btn-sm btn-secondary" type="button" title="Maximize" data-i18n-title="skymap.maximize">⛶</button>
+                </div>
               </div>
-            </div>
-            <div class="card-body skymap-body">
-              <div class="skymap-filters">
-                <span class="skymap-filters-label" data-i18n="skymap.filter_types">Types:</span>
-                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="star" checked> <span data-i18n="skymap.type_star">Star</span></label>
-                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="galaxy" checked> <span data-i18n="skymap.type_galaxy">Galaxy</span></label>
-                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="nebula" checked> <span data-i18n="skymap.type_nebula">Nebula</span></label>
-                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="cluster" checked> <span data-i18n="skymap.type_cluster">Cluster</span></label>
-                <label class="skymap-filter-check"><input type="checkbox" data-skymap-type="planet" checked> <span data-i18n="skymap.type_planet">Planet</span></label>
-                <label class="skymap-filter-range"><span data-i18n="skymap.mag_range">Mag</span>
-                  <input type="number" id="skymap-mag-min" value="-2" step="0.5" min="-30" max="30">
-                  <span>–</span>
-                  <input type="number" id="skymap-mag-max" value="16" step="0.5" min="-30" max="30">
-                </label>
+              <div class="skymap-panel-body">
+                <div class="skymap-controls">
+                  <input id="skymap-search-input" type="text" class="form-input skymap-search" placeholder="Search object...">
+                  <button id="skymap-search-btn" class="btn btn-sm btn-secondary" type="button" data-i18n="skymap.search_btn">Search</button>
+                  <div class="skymap-types">
+                    <button id="skymap-types-toggle" class="btn btn-sm btn-secondary" type="button" data-i18n="skymap.types_btn">Types</button>
+                    <div id="skymap-types-menu" class="skymap-types-menu" hidden></div>
+                  </div>
+                  <button id="skymap-center-mount" class="btn btn-sm btn-secondary" type="button" data-i18n="skymap.center_mount">Center on telescope</button>
+                  <div class="skymap-zoom">
+                    <button id="skymap-zoom-in" class="btn btn-sm btn-secondary" type="button" title="Zoom in" data-i18n-title="skymap.zoom_in">+</button>
+                    <button id="skymap-zoom-out" class="btn btn-sm btn-secondary" type="button" title="Zoom out" data-i18n-title="skymap.zoom_out">−</button>
+                    <button id="skymap-zoom-reset" class="btn btn-sm btn-secondary" type="button" data-i18n="skymap.zoom_reset">Reset</button>
+                  </div>
+                </div>
+                <div class="skymap-stage">
+                  <div id="skymap-container" aria-label="All-sky map"></div>
+                  <div id="skymap-popup" class="skymap-popup" hidden>
+                    <div class="skymap-popup-card" role="dialog" aria-modal="true" aria-labelledby="skymap-popup-title">
+                      <div class="skymap-popup-header">
+                        <h3 id="skymap-popup-title" class="skymap-popup-title"></h3>
+                        <button id="skymap-popup-close" class="skymap-popup-close" type="button" aria-label="Close">×</button>
+                      </div>
+                      <dl id="skymap-popup-body" class="skymap-popup-body"></dl>
+                      <div class="skymap-popup-actions">
+                        <button id="skymap-popup-slew" class="btn btn-sm btn-primary" type="button">Slew</button>
+                        <button id="skymap-popup-track" class="btn btn-sm btn-secondary" type="button">Slew & Track</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div id="skymap-legend" class="skymap-legend"></div>
               </div>
-              <div class="skymap-stage">
-                <canvas id="skymap-canvas" aria-label="All-sky map of database objects"></canvas>
-              </div>
-              <div id="skymap-legend" class="skymap-legend"></div>
             </div>
           </div>
         </div>
@@ -3030,6 +3053,11 @@
   <script src="js/utils.js"></script>
   <script src="js/i18n.js"></script>
   <script src="js/api.js"></script>
+  <!-- d3-celestial: d3 v3 + projection/zoom plugins + celestial engine -->
+  <script src="vendor/d3-celestial/d3.js"></script>
+  <script src="vendor/d3-celestial/d3.geo.projection.js"></script>
+  <script src="vendor/d3-celestial/d3.geo.zoom.js"></script>
+  <script src="vendor/d3-celestial/celestial.min.js"></script>
   <script src="js/components/mountStatus.js"></script>
   <script src="js/components/mountControl.js"></script>
   <script src="js/components/settings.js?v=20260601"></script>

@@ -738,6 +738,13 @@ grpc::Status ObjectDatabaseServiceImpl::ImportCatalog(grpc::ServerContext* conte
                 // Unknown proto_field keys are silently ignored
             }
 
+            // Fallback: some catalogs (e.g. OpenNGC-derived IC) only populate
+            // the B-Mag column, leaving V-Mag empty. Use B-Mag as the visual
+            // magnitude when V-Mag was not provided.
+            if (obj.v_magnitude() == 0.0 && obj.b_magnitude() != 0.0) {
+                obj.set_v_magnitude(obj.b_magnitude());
+            }
+
             // Set catalog_name from request if not set via field_mapping
             if (!request_catalog_name.empty() && obj.catalog_name().empty()) {
                 obj.set_catalog_name(request_catalog_name);
@@ -784,8 +791,13 @@ grpc::Status ObjectDatabaseServiceImpl::ImportCatalog(grpc::ServerContext* conte
                         sqlite3_bind_text(update_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
                         sqlite3_bind_text(update_stmt, p++, existing_id.c_str(), -1, SQLITE_TRANSIENT);
 
-                        if (sqlite3_step(update_stmt) == SQLITE_DONE) {
+                        int rc = sqlite3_step(update_stmt);
+                        if (rc == SQLITE_DONE) {
                             updated++;
+                        } else {
+                            errors.push_back("Row " + std::to_string(row_idx + 1) +
+                                ": update failed: " +
+                                std::string(sqlite3_errmsg(db_) ? sqlite3_errmsg(db_) : "unknown error"));
                         }
                         sqlite3_finalize(update_stmt);
                     }
@@ -815,8 +827,13 @@ grpc::Status ObjectDatabaseServiceImpl::ImportCatalog(grpc::ServerContext* conte
                     sqlite3_bind_text(insert_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
                     sqlite3_bind_text(insert_stmt, p++, now_timestamp.c_str(), -1, SQLITE_TRANSIENT);
 
-                    if (sqlite3_step(insert_stmt) == SQLITE_DONE) {
+                    int rc = sqlite3_step(insert_stmt);
+                    if (rc == SQLITE_DONE) {
                         imported++;
+                    } else {
+                        errors.push_back("Row " + std::to_string(row_idx + 1) +
+                            ": insert failed: " +
+                            std::string(sqlite3_errmsg(db_) ? sqlite3_errmsg(db_) : "unknown error"));
                     }
                     sqlite3_finalize(insert_stmt);
                 }
