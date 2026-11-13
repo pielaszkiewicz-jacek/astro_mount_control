@@ -3415,10 +3415,15 @@ public:
                                 if (trust_ref) {
                                     // Whole-turn drift was already re-anchored above;
                                     // the values here are the remaining FRACTIONAL
-                                    // offsets.  A Dec residual larger than a few
-                                    // telescope degrees means the home offset's
-                                    // fractional part is corrupt — whole-turn wrapping
-                                    // cannot fix that, so flag it for re-home.
+                                    // offsets.  After whole-turn wrapping a legitimate
+                                    // "Slew & Track" Dec move can still be up to ~180°
+                                    // telescope away and SHRINKS every update as the
+                                    // drive approaches; a corrupt home-offset fractional
+                                    // part (or a stalled Dec drive) leaves it stagnant.
+                                    // Only count desync while the residual is NOT
+                                    // shrinking, otherwise a normal Dec slew longer than
+                                    // a few seconds trips the false "re-home required"
+                                    // stop ("Dec-axis position desync persisted").
                                     const double residual1 = new_axis1_target - ref1;
                                     const double residual2 = new_axis2_target - ref2;
                                     const double max_frac_ha  = 180.0 * ha_gear;  // half turn
@@ -3427,7 +3432,11 @@ public:
                                         // RA periodic axis: re-anchor to the physical drive.
                                         new_axis1_target = ref1;
                                     }
-                                    if (std::abs(residual2) > max_frac_dec) {
+                                    const bool dec_residual_shrinking =
+                                        std::isfinite(last_dec_residual_) &&
+                                        std::abs(residual2) < std::abs(last_dec_residual_) - 1.0;
+                                    last_dec_residual_ = residual2;
+                                    if (std::abs(residual2) > max_frac_dec && !dec_residual_shrinking) {
                                         if (++dec_desync_count_ > 30) {
                                             MOUNT_LOG_ERROR("Dec-axis fractional desync persisted "
                                                             "(residual={:.2f}° servo) — stopping. "
@@ -9784,6 +9793,7 @@ private:
     bool pos_mode_logged_{false};
     size_t diag_log_counter_{0};
     int dec_desync_count_{0};   // consecutive Dec-axis desync detections
+    double last_dec_residual_{std::numeric_limits<double>::quiet_NaN()};  // previous Dec target residual for progress detection
     int legacy_encoder_read_counter_{0};  // decimation counter for legacy KF reads
     bool vel_mode_logged_{false};
     bool alt_az_pos_mode_logged_{false};
