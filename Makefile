@@ -54,8 +54,12 @@ localuser:
 	        fi; \
 	    done; \
 	fi
-	@if [ -d data ]; then cp -v data/* "$(LOCALUSER_DIR)"/data/ 2>/dev/null || true; fi
-	@if [ -f astronomy_objects.db ]; then cp -v astronomy_objects.db "$(LOCALUSER_DIR)"/data/ 2>/dev/null || true; fi
+	# Dane użytkownika (baza obiektów) nie mogą być nadpisywane przy aktualizacji.
+	# Kopiujemy wyłącznie pliki, które jeszcze nie istnieją w katalogu docelowym
+	# (cp -n / --no-clobber), aby ponowne uruchomienie 'make localuser' nie
+	# niszczyło zgromadzonych danych.
+	@if [ -d data ]; then cp -vn data/* "$(LOCALUSER_DIR)"/data/ 2>/dev/null || true; fi
+	@if [ -f astronomy_objects.db ]; then cp -vn astronomy_objects.db "$(LOCALUSER_DIR)"/data/ 2>/dev/null || true; fi
 	@if [ -d certs ]; then cp -v certs/* "$(LOCALUSER_DIR)"/certs/ 2>/dev/null || true; fi
 	@if [ -d scripts ]; then cp -av scripts/. "$(LOCALUSER_DIR)"/scripts/ 2>/dev/null || true; fi
 	@if [ -d proto ]; then \
