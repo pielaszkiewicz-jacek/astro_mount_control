@@ -3558,6 +3558,18 @@ body.red-theme .splash-logo svg {
   gap: 4px;
 }
 
+.skymap-zoom .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 4px 6px;
+}
+
+.skymap-zoom .btn svg {
+  display: block;
+}
+
 .skymap-legend {
   display: flex;
   flex-wrap: wrap;
@@ -3579,12 +3591,10 @@ body.red-theme .splash-logo svg {
   white-space: nowrap;
 }
 
-.skymap-legend-dot {
+.skymap-legend-icon {
   display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  vertical-align: middle;
+  flex: 0 0 auto;
 }
 
 .skymap-panel:fullscreen {

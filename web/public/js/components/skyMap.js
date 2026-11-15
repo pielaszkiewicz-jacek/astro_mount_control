@@ -85,6 +85,23 @@ const SkyMapComponent = (() => {
   };
   const DEFAULT_SHAPE = 'dot';
 
+  // Extended (non-stellar) object types whose marker size follows their
+  // apparent angular size rather than their magnitude.
+  const EXTENDED_TYPES = new Set([
+    'STAR_CLUSTER_OPEN',
+    'STAR_CLUSTER_GLOBULAR',
+    'PLANETARY_NEBULA',
+    'DIFFUSE_NEBULA',
+    'DARK_NEBULA',
+    'EMISSION_NEBULA',
+    'REFLECTION_NEBULA',
+    'GALAXY_SPIRAL',
+    'GALAXY_ELLIPTICAL',
+    'GALAXY_IRREGULAR',
+    'GALAXY_LENTICULAR',
+    'SUPERNOVA_REMNANT',
+  ]);
+
   // Friendly labels for database object types.
   const TYPE_LABELS = {
     UNKNOWN_TYPE: 'Unknown',
@@ -136,6 +153,19 @@ const SkyMapComponent = (() => {
     { key: 'solar_system', label: 'Solar System', types: ['PLANET', 'DWARF_PLANET', 'MOON', 'ASTEROID', 'COMET', 'EXOPLANET'] },
     { key: 'other', label: 'Other', types: ['SATELLITE', 'ARTIFICIAL_SATELLITE', 'SPACE_DEBRIS', 'UNKNOWN_TYPE'] },
   ];
+
+  // Representative marker shapes shown in the legend for each filter category.
+  const CATEGORY_SHAPES = {
+    star: ['dot'],
+    double_star: ['double'],
+    variable_star: ['circle'],
+    open_cluster: ['open-circle'],
+    globular_cluster: ['circle-cross'],
+    nebula: ['circle-dot', 'square', 'ring'],
+    galaxy: ['ellipse', 'diamond'],
+    solar_system: ['diamond', 'circle', 'cross'],
+    other: ['cross', 'dot'],
+  };
 
   // ─── State ────────────────────────────────────────────────────────────
   let containerEl = null;
@@ -344,6 +374,32 @@ const SkyMapComponent = (() => {
     return TYPE_SHAPES[(type || '').toUpperCase()] || DEFAULT_SHAPE;
   }
 
+  /** Angular size of an object in arcminutes (major axis). */
+  function angularSizeArcmin(o) {
+    const a = Number(o.angular_size_arcmin);
+    if (Number.isFinite(a) && a > 0) return a;
+    const x = Number(o.apparent_dimensions_arcmin_x);
+    if (Number.isFinite(x) && x > 0) {
+      const y = Number(o.apparent_dimensions_arcmin_y);
+      return Math.max(x, Number.isFinite(y) && y > 0 ? y : x);
+    }
+    return 0;
+  }
+
+  /**
+   * Convert an object's angular size (arcmin) into an on-screen marker radius
+   * by measuring the projected pixel distance of the same angular extent at the
+   * object's position (works for both equirectangular and orthographic views).
+   */
+  function radiusForAngularSize(proj, coord, sizeArcmin) {
+    const sizeDeg = Math.max(sizeArcmin, 0.5) / 60.0;
+    const base = proj(coord);
+    const shifted = proj([coord[0], Math.max(-89.9, Math.min(89.9, coord[1] + sizeDeg))]);
+    if (!base || !shifted) return 0;
+    const px = Math.hypot(shifted[0] - base[0], shifted[1] - base[1]);
+    return Math.max(2.5, Math.min(60, px * 0.5));
+  }
+
   /**
    * Draw a database-object marker on the raw canvas in the given shape.
    * Shapes follow common astronomical map symbols:
@@ -360,10 +416,9 @@ const SkyMapComponent = (() => {
    *   cross      — asteroids, comets, artificial satellites, debris
    */
   function drawMarker(ctx, x, y, r, shape, color) {
-    const outline = 'rgba(0,0,0,0.45)';
     ctx.save();
     ctx.fillStyle = color;
-    ctx.strokeStyle = outline;
+    ctx.strokeStyle = color;
     ctx.lineWidth = Math.max(0.7, r * 0.18);
 
     switch (shape) {
@@ -446,6 +501,16 @@ const SkyMapComponent = (() => {
         ctx.stroke();
         break;
 
+      case 'telescope': // telescope crosshair
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.85, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - r * 1.35, y); ctx.lineTo(x + r * 1.35, y);
+        ctx.moveTo(x, y - r * 1.35); ctx.lineTo(x, y + r * 1.35);
+        ctx.stroke();
+        break;
+
       case 'dot':
       default: // filled dot
         ctx.beginPath();
@@ -458,12 +523,8 @@ const SkyMapComponent = (() => {
 
   /** Zoom-dependent magnitude limit for showing short-name labels. */
   function labelMagLimit(z) {
-    if (z <= 1) return 2.5;
-    if (z <= 1.5) return 4.5;
-    if (z <= 2.5) return 6.5;
-    if (z <= 4) return 8;
-    if (z <= 7) return 9.5;
-    return 11;
+    if (z <= 1) return 2;
+    return Math.min(10, 2 + (z - 1) * 2.0);
   }
 
   /** Normalise a compact catalog designation ("M31", "NGC 224", "IC 434", "C14"). */
@@ -530,12 +591,11 @@ const SkyMapComponent = (() => {
     return 1;
   }
   function magnitudeForZoom(z) {
-    if (z <= 1) return 6;
-    if (z <= 1.5) return 8;
-    if (z <= 2.5) return 10;
-    if (z <= 4) return 12;
-    if (z <= 7) return 14;
-    return 16;
+    // At zoom 1 only the brightest objects are shown.  Every further zoom step
+    // progressively reveals fainter objects in the viewed region — existing
+    // (brighter) objects never disappear.
+    if (z <= 1) return 4;
+    return Math.min(MAX_MAG, 4 + (z - 1) * 4.0);
   }
 
   function drawCustomLayers() {
@@ -565,21 +625,46 @@ const SkyMapComponent = (() => {
         const pt = proj(coord);
         if (!pt) continue;
 
-        const r = hasMag
-          ? Math.max(1.2, Math.min(8, (6.5 - mag) * 1.2 * adapt))
-          : 2.5;
+        const type = (o.object_type || '').toUpperCase();
+        const isExtended = EXTENDED_TYPES.has(type);
+        const extSizeArcmin = isExtended ? angularSizeArcmin(o) : 0;
 
-        drawMarker(ctx, pt[0], pt[1], r, markerShape(o.object_type), typeColor(o.object_type));
+        // Extended objects (galaxies, nebulae, clusters, remnants) are sized by
+        // their apparent angular size; point-like objects by magnitude.
+        let r;
+        if (extSizeArcmin > 0) {
+          r = radiusForAngularSize(proj, coord, extSizeArcmin);
+        } else {
+          r = hasMag
+            ? Math.max(1.2, Math.min(8, (6.5 - mag) * 1.2 * adapt))
+            : 2.5;
+        }
 
-        // Short-name labels for the brightest objects, capped to keep the map
-        // readable. The magnitude threshold tightens as the user zooms out.
-        if (labels.length < 400 && hasMag && mag <= labelMag) {
-          labels.push({ x: pt[0], y: pt[1], r: r, text: shortObjectName(o) });
+        // Bright point-like objects keep their type-specific symbol; fainter
+        // objects collapse to a simple dot.  Extended objects always keep their
+        // symbol because their size now encodes the angular extent.
+        const shape = isExtended
+          ? markerShape(o.object_type)
+          : ((hasMag && r < 3.0) ? 'dot' : markerShape(o.object_type));
+
+        drawMarker(ctx, pt[0], pt[1], r, shape, typeColor(o.object_type));
+
+        // Collect labels for the brightest objects.  The threshold follows the
+        // zoom, so zooming in progressively reveals fainter names while the
+        // already-visible bright names stay.
+        if (hasMag && mag <= labelMag) {
+          labels.push({ x: pt[0], y: pt[1], r: r, text: shortObjectName(o), mag: mag });
         }
       }
 
-      // Draw labels on a second pass so they sit above every marker.
-      for (const lb of labels) {
+      // Prefer the brightest objects when capping the label count — otherwise a
+      // large database fills the budget with arbitrary (e.g. alphabetically
+      // first) faint objects and the bright names disappear while zooming.
+      labels.sort((a, b) => a.mag - b.mag);
+      const cappedLabels = labels.slice(0, 400);
+      // Draw faintest first so the brightest labels are rendered on top.
+      for (let i = cappedLabels.length - 1; i >= 0; i--) {
+        const lb = cappedLabels[i];
         drawObjectLabel(ctx, lb.x, lb.y, lb.r, lb.text);
       }
     }
@@ -1011,6 +1096,24 @@ const SkyMapComponent = (() => {
     return DEFAULT_COLOR;
   }
 
+  /**
+   * Render the symbol(s) of a legend entry onto a small canvas, reusing the
+   * same drawMarker() used on the map so the legend exactly matches the map.
+   */
+  function createLegendIcon(shapes, color) {
+    const slot = 14;
+    const canvas = document.createElement('canvas');
+    canvas.className = 'skymap-legend-icon';
+    canvas.width = Math.max(slot, shapes.length * slot);
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    const cy = 8;
+    shapes.forEach((shape, i) => {
+      drawMarker(ctx, slot / 2 + i * slot, cy, 4.0, shape, color);
+    });
+    return canvas;
+  }
+
   function renderLegend() {
     if (!legendEl) return;
     legendEl.textContent = '';
@@ -1023,23 +1126,19 @@ const SkyMapComponent = (() => {
     TYPE_CATEGORIES.forEach((cat) => {
       const item = document.createElement('span');
       item.className = 'skymap-legend-item';
-      const dot = document.createElement('span');
-      dot.className = 'skymap-legend-dot';
-      dot.style.backgroundColor = categoryColor(cat);
+      item.appendChild(createLegendIcon(CATEGORY_SHAPES[cat.key] || ['dot'], categoryColor(cat)));
       const label = document.createElement('span');
       label.textContent = cat.label;
-      item.append(dot, label);
+      item.append(label);
       legendEl.appendChild(item);
     });
 
     const mountItem = document.createElement('span');
     mountItem.className = 'skymap-legend-item';
-    const mountDot = document.createElement('span');
-    mountDot.className = 'skymap-legend-dot';
-    mountDot.style.backgroundColor = '#ffd54f';
+    mountItem.appendChild(createLegendIcon(['telescope'], '#ffd54f'));
     const mountLabel = document.createElement('span');
     mountLabel.textContent = t('skymap.legend_telescope', 'Telescope');
-    mountItem.append(mountDot, mountLabel);
+    mountItem.append(mountLabel);
     legendEl.appendChild(mountItem);
   }
 
@@ -1061,6 +1160,19 @@ const SkyMapComponent = (() => {
       pointerDownPos = { x: ev.clientX, y: ev.clientY };
     });
     containerEl.addEventListener('click', onClick);
+
+    // Re-render the custom overlay after mouse-wheel zooming so the magnitude
+    // filter picks up the new zoom level.  d3-celestial may not run our
+    // raw-layer callback on wheel events, which previously left the visible
+    // object set unchanged while zooming.
+    let wheelFrame = null;
+    containerEl.addEventListener('wheel', () => {
+      if (wheelFrame) return;
+      wheelFrame = requestAnimationFrame(() => {
+        wheelFrame = null;
+        redrawMap();
+      });
+    }, { passive: true });
 
     if (popupEl) {
       popupEl.addEventListener('click', (ev) => {
