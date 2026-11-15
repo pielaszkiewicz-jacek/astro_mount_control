@@ -262,6 +262,15 @@ message ControllerState {
     // unlike telescope_axis1/axis2 which are raw mount axes.
     double current_ra = 30;   // Corrected right ascension [hours]
     double current_dec = 31;  // Corrected declination [degrees]
+
+    // === Tracking telemetry / diagnostics ===
+    double rate_factor = 32;                    // Smoothed soft-limit rate factor [0..1]
+    double correction_accumulated_axis1 = 33;   // Accumulated astronomical correction [servo deg]
+    double correction_accumulated_axis2 = 34;   // Accumulated astronomical correction [servo deg]
+    double drift_trim_axis1 = 35;               // Velocity-mode drift trim [servo deg/s]
+    double drift_trim_axis2 = 36;               // Velocity-mode drift trim [servo deg/s]
+    double guide_offset_axis1 = 37;             // Persistent guider offset [servo deg]
+    double guide_offset_axis2 = 38;             // Persistent guider offset [servo deg]
 }
 
 // Pole position

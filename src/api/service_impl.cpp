@@ -215,6 +215,15 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         response->set_current_ra(status.current_ra);
         response->set_current_dec(status.current_dec);
 
+        // Tracking telemetry / diagnostics
+        response->set_rate_factor(status.rate_factor);
+        response->set_correction_accumulated_axis1(status.correction_accumulated_axis1);
+        response->set_correction_accumulated_axis2(status.correction_accumulated_axis2);
+        response->set_drift_trim_axis1(status.drift_trim_axis1);
+        response->set_drift_trim_axis2(status.drift_trim_axis2);
+        response->set_guide_offset_axis1(status.guide_offset_axis1);
+        response->set_guide_offset_axis2(status.guide_offset_axis2);
+
         // Meridian flip status
         response->set_pier_side(status.pier_side);
         response->set_meridian_flipped(status.meridian_flip_in_progress);
@@ -304,6 +313,15 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             // Actual motor velocity (from CANopen hardware, deg/s)
             state.set_actual_rate_axis1(status.actual_axis1_rate);
             state.set_actual_rate_axis2(status.actual_axis2_rate);
+
+            // Tracking telemetry / diagnostics
+            state.set_rate_factor(status.rate_factor);
+            state.set_correction_accumulated_axis1(status.correction_accumulated_axis1);
+            state.set_correction_accumulated_axis2(status.correction_accumulated_axis2);
+            state.set_drift_trim_axis1(status.drift_trim_axis1);
+            state.set_drift_trim_axis2(status.drift_trim_axis2);
+            state.set_guide_offset_axis1(status.guide_offset_axis1);
+            state.set_guide_offset_axis2(status.guide_offset_axis2);
 
             // Meridian flip / pier info (FIX N8: align field set with GetState)
             state.set_pier_side(status.pier_side);

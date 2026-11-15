@@ -175,7 +175,16 @@ public:
         // === Corrected on-sky position (after bootstrap / TPOINT) ===
         double current_ra{0.0};    ///< Corrected RA [hours]
         double current_dec{0.0};   ///< Corrected Dec [degrees]
-        
+
+        // === Tracking telemetry / diagnostics ===
+        double rate_factor{1.0};                    ///< Smoothed soft-limit rate factor [0..1]
+        double correction_accumulated_axis1{0.0};   ///< Accumulated astronomical correction [servo deg]
+        double correction_accumulated_axis2{0.0};   ///< Accumulated astronomical correction [servo deg]
+        double drift_trim_axis1{0.0};               ///< Velocity-mode drift trim [servo deg/s]
+        double drift_trim_axis2{0.0};               ///< Velocity-mode drift trim [servo deg/s]
+        double guide_offset_axis1{0.0};             ///< Persistent guider offset [servo deg]
+        double guide_offset_axis2{0.0};             ///< Persistent guider offset [servo deg]
+
         std::chrono::system_clock::time_point timestamp;
         std::string error_message;
     };

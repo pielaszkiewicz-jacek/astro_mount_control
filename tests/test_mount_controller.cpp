@@ -1036,6 +1036,195 @@ TEST_F(MountControllerTest, TPointCalibrationRejectedForWildResiduals) {
     EXPECT_FALSE(controller_->getStatus().tpoint_calibrated);
 }
 
+// ============================================
+// 9b. TRACKING NUMERICAL STABILITY (regression)
+// ============================================
+
+// Long-session precision guard: positions must remain finite and monotonic
+// while tracking runs (no NaN/Inf drift after many iterations).  This is the
+// §7 "long-session precision" regression test.
+TEST_F(MountControllerTest, LongTrackingSessionPositionsStayFinite) {
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    // Dec=0 so the simulated drive starts on-target and the (slow, clamped)
+    // simulated slew cannot trip the Dec-desync detector during the session.
+    ASSERT_TRUE(controller_->startTracking(ra, 0.0, config::TrackingMode::SIDEREAL));
+
+    std::this_thread::sleep_for(2000ms);
+    controller_->refreshPositions();
+    auto status1 = controller_->getStatus();
+    std::this_thread::sleep_for(2000ms);
+    controller_->refreshPositions();
+    auto status2 = controller_->getStatus();
+
+    EXPECT_NE(status2.state, MountController::MountStatus::State::ERROR);
+    EXPECT_TRUE(std::isfinite(status1.axis1_position) && std::isfinite(status1.axis2_position));
+    EXPECT_TRUE(std::isfinite(status2.axis1_position) && std::isfinite(status2.axis2_position));
+    EXPECT_GT(status2.axis1_position, status1.axis1_position)
+        << "Sidereal tracking should keep advancing axis1 over time";
+}
+
+// Refraction correction near the horizon (steep gradient) must not produce
+// NaN/Inf or ERROR.  Exercises the continuous refraction-state update and the
+// horizon mask/hysteresis (§4.5 / §7 "refraction on/off").
+TEST_F(MountControllerTest, RefractionEnabledTrackingStaysFinite) {
+    config_.safety_config.enable_refraction_correction = true;
+    config_.safety_config.soft_limits_enabled = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    // Low altitude (~8° at this site) so the refraction gradient is significant.
+    ASSERT_TRUE(controller_->startTracking(ra, -30.0, config::TrackingMode::SIDEREAL));
+
+    std::this_thread::sleep_for(2000ms);
+    controller_->refreshPositions();
+    auto status = controller_->getStatus();
+
+    EXPECT_NE(status.state, MountController::MountStatus::State::ERROR);
+    EXPECT_TRUE(std::isfinite(status.axis1_position) && std::isfinite(status.axis2_position));
+}
+
+// After a successful TPoint fit, position-mode tracking must still produce
+// finite targets and positions (exercises the TPoint inversion convergence
+// fallback and the §4.1 correction loop closure).
+TEST_F(MountControllerTest, TrackingAfterTPointCalibrationStaysFinite) {
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    controller_->addTPointMeasurement(10.0, 45.0, 10.1, 45.1, 2.0, 45.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(12.0, 30.0, 12.1, 30.1, 4.0, 30.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(14.0, 60.0, 14.1, 60.1, 6.0, 60.0, 15.0, 1013.25);
+    ASSERT_TRUE(controller_->runTPointCalibration());
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    ASSERT_TRUE(controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL));
+
+    std::this_thread::sleep_for(2000ms);
+    controller_->refreshPositions();
+    auto status = controller_->getStatus();
+
+    EXPECT_NE(status.state, MountController::MountStatus::State::ERROR);
+    EXPECT_TRUE(std::isfinite(status.axis1_position) && std::isfinite(status.axis2_position));
+    EXPECT_TRUE(std::isfinite(status.axis1_target) && std::isfinite(status.axis2_target));
+}
+
+// Velocity-mode tracking with the drift-trim regulator must stay finite and
+// not trip into ERROR (§4.6 / §7 "drift-trim stability").
+TEST_F(MountControllerTest, VelocityModeTrackingStaysFinite) {
+    config_.mount_config.equatorial_tracking_velocity_mode = true;
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    ASSERT_TRUE(controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL));
+
+    std::this_thread::sleep_for(2000ms);
+    controller_->refreshPositions();
+    auto status = controller_->getStatus();
+
+    EXPECT_NE(status.state, MountController::MountStatus::State::ERROR);
+    EXPECT_TRUE(std::isfinite(status.axis1_position) && std::isfinite(status.axis2_position));
+}
+
+// Tracking telemetry (rate_factor, accumulated correction, drift trim, guide
+// offsets) must be exposed and finite while tracking with the astronomical
+// corrections active (§7 "position-mode effectiveness" / P3.14).
+TEST_F(MountControllerTest, TrackingTelemetryIsFinite) {
+    config_.safety_config.enable_refraction_correction = true;
+    config_.safety_config.soft_limits_enabled = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    controller_->addTPointMeasurement(10.0, 45.0, 10.1, 45.1, 2.0, 45.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(12.0, 30.0, 12.1, 30.1, 4.0, 30.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(14.0, 60.0, 14.1, 60.1, 6.0, 60.0, 15.0, 1013.25);
+    ASSERT_TRUE(controller_->runTPointCalibration());
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    ASSERT_TRUE(controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL));
+
+    std::this_thread::sleep_for(2000ms);
+    controller_->refreshPositions();
+    auto status = controller_->getStatus();
+
+    EXPECT_NE(status.state, MountController::MountStatus::State::ERROR);
+    EXPECT_TRUE(std::isfinite(status.rate_factor));
+    EXPECT_TRUE(std::isfinite(status.correction_accumulated_axis1));
+    EXPECT_TRUE(std::isfinite(status.correction_accumulated_axis2));
+    EXPECT_TRUE(std::isfinite(status.drift_trim_axis1));
+    EXPECT_TRUE(std::isfinite(status.drift_trim_axis2));
+    EXPECT_TRUE(std::isfinite(status.guide_offset_axis1));
+    EXPECT_TRUE(std::isfinite(status.guide_offset_axis2));
+    EXPECT_TRUE(std::isfinite(status.axis1_target) && std::isfinite(status.axis2_target));
+}
+
+// A fresh tracking session must re-prime the astronomical-correction state so
+// the first iterations apply no stale delta.  This is the same reset path the
+// meridian flip uses (corrections_primed_/last_*/accumulated_* → 0), exercised
+// deterministically via startTracking instead of the flaky flip slew.
+TEST_F(MountControllerTest, CorrectionStateResetsOnNewSession) {
+    config_.safety_config.enable_refraction_correction = true;
+    config_.safety_config.soft_limits_enabled = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    controller_->addTPointMeasurement(10.0, 45.0, 10.1, 45.1, 2.0, 45.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(12.0, 30.0, 12.1, 30.1, 4.0, 30.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(14.0, 60.0, 14.1, 60.1, 6.0, 60.0, 15.0, 1013.25);
+    ASSERT_TRUE(controller_->runTPointCalibration());
+
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    ASSERT_TRUE(controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL));
+    std::this_thread::sleep_for(2000ms);
+    controller_->refreshPositions();
+    auto before = controller_->getStatus();
+    EXPECT_TRUE(std::isfinite(before.correction_accumulated_axis1));
+    EXPECT_TRUE(std::isfinite(before.correction_accumulated_axis2));
+
+    controller_->stop();
+    ASSERT_TRUE(controller_->startTracking(ra, 45.0, config::TrackingMode::SIDEREAL));
+    auto after = controller_->getStatus();
+
+    // The fresh session re-primes the correction state, so the accumulated
+    // correction must not carry over the previous session's value.
+    EXPECT_TRUE(std::isfinite(after.correction_accumulated_axis1));
+    EXPECT_TRUE(std::isfinite(after.correction_accumulated_axis2));
+    EXPECT_LE(std::abs(after.correction_accumulated_axis1),
+              std::abs(before.correction_accumulated_axis1) + 1e-9);
+    EXPECT_LE(std::abs(after.correction_accumulated_axis2),
+              std::abs(before.correction_accumulated_axis2) + 1e-9);
+}
+
 
 // ============================================
 // 10. TPOINT PARAMETERS

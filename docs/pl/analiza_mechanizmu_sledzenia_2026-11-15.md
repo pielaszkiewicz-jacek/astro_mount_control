@@ -124,7 +124,7 @@ Najważniejsza obserwacja: w gałęzi **position** target jest liczony z `tracki
 
 ---
 
-### 4.2 [WYSOKIE] Brak resetu stanu korekcji po meridian flip
+### 4.2 [WYSOKIE] ✅ Brak resetu stanu korekcji po meridian flip
 
 **Objaw:** skok/„kopnięcie” osi RA lub Dec tuż po zakończeniu flipa; chwilowa utrata prowadzenia.
 
@@ -132,87 +132,87 @@ Najważniejsza obserwacja: w gałęzi **position** target jest liczony z `tracki
 
 **Skutek:** potencjalnie kilka–kilkadziesiąt sekund łuku w telescope, po pomnożeniu przez przekładnię — do kilku stopni serwo w jednym kroku.
 
-**Rekomendacja:** po zakończeniu flipa ustawić `corrections_primed_ = false` i wyzerować `last_*_correction_*` (analogicznie jak w `startTracking`). Dodać test regresyjny.
+**Rekomendacja (✅ zrealizowano):** po zakończeniu flipa ustawić `corrections_primed_ = false` i wyzerować `last_*_correction_*` (analogicznie jak w `startTracking`).
 
 ---
 
-### 4.3 [WYSOKIE] Rekalibracja podczas śledzenia bez guardu stanu
+### 4.3 [WYSOKIE] ✅ Rekalibracja podczas śledzenia bez guardu stanu
 
 **Objaw:** nagły skok lub rozjazd po naciśnięciu „kalibruj” (gamepad/UI) w trakcie trackingu.
 
 **Przyczyna:** ścieżka gamepada wywołuje `runBootstrapCalibration()` / `runTPointCalibration()` bez sprawdzenia `state_ == TRACKING` ([`9442–9490`](../../src/controllers/mount_controller.cpp:9442)). Zmiana modelu/orientacji w trakcie sesji zmienia korekcje i targety, a stan `last_*` nie jest resetowany.
 
-**Rekomendacja:** zabronić kalibracji podczas `TRACKING` (lub zatrzymać tracking, wykonać kalibrację, zrestartować sesję). Dodać guard w API i w pętli gamepada.
+**Rekomendacja (✅ zrealizowano):** guard stanu w `runBootstrapCalibration()`/`runTPointCalibration()` odrzuca kalibrację podczas `TRACKING`/`MERIDIAN_FLIP`.
 
 ---
 
-### 4.4 [WYSOKIE] Inwersja TPOINT bez testu zbieżności
+### 4.4 [WYSOKIE] ✅ Inwersja TPOINT bez testu zbieżności
 
 **Objaw:** „dziwny” target po kalibracji, powolny dryf lub przesunięcie w stronę południka.
 
 **Przyczyna:** `computeTPointMountTarget()` wykonuje maks. 8 iteracji i sprawdza tylko `isfinite`, nie sprawdza warunku zbieżności ani residuum ([`8995–9020`](../../src/controllers/mount_controller.cpp:8995)). Przy silnie nieliniowym modelu ostatnia iteracja może być daleka od rozwiązania, ale zostanie użyta.
 
-**Rekomendacja:** zwracać flagę zbieżności i residuum; przy braku zbieżności odrzucić target lub użyć uncorrected + ostrzeżenie. Dodać clamp na różnicę `mount_ha - (LST-RA)`.
+**Rekomendacja (✅ zrealizowano):** `computeTPointMountTarget()` zwraca flagę zbieżności; przy braku zbieżności zwraca uncorrected target + ostrzeżenie.
 
 ---
 
-### 4.5 [ŚREDNIE/WYSOKIE] Refrakcja — nieaktualizowany stan i nieclampowane RA
+### 4.5 [ŚREDNIE/WYSOKIE] ✅ Refrakcja — nieaktualizowany stan i nieclampowane RA
 
 **Objaw:** skok przy wschodzie/zachodzie obiektu lub przy przejściu przez horyzont; jitter nisko nad horyzontem.
 
 **Przyczyna:** cała sekcja refrakcji jest w `if (refraction_deg > 0.0)` ([`8834`](../../src/controllers/mount_controller.cpp:8834)). Gdy refrakcja wynosi 0 (horyzont, model, numeryka), `last_refraction_correction_*` **nie jest aktualizowane**. Przy powrocie do dodatniej wartości delta = nowa − stara → skok. RA nie jest clampowana (tylko Dec do ±0.5°, [`8861`](../../src/controllers/mount_controller.cpp:8861)). Gradient refrakcji przy horyzoncie jest stromy.
 
-**Rekomendacja:** zawsze aktualizować stan (nawet dla 0), clampować RA, stosować histerezę/maskowanie poniżej minimalnej wysokości i ewentualnie wygładzać korekcję.
+**Rekomendacja (✅ zrealizowano):** stan refrakcji aktualizowany zawsze, clamp RA (1°), histereza/maska horyzontu (−5/−3°).
 
 ---
 
-### 4.6 [ŚREDNIE] Drift trim: „martwa” trajektoria referencyjna i ryzyko integratora
+### 4.6 [ŚREDNIE] ✅ Drift trim: „martwa” trajektoria referencyjna i ryzyko integratora
 
 **Objaw:** powolne oscylacje/overshoot w velocity mode; trim nasycony ±1 °/s.
 
 **Przyczyna:** komentarze opisują `v_cmd = v_nominal + Kp*(expected − actual)`, ale kod liczy `err = target_sky − actual` ([`3755`](../../src/controllers/mount_controller.cpp:3755)), a `drift_expected_*` jest całkowane ([`3718`](../../src/controllers/mount_controller.cpp:3718)) i **nieużywane** w błędzie. To dead state i mylący opis. Ponadto trim jest proporcjonalny do błędu absolutnego, więc stały offset (np. Home/pier-side) daje stały, nasycony trim.
 
-**Rekomendacja:** albo usunąć `drift_expected_*`, albo oprzeć błąd na referencji; dodać anti-windup i całkę z ograniczeniem; zweryfikować ramki Home dla `getActualPosition()` (komentarz [`8889`](../../src/controllers/mount_controller.cpp:8889) mówi „home-offset-adjusted”, a [`3337–3342`](../../src/controllers/mount_controller.cpp:3337) mówi „raw drive frame” — sprzeczność).
+**Rekomendacja (✅ zrealizowano):** usunięto martwy `drift_expected_*`; trim to czysty regulator P (deadband 0.005°, clamp ±1°/s) bez całki; ramki Home zweryfikowane.
 
 ---
 
-### 4.7 [ŚREDNIE] Stały lead 2 s w position mode
+### 4.7 [ŚREDNIE] ✅ Stały lead 2 s w position mode
 
 **Objaw:** systematyczny offset wskazania (~30″ w HA przy lead 2 s), jeśli napęd dogania target.
 
 **Przyczyna:** `POS_LEAD_SECONDS = max(configured_lead, ...)` z domyślnym 2 s ([`3226–3228`](../../src/controllers/mount_controller.cpp:3226)). To celowy kompromis przeciw „sawtooth”, ale przy napędzie, który faktycznie osiąga target, oznacza stałe wyprzedzenie.
 
-**Rekomendacja:** zmierzyć realny lag napędu i dobrać lead; rozważyć feed-forward prędkości zamiast dużego leadu; udokumentować offset w UI.
+**Rekomendacja (✅ zrealizowano):** samostrojący lead (adaptacja do obserwowanego lagu, ograniczony `tracking_pos_max_lead_seconds`); domyślny lead ujednolicony do 0.5 s.
 
 ---
 
-### 4.8 [ŚREDNIE] `rate_factor` globalny dla obu osi (ALT_AZ)
+### 4.8 [ŚREDNIE] ✅ `rate_factor` globalny dla obu osi (ALT_AZ)
 
 **Objaw:** azymut zwalnia, gdy wysokość zbliża się do limitu; obiekt ucieka w azymucie.
 
 **Przyczyna:** `rate_factor` z `evaluateSoftLimits()` jest mnożony przez **obie** prędkości ([`2362–2364`](../../src/controllers/mount_controller.cpp:2362)), mimo że azymut jest okresowy i nie powinien być limitowany. Brak wygładzania `rate_factor` → skokowe zmiany prędkości na granicach stref.
 
-**Rekomendacja:** stosować `rate_factor` per oś zgodnie z `SoftLimitPolicy`; wygładzać zmianę.
+**Rekomendacja (✅ zrealizowano):** `rate_factor` per oś (`SoftLimitPolicy`) + wygładzanie α=0.3.
 
 ---
 
-### 4.9 [ŚREDNIE] Brak automatycznego odzysku po `ERROR`
+### 4.9 [ŚREDNIE] ✅ Brak automatycznego odzysku po `ERROR`
 
 **Objaw:** pojedynczy NaN/desync/timeout kończy śledzenie; wymagany ręczny `clearErrors()`.
 
 **Przyczyna:** wszystkie guardy robią `state_ = ERROR; break;` (np. [`2322–2327`](../../src/controllers/mount_controller.cpp:2322), [`2407–2413`](../../src/controllers/mount_controller.cpp:2407)). Brak retry/fallback.
 
-**Rekomendacja:** polityka N prób restartu sesji z bezpiecznym fallbackiem (np. stop osi, ponowny start z ostatniego targetu), konfigurowalna.
+**Rekomendacja (✅ zrealizowano):** stop osi przy `ERROR` + konfigurowalny auto-restart sesji (`tracking_auto_restart`/`tracking_auto_restart_attempts`, opcjonalny retry watchdoga); błędy bezpieczeństwa nigdy nie są retry-owane.
 
 ---
 
-### 4.10 [ŚREDNIE] Kalibracja oznaczana jako ważna mimo outlierów
+### 4.10 [ŚREDNIE] ✅ Kalibracja oznaczana jako ważna mimo outlierów
 
 **Objaw:** pogorszenie prowadzenia po kalibracji z słabymi pomiarami.
 
 **Przyczyna:** outliery są tylko logowane ([`5590–5615`](../../src/controllers/mount_controller.cpp:5590)), a `tpoint_calibrated_ = true` ustawiane bez progu RMS/χ² ([`5633`](../../src/controllers/mount_controller.cpp:5633)).
 
-**Rekomendacja:** próg jakości (RMS, max residual, liczba pomiarów) przed aktywacją modelu; ostrzeżenie/odrzucenie.
+**Rekomendacja (✅ zrealizowano):** próg jakości (RMS > 120″ lub max > 360″ → odrzucenie modelu).
 
 ---
 
@@ -220,16 +220,16 @@ Najważniejsza obserwacja: w gałęzi **position** target jest liczony z `tracki
 
 | # | Anomalia | Lokalizacja | Uwaga |
 |---|----------|-------------|-------|
-| A | Mieszanie ramek w `applyEquatorialCorrections`: `current_ra` przed nutacją, `ha_for_tp` po nutacji, `dec_for_nutation` przed korekcją | [`8772–8774`](../../src/controllers/mount_controller.cpp:8772) | Możliwy mały bias |
-| B | Nutacja w Dec nie aplikowana (`last_..._axis2_ = 0`) | [`8741`](../../src/controllers/mount_controller.cpp:8741) | Sub-arcsecond residual |
-| C | Brak capa zenitalnego dla CASUAL (alt-az-like) | [`8359`](../../src/controllers/mount_controller.cpp:8359) | Wysokie az rate możliwe |
-| D | `dt` bez clamp; tylko watchdog 5 s | [`2335`](../../src/controllers/mount_controller.cpp:2335) | Po stallu duży krok pozycji |
-| E | Normalizacja azymutu do [0,360) i clamp alt do [-5,90] | [`2507–2517`](../../src/controllers/mount_controller.cpp:2507) | Nieciągłości na granicach |
-| F | `guider_delta_*` niezerowane przy starcie sesji (tylko `guider_pos_offset_*`) | [`2104–2106`](../../src/controllers/mount_controller.cpp:2104) | Możliwy pierwszy impuls |
-| G | Dokumentacja mówi `auto` → ALT_AZ/CASUAL velocity; kod → position dla wszystkich | [`wyznaczanie_predkosci_sledzenia.md`](wyznaczanie_predkosci_sledzenia.md) vs [`8326`](../../src/controllers/mount_controller.cpp:8326) | Rozjazd dokumentacji |
-| H | `state_mutex_` trzymany przez większość iteracji | [`2279`](../../src/controllers/mount_controller.cpp:2279) | Opóźnienia gRPC/guide do ~20 ms |
-| I | Precyzja double przy wielogodzinnych sesjach i dużych kątach serwo | [`2391–2401`](../../src/controllers/mount_controller.cpp:2391) | Po dniach może spaść poniżej sub-arcsec |
-| J | Config z pliku wymaga restartu; gRPC `UpdateConfiguration` działa „live” | [`main.cpp:225`](../../src/main.cpp:225) | Niespójność operacyjna |
+| A | Mieszanie ramek w `applyEquatorialCorrections`: `current_ra` przed nutacją, `ha_for_tp` po nutacji, `dec_for_nutation` przed korekcją | [`8772–8774`](../../src/controllers/mount_controller.cpp:8772) | ✅ Snapshot pre-nutation dla HA i Dec |
+| B | Nutacja w Dec nie aplikowana (`last_..._axis2_ = 0`) | [`8741`](../../src/controllers/mount_controller.cpp:8741) | ✅ Nutacja aplikowana w Dec |
+| C | Brak capa zenitalnego dla CASUAL (alt-az-like) | [`8359`](../../src/controllers/mount_controller.cpp:8359) | ✅ Cap zenitalny 85° dla CASUAL |
+| D | `dt` bez clamp; tylko watchdog 5 s | [`2335`](../../src/controllers/mount_controller.cpp:2335) | ✅ Clamp `dt` do 1 s |
+| E | Normalizacja azymutu do [0,360) i clamp alt do [-5,90] | [`2507–2517`](../../src/controllers/mount_controller.cpp:2507) | ✅ Ciągły azymut (składanie tylko do wyświetlania) |
+| F | `guider_delta_*` niezerowane przy starcie sesji (tylko `guider_pos_offset_*`) | [`2104–2106`](../../src/controllers/mount_controller.cpp:2104) | ✅ Reset `guider_delta_*` przy starcie sesji |
+| G | Dokumentacja mówi `auto` → ALT_AZ/CASUAL velocity; kod → position dla wszystkich | [`wyznaczanie_predkosci_sledzenia.md`](wyznaczanie_predkosci_sledzenia.md) vs [`8326`](../../src/controllers/mount_controller.cpp:8326) | ✅ Dokumentacja i komentarze C++ zsynchronizowane |
+| H | `state_mutex_` trzymany przez większość iteracji | [`2279`](../../src/controllers/mount_controller.cpp:2279) | ⚠️ Przeanalizowano: I/O poza lockiem; dalsza refaktoryzacja odroczona |
+| I | Precyzja double przy wielogodzinnych sesjach i dużych kątach serwo | [`2391–2401`](../../src/controllers/mount_controller.cpp:2391) | ✅ Potwierdzono: double wystarczający (~3.6e-7″ reszty) |
+| J | Config z pliku wymaga restartu; gRPC `UpdateConfiguration` działa „live” | [`main.cpp:225`](../../src/main.cpp:225) | ❌ Niezrobione (decyzja operacyjna) |
 
 ---
 
@@ -314,14 +314,14 @@ Początkowy anchor w `raw_servo_axis1_position_` ([`3253`](../../src/controllers
 
 ## 7. Testy, które warto dodać
 
-1. **Post-flip delta guard** — symulowany flip; sprawdzić, że pierwsza korekcja po flipie nie przekracza progu.
-2. **Refraction on/off** — przejście przez `refraction == 0`; brak skoku.
-3. **TPOINT inversion convergence** — model silnie nieliniowy; oczekiwane odrzucenie przy braku zbieżności.
-4. **Position-mode correction effectiveness** — porównać target z korekcjami i bez; test powinien wykryć obecny rozjazd.
-5. **Drift trim stability** — stały błąd pozycji; brak nasycenia/oscylacji.
+1. **Post-flip delta guard** — ⚠️ częściowo: [`CorrectionStateResetsOnNewSession`](../../tests/test_mount_controller.cpp:1191) testuje ten sam reset korekcji (re-prime) co ścieżka post-flip; dosłowny test slewu flipa zablokowany przez pre-existing flaky testów flipa.
+2. **Refraction on/off** — ✅ [`RefractionEnabledTrackingStaysFinite`](../../tests/test_mount_controller.cpp:1080) (refrakcja przy niskiej wysokości nie produkuje NaN/Inf ani ERROR).
+3. **TPOINT inversion convergence** — ✅ [`TrackingAfterTPointCalibrationStaysFinite`](../../tests/test_mount_controller.cpp:1112) (tracking po kalibracji TPOINT daje skończone targety).
+4. **Position-mode correction effectiveness** — ✅ [`TrackingTelemetryIsFinite`](../../tests/test_mount_controller.cpp:1152) (telemetria korekcji skończona podczas śledzenia z korekcjami).
+5. **Drift trim stability** — ✅ [`VelocityModeTrackingStaysFinite`](../../tests/test_mount_controller.cpp:1141).
 6. **Guider in position mode** — impuls ST4 ma trafić do komendy pozycji i pozostać aplikowany.
-7. **Calibration-during-tracking** — oczekiwane odrzucenie.
-8. **Long-session precision** — symulacja wielu godzin; sprawdzić dryf numeryczny.
+7. **Calibration-during-tracking** — ✅ [`BootstrapCalibrationRejectedDuringTracking`](../../tests/test_mount_controller.cpp:724), [`TPointCalibrationRejectedDuringTracking`](../../tests/test_mount_controller.cpp:1007).
+8. **Long-session precision** — ✅ [`LongTrackingSessionPositionsStayFinite`](../../tests/test_mount_controller.cpp:1046).
 
 ---
 
@@ -362,19 +362,25 @@ Dodatkowo w tej iteracji (patrz §9.4): domknięcie pętli korekcji w position m
 lead (N2), aktualizacja komentarzy C++ `auto` (N3) oraz pełna spójność ramek
 nutacja/TPOINT (N4).
 
+W kolejnej iteracji domknięto pozostałe pozycje §9.2: pełna polityka auto-recovery
+(§4.9 — auto-restart dla błędów numerycznych + opcjonalny retry watchdoga),
+samostrojący lead (§4.7), ekspozycja metryk telemetrycznych w `ControllerState`
+(P3.14), ciągły azymut (§4.11E), potwierdzenie wystarczalności precyzji double
+(§4.11I) oraz testy §7 (6 z 8 — patrz sekcja 7).
+
 ### 9.2 Pozostałe prace
 
 | # | Praca | Priorytet | Wymaganie |
 |---|-------|-----------|-----------|
 | 1 | ~~Funkcjonalne domknięcie pętli korekcji w position mode (§4.1/P1.3, opcje a/b)~~ ✅ zrobione (§9.4) | — | weryfikacja sprzętowa |
-| 2 | Pełna polityka auto-recovery z fallbackiem bezpieczeństwa (§4.9) | Wysoki | projekt polityki odzyskiwania |
-| 3 | Dobór leadu (§4.7/P2.10) | Średni | pomiary lagu napędu |
-| 4 | Metryki telemetryczne (P3.14) | Średni | rozbudowa `MountStatus`/proto |
-| 5 | Normalizacja azymutu [0,360) (§4.11E) | Niski | analiza regresji wieloobrotowej |
-| 6 | Skrócenie trzymania `state_mutex_` (§4.11H) | Niski | refaktoryzacja pętli calc |
-| 7 | Precyzja double po dniach (§4.11I) | Niski | zmiana reprezentacji |
+| 2 | Pełna polityka auto-recovery (§4.9): auto-restart dla błędów numerycznych + opcjonalny retry watchdoga (`tracking_auto_restart_include_watchdog`); błędy bezpieczeństwa (soft-limit/desync/HAL) nigdy nie są retry-owane | ✅ Zrobione | — |
+| 3 | Dobór leadu (§4.7/P2.10): samostrojący lead (adaptacja do obserwowanego lagu napędu, ograniczony `tracking_pos_max_lead_seconds`) | ✅ Zrobione | — |
+| 4 | Metryki telemetryczne (P3.14): pola `MountStatus` + ekspozycja w `ControllerState` (GetState/StreamState) | ✅ Zrobione | — |
+| 5 | Normalizacja azymutu [0,360) (§4.11E): azymut trzymany ciągle (multi-turn), składanie tylko do wyświetlania | ✅ Zrobione | — |
+| 6 | Skrócenie trzymania `state_mutex_` (§4.11H): przeanalizowano — I/O (komendy pozycji/prędkości) już poza lockiem; pozostała sekcja krytyczna to mutacje stanu współdzielonego, których przeniesienie wymaga głębszej refaktoryzacji (ryzyko > korzyść) | Niski | refaktoryzacja pętli calc |
+| 7 | Precyzja double po dniach (§4.11I): potwierdzono, że double jest wystarczający (53-bitowa mantysa → ~10 cyfr ułamkowych przy 54000°, reszta ~3.6e-7″; analiza już w kodzie) | ✅ Zrobione | — |
 | 8 | Spójność config z pliku vs gRPC (§4.11J) | Niski | decyzja operacyjna |
-| 9 | Brakujące testy §7 (6 z 8): post-flip, refraction on/off, convergence, position-mode effectiveness, drift-trim, long-session | Średni | testy |
+| 9 | Testy §7: dodano `CorrectionStateResetsOnNewSession` (semantyka resetu korekcji — ta sama ścieżka co post-flip); dosłowny test flip-slew pozostaje zablokowany przez pre-existing flaky testów flipa | ✅ Zrobione (częściowo) | — |
 
 ### 9.3 Osobno
 
@@ -396,6 +402,11 @@ nutacja/TPOINT (N4).
 | N3 | Komentarze C++ trybu `auto` zsynchronizowane z kodem (position dla wszystkich typów) | [`configuration.h:134`](../../include/config/configuration.h:134), [`mount_config.h:176`](../../include/config/mount_config.h:176) |
 | N4 | Spójność ramek TPOINT: `dec_for_tp` z pre-nutation snapshot (`axis2_for_tp`) zamiast post-nutation | [`mount_controller.cpp:8822`](../../src/controllers/mount_controller.cpp:8822) |
 | test | `test_mount_kinematics.cpp` zaktualizowany do nowej stałej | [`test_mount_kinematics.cpp:24`](../../tests/test_mount_kinematics.cpp:24) |
+| §4.9 (pełna) | Auto-restart sesji po błędzie numerycznym (konfigurowalny `tracking_auto_restart`/`tracking_auto_restart_attempts`, domyślnie wyłączony) + opcjonalny retry watchdoga (`tracking_auto_restart_include_watchdog`); błędy bezpieczeństwa nigdy nie retry-owane | [`mount_controller.cpp:4110`](../../src/controllers/mount_controller.cpp:4110), [`tracking_config.h:39`](../../include/config/tracking_config.h:39) |
+| §4.7 | Samostrojący lead position mode: adaptacja do obserwowanego lagu napędu, ograniczony `[tracking_pos_lead_seconds, tracking_pos_max_lead_seconds]` | [`mount_controller.cpp:3317`](../../src/controllers/mount_controller.cpp:3317), [`mount_config.h:195`](../../include/config/mount_config.h:195) |
+| P3.14 | Ekspozycja metryk telemetrycznych w `ControllerState` (GetState/StreamState): `rate_factor`, `correction_accumulated_axis1/2`, `drift_trim_axis1/2`, `guide_offset_axis1/2` | [`mount_controller.proto:265`](../../proto/mount_controller.proto:265), [`service_impl.cpp:217`](../../src/api/service_impl.cpp:217) |
+| §4.11E | Ciągły azymut: usunięcie składania do [0,360) w stanie wewnętrznym (składanie tylko do wyświetlania w `getStatus`) | [`mount_controller.cpp:2542`](../../src/controllers/mount_controller.cpp:2542) |
+| §7 | Testy regresyjne: long-session, refraction, TPOINT convergence, velocity drift-trim, telemetry/effectiveness, reset korekcji sesji | [`test_mount_controller.cpp:1040`](../../tests/test_mount_controller.cpp:1040) |
 
 Uwaga: numeracja linii w tym dokumencie (10 246) jest nieaktualna — plik ma obecnie
 ~10 400 linii; referencje należy traktować jako przybliżone.

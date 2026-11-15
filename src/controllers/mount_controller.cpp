@@ -2103,6 +2103,8 @@ public:
             smoothed_rate_factor_ = 1.0;
             rate_factor_primed_ = false;
             tracking_error_retry_count_ = 0;
+            tracking_auto_restart_count_ = 0;
+            adaptive_lead_s_ = 0.0;
             // Reset the persistent guider offset and any not-yet-consumed guider
             // delta for the new tracking session (a stale delta would be applied
             // as a spurious first-iteration pulse).
@@ -2540,19 +2542,18 @@ public:
                     
                     // Convert servo degrees → telescope degrees for clamping
                     double telescope_alt = axis1_position_ / alt_gear;
-                    double telescope_az = axis2_position_ / az_gear;
                     
                     // Clamp altitude-like axis to [-5, 90] telescope degrees
                     if (telescope_alt > 90.0) telescope_alt = 90.0;
                     if (telescope_alt < -5.0) telescope_alt = -5.0;
                     
-                    // Normalize azimuth-like axis to [0, 360) telescope degrees
-                    telescope_az = std::fmod(telescope_az, 360.0);
-                    if (telescope_az < 0.0) telescope_az += 360.0;
-                    
-                    // Convert back to servo degrees
+                    // Keep the azimuth-like axis continuous (multi-turn) in the
+                    // internal state.  Folding it to [0, 360) every iteration
+                    // creates a discontinuity at the 0/360 wrap that can perturb
+                    // rate/derivative computations; getStatus() folds it for
+                    // display instead.
                     axis1_position_ = telescope_alt * alt_gear;
-                    axis2_position_ = telescope_az * az_gear;
+                    // axis2_position_ is left untouched — it accumulates continuously.
                 }
                 
                 // Check for hard limit violation (beyond limits → ERROR)
@@ -3311,7 +3312,20 @@ public:
                             // lead (≈ lead_s × 15″/s in hour angle) for continuous motion
                             // without the stop-start "sawtooth" that occurs when the
                             // drive catches up to a fixed target between updates.
-                            const double POS_LEAD_SECONDS = std::max(configured_lead_s, pos_vel_factor * measured_update_s + 0.25);
+                            // Clamp the adaptive lead to the configured maximum so a
+                            // slow loop can never command an unbounded systematic
+                            // pointing offset (§4.7).
+                            const double max_lead_s =
+                                config_.mount_config.tracking_pos_max_lead_seconds > 0.0
+                                    ? config_.mount_config.tracking_pos_max_lead_seconds : 2.0;
+                            // Self-tuned lead: start from the configured value, then
+                            // adapt to the observed drive lag (see below).
+                            if (adaptive_lead_s_ <= 0.0) adaptive_lead_s_ = configured_lead_s;
+                            const double base_lead_s =
+                                std::max(configured_lead_s, pos_vel_factor * measured_update_s + 0.25);
+                            const double POS_LEAD_SECONDS = std::min(
+                                max_lead_s,
+                                std::max(adaptive_lead_s_, base_lead_s));
 
                             double ha_hours = lst - snap_target_ra + POS_LEAD_SECONDS * ha_rate_hours_per_sec;
                             while (ha_hours > 12.0) ha_hours -= 24.0;
@@ -3438,6 +3452,21 @@ public:
                             if (have_act) {
                                 ref1 = act1;
                                 ref2 = act2;
+                            }
+
+                            // Self-tune the position lead (§4.7): drive_lag_s is
+                            // how far the physical drive sits behind the commanded
+                            // target, in sidereal seconds.  If it has nearly caught
+                            // up it would stall between updates (stop-start), so
+                            // raise the lead; if it lags beyond the configured
+                            // maximum, lower it.  Always stays within
+                            // [configured_lead_s, max_lead_s].
+                            const double drive_lag_s =
+                                (new_axis1_target - ref1) / sidereal_servo_rate;
+                            if (drive_lag_s < configured_lead_s * 0.5) {
+                                adaptive_lead_s_ = std::min(max_lead_s, adaptive_lead_s_ + 0.05);
+                            } else if (drive_lag_s > max_lead_s) {
+                                adaptive_lead_s_ = std::max(configured_lead_s, adaptive_lead_s_ - 0.05);
                             }
 
                             // Keep the commanded RA target in the same multi-turn
@@ -4098,6 +4127,41 @@ public:
             // the io writer honours a latched stop_motors before observing this.
             tracking_active_ = false;
             io_active_ = false;
+
+            // ── Auto-restart after a recoverable tracking error ─────────────
+            // Full recovery policy:
+            //   * numerical glitches (NaN/Inf) are always recoverable,
+            //   * a single watchdog stall is recoverable only when explicitly
+            //     enabled (tracking_auto_restart_include_watchdog),
+            //   * safety errors (soft-limit, desync, HAL) are NEVER retried —
+            //     they indicate a physical/hardware condition that must be
+            //     resolved by the operator.
+            const bool numerical_error =
+                exit_error.find("Numerical error") != std::string::npos;
+            const bool watchdog_error =
+                exit_error.find("watchdog") != std::string::npos;
+            const bool recoverable =
+                numerical_error ||
+                (watchdog_error &&
+                 config_.tracking_config.tracking_auto_restart_include_watchdog);
+            if (exit_state == MountStatus::State::ERROR &&
+                recoverable &&
+                config_.tracking_config.tracking_auto_restart &&
+                tracking_auto_restart_count_ < config_.tracking_config.tracking_auto_restart_attempts) {
+                ++tracking_auto_restart_count_;
+                const double restart_ra = tracking_target_ra_hours_;
+                const double restart_dec = tracking_target_dec_deg_;
+                MOUNT_LOG_WARN("Tracking auto-restart ({}/{}) after recoverable error",
+                               tracking_auto_restart_count_,
+                               config_.tracking_config.tracking_auto_restart_attempts);
+                std::thread([this, restart_ra, restart_dec, mode,
+                             customRateRaArcsecPerSec, customRateDecArcsecPerSec]() {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+                    this->startTracking(restart_ra, restart_dec, mode,
+                                        customRateRaArcsecPerSec,
+                                        customRateDecArcsecPerSec);
+                }).detach();
+            }
         });
         }  // end thread_mutex_ scope
         
@@ -4605,6 +4669,15 @@ public:
         status.tracking_active = (state_ == MountStatus::State::TRACKING);
         status.tracking_target_ra = tracking_target_ra_hours_;
         status.tracking_target_dec = tracking_target_dec_deg_;
+
+        // Tracking telemetry / diagnostics — read under state_mutex_.
+        status.rate_factor = smoothed_rate_factor_;
+        status.correction_accumulated_axis1 = accumulated_correction_axis1_;
+        status.correction_accumulated_axis2 = accumulated_correction_axis2_;
+        status.drift_trim_axis1 = drift_trim_axis1_;
+        status.drift_trim_axis2 = drift_trim_axis2_;
+        status.guide_offset_axis1 = guider_pos_offset_axis1_;
+        status.guide_offset_axis2 = guider_pos_offset_axis2_;
 
         // Corrected on-sky position — applies the same correction pipeline as
         // the tracking loop (mount orientation quaternion for ALT_AZ/CASUAL and
@@ -9267,6 +9340,11 @@ private:
     // Bounded auto-recovery from transient numerical tracking glitches; the
     // retry budget is configured via tracking_config.tracking_error_retries.
     int tracking_error_retry_count_{0};
+    // Session-level auto-restart counter (tracking_config.tracking_auto_restart).
+    int tracking_auto_restart_count_{0};
+    // Self-tuned position-mode lead (seconds).  Initialized from the configured
+    // lead on the first position update, then adapted to the observed drive lag.
+    double adaptive_lead_s_{0.0};
     
     // Cached last-sent CANopen/HAL motor rates for rate-change detection.
     // The tracking loop sends setVelocity / setVelocityTarget every 100ms

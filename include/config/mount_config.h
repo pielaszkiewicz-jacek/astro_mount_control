@@ -192,6 +192,7 @@ struct MountConfig {
     //     never exceeds max_tracking_rate).
     double tracking_pos_velocity_factor{1.0};
     double tracking_pos_lead_seconds{0.5};
+    double tracking_pos_max_lead_seconds{2.0};  // upper bound for the adaptive lead
     double tracking_pos_velocity_margin{1.0};
 
     // Per-axis rotation direction inversion.
