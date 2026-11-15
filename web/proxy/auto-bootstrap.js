@@ -238,6 +238,12 @@ async function runLoop(s) {
     s.targetCount = Math.max(s.minMeasurements, s.stars.length);
     await runSlewMeasureLoop(s);
 
+    // Stop any active tracking before calibration.  The C++ guard (§4.3)
+    // rejects RunBootstrapCalibration while the mount is TRACKING, and the
+    // per-star TrackObject (auto_track_after_slew) leaves the mount tracking
+    // after the last measurement — otherwise the RPC fails with a misleading
+    // "need at least 2 measurements" error.
+    await grpcCall('Stop', {});
     setState(s, STATE.CALIBRATING, 'Uruchamianie kalibracji bootstrap...');
     const bootstrapResult = await grpcCall('RunBootstrapCalibration', {});
     s.bootstrapResult = bootstrapResult;
@@ -247,6 +253,7 @@ async function runLoop(s) {
       // Collect a TPOINT pass over the same stars, then fit the model.
       await runSlewMeasureLoop(s);
 
+      await grpcCall('Stop', {});
       setState(s, STATE.CALIBRATING, 'Uruchamianie kalibracji TPOINT...');
       await grpcCall('RunTPointCalibration', {});
     }

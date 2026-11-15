@@ -500,6 +500,16 @@ grpc::Status MountControllerServiceImpl::RunBootstrapCalibration(grpc::ServerCon
             return grpc::Status::OK;
         } else {
             response->set_success(false);
+            // Distinguish the real rejection reason: the §4.3 guard rejects
+            // calibration while the mount is tracking, which the auto-bootstrap
+            // orchestrator used to hit with a misleading "need measurements" error.
+            auto st = controller_.getStatus();
+            if (st.state == controllers::MountController::MountStatus::State::TRACKING ||
+                st.state == controllers::MountController::MountStatus::State::MERIDIAN_FLIP) {
+                response->set_error_message("Bootstrap calibration rejected: mount is tracking or flipping");
+                return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                    "Stop tracking before running bootstrap calibration");
+            }
             response->set_error_message("Bootstrap calibration failed - need at least 2 measurements");
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
                               "Need at least 2 measurements for bootstrap calibration");
@@ -1403,7 +1413,14 @@ grpc::Status MountControllerServiceImpl::RunTPointCalibration(grpc::ServerContex
         if (controller_.runTPointCalibration()) {
             return grpc::Status::OK;
         } else {
-            return grpc::Status(grpc::StatusCode::INTERNAL, "Failed to run TPOINT calibration");
+            auto st = controller_.getStatus();
+            if (st.state == controllers::MountController::MountStatus::State::TRACKING ||
+                st.state == controllers::MountController::MountStatus::State::MERIDIAN_FLIP) {
+                return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                    "Stop tracking before running TPOINT calibration");
+            }
+            return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                "Need at least 3 measurements for TPOINT calibration");
         }
     } catch (const std::exception& e) {
         return grpc::Status(grpc::StatusCode::INTERNAL, std::string("Error: ") + e.what());
