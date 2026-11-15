@@ -3611,8 +3611,12 @@ public:
                                     publishPositionCommand(new_axis1_target, new_axis2_target, pos_vel_axis1, pos_vel_axis2);
                                     pos_ok = true;
                                 } else if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel_axis1, config_.mount_config.slew_acceleration);
-                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel_axis2, config_.mount_config.slew_acceleration);
+                                    // Use the tracking acceleration (not the slew
+                                    // acceleration) so the drive ramps gently between
+                                    // position-target updates instead of overshooting the
+                                    // stepped target (the 2-3" RA sawtooth symptom).
+                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel_axis1, config_.mount_config.tracking_acceleration);
+                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel_axis2, config_.mount_config.tracking_acceleration);
                                     pos_ok = ok1 && ok2;
                                 } else {
                                     // Simulated tracking — position targets are
@@ -3622,8 +3626,15 @@ public:
                                 }
 
                                 if (diag_log) {
-                                    double drv1 = raw_servo_axis1_position_;
-                                    double drv2 = raw_servo_axis2_position_;
+                                    // Log the drive position in the SAME frame as the
+                                    // target (raw drive frame, home offset NOT added).
+                                    // raw_servo_axis* is stored with the home offset
+                                    // ADDED, so comparing it against the raw target made
+                                    // the Delta field show the home offset (~11 turns for
+                                    // the STM42M persisted multi-turn counter) and looked
+                                    // like a runaway even though the drive tracked fine.
+                                    double drv1 = ref1;
+                                    double drv2 = ref2;
                                     // Read motor status to detect faults
                                     bool en0 = hal_axis1_motor_ ? hal_axis1_motor_->isEnabled() : false;
                                     bool en1 = hal_axis2_motor_ ? hal_axis2_motor_->isEnabled() : false;
@@ -3783,8 +3794,8 @@ public:
                                     publishPositionCommand(new_axis1_target, new_axis2_target, pos_vel_axis1, pos_vel_axis2);
                                     pos_ok = true;
                                 } else if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel_axis1, config_.mount_config.slew_acceleration);
-                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel_axis2, config_.mount_config.slew_acceleration);
+                                    bool ok1 = hal_axis1_motor_->setPosition(new_axis1_target, pos_vel_axis1, config_.mount_config.tracking_acceleration);
+                                    bool ok2 = hal_axis2_motor_->setPosition(new_axis2_target, pos_vel_axis2, config_.mount_config.tracking_acceleration);
                                     pos_ok = ok1 && ok2;
                                 } else {
                                     pos_ok = true;
