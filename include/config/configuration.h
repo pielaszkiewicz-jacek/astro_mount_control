@@ -155,6 +155,7 @@ public:
         double tracking_pos_velocity_margin{1.0};
         // Position-mode target update cadence [Hz] (EQUATORIAL position mode).
         int tracking_pos_update_hz{10};
+        int tracking_error_retries{3};
 
         // Per-axis rotation direction inversion.
         // When true, the motor target position/velocity for this axis is negated.

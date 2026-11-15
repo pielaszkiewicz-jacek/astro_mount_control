@@ -36,7 +36,7 @@ Od zmian 2026-10-11 dostępny jest selektor `mount.tracking_mode`:
 
 | Wartość | Zachowanie |
 |---------|------------|
-| `auto` (domyślnie) | EQUATORIAL → tryb pozycyjny; ALT_AZ / CASUAL → tryb prędkościowy |
+| `auto` (domyślnie) | tryb pozycyjny (`setPosition`) dla wszystkich typów montażu |
 | `position` | tryb pozycyjny (`setPosition`) dla wszystkich typów montażu |
 | `velocity` | tryb prędkościowy (`setVelocity`) dla wszystkich typów montażu |
 

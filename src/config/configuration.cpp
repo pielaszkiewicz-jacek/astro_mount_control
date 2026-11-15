@@ -275,6 +275,7 @@ public:
         config.tracking_pos_lead_seconds = mount.value("tracking_pos_lead_seconds", 2.0);
         config.tracking_pos_velocity_margin = mount.value("tracking_pos_velocity_margin", 1.0);
         config.tracking_pos_update_hz = mount.value("tracking_pos_update_hz", 10);
+        config.tracking_error_retries = mount.value("tracking_error_retries", 3);
         config.tracking_mode = mount.value("tracking_mode", "auto");
         config.auto_track_after_goto = mount.value("auto_track_after_goto", true);
         
@@ -551,6 +552,7 @@ public:
         mount["tracking_pos_lead_seconds"] = config.tracking_pos_lead_seconds;
         mount["tracking_pos_velocity_margin"] = config.tracking_pos_velocity_margin;
         mount["tracking_pos_update_hz"] = config.tracking_pos_update_hz;
+        mount["tracking_error_retries"] = config.tracking_error_retries;
         mount["tracking_mode"] = config.tracking_mode;
         mount["auto_track_after_goto"] = config.auto_track_after_goto;
 
@@ -945,6 +947,7 @@ private:
         mount_default.tracking_pos_lead_seconds = 2.0;
         mount_default.tracking_pos_velocity_margin = 1.0;
         mount_default.tracking_pos_update_hz = 10;
+        mount_default.tracking_error_retries = 3;
         mount_default.tracking_mode = "auto";
         mount_default.auto_track_after_goto = true;
         

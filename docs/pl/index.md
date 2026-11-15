@@ -54,7 +54,6 @@ flowchart TB
     classDef hw fill:#efebe9,stroke:#4e342e,stroke-width:2px,color:#3e2723
     classDef cfg fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#004d40
     classDef driver fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
-    classDef driver fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
 
     subgraph WEBUI["🌐 Interfejs Web"]
         SPA["SPA w przeglądarce<br/>web/public/index.html<br/>Vanilla JS · 6 zakładek"]

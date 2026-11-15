@@ -721,6 +721,24 @@ TEST_F(MountControllerTest, BootstrapCalibrationWithThreeMeasurements) {
     EXPECT_TRUE(controller_->isBootstrapCalibrated());
 }
 
+TEST_F(MountControllerTest, BootstrapCalibrationRejectedDuringTracking) {
+    // Calibration during active tracking would change the orientation/model
+    // mid-session and inject a position jump, so it must be rejected even with
+    // a well-conditioned measurement set.
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL));
+
+    controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1, 0.0, 45.1);
+    controller_->addBootstrapMeasurement(10.0, 30.0, 10.05, 30.05, 30.0, 30.05);
+    controller_->addBootstrapMeasurement(8.0, 60.0, 8.05, 60.05, -30.0, 60.05);
+
+    EXPECT_FALSE(controller_->runBootstrapCalibration());
+    EXPECT_FALSE(controller_->isBootstrapCalibrated());
+
+    controller_->stop();
+}
+
 TEST_F(MountControllerTest, ClearBootstrapMeasurements) {
     controller_->initialize(config_);
     controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1);
@@ -984,6 +1002,38 @@ TEST_F(MountControllerTest, ClearTPointMeasurements) {
     controller_->addTPointMeasurement(12.0, 30.0, 12.0, 30.0, 4.0, 30.0, 15.0, 1013.25);
     controller_->clearTPointMeasurements();
     EXPECT_FALSE(controller_->runTPointCalibration());
+}
+
+TEST_F(MountControllerTest, TPointCalibrationRejectedDuringTracking) {
+    // Calibration during active tracking would change the model mid-session and
+    // inject a position jump, so it must be rejected even with a valid set.
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+    EXPECT_TRUE(controller_->startTracking(12.0, 45.0, config::TrackingMode::SIDEREAL));
+
+    controller_->addTPointMeasurement(10.0, 45.0, 10.0, 45.0, 2.0, 45.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(12.0, 30.0, 12.0, 30.0, 4.0, 30.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(14.0, 60.0, 14.0, 60.0, 6.0, 60.0, 15.0, 1013.25);
+
+    EXPECT_FALSE(controller_->runTPointCalibration());
+    EXPECT_FALSE(controller_->getStatus().tpoint_calibrated);
+
+    controller_->stop();
+}
+
+TEST_F(MountControllerTest, TPointCalibrationRejectedForWildResiduals) {
+    // A model whose residuals are implausibly large (e.g. measurements recorded
+    // mid-slew) must not be activated as a valid calibration.  Dec offsets of
+    // ~1° stay below the ±2° index sanity check but produce arcminute-scale
+    // residuals that the post-fit quality gate must reject.
+    controller_->initialize(config_);
+
+    controller_->addTPointMeasurement(10.0, 46.0, 10.0, 45.0, 2.0, 45.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(12.0, 31.2, 12.0, 30.0, 4.0, 30.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(14.0, 60.8, 14.0, 60.0, 6.0, 60.0, 15.0, 1013.25);
+
+    EXPECT_FALSE(controller_->runTPointCalibration());
+    EXPECT_FALSE(controller_->getStatus().tpoint_calibrated);
 }
 
 

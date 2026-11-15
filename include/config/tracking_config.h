@@ -36,6 +36,7 @@ struct TrackingConfig {
     int  safety_check_decimation{1}; // io iterations between safety-monitor reads
     bool split_tracking_loop{true};  // true: calc + io threads; false: single legacy loop
     int  tracking_pos_update_hz{10}; // position-mode target update cadence [Hz] (EQ position mode)
+    int  tracking_error_retries{3};   // transient numerical-error retries per session (0 disables)
     bool io_realtime{true};          // promote io thread to SCHED_FIFO (best effort)
     int  io_realtime_priority{40};   // SCHED_FIFO priority for the io thread
     bool pdo_fast_path{true};        // use TPDO1 reads + RPDO2 writes on the hot path

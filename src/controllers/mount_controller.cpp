@@ -1895,8 +1895,6 @@ public:
                 // are detected via last_sent_rate_* thresholds).
                 // Reset drift-correction state for the new tracking session.
                 drift_correction_initialized_ = false;
-                drift_expected_axis1_ = 0.0;
-                drift_expected_axis2_ = 0.0;
                 drift_trim_axis1_ = 0.0;
                 drift_trim_axis2_ = 0.0;
                 last_drift_correction_time_ = std::chrono::steady_clock::time_point{};
@@ -2059,8 +2057,6 @@ public:
                 // trajectory starts from the current physical position rather than
                 // stale integrated values left over from a previous session.
                 drift_correction_initialized_ = false;
-                drift_expected_axis1_ = 0.0;
-                drift_expected_axis2_ = 0.0;
                 drift_trim_axis1_ = 0.0;
                 drift_trim_axis2_ = 0.0;
                 last_drift_correction_time_ = std::chrono::steady_clock::time_point{};
@@ -2101,9 +2097,17 @@ public:
             last_refraction_correction_axis1_ = 0.0;
             last_refraction_correction_axis2_ = 0.0;
             corrections_primed_ = false;
-            // Reset the persistent guider offset for the new tracking session.
+            refraction_masked_ = false;
+            smoothed_rate_factor_ = 1.0;
+            rate_factor_primed_ = false;
+            tracking_error_retry_count_ = 0;
+            // Reset the persistent guider offset and any not-yet-consumed guider
+            // delta for the new tracking session (a stale delta would be applied
+            // as a spurious first-iteration pulse).
             guider_pos_offset_axis1_ = 0.0;
             guider_pos_offset_axis2_ = 0.0;
+            guider_delta_axis1_ = 0.0;
+            guider_delta_axis2_ = 0.0;
 
             tracking_active_ = true;
             // Reset the split-loop command snapshot (no stale command on start).
@@ -2151,6 +2155,10 @@ public:
                 auto now = std::chrono::steady_clock::now();
                 double dt = std::chrono::duration<double>(now - last_iteration).count();
                 last_iteration = now;
+                // Clamp the integration step while keeping the raw dt for the
+                // watchdog. A scheduler stall (or suspend/resume) must not inject
+                // a multi-degree position step in a single iteration.
+                const double step_dt = std::min(dt, 1.0);
                 
                 // Flags for state transitions that happen mid-iteration inside the lock.
                 // These are checked after the lock scope ends so callbacks can fire
@@ -2279,6 +2287,14 @@ public:
                 {   // Inner scope for state_mutex_ lock — computation only, no I/O
                 std::lock_guard<std::shared_mutex> lock(*state_mutex_);
                 
+                // Keep the reported physical position fresh during tracking.
+                // enc_meas* were snapshotted from the raw drive frame above, so
+                // add the home offset to match raw_servo_axis*'s telescope frame.
+                if (have_encoder_measurement) {
+                    raw_servo_axis1_position_ = enc_meas1 + home_offset_axis1_;
+                    raw_servo_axis2_position_ = enc_meas2 + home_offset_axis2_;
+                }
+
                 if (!tracking_active_) break;
                 if (state_ != MountStatus::State::TRACKING &&
                     state_ != MountStatus::State::MERIDIAN_FLIP) break;
@@ -2326,6 +2342,20 @@ public:
                     error_message_ = "Numerical error: NaN/Inf rate factor from soft limit evaluation";
                     break;
                 }
+
+                // Smooth the soft-limit deceleration factor so crossing a zone
+                // boundary does not produce a step change in commanded velocity.
+                // The hard-limit ERROR path (checked separately on
+                // soft_limit_distance_* < 0) is unaffected by this smoothing.
+                if (!rate_factor_primed_) {
+                    smoothed_rate_factor_ = rate_factor;
+                    rate_factor_primed_ = true;
+                } else {
+                    constexpr double RATE_FACTOR_SMOOTHING_ALPHA = 0.3;
+                    smoothed_rate_factor_ += RATE_FACTOR_SMOOTHING_ALPHA *
+                        (rate_factor - smoothed_rate_factor_);
+                }
+                rate_factor = smoothed_rate_factor_;
                 
                 // Watchdog: detect tracking loop thread freeze.
                 // If sleep_for(100ms) doesn't return (scheduler hang, I/O deadlock, kernel
@@ -2359,17 +2389,23 @@ public:
                 	guider_delta_axis2_ = 0.0;
                 }
                 
-                // Scale tracking rates in deceleration zone
+                // Scale tracking rates in the deceleration zone. Axis1 is always
+                // limited by the per-mount policy; axis2 is limited only when it is
+                // not the periodic azimuth-like axis, so it must keep full rate.
+                const SoftLimitPolicy rate_policy =
+                    softLimitPolicyFor(config_.mount_config.mount_type,
+                                       config_.mount_config.axis_convention);
+                const double rate_factor_axis2 = rate_policy.limit_axis2 ? rate_factor : 1.0;
                 current_rate_1 *= rate_factor;
-                current_rate_2 *= rate_factor;
+                current_rate_2 *= rate_factor_axis2;
                 
                 // Update positions: rate-based kinematic advance only.  Guider
                 // position offsets are injected into the Kalman filter as a
                 // deterministic control input below (or added directly to the
                 // position when the filter is unavailable), so the correction is
                 // applied exactly once and independent of the loop interval (dt).
-                axis1_position_ += current_rate_1 * dt;
-                axis2_position_ += current_rate_2 * dt;
+                axis1_position_ += current_rate_1 * step_dt;
+                axis2_position_ += current_rate_2 * step_dt;
                 // Accumulate the persistent guider offset so position/velocity
                 // targets below are shifted by the total guide correction, not
                 // just for a single iteration.
@@ -2442,7 +2478,7 @@ public:
                     // rates (from Kalman gain * position residual), which lag behind
                     // the actual tracking rates and degrade prediction accuracy.
                     position_kf_->setRates(current_rate_1, current_rate_2);
-                    position_kf_->predict(dt);
+                    position_kf_->predict(step_dt);
                     // Guider corrections enter the filter as a deterministic control
                     // input, so they are applied in full as commanded motion instead
                     // of being attenuated by the Kalman gain as if they were noise.
@@ -2554,9 +2590,31 @@ public:
                 // approach (rate-based, see below), so skip EQUATORIAL-specific corrections.
                 if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
                     if (!applyEquatorialCorrections(snap_temperature)) {
+                        // Numerical correction failure (NaN/Inf).  If the session still
+                        // has retries left, re-prime the correction state and retry the
+                        // iteration instead of terminating on a single transient glitch.
+                        // Safety errors (soft limit / HAL safety) are handled elsewhere
+                        // and are never retried here.
+                        if (config_.tracking_config.tracking_error_retries > 0 &&
+                            tracking_error_retry_count_ < config_.tracking_config.tracking_error_retries) {
+                            ++tracking_error_retry_count_;
+                            MOUNT_LOG_WARN("Tracking correction glitch - re-priming and retrying ({}/{})",
+                                           tracking_error_retry_count_,
+                                           config_.tracking_config.tracking_error_retries);
+                            corrections_primed_ = false;
+                            last_nutation_correction_axis1_ = 0.0;
+                            last_nutation_correction_axis2_ = 0.0;
+                            last_tpoint_correction_axis1_ = 0.0;
+                            last_tpoint_correction_axis2_ = 0.0;
+                            last_refraction_correction_axis1_ = 0.0;
+                            last_refraction_correction_axis2_ = 0.0;
+                            state_ = MountStatus::State::TRACKING;
+                            error_message_.clear();
+                            continue;
+                        }
                         break;
                     }
-                }                
+                }
                 // --- ALT-AZ and CASUAL astronomical corrections ---
                 // Apply nutation, TPoint, and atmospheric refraction corrections as
                 // mount position offsets before computing position-dependent rates.
@@ -2981,6 +3039,18 @@ public:
                         state_ = MountStatus::State::TRACKING;
                         flip_soft_limit_cooldown_ = 10;  // Skip soft limit check for 10 iterations (~200ms)
                         flip_completed_ = true;
+
+                        // The HA/Dec discontinuity of a flip invalidates the
+                        // previous astronomical corrections.  Prime them again so
+                        // the next iteration applies the new absolute corrections
+                        // instead of a large (new − pre-flip) delta jump.
+                        corrections_primed_ = false;
+                        last_nutation_correction_axis1_ = 0.0;
+                        last_nutation_correction_axis2_ = 0.0;
+                        last_tpoint_correction_axis1_ = 0.0;
+                        last_tpoint_correction_axis2_ = 0.0;
+                        last_refraction_correction_axis1_ = 0.0;
+                        last_refraction_correction_axis2_ = 0.0;
                         
                         // Set axis targets to flip targets (now matching current position)
                         axis1_target_ = flip_ha_target_;
@@ -3154,6 +3224,17 @@ public:
                             MOUNT_LOG_INFO("Tracking mode: POSITION (equatorial_tracking_velocity_mode=false)");
                             pos_mode_logged_ = true;
                         }
+                        // EQUATORIAL position-mode correction scope (documented
+                        // limitation, docs/pl/analiza_mechanizmu_sledzenia_2026-11-15.md
+                        // §4.1): applyEquatorialCorrections() applies the incremental
+                        // nutation / TPOINT / refraction corrections to the INTERNAL
+                        // axis1/2_position_ state (used for status and diagnostics),
+                        // but they are not folded into the drive target below.  The
+                        // target uses the one-time TPOINT inversion from startTracking()
+                        // plus a constant lead; the time-varying correction component
+                        // remains diagnostic-only until a feed-forward rate scheme is
+                        // adopted.  ALT_AZ / CASUAL close this loop via true-sky
+                        // recomputation each update.
                         // Recompute the celestial target and send a new
                         // setPositionTarget at the configured cadence
                         // (tracking_pos_update_hz, default 10 Hz).  The interval
@@ -3697,26 +3778,19 @@ public:
                         // ── Drift correction (velocity feed-forward + slow trim) ──
                         // Pure velocity steering is an open position loop: any
                         // velocity error (drive PID inaccuracy, backlash, slip)
-                        // integrates into unbounded position drift.  Integrate a
-                        // reference trajectory from the commanded velocity and
-                        // periodically measure the real drive position, then trim
-                        // the velocity command:
-                        //     v_cmd = v_nominal + Kp * (expected - actual)
-                        // The correction is low-bandwidth (once per second) so it
+                        // integrates into unbounded position drift.  Every
+                        // correction interval, close the loop against the absolute
+                        // sky target (HA = LST - RA) recomputed from the tracked
+                        // RA/Dec, then trim the velocity command:
+                        //     v_cmd = v_nominal + Kp * (sky_target - actual)
+                        // The correction is low-bandwidth (every 0.5 s) so it
                         // does not fight the drive's internal velocity loop.
                         if (!drift_correction_initialized_) {
                             double init1 = 0.0, init2 = 0.0;
                             if (readActualAxisPositions(init1, init2)) {
-                                drift_expected_axis1_ = init1;
-                                drift_expected_axis2_ = init2;
                                 drift_correction_initialized_ = true;
                                 last_drift_correction_time_ = now;
                             }
-                        } else {
-                            // Advance the reference trajectory by the velocity
-                            // actually commanded to the drive (nominal + trim).
-                            drift_expected_axis1_ += (eq_vel_rate_1 + drift_trim_axis1_) * dt;
-                            drift_expected_axis2_ += (eq_vel_rate_2 + drift_trim_axis2_) * dt;
                         }
 
                         if (drift_correction_initialized_) {
@@ -3832,21 +3906,17 @@ public:
                         // Pure velocity steering is an open position loop: any
                         // velocity error (wrong quaternion, refraction frame,
                         // drive PID inaccuracy) integrates into unbounded drift.
-                        // Integrate a reference trajectory from the commanded
-                        // velocity and periodically trim the velocity command
-                        // from the measured drive position, closing the loop at
-                        // low bandwidth (once per second).
+                        // Every correction interval, close the loop against the
+                        // absolute sky target recomputed from the tracked RA/Dec
+                        // (horizontal for ALT_AZ, mount-frame for CASUAL), then
+                        // trim the velocity command from the measured drive
+                        // position at low bandwidth (every 0.5 s).
                         if (!drift_correction_initialized_) {
                             double init1 = 0.0, init2 = 0.0;
                             if (readActualAxisPositions(init1, init2)) {
-                                drift_expected_axis1_ = init1;
-                                drift_expected_axis2_ = init2;
                                 drift_correction_initialized_ = true;
                                 last_drift_correction_time_ = now;
                             }
-                        } else {
-                            drift_expected_axis1_ += (smoothed_rate_1 + drift_trim_axis1_) * dt;
-                            drift_expected_axis2_ += (smoothed_rate_2 + drift_trim_axis2_) * dt;
                         }
 
                         if (drift_correction_initialized_) {
@@ -3859,8 +3929,8 @@ public:
                                 double act1 = 0.0, act2 = 0.0;
                                 if (readActualAxisPositions(act1, act2)) {
                                     last_drift_correction_time_ = now;
-                                    double err1 = drift_expected_axis1_ - act1;
-                                    double err2 = drift_expected_axis2_ - act2;
+                                    double err1 = 0.0;
+                                    double err2 = 0.0;
 
                                     // For CASUAL, close the loop against the
                                     // ABSOLUTE sky target (recomputed from the
@@ -4882,6 +4952,15 @@ public:
     }
     
     bool runBootstrapCalibration() {
+        {
+            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+            if (state_ == MountStatus::State::TRACKING ||
+                state_ == MountStatus::State::MERIDIAN_FLIP) {
+                MOUNT_LOG_WARN("Bootstrap calibration rejected: mount is tracking or flipping");
+                return false;
+            }
+        }
+
         if (bootstrap_measurements_.size() < 2) {
             return false;  // Need at least 2 stars for initial alignment
         }
@@ -5325,6 +5404,15 @@ public:
     }
     
     bool runTPointCalibration() {
+        {
+            std::shared_lock<std::shared_mutex> lock(*state_mutex_);
+            if (state_ == MountStatus::State::TRACKING ||
+                state_ == MountStatus::State::MERIDIAN_FLIP) {
+                MOUNT_LOG_WARN("TPOINT calibration rejected: mount is tracking or flipping");
+                return false;
+            }
+        }
+
         if (tpoint_measurements_.size() < 3) {
             return false;
         }
@@ -5630,6 +5718,20 @@ public:
                                min_r, max_r, mean_r);
             }
             
+            // Quality gate: do not activate a model whose residuals indicate a
+            // failed or ill-conditioned fit (misaligned mount, bad measurements,
+            // or an over-fit with outliers).
+            constexpr double TPOINT_MAX_RMS_ARCSEC = 120.0;
+            constexpr double TPOINT_MAX_MAX_ARCSEC = 360.0;
+            if (tpoint_residual_rms_arcsec_ > TPOINT_MAX_RMS_ARCSEC ||
+                tpoint_residual_max_arcsec_ > TPOINT_MAX_MAX_ARCSEC) {
+                MOUNT_LOG_ERROR("TPOINT calibration rejected by quality gate: "
+                                "RMS={:.2f} arcsec, max={:.2f} arcsec",
+                                tpoint_residual_rms_arcsec_, tpoint_residual_max_arcsec_);
+                tpoint_calibrated_ = false;
+                return false;
+            }
+
             tpoint_calibrated_ = true;
             calibration_count_++;
             return true;
@@ -8356,7 +8458,11 @@ private:
         // azimuth-like axis2 rate so the drive is never commanded to chase an
         // unbounded velocity; the closed-loop absolute target re-acquires the
         // object after the zenith passage.
-        if (config_.mount_config.mount_type == config::MountType::ALT_AZ) {
+        const bool alt_az_like =
+            config_.mount_config.mount_type == config::MountType::ALT_AZ ||
+            (config_.mount_config.mount_type == config::MountType::CASUAL &&
+             config_.mount_config.axis_convention != config::AxisConvention::EQUATORIAL_LIKE);
+        if (alt_az_like) {
             const double alt_tel = axis1_position_ / ha_gear_local;
             constexpr double ZENITH_ZONE_DEG = 85.0;
             if (alt_tel > ZENITH_ZONE_DEG) {
@@ -8694,6 +8800,7 @@ private:
         //  inherently bounded and cannot infinite-loop)
         current_ra = std::fmod(current_ra, 24.0);
         if (current_ra < 0.0) current_ra += 24.0;
+        const double axis1_for_tp = axis1_position_;
         
         // Apply nutation to get apparent RA.
         // Normalize Dec to [-90, 90] for nutation calculation.
@@ -8721,34 +8828,41 @@ private:
         // the mount is within 0.1° of the celestial pole.
         constexpr double NUTATION_POLE_GUARD_DEG = 0.1;
         double nutation_correction_axis1 = 0.0;
+        double nutation_correction_axis2 = 0.0;
         if (std::abs(dec_for_nutation) < (90.0 - NUTATION_POLE_GUARD_DEG)) {
             auto [app_ra, app_dec] = astro_calc_->applyNutation(current_ra, dec_for_nutation, jd);
 
             // The nutation difference in RA (hours) translates to a HA position correction.
-            // Convert telescope degrees → servo degrees by multiplying by gear_ratio.
+            // Convert telescope degrees -> servo degrees by multiplying by gear_ratio.
             double ra_correction_hours = app_ra - current_ra;
             // Normalize to [-12, 12] hours
             if (ra_correction_hours > 12.0) ra_correction_hours -= 24.0;
             if (ra_correction_hours < -12.0) ra_correction_hours += 24.0;
             nutation_correction_axis1 = ra_correction_hours * 15.0 * ha_gear_eq;
+            // Dec nutation component (telescope deg -> servo deg).  Sub-arcsecond
+            // scale, but completes the correction on both axes.
+            nutation_correction_axis2 = (app_dec - dec_for_nutation) * dec_gear_eq_nut;
         }
         // Apply only the DELTA (change from last iteration) to prevent
         // cumulative correction accumulation (E1 fix).
-        double nutation_delta = corrections_primed_
+        double nutation_delta1 = corrections_primed_
             ? (nutation_correction_axis1 - last_nutation_correction_axis1_) : 0.0;
-        axis1_position_ += nutation_delta;
+        double nutation_delta2 = corrections_primed_
+            ? (nutation_correction_axis2 - last_nutation_correction_axis2_) : 0.0;
+        axis1_position_ += nutation_delta1;
+        axis2_position_ += nutation_delta2;
         last_nutation_correction_axis1_ = nutation_correction_axis1;
-        last_nutation_correction_axis2_ = 0.0;  // nutation in Dec is handled via current_dec
-        
+        last_nutation_correction_axis2_ = nutation_correction_axis2;
+
         // Guard against NaN propagation from nutation calculation.
-        // If axis1_position_ becomes non-finite, transition to ERROR immediately
+        // If either axis becomes non-finite, transition to ERROR immediately
         // rather than letting NaN propagate through the tracking loop (where it
         // would defeat the HA normalisation while-loop guards).
-        if (!std::isfinite(axis1_position_)) {
-            MOUNT_LOG_ERROR("Nutation correction produced non-finite axis1_position_={}",
-                     axis1_position_);
+        if (!std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
+            MOUNT_LOG_ERROR("Nutation correction produced non-finite position: "
+                     "axis1={}, axis2={}", axis1_position_, axis2_position_);
             state_ = MountStatus::State::ERROR;
-            error_message_ = "Numerical error: NaN/Inf in axis1 after nutation correction";
+            error_message_ = "Numerical error: NaN/Inf after nutation correction";
             return false;
         }
         
@@ -8763,7 +8877,7 @@ private:
             // mount_dec in telescope degrees.
             const double ha_gear_tp = haGear();
             const double dec_gear_tp = decGear();
-            double ha_for_tp = axis1_position_ / 15.0 / ha_gear_tp;  // servo deg → telescope hours
+            double ha_for_tp = axis1_for_tp / 15.0 / ha_gear_tp;  // pre-nutation servo deg -> telescope hours
             double dec_for_tp = axis2_position_ / dec_gear_tp;        // servo deg → telescope deg
             // Pass snapshotted temperature for thermal compensation in
             // axis_nonperp_temp_coeff, temp_flexure_coeff, temp_encoder_coeff,
@@ -8806,80 +8920,85 @@ private:
         }
         
         // ---- Atmospheric refraction correction ----
-        // Refraction lifts celestial objects, making them appear higher than
-        // their true altitude. As altitude changes during tracking, the refraction
-        // varies — causing apparent RA/Dec drift that must be compensated.
-        // This converts the true position → apparent position and applies the
-        // difference as a mount position correction.
+        // Refraction lifts celestial objects and varies continuously with
+        // altitude.  Track the correction state every iteration so a horizon
+        // transition never leaves a stale baseline that later injects a jump.
         if (config_.safety_config.enable_refraction_correction) {
             double jd = core::AstronomicalCalculations::getCurrentJulianDate();
             double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
-            // axis1_position_ is in servo degrees; convert to telescope HA hours
             const double ha_gear_ref = haGear();
             double ha_hours = axis1_position_ / 15.0 / ha_gear_ref;
             double current_ra = lst - ha_hours;
             current_ra = std::fmod(current_ra, 24.0);
             if (current_ra < 0.0) current_ra += 24.0;
-            
-            // Get true horizontal coordinates (without refraction).
-            // axis2_position_ is in servo degrees; convert to telescope Dec
-            // using the Dec gear ratio (not HA gear ratio).
+
             const double dec_gear_ref = decGear();
             auto [alt_true, az] = astro_calc_->equatorialToHorizontal(
                 current_ra, axis2_position_ / dec_gear_ref, jd, false);
-            
-            // Compute refraction correction
-            double refraction_deg = astro_calc_->applyAtmosphericRefraction(alt_true, az, jd);
-            
+
+            // Refraction is only valid above the horizon; mask it below a safe
+            // altitude so the steep model gradient cannot inject jitter.  Apply
+            // hysteresis so the mask does not flutter on/off while the object
+            // hovers near the horizon boundary.
+            constexpr double REFR_MASK_OFF_DEG = -5.0;   // mask when at/below this altitude
+            constexpr double REFR_MASK_ON_DEG  = -3.0;   // unmask when above this altitude
+            if (alt_true <= REFR_MASK_OFF_DEG) {
+                refraction_masked_ = true;
+            } else if (alt_true > REFR_MASK_ON_DEG) {
+                refraction_masked_ = false;
+            }
+            double refraction_deg = 0.0;
+            if (!refraction_masked_) {
+                refraction_deg = astro_calc_->applyAtmosphericRefraction(alt_true, az, jd);
+                if (!std::isfinite(refraction_deg) || refraction_deg < 0.0) {
+                    refraction_deg = 0.0;
+                }
+            }
+
+            double refr_correction_axis1 = 0.0;
+            double refr_correction_axis2 = 0.0;
             if (refraction_deg > 0.0) {
-                // Apparent altitude = true altitude + refraction
                 double alt_app = alt_true + refraction_deg;
-                
-                // Convert apparent horizontal back to equatorial (without removing refraction,
-                // since we manually added it above)
                 auto [ra_refracted, dec_refracted] = astro_calc_->horizontalToEquatorial(
                     alt_app, az, jd, false);
-                
-                // Compute RA correction (hours → servo degrees via * 15 * gear_ratio)
+
                 double ra_correction_hours = ra_refracted - current_ra;
                 if (ra_correction_hours > 12.0) ra_correction_hours -= 24.0;
                 if (ra_correction_hours < -12.0) ra_correction_hours += 24.0;
-                
-                // Apply refraction correction using delta tracking (E1 fix).
-                // Compute absolute corrections, then apply only the change.
-                double refr_correction_axis1 = ra_correction_hours * 15.0 * ha_gear_eq;
-                
-                // Dec correction: convert telescope degrees → servo degrees
-                // (dec_gear_ref already defined above)
+
+                // Clamp the RA refraction contribution: it is arcminute-scale
+                // above a few degrees of altitude; larger values are numerical
+                // artefacts near the horizon.
+                constexpr double MAX_REFR_RA_TEL_DEG = 1.0;
+                double ra_tel_deg = ra_correction_hours * 15.0;
+                ra_tel_deg = std::clamp(ra_tel_deg, -MAX_REFR_RA_TEL_DEG, MAX_REFR_RA_TEL_DEG);
+                ra_correction_hours = ra_tel_deg / 15.0;
+
+                refr_correction_axis1 = ra_correction_hours * 15.0 * ha_gear_eq;
+
                 double dec_correction = (dec_refracted - (axis2_position_ / dec_gear_ref));
-                // Refraction should never change declination by more than ~0.5° (30 arcmin).
-                // Larger values indicate numerical issues — clamp the Dec component to
-                // avoid wild corrections.  The RA component is always applied, and the
-                // delta-tracking state is ALWAYS updated; the previous `if (< 0.5)`
-                // skipped the whole correction and left the state stale, injecting a
-                // position jump on the next iteration.
                 dec_correction = std::clamp(dec_correction, -0.5, 0.5);
-                double refr_correction_axis2 = dec_correction * dec_gear_ref;
-                
-                // Apply only the DELTA to prevent cumulative correction
-                double refr_delta1 = corrections_primed_
-                    ? (refr_correction_axis1 - last_refraction_correction_axis1_) : 0.0;
-                double refr_delta2 = corrections_primed_
-                    ? (refr_correction_axis2 - last_refraction_correction_axis2_) : 0.0;
-                axis1_position_ += refr_delta1;
-                axis2_position_ += refr_delta2;
-                last_refraction_correction_axis1_ = refr_correction_axis1;
-                last_refraction_correction_axis2_ = refr_correction_axis2;
-                
-                // Guard against NaN propagation from refraction correction.
-                if (!std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
-                    MOUNT_LOG_ERROR("Refraction correction produced non-finite position: "
-                             "axis1={}, axis2={}, refraction={:.4f}°",
-                             axis1_position_, axis2_position_, refraction_deg);
-                    state_ = MountStatus::State::ERROR;
-                    error_message_ = "Numerical error: NaN/Inf after refraction correction";
-                    return false;
-                }
+                refr_correction_axis2 = dec_correction * dec_gear_ref;
+            }
+
+            // Always apply the delta and update the baseline so the correction
+            // state stays continuous across horizon transitions.
+            double refr_delta1 = corrections_primed_
+                ? (refr_correction_axis1 - last_refraction_correction_axis1_) : 0.0;
+            double refr_delta2 = corrections_primed_
+                ? (refr_correction_axis2 - last_refraction_correction_axis2_) : 0.0;
+            axis1_position_ += refr_delta1;
+            axis2_position_ += refr_delta2;
+            last_refraction_correction_axis1_ = refr_correction_axis1;
+            last_refraction_correction_axis2_ = refr_correction_axis2;
+
+            if (!std::isfinite(axis1_position_) || !std::isfinite(axis2_position_)) {
+                MOUNT_LOG_ERROR("Refraction correction produced non-finite position: "
+                         "axis1={}, axis2={}, refraction={:.4f}°",
+                         axis1_position_, axis2_position_, refraction_deg);
+                state_ = MountStatus::State::ERROR;
+                error_message_ = "Numerical error: NaN/Inf after refraction correction";
+                return false;
             }
         }
         corrections_primed_ = true;
@@ -8992,6 +9111,7 @@ private:
 
         double ha = out_ha_hours;
         double enc_dec = out_dec_deg;
+        bool converged = false;
         for (int i = 0; i < 8; ++i) {
             const double obs_ra = lst - ha;
             auto [sky_ra, sky_dec] = tpoint_model_->applyCorrections(
@@ -9004,14 +9124,18 @@ private:
 
             const double next_ha = ha + (sky_ra - ra);
             const double next_dec = enc_dec + (dec - sky_dec);
-            const bool converged = std::abs(next_ha - ha) < 1e-9 &&
-                                   std::abs(next_dec - enc_dec) < 1e-9;
+            if (std::abs(next_ha - ha) < 1e-9 &&
+                std::abs(next_dec - enc_dec) < 1e-9) {
+                ha = next_ha;
+                enc_dec = next_dec;
+                converged = true;
+                break;
+            }
             ha = next_ha;
             enc_dec = next_dec;
-            if (converged) break;
         }
 
-        if (!std::isfinite(ha) || !std::isfinite(enc_dec)) {
+        if (!converged || !std::isfinite(ha) || !std::isfinite(enc_dec)) {
             out_ha_hours = lst - ra;
             out_dec_deg = dec;
             return false;
@@ -9102,6 +9226,15 @@ private:
     double last_refraction_correction_axis1_{0.0};
     double last_refraction_correction_axis2_{0.0};
     bool corrections_primed_{false};   // true after the first correction cycle primes the deltas
+    bool refraction_masked_{false};    // refraction masked off while below the horizon (hysteresis)
+
+    // Soft-limit deceleration-zone rate factor smoothing state.
+    double smoothed_rate_factor_{1.0};
+    bool rate_factor_primed_{false};
+
+    // Bounded auto-recovery from transient numerical tracking glitches; the
+    // retry budget is configured via tracking_config.tracking_error_retries.
+    int tracking_error_retry_count_{0};
     
     // Cached last-sent CANopen/HAL motor rates for rate-change detection.
     // The tracking loop sends setVelocity / setVelocityTarget every 100ms
@@ -9112,18 +9245,15 @@ private:
     double last_sent_rate_2_{std::numeric_limits<double>::quiet_NaN()};
     
     // ── Velocity-mode drift correction ─────────────────────────────────
-    // In equatorial velocity mode the drive is steered purely by velocity
-    // commands (an open position loop), so any velocity error integrates
-    // into unbounded position drift.  These members implement a slow,
-    // low-bandwidth trim on top of the velocity feed-forward:
+    // In velocity mode the drive is steered by a velocity command (an open
+    // position loop), so any velocity error integrates into position drift.
+    // Every correction interval the controller measures the real drive
+    // position against the absolute sky target and applies a proportional,
+    // clamped velocity trim:
     //   v_cmd = v_nominal + drift_trim
-    // drift_expected_* is the reference trajectory (integrated from the
-    // commanded velocity); drift_trim_* is recomputed every correction
-    // interval from the position error measured against the real drive.
+    //   drift_trim = Kp * (sky_target - actual), |trim| <= DRIFT_MAX_TRIM_DPS
     bool drift_correction_initialized_{false};
     std::chrono::steady_clock::time_point last_drift_correction_time_{};
-    double drift_expected_axis1_{0.0};   // [servo deg] integrated reference
-    double drift_expected_axis2_{0.0};   // [servo deg] integrated reference
     double drift_trim_axis1_{0.0};       // [servo deg/s] persistent velocity trim
     double drift_trim_axis2_{0.0};       // [servo deg/s] persistent velocity trim
     

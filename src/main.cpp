@@ -296,6 +296,7 @@ int main(int argc, char* argv[]) {
         track_cfg.pdo_velocity_mapping = cfg_mount.pdo_velocity_mapping;
         track_cfg.sdo_slow_control = cfg_mount.sdo_slow_control;
         track_cfg.tracking_pos_update_hz = cfg_mount.tracking_pos_update_hz;
+        track_cfg.tracking_error_retries = cfg_mount.tracking_error_retries;
         // Guider parameters
         auto guider_cfg = config.getGuiderConfig();
         track_cfg.enable_guider = guider_cfg.enabled;

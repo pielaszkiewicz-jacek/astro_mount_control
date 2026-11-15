@@ -43,6 +43,9 @@ find_package(PkgConfig REQUIRED)
 # The camera service drives a real CCD (e.g. PlayerOne indi_playerone) through
 # indiserver when CAMERA_INDI_DEVICE is set.
 pkg_check_modules(INDI REQUIRED libindi)
+# libindi.pc on Debian/Ubuntu ships an empty `Libs:` field, so the INDI
+# client symbols (INDI::BaseClient / INDI::AbstractBaseClient) must be
+# linked explicitly against libindiclient.
 
 # Use SOFA library directly from the project (sofa directory)
 file(GLOB SOFA_SOURCES sofa/*.c)
@@ -391,6 +394,7 @@ target_link_libraries(astro_mount_controller
     gRPC::grpc++
     protobuf::libprotobuf
     ${INDI_LIBRARIES}
+    indiclient
 )
 
 target_include_directories(astro_mount_controller PRIVATE
