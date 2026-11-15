@@ -272,7 +272,7 @@ public:
         config.pdo_velocity_mapping = mount.value("pdo_velocity_mapping", false);
         config.sdo_slow_control = mount.value("sdo_slow_control", true);
         config.tracking_pos_velocity_factor = mount.value("tracking_pos_velocity_factor", 1.0);
-        config.tracking_pos_lead_seconds = mount.value("tracking_pos_lead_seconds", 2.0);
+        config.tracking_pos_lead_seconds = mount.value("tracking_pos_lead_seconds", 0.5);
         config.tracking_pos_velocity_margin = mount.value("tracking_pos_velocity_margin", 1.0);
         config.tracking_pos_update_hz = mount.value("tracking_pos_update_hz", 10);
         config.tracking_error_retries = mount.value("tracking_error_retries", 3);
@@ -944,7 +944,7 @@ private:
         // Equatorial tracking mode (default: position mode)
         mount_default.equatorial_tracking_velocity_mode = false;
         mount_default.tracking_pos_velocity_factor = 1.0;
-        mount_default.tracking_pos_lead_seconds = 2.0;
+        mount_default.tracking_pos_lead_seconds = 0.5;
         mount_default.tracking_pos_velocity_margin = 1.0;
         mount_default.tracking_pos_update_hz = 10;
         mount_default.tracking_error_retries = 3;

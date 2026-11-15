@@ -770,9 +770,9 @@ private:
         // For moving objects, the main effect is the diurnal motion:
         // Apparent RA = Catalog RA - (Local Sidereal Time - Reference Time)
         
-        // Earth rotation rate: 15.041 arcseconds per sidereal second
-        // Convert to hours: 15.041 / 3600 = 0.004178 hours per second
-        const double earth_rotation_rate_hours_per_second = 0.004178;
+        // Earth rotation rate: 15.041067 arcseconds per sidereal second
+        // Convert to hours: 15.041067 / 3600 = 0.004178074 hours per second
+        const double earth_rotation_rate_hours_per_second = 0.004178074;
         
         // Time since ephemeris start, computed from the requested timestamp
         // (NOT system_clock::now(), which would be incorrect for historical/future queries)

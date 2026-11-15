@@ -23,6 +23,11 @@ struct TrackingRates {
     double axis2{0.0};
 };
 
+/// Sidereal rotation rate of the Earth in telescope degrees per second
+/// (360° / 86164.0905 s).  Single source of truth — components must not
+/// duplicate the truncated literal 0.004178 (≈0.96"/h systematic drift).
+inline constexpr double kSiderealDegPerSec = 360.0 / 86164.0905;
+
 /**
  * @brief Unified mount kinematics — computes tracking rates for every mount type
  *        from a single entry point.
@@ -104,7 +109,7 @@ private:
         TrackingRates out;
         switch (mode) {
             case config::TrackingMode::SIDEREAL:
-                out.axis1 = 0.004178 * gear_ha_;
+                out.axis1 = kSiderealDegPerSec * gear_ha_;
                 out.axis2 = 0.0;
                 break;
             case config::TrackingMode::SOLAR:

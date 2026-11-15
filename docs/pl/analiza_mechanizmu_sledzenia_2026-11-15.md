@@ -28,22 +28,26 @@ Poniższa tabela podsumowuje, które poprawki zostały zaaplikowane w
 | §4.8 | `rate_factor` per oś + wygładzanie | ✅ Zastosowano ([`mount_controller.cpp:2346`](../../src/controllers/mount_controller.cpp:2346)) |
 | §4.9 | Auto-recovery po błędzie numerycznym (konfigurowalne `tracking_error_retries`, domyślnie 3) | ✅ Zastosowano ([`mount_controller.cpp:2598`](../../src/controllers/mount_controller.cpp:2598)) |
 | §4.10 | Próg jakości kalibracji TPOINT | ✅ Zastosowano ([`mount_controller.cpp:5722`](../../src/controllers/mount_controller.cpp:5722)) |
-| §4.11A | Spójne ramki nutacja/TPOINT (pre-nutation snapshot) | ✅ Zastosowano ([`mount_controller.cpp:8803`](../../src/controllers/mount_controller.cpp:8803)) |
+| §4.11A | Spójne ramki nutacja/TPOINT (pre-nutation snapshot HA + Dec) | ✅ Zastosowano ([`mount_controller.cpp:8822`](../../src/controllers/mount_controller.cpp:8822)) |
 | §4.11B | Nutacja w Dec | ✅ Zastosowano ([`mount_controller.cpp:8841`](../../src/controllers/mount_controller.cpp:8841)) |
 | §4.11C | Cap zenitalny dla CASUAL | ✅ Zastosowano ([`mount_controller.cpp:8459`](../../src/controllers/mount_controller.cpp:8459)) |
 | §4.11D | Clamp `dt` | ✅ Zastosowano ([`mount_controller.cpp:2161`](../../src/controllers/mount_controller.cpp:2161)) |
 | §4.11F | Reset `guider_delta_*` | ✅ Zastosowano ([`mount_controller.cpp:2109`](../../src/controllers/mount_controller.cpp:2109)) |
-| §4.11G | Spójność dokumentacji `auto` | ✅ Zastosowano ([`wyznaczanie_predkosci_sledzenia.md:39`](wyznaczanie_predkosci_sledzenia.md:39)) |
+| §4.11G | Spójność dokumentacji `auto` (Markdown + komentarze C++) | ✅ Zastosowano ([`wyznaczanie_predkosci_sledzenia.md:39`](wyznaczanie_predkosci_sledzenia.md:39), [`mount_config.h:176`](../../include/config/mount_config.h:176)) |
 | §5a D | Odświeżanie `raw_servo_axis*` podczas śledzenia | ✅ Zastosowano ([`mount_controller.cpp:2294`](../../src/controllers/mount_controller.cpp:2294)) |
-| §4.1 / P1.3 | Zamknięcie pętli korekcji w position mode | ⚠️ Udokumentowano ograniczenie (opcja c) ([`mount_controller.cpp:3225`](../../src/controllers/mount_controller.cpp:3225)) |
+| §4.1 / P1.3 | Zamknięcie pętli korekcji w position mode | ✅ Zastosowano (opcja a — akumulacja delt korekcji do targetu, [`mount_controller.cpp:3569`](../../src/controllers/mount_controller.cpp:3569)) |
+| N1 (nowa) | Ujednolicona stała gwiazdowa `kSiderealDegPerSec` (0.004178 → 0.004178074) | ✅ Zastosowano ([`mount_kinematics.h:29`](../../include/core/mount_kinematics.h:29)) |
+| N2 (nowa) | Ujednolicony domyślny `tracking_pos_lead_seconds` (2.0 → 0.5) | ✅ Zastosowano ([`configuration.h:154`](../../include/config/configuration.h:154), [`configuration.cpp:275`](../../src/config/configuration.cpp:275)) |
 | §4.7 | Dobór leadu | ⚠️ Tunable — wymaga pomiarów sprzętowych (`tracking_pos_lead_seconds`) |
 | §4.9 (pełna polityka) | Fallback bezpieczeństwa poza zakresem | ⚠️ Częściowo (retry tylko dla błędów numerycznych; liczba prób konfigurowalna) |
 | §4.11H/I/J | `state_mutex_`, precyzja double, config restart | ❌ Poza zakresem (refaktoryzacja/higiena) |
 
-Najważniejsza nierozwiązana pozycja pozostaje **§4.1 / P1.3** — domknięcie pętli
-korekcji w trybie pozycyjnym (opcja (a) wliczanie korekcji do targetu lub (b)
-feed-forward prędkości) wymaga weryfikacji na sprzęcie; na ten moment zachowanie
-zostało jawnie udokumentowane w kodzie (opcja c).
+**§4.1 / P1.3** został domknięty w wariancie (a) — akumulowane delty korekcji
+nutacja/TPOINT/refrakcja są teraz dodawane do komendy pozycji
+([`mount_controller.cpp:3569`](../../src/controllers/mount_controller.cpp:3569)).
+Stały offset absolutny TPOINT pozostaje zaabsorbowany przez inwersję `startTracking()`,
+więc do targetu trafia wyłącznie składnik zmienny w czasie. Zmiana wymaga weryfikacji
+na sprzęcie, ale na symulatorze nie wprowadza regresji (patrz §9.4).
 
 
 ## 2. Architektura śledzenia po kalibracji
@@ -116,7 +120,7 @@ Najważniejsza obserwacja: w gałęzi **position** target jest liczony z `tracki
 
 **Ryzyko:** deklarowana dokładność sub-arcsecond nie jest osiągana w polu; błąd narasta wraz z HA/zmianą refrakcji. Wymaga potwierdzenia na sprzęcie (zależne od tego, czy napęd dogania target).
 
-**Rekomendacja:** w trybie pozycyjnym albo (a) wliczać korekcje do `tracking_target_ra/dec` i przeliczać target z uwzględnieniem modelu co aktualizację, albo (b) przejść na feed-forward prędkości z korekcjami, albo (c) jawnie udokumentować, że w position mode korekcje są tylko diagnostyczne.
+**Rekomendacja (zrealizowano):** w trybie pozycyjnym wariant (a) — akumulowane delty korekcji są dodawane do targetu co aktualizację (patrz §9.4). Stały offset absolutny TPOINT pozostaje zaabsorbowany przez inwersję `startTracking()`.
 
 ---
 
@@ -353,11 +357,16 @@ clamp `dt` (§4.11D), reset `guider_delta_*` (§4.11F), spójność dokumentacji
 (§4.11G), spójne ramki nutacja/TPOINT (§4.11A), odświeżanie `raw_servo_axis*`
 (§5a D) oraz testy regresyjne (kalibracja podczas śledzenia + próg jakości).
 
+Dodatkowo w tej iteracji (patrz §9.4): domknięcie pętli korekcji w position mode
+(§4.1/P1.3, opcja a), ujednolicona stała gwiazdowa (N1), ujednolicony domyślny
+lead (N2), aktualizacja komentarzy C++ `auto` (N3) oraz pełna spójność ramek
+nutacja/TPOINT (N4).
+
 ### 9.2 Pozostałe prace
 
 | # | Praca | Priorytet | Wymaganie |
 |---|-------|-----------|-----------|
-| 1 | Funkcjonalne domknięcie pętli korekcji w position mode (§4.1/P1.3, opcje a/b) | Wysoki | decyzja architektoniczna + weryfikacja sprzętowa |
+| 1 | ~~Funkcjonalne domknięcie pętli korekcji w position mode (§4.1/P1.3, opcje a/b)~~ ✅ zrobione (§9.4) | — | weryfikacja sprzętowa |
 | 2 | Pełna polityka auto-recovery z fallbackiem bezpieczeństwa (§4.9) | Wysoki | projekt polityki odzyskiwania |
 | 3 | Dobór leadu (§4.7/P2.10) | Średni | pomiary lagu napędu |
 | 4 | Metryki telemetryczne (P3.14) | Średni | rozbudowa `MountStatus`/proto |
@@ -369,7 +378,24 @@ clamp `dt` (§4.11D), reset `guider_delta_*` (§4.11F), spójność dokumentacji
 
 ### 9.3 Osobno
 
-- 9 testów slewu w `tests/test_mount_controller.cpp` zawodzi (pre-existing,
-  niezwiązane z poprawkami śledzenia) — do osobnego debugu.
-- Werdykt §8 pozostaje aktualny dla §4.1: skuteczność korekcji w torze sterowania
-  nadal wymaga zamknięcia pętli (pkt 1 powyżej).
+- Testy `tests/test_mount_controller.cpp` zawodzą (pre-existing, niezwiązane z
+  poprawkami śledzenia): 5 testów slewu (`*Slew*` „reached/reported position”)
+  oraz 2 testy meridian flip (`MeridianFlipExecuted`, `MeridianFlipManualTrigger`)
+  — napęd nie dogania targetu/nie kończy flipa w limicie czasu testu. Do osobnego
+  debugu (liczba 9 w poprzedniej wersji dokumentu była zawyżona).
+- Werdykt §8 dla §4.1 został zmieniony — pętla korekcji w torze sterowania jest
+  domknięta (pkt 1 powyżej).
+
+### 9.4 Dodatkowe poprawki z tej iteracji (weryfikacja 2026-11-15)
+
+| # | Poprawka | Pliki |
+|---|----------|-------|
+| §4.1/P1.3 | Domknięcie pętli korekcji w position mode (opcja a): akumulowane delty nutacja/TPOINT/refrakcja (`accumulated_correction_axis1/2_`) dodawane do komendy pozycji; reset na starcie sesji, po flipie i przy auto-recovery | [`mount_controller.cpp:3569`](../../src/controllers/mount_controller.cpp:3569), [`9260`](../../src/controllers/mount_controller.cpp:9260) |
+| N1 | Wspólna stała `kSiderealDegPerSec` (0.004178074) — usuwa dryf ~0.96″/h w velocity mode | [`mount_kinematics.h:29`](../../include/core/mount_kinematics.h:29), [`ephemeris_tracker.cpp:775`](../../src/models/ephemeris_tracker.cpp:775) |
+| N2 | Ujednolicony domyślny `tracking_pos_lead_seconds` = 0.5 we wszystkich warstwach (struct + loader JSON + fallback) | [`configuration.h:154`](../../include/config/configuration.h:154), [`configuration.cpp:275`](../../src/config/configuration.cpp:275) |
+| N3 | Komentarze C++ trybu `auto` zsynchronizowane z kodem (position dla wszystkich typów) | [`configuration.h:134`](../../include/config/configuration.h:134), [`mount_config.h:176`](../../include/config/mount_config.h:176) |
+| N4 | Spójność ramek TPOINT: `dec_for_tp` z pre-nutation snapshot (`axis2_for_tp`) zamiast post-nutation | [`mount_controller.cpp:8822`](../../src/controllers/mount_controller.cpp:8822) |
+| test | `test_mount_kinematics.cpp` zaktualizowany do nowej stałej | [`test_mount_kinematics.cpp:24`](../../tests/test_mount_kinematics.cpp:24) |
+
+Uwaga: numeracja linii w tym dokumencie (10 246) jest nieaktualna — plik ma obecnie
+~10 400 linii; referencje należy traktować jako przybliżone.

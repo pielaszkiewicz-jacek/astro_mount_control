@@ -1842,9 +1842,9 @@ public:
             // (telescope-axis) rates to servo-motor rates.
             //
             // Celestial rates:
-            //   Sidereal: 360° / 86164.0905 s = 0.004178 °/s (telescope)
-            //   Solar:    360° / 86400 s     = 0.004167 °/s (telescope)
-            //   Lunar:    ~14.685 "/s        = 0.004079 °/s (telescope)
+            //   Sidereal: 360° / 86164.0905 s = 0.004178074 °/s (telescope)
+            //   Solar:    360° / 86400 s      = 0.004167 °/s (telescope)
+            //   Lunar:    ~14.685 "/s         = 0.004079 °/s (telescope)
             //
             // With gear_ratio G, the servo must move G× faster.
             if (config_.mount_config.mount_type == config::MountType::EQUATORIAL) {
@@ -2098,6 +2098,8 @@ public:
             last_refraction_correction_axis2_ = 0.0;
             corrections_primed_ = false;
             refraction_masked_ = false;
+            accumulated_correction_axis1_ = 0.0;
+            accumulated_correction_axis2_ = 0.0;
             smoothed_rate_factor_ = 1.0;
             rate_factor_primed_ = false;
             tracking_error_retry_count_ = 0;
@@ -2608,6 +2610,8 @@ public:
                             last_tpoint_correction_axis2_ = 0.0;
                             last_refraction_correction_axis1_ = 0.0;
                             last_refraction_correction_axis2_ = 0.0;
+                            accumulated_correction_axis1_ = 0.0;
+                            accumulated_correction_axis2_ = 0.0;
                             state_ = MountStatus::State::TRACKING;
                             error_message_.clear();
                             continue;
@@ -3051,6 +3055,8 @@ public:
                         last_tpoint_correction_axis2_ = 0.0;
                         last_refraction_correction_axis1_ = 0.0;
                         last_refraction_correction_axis2_ = 0.0;
+                        accumulated_correction_axis1_ = 0.0;
+                        accumulated_correction_axis2_ = 0.0;
                         
                         // Set axis targets to flip targets (now matching current position)
                         axis1_target_ = flip_ha_target_;
@@ -3224,17 +3230,18 @@ public:
                             MOUNT_LOG_INFO("Tracking mode: POSITION (equatorial_tracking_velocity_mode=false)");
                             pos_mode_logged_ = true;
                         }
-                        // EQUATORIAL position-mode correction scope (documented
-                        // limitation, docs/pl/analiza_mechanizmu_sledzenia_2026-11-15.md
-                        // §4.1): applyEquatorialCorrections() applies the incremental
+                        // EQUATORIAL position-mode correction scope (§4.1):
+                        // applyEquatorialCorrections() applies the incremental
                         // nutation / TPOINT / refraction corrections to the INTERNAL
-                        // axis1/2_position_ state (used for status and diagnostics),
-                        // but they are not folded into the drive target below.  The
-                        // target uses the one-time TPOINT inversion from startTracking()
-                        // plus a constant lead; the time-varying correction component
-                        // remains diagnostic-only until a feed-forward rate scheme is
-                        // adopted.  ALT_AZ / CASUAL close this loop via true-sky
-                        // recomputation each update.
+                        // axis1/2_position_ state AND accumulates them into
+                        // accumulated_correction_axis1/2_.  The accumulated
+                        // time-varying correction is folded into the drive target
+                        // below so the corrections actually reach the motor instead
+                        // of remaining diagnostic-only.  The one-time absolute TPOINT
+                        // offset is already absorbed by the startTracking() inversion;
+                        // the accumulated delta carries only the time-varying
+                        // component (HA/altitude/temperature dependent).  ALT_AZ /
+                        // CASUAL close this loop via true-sky recomputation each update.
                         // Recompute the celestial target and send a new
                         // setPositionTarget at the configured cadence
                         // (tracking_pos_update_hz, default 10 Hz).  The interval
@@ -3554,6 +3561,13 @@ public:
                             // command the drive back and cancel the pulse.
                             new_axis1_target += guider_pos_offset_axis1_;
                             new_axis2_target += guider_pos_offset_axis2_;
+                            // Fold the accumulated time-varying astronomical
+                            // correction into the commanded target so the
+                            // incremental nutation/TPOINT/refraction deltas reach
+                            // the drive (§4.1 loop closure).  The correction is
+                            // cumulative since the session start / last flip.
+                            new_axis1_target += accumulated_correction_axis1_;
+                            new_axis2_target += accumulated_correction_axis2_;
 
                             // Diagnostic: log tracking target vs actual drive position
                             // every ~10 position updates (~1 s at ≥10 Hz) to detect drive lag.
@@ -8800,7 +8814,13 @@ private:
         //  inherently bounded and cannot infinite-loop)
         current_ra = std::fmod(current_ra, 24.0);
         if (current_ra < 0.0) current_ra += 24.0;
+        // Snapshot both axes BEFORE the nutation deltas are applied below, so
+        // the TPoint model sees a single consistent (pre-nutation) encoder
+        // frame.  Previously dec_for_tp was read after nutation had already
+        // shifted axis2_position_, mixing pre/post-nutation frames in one
+        // applyCorrections() call (small systematic bias).
         const double axis1_for_tp = axis1_position_;
+        const double axis2_for_tp = axis2_position_;
         
         // Apply nutation to get apparent RA.
         // Normalize Dec to [-90, 90] for nutation calculation.
@@ -8851,6 +8871,8 @@ private:
             ? (nutation_correction_axis2 - last_nutation_correction_axis2_) : 0.0;
         axis1_position_ += nutation_delta1;
         axis2_position_ += nutation_delta2;
+        accumulated_correction_axis1_ += nutation_delta1;
+        accumulated_correction_axis2_ += nutation_delta2;
         last_nutation_correction_axis1_ = nutation_correction_axis1;
         last_nutation_correction_axis2_ = nutation_correction_axis2;
 
@@ -8878,7 +8900,7 @@ private:
             const double ha_gear_tp = haGear();
             const double dec_gear_tp = decGear();
             double ha_for_tp = axis1_for_tp / 15.0 / ha_gear_tp;  // pre-nutation servo deg -> telescope hours
-            double dec_for_tp = axis2_position_ / dec_gear_tp;        // servo deg → telescope deg
+            double dec_for_tp = axis2_for_tp / dec_gear_tp;           // pre-nutation servo deg → telescope deg
             // Pass snapshotted temperature for thermal compensation in
             // axis_nonperp_temp_coeff, temp_flexure_coeff, temp_encoder_coeff,
             // and axis physical corrections (backlash_temp_coeff, expansion_coeff,
@@ -8904,6 +8926,8 @@ private:
                 ? (tp_correction_axis2 - last_tpoint_correction_axis2_) : 0.0;
             axis1_position_ += tp_delta1;
             axis2_position_ += tp_delta2;
+            accumulated_correction_axis1_ += tp_delta1;
+            accumulated_correction_axis2_ += tp_delta2;
             last_tpoint_correction_axis1_ = tp_correction_axis1;
             last_tpoint_correction_axis2_ = tp_correction_axis2;
             
@@ -8989,6 +9013,8 @@ private:
                 ? (refr_correction_axis2 - last_refraction_correction_axis2_) : 0.0;
             axis1_position_ += refr_delta1;
             axis2_position_ += refr_delta2;
+            accumulated_correction_axis1_ += refr_delta1;
+            accumulated_correction_axis2_ += refr_delta2;
             last_refraction_correction_axis1_ = refr_correction_axis1;
             last_refraction_correction_axis2_ = refr_correction_axis2;
 
@@ -9227,6 +9253,12 @@ private:
     double last_refraction_correction_axis2_{0.0};
     bool corrections_primed_{false};   // true after the first correction cycle primes the deltas
     bool refraction_masked_{false};    // refraction masked off while below the horizon (hysteresis)
+    // Cumulative time-varying astronomical correction (servo degrees) since the
+    // tracking session start / last meridian flip.  Folded into the EQUATORIAL
+    // position-mode drive target so the incremental corrections reach the motor
+    // (§4.1 loop closure) instead of remaining diagnostic-only.
+    double accumulated_correction_axis1_{0.0};
+    double accumulated_correction_axis2_{0.0};
 
     // Soft-limit deceleration-zone rate factor smoothing state.
     double smoothed_rate_factor_{1.0};

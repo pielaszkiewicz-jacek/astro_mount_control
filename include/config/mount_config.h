@@ -173,7 +173,7 @@ struct MountConfig {
     bool equatorial_tracking_velocity_mode{false};
 
     // Tracking command mode selector:
-    //   "auto"     — EQUATORIAL → Profile Position, ALT_AZ/CASUAL → Profile Velocity
+    //   "auto"     — Profile Position for every mount type (default)
     //   "position" — Profile Position for every mount type
     //   "velocity" — Profile Velocity for every mount type
     std::string tracking_mode{"auto"};

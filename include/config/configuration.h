@@ -131,7 +131,7 @@ public:
         bool equatorial_tracking_velocity_mode{false};
 
         // Tracking command mode selector:
-        //   "auto"     — EQUATORIAL → Profile Position, ALT_AZ/CASUAL → Profile Velocity
+        //   "auto"     — Profile Position for every mount type (default)
         //   "position" — Profile Position for every mount type
         //   "velocity" — Profile Velocity for every mount type
         std::string tracking_mode{"auto"};
@@ -151,7 +151,7 @@ public:
         //     actual tracking rate in position-mode tracking (clamped to
         //     max_tracking_rate).
         double tracking_pos_velocity_factor{1.0};
-        double tracking_pos_lead_seconds{2.0};
+        double tracking_pos_lead_seconds{0.5};
         double tracking_pos_velocity_margin{1.0};
         // Position-mode target update cadence [Hz] (EQUATORIAL position mode).
         int tracking_pos_update_hz{10};

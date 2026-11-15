@@ -21,7 +21,7 @@ TEST(MountKinematicsTest, EquatorialSiderealRate)
 {
     MountKinematics kin(config::MountType::EQUATORIAL, kLatitude, kGear, kGear);
     const TrackingRates rates = kin.trackingRates(config::TrackingMode::SIDEREAL, 0.0, 0.0);
-    EXPECT_DOUBLE_EQ(rates.axis1, 0.004178 * kGear);
+    EXPECT_DOUBLE_EQ(rates.axis1, kSiderealDegPerSec * kGear);
     EXPECT_DOUBLE_EQ(rates.axis2, 0.0);
 }
 
