@@ -36,8 +36,8 @@
 |---------|---------|
 | Linie kodu (C++) | ~20 000+ |
 | Linie kodu (C#) | ~1 300+ |
-| Pliki binarne testów | 17 |
-| gRPC RPC | 50+ |
+| Pliki binarne testów | 24 |
+| gRPC RPC | 60+ |
 | Sprawdzenia walidacji konfiguracji | 25+ |
 | Punkty ochrony NaN/Inf | 11 |
 | Obsługiwane typy sprzętu | 5 (CANopen, Symulowany, Gamepad, Szeregowy, Ethernet) |
@@ -166,10 +166,10 @@ astro-mount-controller/
 │   ├── logging/            #   System logowania
 │   └── models/             #   Implementacje modeli
 ├── ascom/                  # Sterownik teleskopu ASCOM (C#)
-├── ascom_rotator/          # Sterownik rotatora ASCOM (C#)
-├── indi/                   # Sterownik teleskopu INDI (C++)
-├── indi_rotator/           # Sterownik rotatora INDI (C++)
-├── tests/                  # Testy jednostkowe (17 binarek)
+├── camera/                 # Usługa kamery — most INDI CCD (w procesie)
+├── indi/                   # Sterowniki INDI: teleskop + kamera CCD (C++)
+├── pec/ pidcal/ pulley/ st4guider/ dome/ derotator/ focuser/  # podsystemy w procesie
+├── tests/                  # Testy jednostkowe (24 binarki)
 ├── web/                    # Interfejs WWW (serwer proxy Express + SPA)
 └── CMakeLists.txt          # Główny plik CMake
 ```
@@ -192,9 +192,9 @@ astro-mount-controller/
 | [`src/main.cpp`](../../src/main.cpp) | 304 | Punkt wejścia aplikacji |
 | [`ascom/AstroMountTelescope.cs`](../../ascom/AstroMountTelescope.cs) | 892 | Sterownik teleskopu ASCOM (ITelescopeV3) |
 | [`ascom/GrpcClient.cs`](../../ascom/GrpcClient.cs) | 378 | Klient gRPC dla ASCOM (C#) |
-| [`ascom_rotator/AstroMountRotator.cs`](../../ascom_rotator/AstroMountRotator.cs) | — | Sterownik rotatora ASCOM (IRotatorV3) |
 | [`indi/astro_mount_driver.cpp`](../../indi/astro_mount_driver.cpp) | 715 | Sterownik teleskopu INDI (C++) |
-| [`indi/astro_mount_rotator_driver.cpp`](../../indi_rotator/astro_mount_rotator_driver.cpp) | — | Sterownik rotatora INDI (C++) |
+| [`indi/astro_mount_ccd.cpp`](../../indi/astro_mount_ccd.cpp) | — | Sterownik kamery CCD INDI (C++) |
+| [`camera/src/camera_service_impl.cpp`](../../camera/src/camera_service_impl.cpp) | — | Usługa kamery — most INDI (w procesie) |
 
 ---
 
@@ -258,9 +258,8 @@ flowchart TB
 | `Configuration` | Ładowanie, walidacja i udostępnianie konfiguracji |
 | `AstronomicalCalculations` | Transformacje współrzędnych przez SOFA |
 | `AstroMountTelescope` (C#) | Sterownik ASCOM ITelescopeV3 — proxy gRPC |
-| `AstroMountRotator` (C#) | Sterownik ASCOM IRotatorV3 — proxy gRPC |
 | `AstroMountIndiDriver` (C++) | Sterownik INDI Telescope — backend gRPC |
-| `AstroMountRotatorIndi` (C++) | Sterownik INDI Rotator — backend gRPC |
+| `AstroMountCCD` (C++) | Sterownik INDI CCD — backend gRPC |
 
 ### Maszyna stanów
 
@@ -430,14 +429,14 @@ axis2_rate_ = m2_rate_deg * dec_axis_params.gear_ratio;     // servo °/s
 | Cel CMake | Opis |
 |-----------|------|
 | `astro_mount_driver` | Sterownik teleskopu INDI |
-| `astro_mount_rotator_driver` | Sterownik rotatora INDI |
+| `astro_mount_ccd` | Sterownik kamery CCD INDI |
 
 #### Sterowniki ASCOM (C#)
 
 | Cel | Opis |
 |-----|------|
 | `ascom/AstroMountTelescope.cs` | Sterownik ASCOM ITelescopeV3 (buduj przez `dotnet build ascom/`) |
-| `ascom_rotator/AstroMountRotator.cs` | Sterownik ASCOM IRotatorV3 (buduj przez `dotnet build ascom_rotator/`) |
+| — | Brak osobnego sterownika rotatora ASCOM; derotacja przez `DerotatorService` na porcie 50051 |
 
 #### Pliki binarne testów
 

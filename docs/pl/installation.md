@@ -33,7 +33,7 @@ flowchart TD
 
     subgraph RUN["▶️ Uruchomienie"]
         START["🚀 Start kontrolera<br/>./bin/astro_mount_controller<br/>lub sudo systemctl start astro-mount"]:::run
-        GRPC["🌐 Serwer gRPC<br/>localhost:50051<br/>50+ metod RPC"]:::run
+        GRPC["🌐 Serwer gRPC<br/>localhost:50051<br/>60+ metod RPC"]:::run
         CANOPEN["🔗 Magistrala CANopen<br/>interfejs: can0<br/>Węzły: RA, Dec, Derotator"]:::run
     end
 
@@ -952,19 +952,11 @@ Sterowniki INDI wymagają `libindi-dev` (lub `libindi-devel`) oraz opcji CMake `
 
 ### Budowanie sterowników INDI
 
-Sterowniki teleskopu i rotatora INDI można zbudować z samodzielnych katalogów `indi/` i `indi_rotator/`:
+Sterowniki INDI (teleskop + kamera CCD) znajdują się w katalogu `indi/`. W repozytorium **nie ma** osobnego katalogu `indi_rotator/` — derotacja jest udostępniana przez usługę `DerotatorService` w procesie na porcie 50051.
 
 ```bash
-# Budowanie sterownika teleskopu INDI
+# Budowanie sterowników INDI (teleskop + CCD)
 cd indi
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-sudo make install
-cd ../..
-
-# Budowanie sterownika rotatora INDI
-cd indi_rotator
 mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
@@ -981,27 +973,23 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release \
 cmake --build build -j$(nproc)
 ```
 
-### Budowanie sterowników ASCOM (Windows/Cross-Platform)
+### Budowanie sterownika ASCOM (Windows/Cross-Platform)
 
-Sterowniki ASCOM to projekty C# wymagające .NET SDK lub Mono:
+Sterownik teleskopu ASCOM to projekt C# wymagający .NET SDK lub Mono:
 
 ```bash
 # Korzystając z .NET SDK
 cd ascom
 dotnet build -c Release
 cd ..
-
-# Sterownik rotatora ASCOM
-cd ascom_rotator
-dotnet build -c Release
-cd ..
 ```
 
-Każdy sterownik ASCOM musi być zarejestrowany przez COM (po zbudowaniu na Windows):
+Sterownik ASCOM musi być zarejestrowany przez COM (po zbudowaniu na Windows):
 ```bash
 C:\Windows\Microsoft.NET\Framework\v4.0.30319\regasm.exe ascom\bin\Release\AstroMountTelescope.dll /codebase
-C:\Windows\Microsoft.NET\Framework\v4.0.30319\regasm.exe ascom_rotator\bin\Release\AstroMountRotator.dll /codebase
 ```
+
+> **Uwaga:** w repozytorium nie ma osobnego sterownika rotatora ASCOM — derotacja jest dostępna przez `DerotatorService` na porcie 50051.
 
 ## Serwer bazy danych obiektów astronomicznych
 

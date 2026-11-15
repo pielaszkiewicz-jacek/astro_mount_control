@@ -9,7 +9,7 @@ Astronomical Mount Controller is a modular, hybrid-architecture system designed 
 1. **Application Layer** — Web SPA, Qt GUI, ASCOM/INDI drivers, Python/C++ clients
 2. **API Layer** — gRPC services (mount controller, dome, derotator, focuser in-process; object database, weather, power, sequencer, camera, PEC, ST4, notification, pulley)
 3. **Business Logic Layer** — MountController, controllers, mathematical models (TPOINT, Kalman, ephemeris)
-4. **Service Layer** — in-process subsystems (dome, derotator, focuser) + stand-alone gRPC services (weather, power, sequencer, object database)
+4. **Service Layer** — in-process subsystems (dome, derotator, focuser, camera, PEC, ST4, pulley, PID, notifications) + stand-alone gRPC services (weather, power, sequencer, object database)
 5. **Communication Layer** — hardware abstraction (CANopen, serial, Ethernet, gamepad, MF7025v2, simulated)
 6. **Hardware Layer** — servo/stepper drives, encoders, sensors, focusers, cameras, domes, power
 
@@ -39,7 +39,7 @@ flowchart TB
     subgraph CORE["Mount Controller (astro_mount_controller)"]
         MC["MountController"]
         MODELS["TPOINT / Kalman / Ephemeris<br/>PEC / Astro Calculations"]
-        INPROC["In-process subsystems:<br/>Dome / Derotator / Focuser<br/>(served on unified :50051)"]
+        INPROC["In-process subsystems:<br/>Dome / Derotator / Focuser / Camera<br/>PEC / ST4 / Pulley / PID / Notifications<br/>(served on unified :50051)"]
         CLIENTSVC["External Service Clients (weather / power)"]
     end
 
@@ -83,16 +83,16 @@ flowchart TB
 
 | Executable | Directory | Default gRPC Port | Purpose |
 |-----------|-----------|-------------------|---------|
-| `astro_mount_controller` | [`src/`](src/main.cpp) | **50051** (unified API) | Central mount controller (state machine, tracking, calibration) **plus in-process dome, derotator and focuser services** |
+| `astro_mount_controller` | [`src/`](src/main.cpp) | **50051** (unified API) | Central mount controller (state machine, tracking, calibration) **plus in-process dome, derotator, focuser, camera, ST4, PEC, pulley, PID-calibration and notification services** |
 | `astro_object_database_server` | [`db/`](db/src/main.cpp) | 50052 | SQLite-backed astronomical object catalog |
 | `astro_weather_server` | [`weather/`](weather/src/main.cpp) | 50055 | Weather monitoring, alerts, auto-park |
 | `astro_power_server` | [`power/`](power/src/main.cpp) | 50056 | Battery/power monitoring, output switching |
 | `astro_sequencer_server` | [`sequencer/`](sequencer/src/main.cpp) | 50057 | Observation sequence management |
 | Web proxy | [`web/proxy/`](web/proxy/server.js) | 8080 (HTTP) | HTTP/JSON ↔ gRPC bridge + SPA hosting |
 
-**Unified gRPC API on a single port (50051).** The dome, derotator and focuser services are registered on the **same gRPC server** as the mount controller service, so all four APIs are reachable **exclusively on port 50051** from a single channel (e.g. `DomeService/GetStatus` via 50051). No separate legacy ports are used — the in-process services are served only through the unified mount controller port.
+**Unified gRPC API on a single port (50051).** The dome, derotator, focuser, camera, ST4, PEC, pulley, PID-calibration and notification services are registered on the **same gRPC server** as the mount controller service, so all APIs are reachable **exclusively on port 50051** from a single channel (e.g. `DomeService/GetStatus` or `CameraService/ListCameras` via 50051). No separate legacy ports are used — the in-process services are served only through the unified mount controller port.
 
-The **dome, derotator and focuser subsystems are hosted in-process inside `astro_mount_controller`** — they are no longer separate executables and are served only through the unified port 50051. Weather, power, sequencer and object database remain stand-alone gRPC processes. All integrations are **disabled by default** and enabled via the `external_services` section of the configuration. For the stand-alone weather/power services the `address` field is the endpoint the mount controller connects to. The web proxy enables its extra routes/tabs via `EXT_SERVICE_*` environment variables.
+The **dome, derotator, focuser, camera, ST4, PEC, pulley, PID-calibration and notification subsystems are hosted in-process inside `astro_mount_controller`** — they are not separate executables and are served only through the unified port 50051. Weather, power, sequencer and object database remain stand-alone gRPC processes. The dome, derotator, focuser, ST4 and PEC integrations are **disabled by default** and enabled via the `external_services` section; camera, pulley, PID calibration and notifications are always hosted. For the stand-alone weather/power services the `address` field is the endpoint the mount controller connects to. The web proxy enables its extra routes/tabs via `EXT_SERVICE_*` environment variables.
 
 ---
 
@@ -250,7 +250,7 @@ Periodic Error Correction: samples encoder error over worm cycles, extracts harm
 
 ### 7. Configuration System ([`include/config/configuration.h`](include/config/configuration.h) / [`src/config/configuration.cpp`](src/config/configuration.cpp))
 
-JSON-based configuration with 25+ field validations, a config monitor for hot-reload, and domain-specific sub-configs (mount, tracking, safety, calibration). The `external_services` section gates the in-process subsystems (dome, derotator, focuser) and the stand-alone service clients (weather, power). The in-process subsystems are served on the unified gRPC port 50051. For the stand-alone services (weather, power) `address` is the endpoint the mount controller connects to.
+JSON-based configuration with 25+ field validations, a config monitor for hot-reload, and domain-specific sub-configs (mount, tracking, safety, calibration). The `external_services` section gates the configurable in-process subsystems (dome, derotator, focuser, ST4, PEC) and the stand-alone service clients (weather, power); camera, pulley, PID calibration and notifications are always hosted. All in-process subsystems are served on the unified gRPC port 50051. For the stand-alone services (weather, power) `address` is the endpoint the mount controller connects to.
 
 ```json
 {
@@ -281,7 +281,7 @@ Additional device HALs used by the stand-alone services and the core:
 
 - **Dome HAL** — [`src/hal/dome_hal/`](src/hal/dome_hal/) (serial, rolloff, simulated)
 - **Derotator HAL** — [`src/hal/derotator_hal/`](src/hal/derotator_hal/) (TMC5160, simulated)
-- **Camera HAL** — [`src/hal/camera_hal/`](src/hal/camera_hal/) (ZWO ASI, simulated)
+- **Camera** — no dedicated HAL is built; the in-process camera service is an INDI bridge ([`camera/indi_camera_client.cpp`](camera/indi_camera_client.cpp)) to `indiserver`
 - **Focuser HAL** — [`src/hal/focuser_hal/`](src/hal/focuser_hal/) (ZWO EAF, MoonLite, Pegasus, simulated)
 - **Power HAL** — [`src/hal/power_hal/`](src/hal/power_hal/) (I²C, simulated)
 - **ST4 HAL** — [`src/hal/st4_hal/`](src/hal/st4_hal/) (GPIO sysfs/libgpiod, FTDI, MCP2221, Arduino, simulated)
@@ -294,7 +294,7 @@ Additional device HALs used by the stand-alone services and the core:
 
 ### 9. Subsystem Services
 
-Dome, derotator and focuser are **hosted in-process** inside `astro_mount_controller` (their service implementations are compiled into the mount controller executable and registered on its gRPC server). Weather, power, sequencer and object database remain **stand-alone processes** with their own `main.cpp`, server wrapper, and service implementation, all linked against `astro_mount_core`.
+Dome, derotator, focuser, camera, ST4 guider, PEC, pulley, PID calibration and notifications are **hosted in-process** inside `astro_mount_controller` (their service implementations are compiled into the mount controller executable and registered on its gRPC server). Weather, power, sequencer and object database remain **stand-alone processes** with their own `main.cpp`, server wrapper, and service implementation, all linked against `astro_mount_core`.
 
 #### 9.1 Dome Service (in-process, [`dome/`](dome/))
 - Served in-process on the unified gRPC port 50051
@@ -331,6 +331,23 @@ Dome, derotator and focuser are **hosted in-process** inside `astro_mount_contro
 - Multiple catalog support (Messier, NGC, IC, Caldwell, HYG, SAO, etc.)
 - Favorite objects, categories, import/export
 
+#### 9.8 Camera Service (in-process, [`camera/`](camera/))
+- Served in-process on the unified gRPC port 50051 (always hosted)
+- INDI bridge: connects to `indiserver` (default `localhost:7624`, configurable via `CAMERA_INDI_HOST`/`CAMERA_INDI_PORT`/`CAMERA_INDI_DEVICE`) and drives a real CCD (ZWO/QHY/PlayerOne)
+- `StartExposure`, `AbortExposure`, `GetCameraInfo`, `SetFilter`, `GetFilterPosition`, `StartVideoPreview`, `StopVideoPreview`, `SetCooler`, `GetCoolerStatus`, `ListCameras`, `SelectCamera`, `ListProperties`, `SetProperty`
+
+#### 9.9 ST4 Guider Service (in-process, [`st4guider/`](st4guider/))
+- Served in-process on the unified gRPC port 50051 (config-gated via `external_services.st4_guider`)
+
+#### 9.10 PEC Service (in-process, [`pec/`](pec/))
+- Served in-process on the unified gRPC port 50051 (config-gated via `external_services.pec`)
+
+#### 9.11 Pulley Service (in-process, [`pulley/`](pulley/))
+- Served in-process on the unified gRPC port 50051 — simulated linear actuator (always hosted)
+
+#### 9.12 PID Calibration Service (in-process, [`pidcal/`](pidcal/))
+- Served in-process on the unified gRPC port 50051 — drive PID-loop tuning (always hosted)
+
 ### 10. Notification Engine ([`src/notifications/`](src/notifications/))
 
 Centralized event/alert delivery with channels:
@@ -360,15 +377,17 @@ Single-page application (vanilla JS) with components for status, mount control, 
 
 Native Qt (Widgets/Network/Svg/Charts) desktop application, `astro_mount_gui`, using a gRPC client ([`gui/src/grpc_client.cpp`](gui/src/grpc_client.cpp)) with panels for mount, status, calibration wizard, sequencer, dome, focuser, camera, weather, derotator, PEC, power, notifications, and settings, plus widgets (sky map, star chart, focus graph, weather plot).
 
-### 14. ASCOM Drivers (C#)
+### 14. ASCOM Driver (C#, [`ascom/`](ascom/))
 
 - **Telescope** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs)) — `ITelescopeV3`: `SlewToCoordinates`, `PulseGuide`, `MoveAxis`, Park/Unpark, TPOINT status, environmental queries. Uses a `StateCache` polling `GetState()` every 2 s for low-latency property reads. Serves via Alpaca REST.
-- **Rotator** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs)) — `IRotatorV3`: `MoveAbsolute`, `Move(rate)`, `Halt`, `Home`.
+- **gRPC client** ([`ascom/GrpcClient.cs`](ascom/GrpcClient.cs)) — communication layer for `MountControllerService`.
+- **Note:** there is no separate ASCOM Rotator driver in the repository. Derotation is exposed by the in-process `DerotatorService` on port 50051.
 
-### 15. INDI Drivers (C++)
+### 15. INDI Drivers (C++, [`indi/`](indi/))
 
 - **Telescope** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp)) — `INDI::Telescope` for Ekos/KStars: `MoveNS`/`MoveWE` (axis_id 0=RA/WE, 1=Dec/NS, ±1.0 deg/s), `TPOINT_STATUS` text property, `EnvironmentNP` number property, park/sync/abort. All gRPC via [`MountGrpcClient`](indi/MountGrpcClient.cpp).
-- **Rotator** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp)) — `INDI::Rotator`: `MoveRotator`, `HomeRotator`, `AbortRotator`; `CONNECTION_NONE` mode (gRPC only).
+- **CCD camera** ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp)) — `INDI::CCD` bridge to the in-process camera service (port 50051).
+- **Note:** there is no separate INDI Rotator driver in the repository. Derotation is exposed by `DerotatorService` on port 50051.
 
 ---
 
@@ -600,7 +619,7 @@ flowchart TB
 
 ## External Driver Architecture
 
-The system includes four astronomy-standard drivers that connect to the gRPC API as external clients.
+The system includes three astronomy-standard drivers that connect to the gRPC API as external clients. There are **no** separate ASCOM/INDI rotator drivers in the repository — derotation is exposed by the in-process `DerotatorService` on port 50051.
 
 ### 16. ASCOM Telescope Driver ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
 
@@ -620,23 +639,7 @@ flowchart LR
 - `SetPark()` → reads state, updates controller config park position
 - `SupportedActions`: `tpoint_status`, `temperature`, `pressure`, `humidity`, `tracking_rate_ra`, `tracking_rate_dec`, `guider_status`, `derotator_status`
 
-### 17. ASCOM Rotator Driver ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs))
-
-```mermaid
-flowchart LR
-    ASCOMR["ASCOM Client"] -->|"Alpaca REST"| AROT["AstroMountRotator<br/>IRotatorV3"]
-    AROT -->|"gRPC :50051"| GRPCR["MountControllerService"]
-    AROT --> RC["StatusCache<br/>(DerotatorStatus)"]
-```
-
-**Key integration points:**
-- `MoveAbsolute(position)` → gRPC `ControlFieldRotation(FIXED_ANGLE, target_angle)`
-- `Move(rate)` → gRPC `ControlFieldRotation(CUSTOM, rotation_rate)`
-- `Halt()` → gRPC `ControlFieldRotation(DISABLED)`
-- `Home()` → gRPC `HomeDerotator(SEQUENTIAL)`
-- `Position` → cached from `GetDerotatorStatus`
-
-### 18. INDI Telescope Driver ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
+### 17. INDI Telescope Driver ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
 
 ```mermaid
 flowchart LR
@@ -651,20 +654,20 @@ flowchart LR
 - `TPOINT_STATUS` → `ITextVectorProperty` (COEFFICIENTS, CHI2, CALIBRATED)
 - `EnvironmentNP` → `INumberVectorProperty` (TEMPERATURE, PRESSURE, HUMIDITY)
 
-### 19. INDI Rotator Driver ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp))
+### 18. INDI CCD Camera Driver ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp))
 
 ```mermaid
 flowchart LR
-    EKOS2["Ekos/KStars"] -->|"INDI Protocol"| ROT["AstroMountRotatorINDI<br/>INDI::Rotator"]
-    ROT -->|"gRPC :50051"| GRPC3["MountControllerService"]
+    EKOS3["Ekos/KStars"] -->|"INDI Protocol"| CCD["AstroMountCCD<br/>INDI::CCD"]
+    CCD -->|"gRPC :50051"| CAM["CameraService<br/>(in-process)"]
+    CCD --> CCD_CLIENT["CameraGrpcClient<br/>indi/CameraGrpcClient.cpp"]
 ```
 
 **Key integration points:**
-- `MoveRotator(angle)` → gRPC `ControlFieldRotation(FIXED_ANGLE)`
-- `AbortRotator()` → gRPC `ControlFieldRotation(DISABLED)`
-- `HomeRotator()` → gRPC `HomeDerotator(AUTO)`
-- `CONNECTION_NONE` mode — no serial/TCP connection, gRPC only
-- Capabilities: `ROTATOR_CAN_ABORT | ROTATOR_CAN_HOME`
+- `StartExposure()` → gRPC `StartExposure` (streaming `ExposureProgress`)
+- `SetTemperature()` → gRPC `SetCooler`
+- `SetFilterPosition()` → gRPC `SetFilter`
+- Video preview → gRPC `StartVideoPreview` / `StopVideoPreview`
 
 ---
 

@@ -153,10 +153,10 @@ flowchart TD
     Root --> Web["📁 web"]
     Root --> Db["📁 db"]
     Root --> Scripts["📁 scripts"]
-    Root --> Ascom["📁 ascom"]
-    Root --> AscomRot["📁 ascom_rotator"]
-    Root --> Indi["📁 indi"]
-    Root --> IndiRot["📁 indi_rotator"]
+    Root --> Ascom["📁 ascom — telescope driver"]
+    Root --> Indi["📁 indi — telescope + CCD drivers"]
+    Root --> Camera["📁 camera — INDI CCD bridge"]
+    Root --> Inproc["📁 dome · derotator · focuser · pec · st4guider · pulley · pidcal"]
 
     Config --> DefJson["📄 default.json<br/><i>177 lines — defaults</i>"]
 
@@ -284,9 +284,9 @@ flowchart TD
 | [`canopen_hal.cpp`](src/hal/canopen_hal/canopen_hal.cpp) | 1845 | Hardware driver | CiA 402 state machine, PDO communication, PID control |
 | [`AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) | 892 | ASCOM telescope driver | ITelescopeV3 implementation via gRPC proxy |
 | [`GrpcClient.cs`](ascom/GrpcClient.cs) | 378 | ASCOM gRPC client | C# gRPC client wrapper for all RPCs |
-| [`AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) | — | ASCOM rotator driver | IRotatorV3 implementation |
 | [`astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) | 715 | INDI telescope driver | INDI Telescope driver with gRPC backend |
-| [`astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) | — | INDI rotator driver | INDI Rotator driver with gRPC backend |
+| [`astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp) | — | INDI CCD driver | INDI CCD camera driver with gRPC backend |
+| [`camera_service_impl.cpp`](camera/src/camera_service_impl.cpp) | — | Camera service | In-process INDI bridge to a real CCD |
 
 ---
 
@@ -356,9 +356,8 @@ flowchart TD
 | `HALInterface` | [`hal_interface.h`](include/hal/hal_interface.h) | Abstract HAL contract |
 | `HALFactory` | [`hal_factory.cpp`](src/hal/hal_factory.cpp) | Creates HAL implementations |
 | `AstroMountTelescope` (C#) | [`AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs) | ASCOM ITelescopeV3 driver — gRPC proxy |
-| `AstroMountRotator` (C#) | [`AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs) | ASCOM IRotatorV3 driver — gRPC proxy |
 | `AstroMountIndiDriver` (C++) | [`astro_mount_driver.cpp`](indi/astro_mount_driver.cpp) | INDI Telescope driver — gRPC backend |
-| `AstroMountRotatorIndi` (C++) | [`astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp) | INDI Rotator driver — gRPC backend |
+| `AstroMountCCD` (C++) | [`astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp) | INDI CCD driver — gRPC backend |
 
 ### State Machine
 
@@ -484,14 +483,14 @@ The project uses **CMake** with the following key options:
 | Target | Description |
 |--------|-------------|
 | `astro_mount_driver` | INDI Telescope driver |
-| `astro_mount_rotator_driver` | INDI Rotator driver |
+| `astro_mount_ccd` | INDI CCD camera driver |
 
 #### ASCOM Driver Builds (C#)
 
 | Target | Description |
 |--------|-------------|
 | `ascom/AstroMountTelescope.cs` | ASCOM ITelescopeV3 driver (build via `dotnet build ascom/`) |
-| `ascom_rotator/AstroMountRotator.cs` | ASCOM IRotatorV3 driver (build via `dotnet build ascom_rotator/`) |
+| — | No separate ASCOM Rotator driver; use `DerotatorService` on port 50051 |
 
 #### Test Binaries
 

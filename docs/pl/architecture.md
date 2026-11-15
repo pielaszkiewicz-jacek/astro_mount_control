@@ -250,7 +250,7 @@ Korekcja błędu okresowego: próbkowanie błędu enkodera przez cykle ślimaczn
 
 ### 7. System konfiguracji ([`include/config/configuration.h`](include/config/configuration.h) / [`src/config/configuration.cpp`](src/config/configuration.cpp))
 
-Konfiguracja oparta na JSON z ponad 25 walidacjami pól, monitor konfiguracji do przeładowania na gorąco oraz domenowe podkonfiguracje (montaż, śledzenie, bezpieczeństwo, kalibracja). Sekcja `external_services` steruje podsystemami w procesie (kopuła, derotator, focuser) oraz klientami usług samodzielnych (pogoda, zasilanie). Podsystemy w procesie są serwowane na wspólnym porcie gRPC 50051. Dla usług samodzielnych (pogoda, zasilanie) `address` to adres, z którym łączy się kontroler montażu.
+Konfiguracja oparta na JSON z ponad 25 walidacjami pól, monitor konfiguracji do przeładowania na gorąco oraz domenowe podkonfiguracje (montaż, śledzenie, bezpieczeństwo, kalibracja). Sekcja `external_services` steruje konfigurowalnymi podsystemami w procesie (kopuła, derotator, focuser, ST4, PEC) oraz klientami usług samodzielnych (pogoda, zasilanie); kamera, pulley, kalibracja PID i powiadomienia są hostowane zawsze. Podsystemy w procesie są serwowane na wspólnym porcie gRPC 50051. Dla usług samodzielnych (pogoda, zasilanie) `address` to adres, z którym łączy się kontroler montażu.
 
 ```json
 {
@@ -281,7 +281,7 @@ Dodatkowe HAL-e urządzeń używane przez usługi samodzielne i rdzeń:
 
 - **HAL kopuły** — [`src/hal/dome_hal/`](src/hal/dome_hal/) (szeregowe, rolloff, symulowane)
 - **HAL derotatora** — [`src/hal/derotator_hal/`](src/hal/derotator_hal/) (TMC5160, symulowane)
-- **HAL kamery** — [`src/hal/camera_hal/`](src/hal/camera_hal/) (ZWO ASI, symulowane); usługa kamery w procesie steruje realną kamerą przez most INDI ([`camera/indi_camera_client.cpp`](camera/indi_camera_client.cpp)) do `indiserver`
+- **Kamera** — brak dedykowanego HAL-a w buildzie; usługa kamery w procesie jest mostem INDI ([`camera/indi_camera_client.cpp`](camera/indi_camera_client.cpp)) do `indiserver`
 - **HAL focusera** — [`src/hal/focuser_hal/`](src/hal/focuser_hal/) (ZWO EAF, MoonLite, Pegasus, symulowane)
 - **HAL zasilania** — [`src/hal/power_hal/`](src/hal/power_hal/) (I²C, symulowane)
 - **HAL ST4** — [`src/hal/st4_hal/`](src/hal/st4_hal/) (GPIO sysfs/libgpiod, FTDI, MCP2221, Arduino, symulowane)
@@ -376,16 +376,17 @@ Aplikacja jednostronicowa (vanilla JS) z komponentami do statusu, sterowania mon
 
 Natywna aplikacja desktopowa Qt (Widgets/Network/Svg/Charts), `astro_mount_gui`, używająca klienta gRPC ([`gui/src/grpc_client.cpp`](gui/src/grpc_client.cpp)) z panelami montażu, statusu, kreatora kalibracji, sekwencera, kopuły, focusera, kamery, pogody, derotatora, PEC, zasilania, powiadomień i ustawień oraz widżetami (mapa nieba, wykres gwiazd, wykres ostrości, wykres pogody).
 
-### 14. Sterowniki ASCOM (C#)
+### 14. Sterownik ASCOM (C#, [`ascom/`](ascom/))
 
 - **Teleskop** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs)) — `ITelescopeV3`: `SlewToCoordinates`, `PulseGuide`, `MoveAxis`, Park/Unpark, status TPOINT, zapytania środowiskowe. Używa `StateCache` odpytywanego co 2 s (`GetState()`) do odczytu właściwości z niskim opóźnieniem. Serwowany przez Alpaca REST.
-- **Rotator** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs)) — `IRotatorV3`: `MoveAbsolute`, `Move(rate)`, `Halt`, `Home`.
+- **Klient gRPC** ([`ascom/GrpcClient.cs`](ascom/GrpcClient.cs)) — komunikacja z `MountControllerService`.
+- **Uwaga:** brak osobnego sterownika rotatora ASCOM; derotacja przez `DerotatorService` na porcie 50051.
 
-### 15. Sterowniki INDI (C++)
+### 15. Sterowniki INDI (C++, [`indi/`](indi/))
 
 - **Teleskop** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp)) — `INDI::Telescope` dla Ekos/KStars: `MoveNS`/`MoveWE` (axis_id 0=RA/WE, 1=Dec/NS, ±1.0 deg/s), właściwość tekstowa `TPOINT_STATUS`, numeryczna `EnvironmentNP`, park/sync/abort. Cała komunikacja gRPC przez [`MountGrpcClient`](indi/MountGrpcClient.cpp).
-- **Rotator** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp)) — `INDI::Rotator`: `MoveRotator`, `HomeRotator`, `AbortRotator`; tryb `CONNECTION_NONE` (tylko gRPC).
 - **Kamera (CCD)** ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp)) — `INDI::CCD` dla Ekos/KStars: ekspozycje, chłodzenie, filtr; komunikacja gRPC przez [`CameraGrpcClient`](indi/CameraGrpcClient.cpp) z `CameraService` (w procesie).
+- **Uwaga:** brak osobnego sterownika rotatora INDI; derotacja przez `DerotatorService` na porcie 50051.
 
 ---
 
@@ -617,7 +618,7 @@ flowchart TB
 
 ## Architektura sterowników zewnętrznych
 
-System zawiera pięć standardowych sterowników astronomicznych łączących się z API gRPC jako zewnętrzni klienci.
+System zawiera trzy standardowe sterowniki astronomiczne łączące się z API gRPC jako zewnętrzni klienci. W repozytorium **nie ma** osobnych sterowników rotatora ASCOM/INDI — derotacja jest dostępna przez usługę `DerotatorService` na porcie 50051.
 
 ### 16. Sterownik ASCOM teleskopu ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs))
 
@@ -637,23 +638,7 @@ flowchart LR
 - `SetPark()` → odczyt stanu, aktualizacja pozycji parkowania w konfiguracji kontrolera
 - `SupportedActions`: `tpoint_status`, `temperature`, `pressure`, `humidity`, `tracking_rate_ra`, `tracking_rate_dec`, `guider_status`, `derotator_status`
 
-### 17. Sterownik ASCOM rotatora ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs))
-
-```mermaid
-flowchart LR
-    ASCOMR["Klient ASCOM"] -->|"Alpaca REST"| AROT["AstroMountRotator<br/>IRotatorV3"]
-    AROT -->|"gRPC :50051"| GRPCR["MountControllerService"]
-    AROT --> RC["StatusCache<br/>(DerotatorStatus)"]
-```
-
-**Kluczowe punkty integracji:**
-- `MoveAbsolute(position)` → gRPC `ControlFieldRotation(FIXED_ANGLE, target_angle)`
-- `Move(rate)` → gRPC `ControlFieldRotation(CUSTOM, rotation_rate)`
-- `Halt()` → gRPC `ControlFieldRotation(DISABLED)`
-- `Home()` → gRPC `HomeDerotator(SEQUENTIAL)`
-- `Position` → buforowane z `GetDerotatorStatus`
-
-### 18. Sterownik INDI teleskopu ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
+### 17. Sterownik INDI teleskopu ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp))
 
 ```mermaid
 flowchart LR
@@ -668,22 +653,7 @@ flowchart LR
 - `TPOINT_STATUS` → `ITextVectorProperty` (COEFFICIENTS, CHI2, CALIBRATED)
 - `EnvironmentNP` → `INumberVectorProperty` (TEMPERATURE, PRESSURE, HUMIDITY)
 
-### 19. Sterownik INDI rotatora ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp))
-
-```mermaid
-flowchart LR
-    EKOS2["Ekos/KStars"] -->|"Protokół INDI"| ROT["AstroMountRotatorINDI<br/>INDI::Rotator"]
-    ROT -->|"gRPC :50051"| GRPC3["MountControllerService"]
-```
-
-**Kluczowe punkty integracji:**
-- `MoveRotator(angle)` → gRPC `ControlFieldRotation(FIXED_ANGLE)`
-- `AbortRotator()` → gRPC `ControlFieldRotation(DISABLED)`
-- `HomeRotator()` → gRPC `HomeDerotator(AUTO)`
-- Tryb `CONNECTION_NONE` — bez połączenia szeregowego/TCP, tylko gRPC
-- Możliwości: `ROTATOR_CAN_ABORT | ROTATOR_CAN_HOME`
-
-### 20. Sterownik INDI kamery (CCD) ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp))
+### 18. Sterownik INDI kamery (CCD) ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp))
 
 ```mermaid
 flowchart LR

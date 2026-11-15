@@ -753,7 +753,7 @@ sequenceDiagram
     GRPC-->>GC: ok
     DRV-->>ALPACA: "OK"
 
-    Note over APP,MC: ASCOM Rotator — MoveAbsolute
+    Note over APP,MC: Derotator — MoveAbsolute (DerotatorService, brak osobnego sterownika ASCOM)
     APP->>ALPACA: PUT /api/v1/rotator/0/MoveAbsolute
     ALPACA->>DRV: MoveAbsolute(90)
     DRV->>GC: ControlFieldRotation(FIXED_ANGLE, 90)
@@ -840,7 +840,7 @@ sequenceDiagram
     DRV->>GC: Park()
     GC->>GRPC: Park()
 
-    Note over EKOS,MC: INDI Rotator
+    Note over EKOS,MC: Derotator (DerotatorService, brak osobnego sterownika INDI)
     EKOS->>INDI: setNumber(ROTATOR_ANGLE, 180)
     INDI->>DRV: ISNewNumber(ROTATOR_ANGLE)
     DRV->>GC: ControlFieldRotation(FIXED_ANGLE, 180)

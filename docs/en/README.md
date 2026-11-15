@@ -135,7 +135,7 @@ stub.SlewToCoordinates(coords)
 - Autoguiding system integration
 
 ### API
-- Complete gRPC API (50+ RPC methods)
+- Complete gRPC API (60+ RPC methods)
 - HTTP/JSON REST API via proxy (~40 endpoints)
 - Support for multiple simultaneous clients
 - Protobuf serialization

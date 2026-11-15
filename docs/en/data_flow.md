@@ -665,7 +665,7 @@ sequenceDiagram
     Driver-->>Alpaca: success
 
     rect rgb(255, 230, 200)
-        Note over App,Driver: ASCOM Rotator Driver (IRotatorV3)
+        Note over App,Server: Derotation via DerotatorService (no separate ASCOM rotator driver)
     end
 
     App->>Alpaca: PUT /api/v1/rotator/0/moveabsolute<br/>Position=90.0
@@ -753,7 +753,7 @@ sequenceDiagram
     Driver-->>INDI: set PARKED
 
     rect rgb(255, 240, 200)
-        Note over Ekos,Driver: INDI Rotator Driver
+        Note over Ekos,Server: Derotation via DerotatorService (no separate INDI rotator driver)
     end
 
     Ekos->>INDI: newNumber ROTATOR_ANGLE<br/>Angle=180.0

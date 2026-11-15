@@ -94,9 +94,7 @@ flowchart TB
 
     subgraph EXTERNAL["🌍 Sterowniki zewnętrzne"]
         ASCOM_TEL["ASCOM Telescope Driver<br/>ascom/AstroMountTelescope.cs<br/>ITelescopeV3 · Alpaca REST → gRPC"]:::driver
-        ASCOM_ROT["ASCOM Rotator Driver<br/>ascom_rotator/AstroMountRotator.cs<br/>IRotatorV3 · Alpaca REST → gRPC"]:::driver
         INDI_TEL["INDI Telescope Driver<br/>indi/astro_mount_driver.cpp<br/>INDI Protocol → gRPC"]:::driver
-        INDI_ROT["INDI Rotator Driver<br/>indi_rotator/astro_mount_rotator_driver.cpp<br/>INDI Rotator → gRPC"]:::driver
         INDI_CCD["INDI CCD Driver<br/>indi/astro_mount_ccd.cpp<br/>INDI CCD → gRPC"]:::driver
     end
 
@@ -125,9 +123,7 @@ flowchart TB
     CAN --> HW
 
     ASCOM_TEL -.->|"gRPC (local/network)"| GRPC
-    ASCOM_ROT -.->|"gRPC (local/network)"| GRPC
     INDI_TEL -.->|"gRPC (local/network)"| GRPC
-    INDI_ROT -.->|"gRPC (local/network)"| GRPC
     INDI_CCD -.->|"gRPC (local/network)"| GRPC
 
     class SPA,PROXY client
@@ -185,7 +181,8 @@ Korekcja błędu okresowego:
 Oddziela logikę biznesową od sprzętu przez [`HALInterface`](include/hal/hal_interface.h) i [`hal_factory`](include/hal/hal_factory.h):
 - **CANopen** (CiA 301/402) · **MF7025v2** (własny protokół CAN) · **Szeregowe** (Modbus RTU)
 - **Ethernet** (Modbus TCP) · **Gamepad** (evdev) · **Symulowane**
-- HAL-e urządzeń: kopuła, derotator (TMC5160), kamera (ZWO), focuser (ZWO/MoonLite/Pegasus), zasilanie (I²C), ST4
+- HAL-e urządzeń: kopuła, derotator (TMC5160), focuser (ZWO/MoonLite/Pegasus), zasilanie (I²C), ST4
+- **Kamera** — usługa w procesie jako most INDI do `indiserver` (brak symulowanego HAL-a kamery)
 
 #### 8. **Usługi podsystemów** (konfigurowalne, domyślnie wyłączone)
 Kontroler montażu hostuje **w procesie** większość podsystemów i serwuje je na wspólnym porcie gRPC :50051; pogoda, zasilanie, sekwencer i baza obiektów pozostają niezależnymi procesami gRPC linkowanymi z `astro_mount_core`:
@@ -244,14 +241,15 @@ Scentralizowane dostarczanie zdarzeń/alertów:
 - Kanały: Email (SMTP/TLS), Webhook, MQTT, Log
 - Kategorie zdarzeń: montaż, pogoda, sekwencer, zasilanie, sesja, system, guider, focuser, kamera, kopuła
 
-#### 15. **Sterowniki ASCOM** (C#)
+#### 15. **Sterownik ASCOM** (C#, [`ascom/`](ascom/))
 - **Teleskop** ([`ascom/AstroMountTelescope.cs`](ascom/AstroMountTelescope.cs)) — `ITelescopeV3`: SlewToCoordinates, PulseGuide, MoveAxis, Park/Unpark, status TPOINT, zapytania środowiskowe, cache stanu 2 s
-- **Rotator** ([`ascom_rotator/AstroMountRotator.cs`](ascom_rotator/AstroMountRotator.cs)) — `IRotatorV3`: MoveAbsolute, Move(rate), Halt, Home
+- **Klient gRPC** ([`ascom/GrpcClient.cs`](ascom/GrpcClient.cs)) — warstwa komunikacji z `MountControllerService`
+- **Uwaga:** w repozytorium nie ma osobnego sterownika rotatora ASCOM. Derotacja jest dostępna przez usługę `DerotatorService` na porcie 50051.
 
-#### 16. **Sterowniki INDI** (C++)
+#### 16. **Sterowniki INDI** (C++, [`indi/`](indi/))
 - **Teleskop** ([`indi/astro_mount_driver.cpp`](indi/astro_mount_driver.cpp)) — `INDI::Telescope` dla Ekos/KStars: MoveNS/MoveWE, `TPOINT_STATUS`, `EnvironmentNP`, park/sync/abort
-- **Rotator** ([`indi_rotator/astro_mount_rotator_driver.cpp`](indi_rotator/astro_mount_rotator_driver.cpp)) — `INDI::Rotator`: MoveRotator, HomeRotator, AbortRotator
 - **Kamera (CCD)** ([`indi/astro_mount_ccd.cpp`](indi/astro_mount_ccd.cpp)) — `INDI::CCD` dla Ekos/KStars: ekspozycje, chłodzenie, filtr; most gRPC do `CameraService` (w procesie)
+- **Uwaga:** w repozytorium nie ma osobnego sterownika rotatora INDI. Derotacja jest dostępna przez usługę `DerotatorService` na porcie 50051.
 
 ## Modele matematyczne
 

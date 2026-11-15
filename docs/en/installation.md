@@ -33,7 +33,7 @@ flowchart TD
 
     subgraph RUN["▶️ Runtime"]
         START["🚀 Start controller<br/>./bin/astro_mount_controller<br/>or sudo systemctl start astro-mount"]:::run
-        GRPC["🌐 gRPC Server<br/>localhost:50051<br/>50+ RPC methods"]:::run
+        GRPC["🌐 gRPC Server<br/>localhost:50051<br/>60+ RPC methods"]:::run
         CANOPEN["🔗 CANopen bus<br/>interface: can0<br/>Nodes: RA, Dec, Derotator"]:::run
     end
 
@@ -1384,19 +1384,11 @@ make astro_object_database_server -j$(nproc)
 
 ### Building INDI Drivers
 
-The INDI telescope and rotator drivers can be built from the standalone `indi/` and `indi_rotator/` directories:
+The INDI drivers (telescope + CCD camera) live in the standalone `indi/` directory. There is **no** separate `indi_rotator/` directory in this repository — derotation is provided by the in-process `DerotatorService` on port 50051.
 
 ```bash
-# Build INDI telescope driver
+# Build INDI drivers (telescope + CCD)
 cd indi
-mkdir -p build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-make -j$(nproc)
-sudo make install
-cd ../..
-
-# Build INDI rotator driver
-cd indi_rotator
 mkdir -p build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j$(nproc)
@@ -1415,30 +1407,23 @@ cmake --build build -j$(nproc)
 
 ### Building ASCOM Drivers (Windows/Cross-Platform)
 
-The ASCOM drivers are C# projects requiring .NET SDK or Mono:
+The ASCOM telescope driver is a C# project requiring .NET SDK or Mono:
 
 ```bash
 # Using .NET SDK
 cd ascom
 dotnet build -c Release
 cd ..
-
-# ASCOM Rotator driver
-cd ascom_rotator
-dotnet build -c Release
-cd ..
 ```
 
-After building, register the drivers with ASCOM:
+After building, register the driver with ASCOM:
 
 ```bash
 # Register with ASCOM (requires administrator privileges)
-# Each driver must be registered via COM:
 regasm /codebase ascom/bin/Release/AstroMountTelescope.dll
-regasm /codebase ascom_rotator/bin/Release/AstroMountRotator.dll
 ```
 
-> **Note**: ASCOM drivers require Windows or Mono on Linux (COM registration is Windows-only).
+> **Note**: ASCOM drivers require Windows or Mono on Linux (COM registration is Windows-only). There is no separate ASCOM Rotator driver in this repository.
 
 ### Installation Testing
 

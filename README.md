@@ -1,7 +1,7 @@
 # Astronomical Mount Controller
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](.)
-[![Tests](https://img.shields.io/badge/tests-17%2F17%20passing-brightgreen.svg)](build_verify/)
+[![Tests](https://img.shields.io/badge/tests-24%2F24%20passing-brightgreen.svg)](build_verify/)
 [![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://isocpp.org/)
 [![C#](https://img.shields.io/badge/C%23-ASCOM%20Driver-green.svg)](https://ascom-standards.org/)
 [![INDI](https://img.shields.io/badge/INDI-2.0%2B-orange.svg)](https://indilib.org/)
@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20ARM-lightgrey.svg)](docs/en/installation.md)
 
-A high-precision astronomical mount controller with sub-arcsecond tracking accuracy, TPOINT model calibration, extended Kalman filter, CANopen/CiA 402 hardware interface, and complete gRPC API for remote operation. Includes native **ASCOM** (C#) and **INDI** (C++) drivers — telescope, rotator and CCD camera — for seamless integration with astronomy software ecosystems.
+A high-precision astronomical mount controller with sub-arcsecond tracking accuracy, TPOINT model calibration, extended Kalman filter, CANopen/CiA 402 hardware interface, and complete gRPC API for remote operation. Includes native **ASCOM** (C#) telescope and **INDI** (C++) telescope + CCD camera drivers for seamless integration with astronomy software ecosystems.
 
 ---
 
@@ -21,6 +21,13 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
 - **Extended Kalman filter** for continuous state estimation and calibration
 - **Automatic meridian flip** with configurable hysteresis and delay
 - **3-zone soft limit system** with warning, deceleration, and hard-stop zones
+
+### 🧭 Mount Types & Unified Kinematics
+- **EQUATORIAL**, **ALT_AZ** and **CASUAL** (arbitrary quaternion-oriented) mount support
+- **Unified tracking engine** — [`MountKinematics`](include/core/mount_kinematics.h) computes position-dependent rates for all mount types (equatorial is the constant-Jacobian special case)
+- **Tracking command selector** (`mount.tracking_mode`: `auto` / `position` / `velocity`)
+- **Pier-side aware Dec folding** and multi-turn target resolution ([`mount_coordinates.h`](include/core/mount_coordinates.h))
+- **Shared sidereal-time source** for controller and INDI driver ([`sidereal_time.h`](include/core/sidereal_time.h))
 
 ### 🔄 Coordinate Systems & Corrections
 - **Full astronomical correction chain**: precession, nutation, aberration, light-time, gravitational deflection
@@ -45,12 +52,11 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
 - **Ephemeris tracking** for comets, asteroids, and satellites
 - **Autoguider integration** (PHD2, Ekos, ASCOM-compatible)
 - **ASCOM Telescope Driver** (C#, ITelescopeV3) — MoveAxis, PulseGuide, Park, TPOINT status, environmental queries
-- **ASCOM Rotator Driver** (C#, IRotatorV3) — absolute/rate positioning, homing, halt
 - **INDI Telescope Driver** (C++) — full Ekos/KStars integration with TPOINT_STATUS, environment, MoveNS/MoveWE
-- **INDI Rotator Driver** (C++) — angle control, homing via gRPC rotator service
 - **INDI Camera (CCD) Driver** (C++) — exposures, cooling, filter wheel via gRPC CameraService
+- **Derotator** — exposed via the in-process `DerotatorService`; no separate ASCOM/INDI rotator driver ships in this repository
 
-### 🧩 Hybrid Service Architecture (config-gated, disabled by default)
+### 🧩 Hybrid Service Architecture (in-process on :50051, external services config-gated)
 - **In-process subsystems** (hosted inside `astro_mount_controller`, all served on the unified gRPC port **50051**):
   - **Dome** ([`dome/`](dome/)) — dome control on the unified port **50051**, auto-sync with mount azimuth (fed in-process via `setMountAzimuth()`)
   - **Derotator** ([`derotator/`](derotator/)) — field derotation on the unified port **50051**, receives mount position updates in-process via `setMountPosition()`
@@ -66,7 +72,7 @@ A high-precision astronomical mount controller with sub-arcsecond tracking accur
   - **Power service** ([`power/`](power/)) — gRPC power management on port **50056**, battery voltage/current monitoring, low-battery auto-park
   - **Sequencer** ([`sequencer/`](sequencer/)) — observation plans on port **50057**
   - **Object database** ([`db/`](db/)) — SQLite catalog on port **50052**
-- **All integrations** are configured via `ExternalIntegrationConfig` in `config/mount/default.json` — each has `"enabled": false` by default
+- **Configuration:** in-process subsystems are controlled via `ExternalIntegrationConfig` in `config/mount/default.json` (dome/derotator/focuser/ST4/PEC are `"enabled": false` by default; camera/pulley/PID/notifications are always hosted). Weather, power, sequencer and object database are separate processes.
 
 ### 🛡️ Safety & Reliability
 - **11 NaN/Inf propagation guards** in tracking loop
@@ -147,6 +153,9 @@ print(f"Status: {state.status}, Position: axis1={state.current_position.axis1:.4
 | [`docs/en/data_flow.md`](docs/en/data_flow.md) | Data flow diagrams for all subsystems |
 | [`docs/en/developer_onboarding.md`](docs/en/developer_onboarding.md) | Developer onboarding guide |
 | [`docs/en/drivers.md`](docs/en/drivers.md) | ASCOM and INDI driver documentation |
+| [`docs/pl/analiza_typow_montazu.md`](docs/pl/analiza_typow_montazu.md) | Mount types (EQUATORIAL/ALT_AZ/CASUAL) and unification analysis |
+| [`docs/pl/wyznaczanie_predkosci_sledzenia.md`](docs/pl/wyznaczanie_predkosci_sledzenia.md) | Tracking-rate derivation and unified kinematics |
+| [`docs/pl/propozycja_podzialu_watku_sledzenia.md`](docs/pl/propozycja_podzialu_watku_sledzenia.md) | Split tracking loop (calc + I/O threads) design |
 | [`web/README.md`](web/README.md) | Web dashboard documentation (HTTP/JSON proxy + SPA) |
 | [`docs/pl/`](docs/pl/) | Polish language documentation |
 
@@ -174,12 +183,15 @@ flowchart TB
     end
 
     subgraph INPROC["In-process subsystems (in astro_mount_controller, unified on :50051)"]
-        DOME["DomeService<br/>:50051<br/>Dome control"]
-        DEROT["DerotatorService<br/>:50051<br/>Field derotation"]
-        FOCUSER["FocuserService<br/>:50051<br/>Focuser control"]
-        CAMERA["CameraService<br/>:50051<br/>INDI bridge"]
-        ST4["ST4GuiderService<br/>:50051<br/>PHD2 guider"]
-        PEC["PecService<br/>:50051<br/>Periodic error"]
+        DOME["DomeService<br/>Dome control"]
+        DEROT["DerotatorService<br/>Field derotation"]
+        FOCUSER["FocuserService<br/>Focuser control"]
+        CAMERA["CameraService<br/>INDI bridge"]
+        ST4["ST4GuiderService<br/>PHD2 guider"]
+        PEC["PecService<br/>Periodic error"]
+        PULLEY["PulleyService<br/>Linear actuator"]
+        PIDCAL["PidCalibrationService<br/>PID tuning"]
+        NOTIF["NotificationService<br/>Alerts"]
     end
 
     subgraph SVC["Stand-alone Services (config-gated, disabled by default)"]
@@ -188,7 +200,7 @@ flowchart TB
     end
 
     subgraph API["gRPC API Layer"]
-        GRPC["MountControllerServiceImpl<br/>50+ RPC methods<br/>:50051"]
+        GRPC["MountControllerServiceImpl<br/>60+ RPC methods<br/>:50051"]
     end
 
     subgraph CORE["Mount Controller (main.cpp + controllers/)"]
@@ -233,7 +245,7 @@ flowchart TB
     CAN_IMPL --> HW
 
     class PY,CPP,WEB client
-    class DOME,DEROT,FOCUSER,WEATHER,POWER svc
+    class DOME,DEROT,FOCUSER,CAMERA,ST4,PEC,PULLEY,PIDCAL,NOTIF,WEATHER,POWER svc
     class GRPC api
     class MC,MODELS,INPROCSVC core
     class TPOINT,KF,EPHEM,ASTRO model
@@ -249,7 +261,10 @@ flowchart TB
 - [`src/models/tpoint_model.cpp`](src/models/tpoint_model.cpp) — TPOINT pointing error model with QR decomposition solver
 - [`src/models/kalman_filter.cpp`](src/models/kalman_filter.cpp) — Extended Kalman filter with Joseph form covariance update
 - [`src/core/astronomical_calculations.cpp`](src/core/astronomical_calculations.cpp) — SOFA-based coordinate transforms and corrections
-- [`proto/mount_controller.proto`](proto/mount_controller.proto) — gRPC service definition (50+ RPCs)
+- [`include/core/mount_kinematics.h`](include/core/mount_kinematics.h) — Unified tracking-rate engine for EQUATORIAL/ALT_AZ/CASUAL
+- [`include/core/mount_coordinates.h`](include/core/mount_coordinates.h) — Pier-side Dec folding and multi-turn target resolution
+- [`include/core/sidereal_time.h`](include/core/sidereal_time.h) — Shared GMST/LST calculations
+- [`proto/mount_controller.proto`](proto/mount_controller.proto) — gRPC service definition (60+ RPCs)
 - [`dome/src/dome_service_impl.cpp`](dome/src/dome_service_impl.cpp) — In-process dome service (unified port 50051)
 - [`derotator/src/derotator_service_impl.cpp`](derotator/src/derotator_service_impl.cpp) — In-process derotator service (unified port 50051)
 - [`focuser/src/focuser_service_impl.cpp`](focuser/src/focuser_service_impl.cpp) — In-process focuser service (unified port 50051)
@@ -263,9 +278,7 @@ flowchart TB
 ## Project Structure
 
 ```
-├── ascom/             # ASCOM Telescope driver (C#, ITelescopeV3)
-│   └── AstroMountTelescope.cs
-├── ascom_rotator/     # ASCOM Rotator driver (C#, IRotatorV3)
+├── ascom/             # ASCOM Telescope driver (C#, ITelescopeV3) + gRPC client
 ├── config/            # JSON configuration files (organized by subsystem)
 │   ├── mount/            # Mount HAL configs (default.json, canopen*.json, mf7025v2*.json, emulation.json, test_no_hardware.json)
 │   ├── weather/          # weather_config.json (stand-alone service)
@@ -312,16 +325,16 @@ flowchart TB
 │   ├── notifications/
 │   └── weather/
 ├── indi/              # INDI Telescope + Camera (CCD) drivers (C++, Ekos/KStars)
-├── indi_rotator/      # INDI Rotator driver (C++)
+├── lib/               # Bundled libraries (canopen_wrapper)
 ├── power/             # Stand-alone power management gRPC service (port 50056)
 │   ├── include/
 │   └── src/
 ├── proto/             # Shared gRPC protobuf definitions
 │   ├── mount_controller.proto
-│   ├── weather.proto
-│   ├── power.proto
-│   ├── dome.proto
-│   └── derotator.proto
+│   ├── camera.proto, focuser.proto, notification.proto
+│   ├── pec.proto, pid_calibration.proto, power.proto, pulley.proto
+│   ├── sequencer.proto, st4_guider.proto, weather.proto
+│   └── (dome/derotator protos live in their subsystem directories)
 ├── scripts/           # Build scripts + systemd service files
 │   ├── astro-mount-controller.service
 │   ├── astro-weather-server.service
@@ -337,7 +350,7 @@ flowchart TB
 │   ├── models/
 │   ├── notifications/
 │   └── weather/
-├── tests/             # Test suites (17+ test binaries)
+├── tests/             # Test suites (24 test executables)
 ├── weather/           # Stand-alone weather monitoring gRPC service (port 50055)
 │   ├── include/
 │   └── src/
@@ -350,27 +363,34 @@ flowchart TB
 
 ## Test Status
 
-All **17/17 tests pass** with full NaN/Inf guard coverage.
+All **24/24 test executables pass** with full NaN/Inf guard coverage.
 
 | Test Suite | Status |
 |------------|--------|
-| `test_mount_controller` | ✅ 25 test groups |
+| `test_mount_controller` | ✅ State machine, tracking, NaN guards |
+| `test_mount_kinematics` | ✅ Unified tracking rates (EQ/ALT_AZ/CASUAL) |
+| `test_mount_coordinates` | ✅ Dec folding / pier-side resolution |
 | `test_tpoint_model` | ✅ 17 test cases |
 | `test_astronomical_calculations` | ✅ Full coverage |
 | `test_configuration` | ✅ Validation tests |
 | `test_kalman_filter` | ✅ State estimation |
+| `test_focus_curve` | ✅ Focus curve fitting |
 | `test_ephemeris_tracker` | ✅ Moving object tracking |
 | `test_hal_integration` | ✅ HAL interface tests |
 | `test_grpc_integration` | ✅ API server tests |
 | `test_subarcsecond_accuracy` | ✅ Accuracy verification |
+| `test_field_rotation_st4` | ✅ Field rotation / ST4 tests |
+| `test_derotator` | ✅ Derotator control tests |
+| `test_weather` | ✅ Weather service tests |
+| `test_watchdog` | ✅ Watchdog timeout tests |
 | `test_canopen_factory` | ✅ CANopen factory tests |
 | `test_canopen_hal` | ✅ CANopen HAL tests |
+| `test_canopen_wrapper` | ✅ CANopen wrapper tests |
 | `test_config_monitor` | ✅ Config monitoring tests |
 | `test_ethernet_hal` | ✅ Ethernet HAL tests |
 | `test_gamepad_hal` | ✅ Gamepad HAL tests |
-| `test_logger` | ✅ Logger tests |
 | `test_serial_hal` | ✅ Serial HAL tests |
-| `test_canopen_wrapper` | ✅ CANopen wrapper tests |
+| `test_logger` | ✅ Logger tests |
 
 ---
 
