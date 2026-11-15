@@ -54,6 +54,37 @@ const SkyMapComponent = (() => {
   };
   const DEFAULT_COLOR = '#b0b0b0';
 
+  // Marker shapes for database objects by type (standard sky-map conventions).
+  const TYPE_SHAPES = {
+    UNKNOWN_TYPE: 'dot',
+    STAR: 'dot',
+    DOUBLE_STAR: 'double',
+    VARIABLE_STAR: 'circle',
+    STAR_CLUSTER_OPEN: 'open-circle',
+    STAR_CLUSTER_GLOBULAR: 'circle-cross',
+    PLANETARY_NEBULA: 'circle-dot',
+    DIFFUSE_NEBULA: 'square',
+    DARK_NEBULA: 'square',
+    EMISSION_NEBULA: 'square',
+    REFLECTION_NEBULA: 'square',
+    GALAXY_SPIRAL: 'ellipse',
+    GALAXY_ELLIPTICAL: 'ellipse',
+    GALAXY_IRREGULAR: 'ellipse',
+    GALAXY_LENTICULAR: 'ellipse',
+    QUASAR: 'diamond',
+    SUPERNOVA_REMNANT: 'ring',
+    PLANET: 'diamond',
+    DWARF_PLANET: 'diamond',
+    MOON: 'circle',
+    ASTEROID: 'cross',
+    COMET: 'cross',
+    SATELLITE: 'cross',
+    EXOPLANET: 'diamond',
+    ARTIFICIAL_SATELLITE: 'cross',
+    SPACE_DEBRIS: 'cross',
+  };
+  const DEFAULT_SHAPE = 'dot';
+
   // Friendly labels for database object types.
   const TYPE_LABELS = {
     UNKNOWN_TYPE: 'Unknown',
@@ -309,6 +340,185 @@ const SkyMapComponent = (() => {
   function typeLabel(type) {
     return TYPE_LABELS[(type || '').toUpperCase()] || (type || 'Object');
   }
+  function markerShape(type) {
+    return TYPE_SHAPES[(type || '').toUpperCase()] || DEFAULT_SHAPE;
+  }
+
+  /**
+   * Draw a database-object marker on the raw canvas in the given shape.
+   * Shapes follow common astronomical map symbols:
+   *   dot        — stars, unknown
+   *   circle     — variable stars, moons
+   *   double     — double stars
+   *   open-circle— open clusters (dashed)
+   *   circle-cross— globular clusters
+   *   circle-dot — planetary nebulae
+   *   square     — diffuse/emission/reflection/dark nebulae
+   *   ellipse    — galaxies
+   *   diamond    — quasars, planets, dwarf planets, exoplanets
+   *   ring       — supernova remnants
+   *   cross      — asteroids, comets, artificial satellites, debris
+   */
+  function drawMarker(ctx, x, y, r, shape, color) {
+    const outline = 'rgba(0,0,0,0.45)';
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.strokeStyle = outline;
+    ctx.lineWidth = Math.max(0.7, r * 0.18);
+
+    switch (shape) {
+      case 'circle': // open circle
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.stroke();
+        break;
+
+      case 'open-circle': // dashed circle
+        ctx.setLineDash([r * 0.55, r * 0.4]);
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        break;
+
+      case 'double': // two touching dots
+        ctx.beginPath();
+        ctx.arc(x - r * 0.55, y, r * 0.6, 0, 2 * Math.PI);
+        ctx.arc(x + r * 0.55, y, r * 0.6, 0, 2 * Math.PI);
+        ctx.fill();
+        break;
+
+      case 'circle-cross': // circle with a plus inside
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x - r * 0.7, y); ctx.lineTo(x + r * 0.7, y);
+        ctx.moveTo(x, y - r * 0.7); ctx.lineTo(x, y + r * 0.7);
+        ctx.stroke();
+        break;
+
+      case 'circle-dot': // open circle with a filled centre
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, Math.max(0.9, r * 0.32), 0, 2 * Math.PI);
+        ctx.fill();
+        break;
+
+      case 'square': // filled square
+        ctx.beginPath();
+        ctx.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7);
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'diamond': // filled rotated square
+        ctx.beginPath();
+        ctx.moveTo(x, y - r * 1.2);
+        ctx.lineTo(x + r * 1.2, y);
+        ctx.lineTo(x, y + r * 1.2);
+        ctx.lineTo(x - r * 1.2, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'ellipse': // filled elongated ellipse (galaxy)
+        ctx.beginPath();
+        ctx.ellipse(x, y, r * 1.5, r * 0.75, 0, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+        break;
+
+      case 'ring': // annulus
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.arc(x, y, r * 0.6, 0, 2 * Math.PI, true);
+        ctx.fill('evenodd');
+        break;
+
+      case 'cross': // plus sign
+        ctx.beginPath();
+        ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
+        ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
+        ctx.stroke();
+        break;
+
+      case 'dot':
+      default: // filled dot
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, 2 * Math.PI);
+        ctx.fill();
+        break;
+    }
+    ctx.restore();
+  }
+
+  /** Zoom-dependent magnitude limit for showing short-name labels. */
+  function labelMagLimit(z) {
+    if (z <= 1) return 2.5;
+    if (z <= 1.5) return 4.5;
+    if (z <= 2.5) return 6.5;
+    if (z <= 4) return 8;
+    if (z <= 7) return 9.5;
+    return 11;
+  }
+
+  /** Normalise a compact catalog designation ("M31", "NGC 224", "IC 434", "C14"). */
+  function normalizeCatalogDesignation(s) {
+    if (!s) return '';
+    const t = String(s).trim();
+    let m = t.match(/^(M|Messier)\s*[- #]?\s*(\d{1,6})$/i);
+    if (m) return 'M' + m[2];
+    m = t.match(/^(NGC|IC)\s*[- #]?\s*(\d{1,6})$/i);
+    if (m) return m[1].toUpperCase() + ' ' + m[2];
+    m = t.match(/^(C|Caldwell)\s*[- #]?\s*(\d{1,6})$/i);
+    if (m) return 'C' + m[2];
+    return '';
+  }
+
+  /** Derive a compact, human-friendly label for an object. */
+  function shortObjectName(o) {
+    const name = String(o.name || '').trim();
+    const alt = String(o.alternate_names || '').trim();
+    const catalogId = String(o.catalog_id || '').trim();
+
+    // 1. Compact catalog designation (M/NGC/IC/Caldwell).
+    for (const c of [catalogId, name]) {
+      const d = normalizeCatalogDesignation(c);
+      if (d) return d;
+    }
+
+    // 2. Single-word common name (Sirius, Vega, Polaris, ...).
+    if (name && name.length <= 14 && !/\s/.test(name) && /^[A-Za-z]/.test(name) && !/\d/.test(name)) {
+      return name;
+    }
+
+    // 3. First short alternate-name token (e.g. Bayer "α CMa", "61 Cyg").
+    const tokens = alt.split(',').map((s) => s.trim()).filter((s) => s && s.length <= 16);
+    if (tokens.length) return tokens[0];
+
+    // 4. Fall back to a truncated primary name.
+    return name.length > 14 ? name.slice(0, 14) : (name || 'Object');
+  }
+
+  function drawObjectLabel(ctx, x, y, r, text) {
+    if (!text) return;
+    ctx.save();
+    ctx.font = '10px DejaVu Sans, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    const ox = x + r + 3;
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(10,12,24,0.85)';
+    ctx.strokeText(text, ox, y);
+    ctx.fillStyle = '#e6edfa';
+    ctx.fillText(text, ox, y);
+    ctx.restore();
+  }
   function dsoTypeLabel(code) {
     return DSO_TYPE_LABELS[code] || (code || 'Deep-Sky Object');
   }
@@ -338,6 +548,8 @@ const SkyMapComponent = (() => {
     const adapt = Math.sqrt(Math.max(1, zoom));
 
     if (source === 'database') {
+      const labels = [];
+      const labelMag = labelMagLimit(zoom);
       for (const o of displayObjects) {
         if (!isTypeVisible(o.object_type)) continue;
         const ra = Number(o.ra_hours);
@@ -357,15 +569,18 @@ const SkyMapComponent = (() => {
           ? Math.max(1.2, Math.min(8, (6.5 - mag) * 1.2 * adapt))
           : 2.5;
 
-        ctx.beginPath();
-        ctx.arc(pt[0], pt[1], r, 0, 2 * Math.PI);
-        ctx.fillStyle = typeColor(o.object_type);
-        ctx.fill();
-        if (r > 3.5) {
-          ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-          ctx.lineWidth = 0.8;
-          ctx.stroke();
+        drawMarker(ctx, pt[0], pt[1], r, markerShape(o.object_type), typeColor(o.object_type));
+
+        // Short-name labels for the brightest objects, capped to keep the map
+        // readable. The magnitude threshold tightens as the user zooms out.
+        if (labels.length < 400 && hasMag && mag <= labelMag) {
+          labels.push({ x: pt[0], y: pt[1], r: r, text: shortObjectName(o) });
         }
+      }
+
+      // Draw labels on a second pass so they sit above every marker.
+      for (const lb of labels) {
+        drawObjectLabel(ctx, lb.x, lb.y, lb.r, lb.text);
       }
     }
 
