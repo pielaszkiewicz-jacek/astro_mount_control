@@ -1460,9 +1460,9 @@ public:
                 try {
                     if (hal_axis1_motor_ && hal_axis2_motor_) {
                         const bool ok1 = hal_axis1_motor_->setPosition(cmd.pos1, cmd.pos_vel,
-                                                      config_.mount_config.slew_acceleration);
+                                                      config_.mount_config.tracking_acceleration);
                         const bool ok2 = hal_axis2_motor_->setPosition(cmd.pos2, cmd.pos_vel2,
-                                                      config_.mount_config.slew_acceleration);
+                                                      config_.mount_config.tracking_acceleration);
                         if (!ok1 || !ok2) {
                             MOUNT_LOG_WARN("io thread: position command FAILED "
                                            "(axis1_ok={} axis2_ok={} pos1={:.2f}° "
