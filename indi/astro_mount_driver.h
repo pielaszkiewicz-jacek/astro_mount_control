@@ -74,7 +74,7 @@ public:
     bool UnPark() override;
     bool SetCurrentPark() override;
     bool SetDefaultPark() override;
-    bool Flip(double ra, double dec) override;
+    bool Flip(double ra, double dec);
     bool updateLocation(double latitude, double longitude, double elevation) override;
     bool updateTime(ln_date* utc, double utc_offset) override;
     bool ReadScopeStatus() override;

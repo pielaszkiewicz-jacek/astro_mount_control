@@ -64,7 +64,7 @@ void ISSnoopDevice(XMLEle* root)
 
 AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
     : INDI::Telescope()
-    , INDI::GuiderInterface(this)
+    , INDI::GuiderInterface()
     , m_isParked(false)
     , m_targetRA(0)
     , m_targetDec(0)
@@ -179,7 +179,7 @@ bool AstroMountINDI::initProperties()
     INDI::Telescope::initProperties();
 
     // Pulse-guiding interface (defines GuideNSNP / GuideWENP).
-    INDI::GuiderInterface::initProperties("Guide");
+    INDI::GuiderInterface::initGuiderProperties(getDeviceName(), "Guide");
 
     // PHD2 identifies INDI mounts by the GUIDER_INTERFACE flag (its INDI device
     // filter only accepts mount candidates that expose GUIDER_INTERFACE and not
@@ -363,7 +363,8 @@ bool AstroMountINDI::initProperties()
 bool AstroMountINDI::updateProperties()
 {
     INDI::Telescope::updateProperties();
-    INDI::GuiderInterface::updateProperties();
+    defineProperty(&GuideNSNP);
+    defineProperty(&GuideWENP);
 
     // Connection configuration (GRPC_CONNECTION / GRPC_TLS / GRPC_CONNECTION_STATUS)
     // is always defined so the endpoint can be configured before connecting.
@@ -433,8 +434,11 @@ bool AstroMountINDI::ISNewNumber(const char* dev, const char* name,
 
         // Delegate guide-pulse properties (GuideNSNP / GuideWENP) to the
         // GuiderInterface, which maps them onto GuideNorth/South/East/West.
-        if (INDI::GuiderInterface::processNumber(dev, name, values, names, n))
+        if (!strcmp(name, GuideNSNP.name) || !strcmp(name, GuideWENP.name))
+        {
+            INDI::GuiderInterface::processGuiderProperties(name, values, names, n);
             return true;
+        }
 
         // Legacy PHD2 timed-guide properties (TELESCOPE_TIMED_GUIDE_NS/_WE).
         // PHD2 sends one element with the pulse duration in ms (the others 0).
@@ -1132,9 +1136,9 @@ bool AstroMountINDI::SetTrackEnabled(bool enabled)
             // Without this, enabling tracking after selecting Custom (while
             // idle) silently fell back to sidereal and ignored the custom rates.
             int selectedMode = -1;
-            for (size_t i = 0; i < TrackModeSP.size(); ++i)
+            for (size_t i = 0; i < static_cast<size_t>(TrackModeSP.nsp); ++i)
             {
-                if (TrackModeSP[i].s == ISS_ON)
+                if (TrackModeSP.sp[i].s == ISS_ON)
                 {
                     selectedMode = static_cast<int>(i);
                     break;
@@ -1142,8 +1146,8 @@ bool AstroMountINDI::SetTrackEnabled(bool enabled)
             }
             if (selectedMode >= 0)
                 m_trackMode = static_cast<uint8_t>(selectedMode);
-            m_customTrackRaArcsecPerSec = TrackRateNP[0].value;
-            m_customTrackDecArcsecPerSec = TrackRateNP[1].value;
+            m_customTrackRaArcsecPerSec = TrackRateNP.np[0].value;
+            m_customTrackDecArcsecPerSec = TrackRateNP.np[1].value;
 
             // Track the CURRENT on-sky position, not the last Goto target.
             // KStars "Track" (and "Slew and Track" once the slew settles)
