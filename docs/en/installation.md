@@ -183,16 +183,227 @@ VS Code will automatically use the Remote-WSL extension, giving you full Intelli
 
 ---
 
+## Ubuntu — Installation and Building (step by step)
+
+This guide walks through a complete installation on Ubuntu 22.04/24.04 (x86_64 or arm64, including Orange Pi 4 Pro).
+
+### Step 1: Update the system and enable universe
+
+```bash
+sudo apt install -y software-properties-common
+sudo add-apt-repository universe
+sudo apt update
+sudo apt upgrade -y
+```
+
+### Step 2: Install dependencies
+
+```bash
+sudo apt install -y \
+    build-essential cmake git pkg-config \
+    libssl-dev libboost-all-dev libeigen3-dev \
+    nlohmann-json3-dev libgrpc++-dev libprotobuf-dev \
+    protobuf-compiler protobuf-compiler-grpc \
+    libsqlite3-dev libcurl4-openssl-dev uuid-dev \
+    libspdlog-dev libfmt-dev libgtest-dev libindi-dev
+
+# CAN tools (SocketCAN)
+sudo apt install -y can-utils
+```
+
+> SOFA and CANopen are compiled from the sources bundled with the project (`sofa/`, `lib/canopen_wrapper/`) — they do not require system packages.
+
+### Step 3: Bring up the CAN interface (optional)
+
+```bash
+sudo ip link set can0 type can bitrate 500000
+sudo ip link set up can0
+candump can0
+```
+
+### Step 4: Clone the source code
+
+```bash
+git clone https://github.com/your-org/astro-mount-controller.git
+cd astro-mount-controller
+```
+
+### Step 5: Build
+
+```bash
+mkdir -p build && cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j$(nproc)
+```
+
+Binaries are written to `build/bin/` (including `astro_mount_controller`, `astro_weather_server`, `astro_power_server`, `astro_sequencer_server`, `astro_derotator_server`).
+
+### Step 6: System installation (optional)
+
+```bash
+sudo make install
+```
+
+### Step 7: Run
+
+```bash
+# from the project root
+./build/bin/astro_mount_controller config/mount/default.json
+```
+
+### Step 8: Install the Web UI tools
+
+```bash
+# Node.js (Ubuntu 24.04)
+sudo apt install -y nodejs npm
+
+# Ubuntu 22.04 — Node.js 20 LTS from NodeSource
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+
+# Proxy dependencies
+cd web/proxy
+npm install
+```
+
+Start the web interface:
+
+```bash
+cd web/proxy
+npm start
+```
+
+Open http://localhost:8080. See the “Web UI” section below for details.
+
+See the “Dependency Installation”, “Building from source”, and “Web UI” sections below for details.
+
+---
+
+## Web UI
+
+The project ships a web frontend (SPA) served by a lightweight Node.js proxy that translates REST/JSON requests into gRPC calls to the backend.
+
+```text
+Browser (SPA) → HTTP/JSON → Node.js Proxy → gRPC → Mount Controller
+```
+
+### Requirements
+
+- Node.js >= 18
+- A running backend: `astro_mount_controller` listening on gRPC (default `127.0.0.1:50051`)
+
+### Installing Node.js (Ubuntu)
+
+```bash
+# Ubuntu 24.04 — Node.js 18 from the official repository
+sudo apt install -y nodejs npm
+
+# Ubuntu 22.04 — Node.js 20 LTS from NodeSource (the repo version is too old)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+### Installing proxy dependencies
+
+When running the Web UI directly from the source tree:
+
+```bash
+cd web/proxy
+npm install
+```
+
+When using the `make localuser` deployment (directory `~/astro-mount-controller`), install the dependencies in the deployed directory — `make localuser` intentionally excludes `node_modules` and `.env`:
+
+```bash
+cd ~/astro-mount-controller/web/proxy
+npm install
+cp .env.example .env   # optional, e.g. to change ports
+```
+
+#### System log directory
+
+The driver writes logs to `/var/log/astro-mount` by default. Create it and grant ownership to the user running the environment (e.g. `astro`):
+
+```bash
+sudo mkdir -p /var/log/astro-mount
+sudo chown -R astro:astro /var/log/astro-mount
+```
+
+Without this directory you will see the `Nie udało się utworzyć /var/log/astro-mount` warning and the driver will log to the console only.
+
+### Configuration (optional)
+
+```bash
+cp .env.example .env
+# Adjust GRPC_HOST, GRPC_PORT, PROXY_PORT if needed
+```
+
+Defaults: gRPC `127.0.0.1:50051`, web interface `0.0.0.0:8080`.
+
+### Running
+
+```bash
+cd web/proxy
+npm start
+```
+
+Open http://localhost:8080 in a browser (or `http://SERVER_IP:8080` from another machine).
+
+### Background execution and systemd service
+
+Quick background start:
+
+```bash
+cd web/proxy
+nohup npm start > /tmp/astro-web.log 2>&1 &
+```
+
+Example systemd service — `/etc/systemd/system/astro-web.service`:
+
+```ini
+[Unit]
+Description=Astro Mount Web UI
+After=network.target
+
+[Service]
+WorkingDirectory=/home/astro/astro-mount-controller/web/proxy
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+User=astro
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now astro-web
+sudo systemctl status astro-web
+```
+
+### Tests (optional)
+
+```bash
+cd web/proxy
+npm test
+```
+
+---
+
 ## Dependency Installation
 
 ### Ubuntu/Debian
 
+Required: Ubuntu 22.04 (Jammy) or newer (24.04 Noble), x86_64 or arm64 (including Orange Pi 4 Pro). The `nlohmann-json3-dev` package lives in the `universe` repository — make sure it is enabled.
+
 ```bash
-# System update
+# 1. Enable the universe repository (if not already enabled)
+sudo apt install -y software-properties-common
+sudo add-apt-repository universe
 sudo apt update
 sudo apt upgrade -y
 
-# System dependencies
+# 2. System dependencies
 sudo apt install -y \
     build-essential \
     cmake \
@@ -201,21 +412,51 @@ sudo apt install -y \
     libssl-dev \
     libboost-all-dev \
     libeigen3-dev \
-    libnlohmann-json3-dev \
+    nlohmann-json3-dev \
     libgrpc++-dev \
     libprotobuf-dev \
     protobuf-compiler \
     protobuf-compiler-grpc \
-    libcanopen-dev \
-    libsofa-dev \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    uuid-dev \
+    libspdlog-dev \
+    libfmt-dev \
     libgtest-dev \
     libindi-dev
 
-# CAN tools
-sudo apt install -y \
-    can-utils \
-    linux-can \
-    socketcan
+# 3. CAN tools (SocketCAN)
+sudo apt install -y can-utils
+```
+
+> **Note**: SOFA and CANopen are compiled from the sources bundled with the project (`sofa/` and `lib/canopen_wrapper/`), so do not install `libsofa-dev` or `libcanopen-dev` — those packages do not exist in Ubuntu.
+
+After installing the dependencies, continue with the “Building from source” section below.
+
+#### Enabling the CAN interface (SocketCAN)
+
+Once the CAN adapter is attached (MCP2515, PCAN-USB, gs_usb, etc.), bring the interface up:
+
+```bash
+# List available interfaces
+ip link show
+
+# Configure and bring up can0 (example: 500 kbit/s)
+sudo ip link set can0 type can bitrate 500000
+sudo ip link set up can0
+
+# Watch CAN traffic
+candump can0
+```
+
+To make the configuration persistent across reboots, add it to `/etc/network/interfaces`:
+
+```bash
+auto can0
+iface can0 inet manual
+    pre-up /sbin/ip link set can0 type can bitrate 500000
+    up /sbin/ip link set up can0
+    down /sbin/ip link set down can0
 ```
 
 ### RHEL/CentOS
@@ -237,7 +478,6 @@ sudo yum install -y \
     grpc-devel \
     protobuf-devel \
     protobuf-compiler \
-    sofa-devel \
     gtest-devel \
     libindi-devel
 
@@ -269,7 +509,6 @@ sudo zypper install -y \
     grpc-cli \
     protobuf-devel \
     protobuf-compiler \
-    libsofa-devel \
     gtest-devel \
     patterns-devel-base-devel_basis \
     libindi-devel
@@ -422,21 +661,21 @@ sudo apt install -y \
     libssl-dev \
     libboost-all-dev \
     libeigen3-dev \
-    libnlohmann-json3-dev \
+    nlohmann-json3-dev \
     libgrpc++-dev \
     libprotobuf-dev \
     protobuf-compiler \
     protobuf-compiler-grpc \
-    libcanopen-dev \
-    libsofa-dev \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    uuid-dev \
+    libspdlog-dev \
+    libfmt-dev \
     libgtest-dev \
     libindi-dev
 
 # Install CAN tools for Raspberry Pi
-sudo apt install -y \
-    can-utils \
-    linux-can \
-    socketcan
+sudo apt install -y can-utils
 
 # For SPI-based CAN interfaces (common on Raspberry Pi)
 sudo apt install -y \
@@ -745,7 +984,7 @@ Header-only — no compilation needed, just copy headers:
 sudo zypper install -y nlohmann-json-devel
 
 # Option B — Install via package manager (Ubuntu/Debian)
-# sudo apt install -y libnlohmann-json3-dev
+# sudo apt install -y nlohmann-json3-dev
 
 # Option C — Manual install (any distro)
 git clone -b v3.11.3 https://github.com/nlohmann/json.git

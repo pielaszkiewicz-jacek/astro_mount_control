@@ -734,9 +734,10 @@ cd astro-mount-controller
 # Zainstaluj zależności
 sudo apt update
 sudo apt install -y build-essential cmake git pkg-config libssl-dev \
-    libboost-all-dev libeigen3-dev libnlohmann-json3-dev libgrpc++-dev \
-    libprotobuf-dev protobuf-compiler protobuf-compiler-grpc libcanopen-dev \
-    libsofa-dev libgtest-dev can-utils linux-can socketcan
+    libboost-all-dev libeigen3-dev nlohmann-json3-dev libgrpc++-dev \
+    libprotobuf-dev protobuf-compiler protobuf-compiler-grpc libsqlite3-dev \
+    libcurl4-openssl-dev uuid-dev libspdlog-dev libfmt-dev \
+    libgtest-dev can-utils
 
 # Buduj
 mkdir build && cd build

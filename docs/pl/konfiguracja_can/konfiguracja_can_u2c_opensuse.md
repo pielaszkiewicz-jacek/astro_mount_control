@@ -110,9 +110,9 @@ sudo zypper install -y can-utils
 
 # ── Narzędzia diagnostyczne (opcjonalne) ──
 sudo zypper install -y      \
-    wireshark               \   # analiza ramek CAN
-    iproute2                \   # ip link, ip -details
-    usbutils                    # lsusb
+    wireshark               \
+    iproute2                \
+    usbutils
 ```
 
 Jeśli budujesz [`astro-mount-controller`](installation.md) ze źródeł, dodatkowo:

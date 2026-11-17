@@ -102,9 +102,9 @@ sudo apt install -y can-utils
 
 # ── Diagnostic tools (optional) ──
 sudo apt install -y         \
-    wireshark               \   # CAN frame analysis
-    iproute2                \   # ip link, ip -details (already installed)
-    usbutils                    # lsusb
+    wireshark               \
+    iproute2                \
+    usbutils
 ```
 
 If building [`astro-mount-controller`](installation.md) from source, additionally:
@@ -545,6 +545,36 @@ sudo modprobe gs_usb
 sudo sh -c 'echo "1a86 55d4" > /sys/bus/usb/drivers/usb/new_id'
 ```
 
+> **Orange Pi / vendor kernel (e.g. `*-sun60iw2`)** — if `modprobe` reports:
+>
+> ```text
+> modprobe: FATAL: Module can not found in directory /lib/modules/6.6.98-sun60iw2
+> ```
+>
+> the vendor image **does not ship the CAN modules**. Check the kernel config:
+>
+> ```bash
+> uname -r
+> # CONFIG_CAN / CONFIG_CAN_RAW / CONFIG_CAN_DEV / CONFIG_CAN_GS_USB
+> zcat /proc/config.gz 2>/dev/null | grep -E 'CONFIG_CAN|CONFIG_GS_USB' \
+>   || grep -E 'CONFIG_CAN|CONFIG_GS_USB' /boot/config-$(uname -r)
+> ```
+>
+> If `CONFIG_CAN` is disabled (`# CONFIG_CAN is not set`) or absent, the kernel has no SocketCAN support and `can-utils` alone will not help. Solutions:
+>
+> 1. Install an image with a CAN-enabled kernel — e.g. **Armbian** (usually enables `CONFIG_CAN`, `CONFIG_CAN_RAW`, `CONFIG_CAN_DEV`, and `CONFIG_CAN_GS_USB`),
+> 2. rebuild the kernel with `CONFIG_CAN=y`, `CONFIG_CAN_RAW=y`, `CONFIG_CAN_DEV=y`, and `CONFIG_CAN_GS_USB=m` (or `=y`) — for this image you can use the `orangepi-xunlong/orangepi-build` system (see `BUILD_REPOSITORY_URL` in `/etc/orangepi-release`).
+>
+> Once a CAN-enabled kernel is running, verify and configure the interface:
+>
+> ```bash
+> sudo apt update && sudo apt install -y can-utils
+> sudo modprobe can can_raw can_dev gs_usb
+> sudo ip link set can0 type can bitrate 500000
+> sudo ip link set can0 up
+> candump can0
+> ```
+
 ### 8.2 Frame Errors (rx-errors / tx-errors)
 
 **Symptom**: `ip -s link show can0` shows increasing `rx-errors`.
@@ -706,6 +736,109 @@ Standard CANopen drive connector (DSub‑9, compliant with CiA 303‑1):
 ### 10.4 120 Ω Terminator
 
 If the drive does not have a built-in terminator, connect a 120 Ω resistor between CAN H and CAN L at **both ends** of the bus.
+
+---
+
+## A. Rebuilding the Orange Pi kernel with CAN support (vendor kernel)
+
+If `modprobe` reports `FATAL: Module can not found ...`, and `zcat /proc/config.gz | grep CONFIG_CAN` shows `# CONFIG_CAN is not set`, the vendor kernel has no SocketCAN support. For Orange Pi images (family `sun60iw2`, e.g. Orange Pi 4 Pro), the simplest path is to rebuild the kernel with `orangepi-build` — the same system used to build the image (see `/etc/orangepi-release`).
+
+### A.1 Prerequisites
+
+- ~30 GB of free disk space,
+- an internet connection,
+- `git` and build tools on the build machine.
+
+```bash
+sudo apt install -y git build-essential bc bison flex libssl-dev libncurses-dev rsync
+```
+
+> Building directly on the Orange Pi is slow (several hours) and may fail the host check — the supported build host is Ubuntu 22.04. An x86_64 machine running Ubuntu 22.04 (optionally with Docker) is recommended.
+
+### A.2 Get the build system
+
+```bash
+cd ~
+if [ ! -d orangepi-build ]; then
+    git clone --depth 1 https://github.com/orangepi-xunlong/orangepi-build.git
+fi
+cd orangepi-build
+git pull --ff-only   # optional, if the directory already existed
+```
+
+### A.3 Locate the kernel config
+
+```bash
+ls external/config/kernel/ | grep -i sun60iw2
+```
+
+For the **Orange Pi 4 Pro** (family `sun60iw2`, `current` branch) the config file is:
+
+```text
+external/config/kernel/linux-sun60iw2-current-a733.config
+```
+
+### A.4 Enable the CAN options
+
+Make a backup and enable the required options (the file contains `# CONFIG_CAN is not set`, and the remaining options are absent):
+
+```bash
+KCFG="external/config/kernel/linux-sun60iw2-current-a733.config"
+cp "$KCFG" "$KCFG.bak"
+
+sed -i 's/^# CONFIG_CAN is not set/CONFIG_CAN=y/' "$KCFG"
+
+grep -q '^CONFIG_CAN='        "$KCFG" || echo 'CONFIG_CAN=y'        >> "$KCFG"
+grep -q '^CONFIG_CAN_RAW='    "$KCFG" || echo 'CONFIG_CAN_RAW=y'    >> "$KCFG"
+grep -q '^CONFIG_CAN_DEV='    "$KCFG" || echo 'CONFIG_CAN_DEV=y'    >> "$KCFG"
+grep -q '^CONFIG_CAN_GS_USB=' "$KCFG" || echo 'CONFIG_CAN_GS_USB=m' >> "$KCFG"
+```
+
+Alternatively, use menuconfig during the build:
+
+```bash
+sudo ./build.sh BOARD=orangepi4pro BRANCH=current BUILD_OPT=kernel KERNEL_CONFIGURE=yes
+# Networking support -> CAN bus subsystem support -> enable CAN / RAW / BCM / GW and gs_usb
+```
+
+### A.5 Build the kernel (on an Ubuntu 22.04 host)
+
+> **Important**: do not build on the Orange Pi — the build system only supports an Ubuntu 22.04 host and fails on the Orange Pi with `unsupported build system: resolute`. Run this step on an x86_64 Ubuntu 22.04 machine (natively or in Docker).
+
+```bash
+# On the Ubuntu 22.04 host, inside orangepi-build:
+sudo ./build.sh BOARD=orangepi4pro BRANCH=current BUILD_OPT=kernel KERNEL_CONFIGURE=no
+```
+
+When finished, the kernel packages are in `output/debs/` (check `ls output/debs/` — names like `linux-image-...`, `linux-dtb-...`, `linux-headers-...`).
+
+### A.6 Install the new kernel on the Orange Pi
+
+Copy the packages from the host to the Orange Pi and install them:
+
+```bash
+# On the build host:
+scp output/debs/linux-image-*.deb output/debs/linux-dtb-*.deb output/debs/linux-headers-*.deb \
+    astro@<ORANGE_PI_IP>:/tmp/
+
+# On the Orange Pi:
+sudo dpkg -i /tmp/linux-image-*.deb /tmp/linux-dtb-*.deb /tmp/linux-headers-*.deb
+sudo reboot
+```
+
+> **Note**: check the actual file names in `output/debs/` first — the package set depends on the orangepi-build version.
+
+### A.7 Verify after reboot
+
+```bash
+uname -r
+sudo modprobe can can_raw can_dev gs_usb
+sudo ip link set can0 type can bitrate 500000
+sudo ip link set can0 up
+candump can0
+```
+
+Once `can0` appears, go back to section [4](#4-transient-can-interface-configuration) and set up a persistent configuration.
 
 ---
 

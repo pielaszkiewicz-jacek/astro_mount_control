@@ -102,9 +102,9 @@ sudo apt install -y can-utils
 
 # ── Narzędzia diagnostyczne (opcjonalne) ──
 sudo apt install -y         \
-    wireshark               \   # analiza ramek CAN
-    iproute2                \   # ip link, ip -details (już zainstalowane)
-    usbutils                    # lsusb
+    wireshark               \
+    iproute2                \
+    usbutils
 ```
 
 Jeśli budujesz [`astro-mount-controller`](installation.md) ze źródeł, dodatkowo:
@@ -570,6 +570,36 @@ sudo modprobe gs_usb
 sudo sh -c 'echo "1a86 55d4" > /sys/bus/usb/drivers/usb/new_id'
 ```
 
+> **Orange Pi / jądro producenta (np. `*-sun60iw2`)** — jeśli `modprobe` zgłasza:
+>
+> ```text
+> modprobe: FATAL: Module can not found in directory /lib/modules/6.6.98-sun60iw2
+> ```
+>
+> to obraz producenta **nie zawiera modułów CAN**. Sprawdź konfigurację jądra:
+>
+> ```bash
+> uname -r
+> # CONFIG_CAN / CONFIG_CAN_RAW / CONFIG_CAN_DEV / CONFIG_CAN_GS_USB
+> zcat /proc/config.gz 2>/dev/null | grep -E 'CONFIG_CAN|CONFIG_GS_USB' \
+>   || grep -E 'CONFIG_CAN|CONFIG_GS_USB' /boot/config-$(uname -r)
+> ```
+>
+> Jeśli `CONFIG_CAN` jest wyłączone (`# CONFIG_CAN is not set`) lub nie występuje, jądro nie obsługuje SocketCAN i sam pakiet `can-utils` nie pomoże. Rozwiązania:
+>
+> 1. Zainstaluj obraz z jądrem obsługującym CAN — np. **Armbian** (zwykle ma włączone `CONFIG_CAN`, `CONFIG_CAN_RAW`, `CONFIG_CAN_DEV` oraz `CONFIG_CAN_GS_USB`),
+> 2. przebuduj jądro z włączonymi opcjami `CONFIG_CAN=y`, `CONFIG_CAN_RAW=y`, `CONFIG_CAN_DEV=y` i `CONFIG_CAN_GS_USB=m` (lub `=y`) — dla tego obrazu możesz użyć systemu `orangepi-xunlong/orangepi-build` (patrz `BUILD_REPOSITORY_URL` w `/etc/orangepi-release`).
+>
+> Po uruchomieniu jądra z obsługą CAN zweryfikuj i skonfiguruj interfejs:
+>
+> ```bash
+> sudo apt update && sudo apt install -y can-utils
+> sudo modprobe can can_raw can_dev gs_usb
+> sudo ip link set can0 type can bitrate 500000
+> sudo ip link set can0 up
+> candump can0
+> ```
+
 ### 8.2 Błędy ramek (rx-errors / tx-errors)
 
 **Objaw**: `ip -s link show can0` pokazuje rosnące `rx-errors`.
@@ -741,6 +771,109 @@ CAN L ──╯           │
                     ═══
 GND ────────────────╯
 ```
+
+---
+
+## A. Przebudowa jądra Orange Pi z obsługą CAN (vendor kernel)
+
+Jeśli `modprobe` zgłasza `FATAL: Module can not found ...`, a `zcat /proc/config.gz | grep CONFIG_CAN` pokazuje `# CONFIG_CAN is not set`, jądro producenta nie ma obsługi SocketCAN. Dla obrazów Orange Pi (rodzina `sun60iw2`, np. Orange Pi 4 Pro) najprościej przebudować jądro systemem `orangepi-build` — tym samym, którym zbudowano obraz (patrz `/etc/orangepi-release`).
+
+### A.1 Wymagania wstępne
+
+- ~30 GB wolnego miejsca na dysku,
+- połączenie z internetem,
+- `git` oraz narzędzia budowania na maszynie budującej.
+
+```bash
+sudo apt install -y git build-essential bc bison flex libssl-dev libncurses-dev rsync
+```
+
+> Budowanie bezpośrednio na Orange Pi jest wolne (kilka godzin) i może nie przejść kontroli hosta — wspierany host budowania to Ubuntu 22.04. Zalecany jest komputer x86_64 z Ubuntu 22.04 (opcjonalnie z Dockerem).
+
+### A.2 Pobranie systemu budowania
+
+```bash
+cd ~
+if [ ! -d orangepi-build ]; then
+    git clone --depth 1 https://github.com/orangepi-xunlong/orangepi-build.git
+fi
+cd orangepi-build
+git pull --ff-only   # opcjonalnie, jeśli katalog już istniał
+```
+
+### A.3 Znalezienie pliku konfiguracji jądra
+
+```bash
+ls external/config/kernel/ | grep -i sun60iw2
+```
+
+Dla **Orange Pi 4 Pro** (rodzina `sun60iw2`, gałąź `current`) plik konfiguracji to:
+
+```text
+external/config/kernel/linux-sun60iw2-current-a733.config
+```
+
+### A.4 Włączenie opcji CAN
+
+Zapisz kopię i włącz wymagane opcje (plik zawiera wpis `# CONFIG_CAN is not set`, a pozostałych opcji w nim brak):
+
+```bash
+KCFG="external/config/kernel/linux-sun60iw2-current-a733.config"
+cp "$KCFG" "$KCFG.bak"
+
+sed -i 's/^# CONFIG_CAN is not set/CONFIG_CAN=y/' "$KCFG"
+
+grep -q '^CONFIG_CAN='        "$KCFG" || echo 'CONFIG_CAN=y'        >> "$KCFG"
+grep -q '^CONFIG_CAN_RAW='    "$KCFG" || echo 'CONFIG_CAN_RAW=y'    >> "$KCFG"
+grep -q '^CONFIG_CAN_DEV='    "$KCFG" || echo 'CONFIG_CAN_DEV=y'    >> "$KCFG"
+grep -q '^CONFIG_CAN_GS_USB=' "$KCFG" || echo 'CONFIG_CAN_GS_USB=m' >> "$KCFG"
+```
+
+Alternatywnie użyj menuconfig podczas budowania:
+
+```bash
+sudo ./build.sh BOARD=orangepi4pro BRANCH=current BUILD_OPT=kernel KERNEL_CONFIGURE=yes
+# Networking support -> CAN bus subsystem support -> włącz CAN / RAW / BCM / GW oraz gs_usb
+```
+
+### A.5 Budowanie jądra (na hoście Ubuntu 22.04)
+
+> **Ważne**: nie buduj na Orange Pi — build system obsługuje wyłącznie host Ubuntu 22.04 i na Orange Pi kończy się błędem `unsupported build system: resolute`. Wykonaj ten krok na komputerze x86_64 z Ubuntu 22.04 (natywnie lub w Dockerze).
+
+```bash
+# Na hoście Ubuntu 22.04, w katalogu orangepi-build:
+sudo ./build.sh BOARD=orangepi4pro BRANCH=current BUILD_OPT=kernel KERNEL_CONFIGURE=no
+```
+
+Po zakończeniu pakiety jądra znajdziesz w `output/debs/` (sprawdź `ls output/debs/` — nazwy typu `linux-image-...`, `linux-dtb-...`, `linux-headers-...`).
+
+### A.6 Instalacja nowego jądra na Orange Pi
+
+Skopiuj pakiety z hosta na Orange Pi i zainstaluj:
+
+```bash
+# Na hoście budującym:
+scp output/debs/linux-image-*.deb output/debs/linux-dtb-*.deb output/debs/linux-headers-*.deb \
+    astro@<IP_ORANGE_PI>:/tmp/
+
+# Na Orange Pi:
+sudo dpkg -i /tmp/linux-image-*.deb /tmp/linux-dtb-*.deb /tmp/linux-headers-*.deb
+sudo reboot
+```
+
+> **Uwaga**: przed instalacją sprawdź rzeczywiste nazwy plików w `output/debs/` — zestaw pakietów zależy od wersji orangepi-build.
+
+### A.7 Weryfikacja po restarcie
+
+```bash
+uname -r
+sudo modprobe can can_raw can_dev gs_usb
+sudo ip link set can0 type can bitrate 500000
+sudo ip link set can0 up
+candump can0
+```
+
+Jeśli `can0` się pojawi, wróć do sekcji [4](#4-konfiguracja-interfejsu-can-doraźna) i skonfiguruj trwałe ustawienia.
 
 ---
 

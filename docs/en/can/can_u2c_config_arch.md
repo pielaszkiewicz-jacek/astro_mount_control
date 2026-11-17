@@ -100,9 +100,9 @@ sudo pacman -S --noconfirm can-utils
 
 # ── Diagnostic tools (optional) ──
 sudo pacman -S --noconfirm       \
-    wireshark-qt                 \   # CAN frame analysis (GUI)
-    iproute2                     \   # ip link, ip -details (already installed)
-    usbutils                         # lsusb
+    wireshark-qt                 \
+    iproute2                     \
+    usbutils
 ```
 
 If building [`astro-mount-controller`](installation.md) from source, additionally:

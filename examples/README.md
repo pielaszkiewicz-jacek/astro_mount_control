@@ -137,7 +137,7 @@ A simple integration test script is provided to verify all components work toget
 
 2. **Missing dependencies**: Install required libraries
    ```bash
-   sudo apt-get install libsofa-dev libeigen3-dev libgrpc++-dev
+   sudo apt-get install nlohmann-json3-dev libeigen3-dev libgrpc++-dev
    ```
 
 3. **Permission errors**: Check user permissions and service configuration

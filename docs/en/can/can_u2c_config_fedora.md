@@ -101,9 +101,9 @@ sudo dnf install -y can-utils
 
 # ── Diagnostic tools (optional) ──
 sudo dnf install -y         \
-    wireshark               \   # CAN frame analysis
-    iproute                 \   # ip link, ip -details (already installed)
-    usbutils                    # lsusb
+    wireshark               \
+    iproute                 \
+    usbutils
 ```
 
 > **Note**: On RHEL 9.x, you may need to enable the `epel` repository (Extra Packages for Enterprise Linux) for packages such as `can-utils`:
