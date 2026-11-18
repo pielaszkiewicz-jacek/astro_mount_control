@@ -8809,11 +8809,28 @@ private:
                 // target for any axis that is still far away (bounded retries).
                 bool retried = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                    const double verify_tol = config_.mount_config.slew_verify_tolerance_servo_deg;
+                    // Post-slew verification must never be tighter than the
+                    // slew's own acceptance tolerance.  The configured
+                    // slew_verify_tolerance_servo_deg is a servo-degree floor,
+                    // while position_tolerance is in telescope degrees and must
+                    // be scaled by each axis' gear ratio.  Without the max(),
+                    // the default 10°-servo verify window is ~3.6× tighter than
+                    // position_tolerance=0.1° × 360:1 gear, so a slew that had
+                    // legitimately settled within tolerance was re-issued at max
+                    // slew rate — the extra nudge on the axis that finished
+                    // last (usually RA/HA).
+                    const double verify_tol_floor =
+                        config_.mount_config.slew_verify_tolerance_servo_deg;
+                    const double tol_axis1 = std::max(
+                        verify_tol_floor,
+                        config_.mount_config.position_tolerance * haGear());
+                    const double tol_axis2 = std::max(
+                        verify_tol_floor,
+                        config_.mount_config.position_tolerance * decGear());
                     const double pos0 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
                     const double pos1 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
-                    const bool axis1_ok = std::abs(pos0 - axis1_target_) <= verify_tol;
-                    const bool axis2_ok = std::abs(pos1 - axis2_target_) <= verify_tol;
+                    const bool axis1_ok = std::abs(pos0 - axis1_target_) <= tol_axis1;
+                    const bool axis2_ok = std::abs(pos1 - axis2_target_) <= tol_axis2;
                     if ((!axis1_ok || !axis2_ok) && verify_retries < MAX_VERIFY_RETRIES) {
                         verify_retries++;
                         retried = true;
