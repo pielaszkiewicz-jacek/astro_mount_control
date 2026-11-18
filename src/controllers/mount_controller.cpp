@@ -1931,6 +1931,13 @@ public:
                 const double TRACK_POS_VEL = config_.mount_config.max_slew_rate > 0.0
                     ? config_.mount_config.max_slew_rate
                     : std::max(axis1_tracking_rate * 2.0, 2.0);  // °/s servo
+                // Residual to the live drive position captured during the
+                // per-axis wrap below; used to select a gentle profile for the
+                // initial position command when the mount is already near the
+                // target (the post-slew auto-track case) instead of snapping at
+                // max slew rate + slew acceleration.
+                double initial_d1 = 0.0;  // RA residual [servo deg]
+                double initial_d2 = 0.0;  // Dec residual [servo deg]
                 // Validate the Dec target against the physical drive position
                 // (RELATIVE check, not an absolute magnitude check).  The drive's
                 // raw counter can legitimately be millions of degrees after a long
@@ -1965,6 +1972,7 @@ public:
                     if (d2 > full_turn_dec / 2.0) d2 -= full_turn_dec;
                     else if (d2 < -full_turn_dec / 2.0) d2 += full_turn_dec;
                     axis2_target_ = ref_dec + d2;
+                    initial_d2 = d2;
                     // After re-wrapping, a remaining offset beyond half a Dec turn
                     // means the home offset's fractional part is corrupt — reject.
                     if (std::abs(d2) > 180.0 * dec_gear_v) {
@@ -1997,12 +2005,36 @@ public:
                     if (d1 > full_turn_ha / 2.0) d1 -= full_turn_ha;
                     else if (d1 < -full_turn_ha / 2.0) d1 += full_turn_ha;
                     axis1_target_ = ref_ha + d1;
+                    initial_d1 = d1;
                 }
 
                 bool pos_ok = false;
                 if (hal_axis1_motor_ && hal_axis2_motor_) {
-                    bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
-                    bool ok2 = hal_axis2_motor_->setPosition(axis2_target_, TRACK_POS_VEL, config_.mount_config.slew_acceleration);
+                    // Distance-aware profile for the initial position command.
+                    // When tracking is started right after a slew (the
+                    // auto-bootstrap "track after slew" flow), the drive is
+                    // already at/near the target; re-commanding it at max slew
+                    // rate + slew acceleration produced a sharp corrective nudge
+                    // on the axis that had just settled (usually RA).  Far
+                    // targets keep the full slew profile so "Slew & Track" from
+                    // a distant object still moves promptly.  The threshold
+                    // matches the tracking loop's own close/far decision.
+                    const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) *
+                                          std::max(haGear(), 1.0) * 4.0;
+                    const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) *
+                                          std::max(decGear(), 1.0) * 4.0;
+                    const bool far1 = std::abs(initial_d1) > close1;
+                    const bool far2 = std::abs(initial_d2) > close2;
+                    const double track_vel1 = std::max(std::abs(axis1_tracking_rate), 0.01);
+                    const double track_vel2 = std::max(std::abs(axis2_tracking_rate), 0.01);
+                    const double vel1 = far1 ? TRACK_POS_VEL : track_vel1;
+                    const double vel2 = far2 ? TRACK_POS_VEL : track_vel2;
+                    const double acc1 = far1 ? config_.mount_config.slew_acceleration
+                                             : config_.mount_config.tracking_acceleration;
+                    const double acc2 = far2 ? config_.mount_config.slew_acceleration
+                                             : config_.mount_config.tracking_acceleration;
+                    bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, vel1, acc1);
+                    bool ok2 = hal_axis2_motor_->setPosition(axis2_target_, vel2, acc2);
                     pos_ok = ok1 && ok2;
                 } else {
                     // No HAL motors — simulated tracking.  Position targets are
