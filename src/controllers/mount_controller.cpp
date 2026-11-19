@@ -2027,8 +2027,18 @@ public:
                     const bool far2 = std::abs(initial_d2) > close2;
                     const double track_vel1 = std::max(std::abs(axis1_tracking_rate), 0.01);
                     const double track_vel2 = std::max(std::abs(axis2_tracking_rate), 0.01);
-                    const double vel1 = far1 ? TRACK_POS_VEL : track_vel1;
-                    const double vel2 = far2 ? TRACK_POS_VEL : track_vel2;
+                    // Bounded catch-up velocity for the "far" case: scale with the
+                    // residual so a post-slew auto-track residual (just beyond the
+                    // close threshold) is chased gently instead of at max_slew_rate
+                    // — the full-speed nudge made the settled axis (usually RA)
+                    // oscillate around the target.  Capped at max_slew_rate so
+                    // genuinely distant "Slew & Track" targets still move promptly.
+                    const double catchup1 = std::max(track_vel1,
+                        std::min(TRACK_POS_VEL, std::abs(initial_d1) * 2.0));
+                    const double catchup2 = std::max(track_vel2,
+                        std::min(TRACK_POS_VEL, std::abs(initial_d2) * 2.0));
+                    const double vel1 = far1 ? catchup1 : track_vel1;
+                    const double vel2 = far2 ? catchup2 : track_vel2;
                     const double acc1 = far1 ? config_.mount_config.slew_acceleration
                                              : config_.mount_config.tracking_acceleration;
                     const double acc2 = far2 ? config_.mount_config.slew_acceleration
@@ -3538,11 +3548,26 @@ public:
                                 // velocity until it is close.
                                 const double close1 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(ha_gear, 1.0) * 4.0;
                                 const double close2 = std::max(config_.mount_config.position_tolerance, 0.05) * std::max(dec_gear, 1.0) * 4.0;
+                                // Bounded catch-up velocity: scale with the residual so
+                                // a small post-slew tracking residual is chased gently
+                                // instead of at the full slew rate.  Commanding
+                                // max_slew_rate for a sub-degree residual made the
+                                // stepper stall/reverse around the target (oscillation
+                                // that grew until the drive faulted).  Gain 1 [1/s]
+                                // keeps the velocity near the natural profile peak at
+                                // tracking_acceleration; capped at max_slew_rate so real
+                                // long slews are unaffected.
                                 if (std::abs(new_axis1_target - ref1) > close1) {
-                                    pos_vel_axis1 = config_.mount_config.max_slew_rate;
+                                    pos_vel_axis1 = std::max(
+                                        pos_vel_axis1,
+                                        std::min(config_.mount_config.max_slew_rate,
+                                                 std::abs(new_axis1_target - ref1)));
                                 }
                                 if (std::abs(new_axis2_target - ref2) > close2) {
-                                    pos_vel_axis2 = config_.mount_config.max_slew_rate;
+                                    pos_vel_axis2 = std::max(
+                                        pos_vel_axis2,
+                                        std::min(config_.mount_config.max_slew_rate,
+                                                 std::abs(new_axis2_target - ref2)));
                                 }
                             }
 
@@ -3816,8 +3841,18 @@ public:
                                     ref1 = live1 - home_offset_axis1_;
                                     ref2 = live2 - home_offset_axis2_;
                                 }
-                                if (std::abs(new_axis1_target - ref1) > close1) pos_vel_axis1 = config_.mount_config.max_slew_rate;
-                                if (std::abs(new_axis2_target - ref2) > close2) pos_vel_axis2 = config_.mount_config.max_slew_rate;
+                                if (std::abs(new_axis1_target - ref1) > close1) {
+                                    pos_vel_axis1 = std::max(
+                                        pos_vel_axis1,
+                                        std::min(config_.mount_config.max_slew_rate,
+                                                 std::abs(new_axis1_target - ref1)));
+                                }
+                                if (std::abs(new_axis2_target - ref2) > close2) {
+                                    pos_vel_axis2 = std::max(
+                                        pos_vel_axis2,
+                                        std::min(config_.mount_config.max_slew_rate,
+                                                 std::abs(new_axis2_target - ref2)));
+                                }
                             }
 
                             try {
@@ -8866,11 +8901,26 @@ private:
                     if ((!axis1_ok || !axis2_ok) && verify_retries < MAX_VERIFY_RETRIES) {
                         verify_retries++;
                         retried = true;
-                        const double vel = config_.mount_config.max_slew_rate;
                         const double acc = config_.mount_config.slew_acceleration;
                         try {
-                            if (!axis1_ok) hal_axis1_motor_->setPosition(axis1_target_, vel, acc);
-                            if (!axis2_ok) hal_axis2_motor_->setPosition(axis2_target_, vel, acc);
+                            // Bounded re-issue: the post-slew verify nudge must not
+                            // re-issue a full max_slew_rate command for a residual
+                            // that is only slightly beyond the tolerance — that made
+                            // the settled axis (usually RA) lurch back and forth and
+                            // trip the drive fault.  Scale with the residual and cap
+                            // at max_slew_rate (gain 2 [1/s]).
+                            if (!axis1_ok) {
+                                const double residual1 = std::abs(pos0 - axis1_target_);
+                                const double vel1 = std::max(1.0,
+                                    std::min(config_.mount_config.max_slew_rate, residual1 * 2.0));
+                                hal_axis1_motor_->setPosition(axis1_target_, vel1, acc);
+                            }
+                            if (!axis2_ok) {
+                                const double residual2 = std::abs(pos1 - axis2_target_);
+                                const double vel2 = std::max(1.0,
+                                    std::min(config_.mount_config.max_slew_rate, residual2 * 2.0));
+                                hal_axis2_motor_->setPosition(axis2_target_, vel2, acc);
+                            }
                         } catch (const std::exception& e) {
                             MOUNT_LOG_WARN("HAL motor re-issue failed during slew verification: {}", e.what());
                         }
