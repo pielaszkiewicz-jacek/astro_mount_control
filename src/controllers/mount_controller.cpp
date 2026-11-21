@@ -304,6 +304,17 @@ inline double foldDecLike(double a) {
     return a;
 }
 
+/// Exact-stop corrective velocity [deg/s]: the peak velocity of a triangular
+/// profile with equal accel/decel so the drive decelerates to a full stop
+/// exactly at 'residual_deg'.  Commanding more than this (e.g. residual*2)
+/// made the stepper overshoot the target and start a growing oscillation.
+inline double exactStopVelocity(double residual_deg, double accel_deg_s2,
+                                double max_vel_deg_s) {
+    if (residual_deg <= 0.0 || accel_deg_s2 <= 0.0) return 0.0;
+    constexpr double kSafety = 0.8;  // margin for speed-loop lag
+    return std::min(max_vel_deg_s, kSafety * std::sqrt(accel_deg_s2 * residual_deg));
+}
+
 /// Return the periodic target 'raw' shifted to the equivalent nearest the
 /// multi-turn reference position 'ref'.  Both the raw target and the reference
 /// are normalized into [0, full_turn) before the delta is computed.  std::fmod
@@ -2027,18 +2038,6 @@ public:
                     const bool far2 = std::abs(initial_d2) > close2;
                     const double track_vel1 = std::max(std::abs(axis1_tracking_rate), 0.01);
                     const double track_vel2 = std::max(std::abs(axis2_tracking_rate), 0.01);
-                    // Bounded catch-up velocity for the "far" case: scale with the
-                    // residual so a post-slew auto-track residual (just beyond the
-                    // close threshold) is chased gently instead of at max_slew_rate
-                    // — the full-speed nudge made the settled axis (usually RA)
-                    // oscillate around the target.  Capped at max_slew_rate so
-                    // genuinely distant "Slew & Track" targets still move promptly.
-                    const double catchup1 = std::max(track_vel1,
-                        std::min(TRACK_POS_VEL, std::abs(initial_d1) * 2.0));
-                    const double catchup2 = std::max(track_vel2,
-                        std::min(TRACK_POS_VEL, std::abs(initial_d2) * 2.0));
-                    const double vel1 = far1 ? catchup1 : track_vel1;
-                    const double vel2 = far2 ? catchup2 : track_vel2;
                     // Acceleration for the far case is also bounded and continuous:
                     // it starts at tracking_acceleration right at the close threshold
                     // and ramps up to slew_acceleration only for genuinely distant
@@ -2053,6 +2052,17 @@ public:
                         config_.mount_config.slew_acceleration,
                         config_.mount_config.tracking_acceleration +
                             std::max(0.0, std::abs(initial_d2) - close2) * 2.0);
+                    // Exact-stop catch-up velocity: bounded by sqrt(accel * residual)
+                    // so the drive can decelerate to a full stop within the residual.
+                    // residual*2 overshot the settled axis and pumped a growing
+                    // oscillation.  Far targets still reach max_slew_rate as the
+                    // scaled acceleration ramps up.
+                    const double catchup1 = std::max(track_vel1,
+                        exactStopVelocity(std::abs(initial_d1), catchup_acc1, TRACK_POS_VEL));
+                    const double catchup2 = std::max(track_vel2,
+                        exactStopVelocity(std::abs(initial_d2), catchup_acc2, TRACK_POS_VEL));
+                    const double vel1 = far1 ? catchup1 : track_vel1;
+                    const double vel2 = far2 ? catchup2 : track_vel2;
                     const double acc1 = far1 ? catchup_acc1 : config_.mount_config.tracking_acceleration;
                     const double acc2 = far2 ? catchup_acc2 : config_.mount_config.tracking_acceleration;
                     bool ok1 = hal_axis1_motor_->setPosition(axis1_target_, vel1, acc1);
@@ -3520,9 +3530,9 @@ public:
                             const double drive_lag_s =
                                 (new_axis1_target - ref1) / sidereal_servo_rate;
                             if (drive_lag_s < configured_lead_s * 0.5) {
-                                adaptive_lead_s_ = std::min(max_lead_s, adaptive_lead_s_ + 0.05);
+                                adaptive_lead_s_ = std::min(max_lead_s, adaptive_lead_s_ + 0.01);
                             } else if (drive_lag_s > max_lead_s) {
-                                adaptive_lead_s_ = std::max(configured_lead_s, adaptive_lead_s_ - 0.05);
+                                adaptive_lead_s_ = std::max(configured_lead_s, adaptive_lead_s_ - 0.01);
                             }
 
                             // Keep the commanded RA target in the same multi-turn
@@ -3584,22 +3594,21 @@ public:
                                 } else if (catch_res2 < close2 * 0.5) {
                                     catchup_active_axis2_ = false;
                                 }
-                                // Gain [1/s]: velocity grows by 1°/s per extra residual
-                                // degree above the threshold, capped at max_slew_rate so
-                                // genuinely distant "Slew & Track" targets still move
-                                // promptly.
-                                constexpr double CATCHUP_GAIN = 1.0;
+                                // Exact-stop catch-up velocity: bounded by
+                                // sqrt(tracking_acceleration * residual) so the drive
+                                // can decelerate to a full stop within the residual
+                                // (no overshoot).  The hysteresis state above gates
+                                // when catch-up is active.
+                                const double catch_acc = config_.mount_config.tracking_acceleration;
                                 if (catchup_active_axis1_) {
-                                    const double excess1 = std::max(0.0, catch_res1 - close1);
-                                    pos_vel_axis1 = std::min(
-                                        config_.mount_config.max_slew_rate,
-                                        pos_vel_axis1 + excess1 * CATCHUP_GAIN);
+                                    pos_vel_axis1 = std::max(pos_vel_axis1,
+                                        exactStopVelocity(catch_res1, catch_acc,
+                                                          config_.mount_config.max_slew_rate));
                                 }
                                 if (catchup_active_axis2_) {
-                                    const double excess2 = std::max(0.0, catch_res2 - close2);
-                                    pos_vel_axis2 = std::min(
-                                        config_.mount_config.max_slew_rate,
-                                        pos_vel_axis2 + excess2 * CATCHUP_GAIN);
+                                    pos_vel_axis2 = std::max(pos_vel_axis2,
+                                        exactStopVelocity(catch_res2, catch_acc,
+                                                          config_.mount_config.max_slew_rate));
                                 }
                             }
 
@@ -3889,18 +3898,16 @@ public:
                                 } else if (catch_res2 < close2 * 0.5) {
                                     catchup_active_axis2_ = false;
                                 }
-                                constexpr double CATCHUP_GAIN = 1.0;
+                                const double catch_acc = config_.mount_config.tracking_acceleration;
                                 if (catchup_active_axis1_) {
-                                    const double excess1 = std::max(0.0, catch_res1 - close1);
-                                    pos_vel_axis1 = std::min(
-                                        config_.mount_config.max_slew_rate,
-                                        pos_vel_axis1 + excess1 * CATCHUP_GAIN);
+                                    pos_vel_axis1 = std::max(pos_vel_axis1,
+                                        exactStopVelocity(catch_res1, catch_acc,
+                                                          config_.mount_config.max_slew_rate));
                                 }
                                 if (catchup_active_axis2_) {
-                                    const double excess2 = std::max(0.0, catch_res2 - close2);
-                                    pos_vel_axis2 = std::min(
-                                        config_.mount_config.max_slew_rate,
-                                        pos_vel_axis2 + excess2 * CATCHUP_GAIN);
+                                    pos_vel_axis2 = std::max(pos_vel_axis2,
+                                        exactStopVelocity(catch_res2, catch_acc,
+                                                          config_.mount_config.max_slew_rate));
                                 }
                             }
 
@@ -8956,22 +8963,24 @@ private:
                         // acceleration made the settled axis overshoot and oscillate.
                         const double acc = config_.mount_config.tracking_acceleration;
                         try {
-                            // Bounded re-issue: the post-slew verify nudge must not
-                            // re-issue a full max_slew_rate command for a residual
-                            // that is only slightly beyond the tolerance — that made
-                            // the settled axis (usually RA) lurch back and forth and
-                            // trip the drive fault.  Scale with the residual and cap
-                            // at max_slew_rate (gain 2 [1/s]).
+                            // Bounded re-issue with exact-stop velocity: the nudge must
+                            // be able to decelerate to a full stop within the residual,
+                            // otherwise the drive overshoots and oscillates.  Peak
+                            // velocity for a triangular profile is sqrt(accel*residual);
+                            // residual*2 made the settled axis (usually RA) overshoot
+                            // by up to half a motor revolution.
                             if (!axis1_ok) {
                                 const double residual1 = std::abs(pos0 - axis1_target_);
                                 const double vel1 = std::max(1.0,
-                                    std::min(config_.mount_config.max_slew_rate, residual1 * 2.0));
+                                    exactStopVelocity(residual1, acc,
+                                                      config_.mount_config.max_slew_rate));
                                 hal_axis1_motor_->setPosition(axis1_target_, vel1, acc);
                             }
                             if (!axis2_ok) {
                                 const double residual2 = std::abs(pos1 - axis2_target_);
                                 const double vel2 = std::max(1.0,
-                                    std::min(config_.mount_config.max_slew_rate, residual2 * 2.0));
+                                    exactStopVelocity(residual2, acc,
+                                                      config_.mount_config.max_slew_rate));
                                 hal_axis2_motor_->setPosition(axis2_target_, vel2, acc);
                             }
                         } catch (const std::exception& e) {
