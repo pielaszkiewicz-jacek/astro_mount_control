@@ -496,6 +496,22 @@
             },
             {
                 "axis": 0,
+                "data_size": 4,
+                "description": "HA: position range limit 607Bh:01h = -2e9 (multi-turn counter)",
+                "index": "0x607B",
+                "subindex": 1,
+                "value": -2000000000
+            },
+            {
+                "axis": 0,
+                "data_size": 4,
+                "description": "HA: position range limit 607Bh:02h = +2e9 (multi-turn counter)",
+                "index": "0x607B",
+                "subindex": 2,
+                "value": 2000000000
+            },
+            {
+                "axis": 0,
                 "data_size": 1,
                 "description": "HA: Profile Position mode (6060h = 1)",
                 "index": "0x6060",
@@ -573,6 +589,22 @@
                 "index": "0x608F",
                 "subindex": 2,
                 "value": 1
+            },
+            {
+                "axis": 1,
+                "data_size": 4,
+                "description": "Dec: position range limit 607Bh:01h = -2e9 (multi-turn counter)",
+                "index": "0x607B",
+                "subindex": 1,
+                "value": -2000000000
+            },
+            {
+                "axis": 1,
+                "data_size": 4,
+                "description": "Dec: position range limit 607Bh:02h = +2e9 (multi-turn counter)",
+                "index": "0x607B",
+                "subindex": 2,
+                "value": 2000000000
             },
             {
                 "axis": 1,

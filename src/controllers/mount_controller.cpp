@@ -4901,7 +4901,10 @@ public:
 
         const double threshold =
             std::clamp(cn.position_rewind_threshold_percent, 1.0, 100.0) / 100.0;
-        const double limit_counts = 1000000.0;
+        // Match the STMP42SXI position range configured in servo_init
+        // (607Bh:01h/02h = ±2e9).  The drive rejects/clamps absolute targets
+        // beyond its range, so keep the counter well inside it.
+        const double limit_counts = 2000000000.0;
 
         rewindAxisIfNeeded(0, threshold * limit_counts);
         rewindAxisIfNeeded(1, threshold * limit_counts);

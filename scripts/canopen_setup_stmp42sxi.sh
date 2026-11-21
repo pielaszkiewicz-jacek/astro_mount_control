@@ -167,6 +167,16 @@ configure_node() {
     sdo_write "$node" 6091 02 23 "$(hex32le 1)" \
         && log "   OK" || log "   UWAGA: brak potwierdzenia"
 
+    # 3c) Zakres pozycji (607Bh) — STMP42SXI domyślnie ±1048576 zliczeń,
+    #     co obcina absolutne cele multi-turn (licznik rośnie do milionów
+    #     stopni).  Ustaw ±2e9, aby napęd przyjmował duże cele absolutne.
+    log "607Bh:01h = -2000000000 (MinPosRangLimit)"
+    sdo_write "$node" 607B 01 23 "$(hex32le -2000000000)" \
+        && log "   OK" || log "   UWAGA: brak potwierdzenia"
+    log "607Bh:02h = 2000000000 (MaxPosRangLimit)"
+    sdo_write "$node" 607B 02 23 "$(hex32le 2000000000)" \
+        && log "   OK" || log "   UWAGA: brak potwierdzenia"
+
     # 3b) Rozdzielczość enkodera pozycji (608Fh = 131072/1, enkoder 17-bitowy).
     #     Koryguje m.in. uszkodzone 608Fh:02h (np. 222176816 → 1).
     log "608Fh:01h = 131072 (encoder increments)"
