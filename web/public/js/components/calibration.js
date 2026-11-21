@@ -683,6 +683,12 @@ const CalibrationComponent = (() => {
     resultDiv.style.display = 'none';
 
     try {
+      // Stop any active tracking before running calibration.  The controller
+      // rejects bootstrap calibration while the mount is TRACKING/MERIDIAN_FLIP
+      // ("Stop tracking before running bootstrap calibration"), which happened
+      // after manually adding objects because the previous Slew & Measure left
+      // the mount auto-tracking the last target.
+      await Api.stopMount();
       const result = await Api.runBootstrapCalibration();
       resultDiv.className = 'calibration-result success';
       resultDiv.style.display = 'block';
@@ -1010,6 +1016,9 @@ const CalibrationComponent = (() => {
     resultDiv.style.display = 'none';
 
     try {
+      // Stop any active tracking first — TPOINT calibration is also rejected
+      // while the mount is TRACKING/MERIDIAN_FLIP.
+      await Api.stopMount();
       await Api.runTPointCalibration();
       resultDiv.className = 'calibration-result success';
       resultDiv.textContent = I18n.t('cal.msg.tpoint_completed');
