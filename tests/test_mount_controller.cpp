@@ -804,6 +804,27 @@ TEST_F(MountControllerTest, AutoTrackAfterBootstrapCalibration) {
     controller_->stop();
 }
 
+TEST_F(MountControllerTest, AutoTrackAfterTPointCalibration) {
+    // Regression: after a successful TPOINT calibration with
+    // auto_track_after_calibration enabled, the mount must start tracking the
+    // last measured catalog target instead of staying IDLE.
+    config_.calibration_config.auto_track_after_calibration = true;
+    config_.safety_config.enable_refraction_correction = false;
+    controller_->initialize(config_);
+
+    controller_->addTPointMeasurement(10.0, 45.0, 10.1, 45.1, 2.0, 45.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(12.0, 30.0, 12.1, 30.1, 4.0, 30.0, 15.0, 1013.25);
+    controller_->addTPointMeasurement(14.0, 60.0, 14.1, 60.1, 6.0, 60.0, 15.0, 1013.25);
+
+    ASSERT_TRUE(controller_->runTPointCalibration());
+    ASSERT_TRUE(controller_->getStatus().tpoint_calibrated);
+
+    auto status = controller_->getStatus();
+    EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
+
+    controller_->stop();
+}
+
 TEST_F(MountControllerTest, BootstrapCalibrationRejectedDuringTracking) {
     // Calibration during active tracking would change the orientation/model
     // mid-session and inject a position jump, so it must be rejected even with

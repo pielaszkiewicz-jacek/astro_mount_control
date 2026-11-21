@@ -265,10 +265,12 @@ bool AstroMountINDI::initProperties()
                        getDeviceName(), "HORIZONTAL_COORD",
                        "Horizontal Coord", MAIN_CONTROL_TAB, IP_RW, 60, IPS_IDLE);
 
-    // Controller status (read-only) — surfaces the controller ERROR state.
+    // Controller status (read-only) — surfaces the controller ERROR state
+    // and the Home/frame state (P0.1: "not homed" after a restart).
     IUFillText(&MountStatusT[0], "STATE", "State", "Unknown");
     IUFillText(&MountStatusT[1], "ERROR", "Error", "");
-    IUFillTextVector(&MountStatusTP, MountStatusT, 2,
+    IUFillText(&MountStatusT[2], "HOMED", "Homed", "No");
+    IUFillTextVector(&MountStatusTP, MountStatusT, 3,
                      getDeviceName(), "MOUNT_STATUS",
                      "Mount Status", MAIN_CONTROL_TAB, IP_RO, 60, IPS_IDLE);
 
@@ -1495,6 +1497,11 @@ void AstroMountINDI::updateIndiProperties()
         const bool inError = (state.status() == astro_mount::ControllerState_MountStatus_ERROR);
         IUSaveText(&MountStatusT[0], stateName);
         IUSaveText(&MountStatusT[1], inError ? "Mount in ERROR state" : "");
+        // P0.1: surface the Home/frame state so the operator sees "not homed"
+        // (incremental encoders lost their reference after a restart) instead of
+        // a stale sky position.  Only meaningful when the controller reports a
+        // definitive homed flag (true = zeroed counter).
+        IUSaveText(&MountStatusT[2], state.homed() ? "Yes" : "No");
         MountStatusTP.s = inError ? IPS_ALERT : IPS_OK;
         IDSetText(&MountStatusTP, nullptr);
 

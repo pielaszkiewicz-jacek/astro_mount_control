@@ -1050,6 +1050,11 @@ public:
                     }
                 }
 
+                // P2.7: full slew diagnostic — requested vs resolved target.
+                MOUNT_LOG_INFO("slewToEquatorial resolved: axis1_target={:.2f}° axis2_target={:.2f}° "
+                               "(servo) | current=({:.2f}°, {:.2f}°)",
+                               axis1_target_, axis2_target_, axis1_position_, axis2_position_);
+
                 // Apply per-axis rotation direction inversion after soft limit check
                 state_ = MountStatus::State::SLEWING;
                 slew_count_++;
@@ -1260,6 +1265,11 @@ public:
                         return false;  // callback skipped: no state change from caller's perspective
                     }
                 }
+
+                // P2.7: full slew diagnostic — requested vs resolved target.
+                MOUNT_LOG_INFO("slewToHorizontal resolved: axis1_target={:.2f}° axis2_target={:.2f}° "
+                               "(servo) | current=({:.2f}°, {:.2f}°)",
+                               axis1_target_, axis2_target_, axis1_position_, axis2_position_);
 
                 state_ = MountStatus::State::SLEWING;
             }  // state_mutex_ released
@@ -2171,6 +2181,10 @@ public:
             adaptive_lead_s_ = 0.0;
             catchup_active_axis1_ = false;
             catchup_active_axis2_ = false;
+            last_drive_enabled_[0] = true;
+            last_drive_enabled_[1] = true;
+            drive_enable_flicker_count_[0] = 0;
+            drive_enable_flicker_count_[1] = 0;
             // Reset the persistent guider offset and any not-yet-consumed guider
             // delta for the new tracking session (a stale delta would be applied
             // as a spurious first-iteration pulse).
@@ -3198,6 +3212,32 @@ public:
                     snap_temperature = env_temperature_;
                 }
                 is_tracking = (state_ == MountStatus::State::TRACKING);
+
+                // P1.6: detect drive "operation enabled" flicker during tracking.
+                if (is_tracking && hal_axis1_motor_ && hal_axis2_motor_) {
+                    const bool en0 = hal_axis1_motor_->isEnabled();
+                    const bool en1 = hal_axis2_motor_->isEnabled();
+                    for (int ax = 0; ax < 2; ++ax) {
+                        const bool enabled = (ax == 0) ? en0 : en1;
+                        if (enabled == last_drive_enabled_[ax]) {
+                            if (drive_enable_flicker_count_[ax] > 0) {
+                                --drive_enable_flicker_count_[ax];
+                            }
+                        } else {
+                            last_drive_enabled_[ax] = enabled;
+                            ++drive_enable_flicker_count_[ax];
+                        }
+                    }
+                    if (drive_enable_flicker_count_[0] >= 5 ||
+                        drive_enable_flicker_count_[1] >= 5) {
+                        MOUNT_LOG_ERROR("Drive enable flicker during tracking "
+                                        "(axis1_en={} axis2_en={}) — stopping",
+                                        en0, en1);
+                        state_ = MountStatus::State::ERROR;
+                        error_message_ = "Drive enable flicker — drive stopped responding";
+                        break;
+                    }
+                }
                 
                 // For EQUATORIAL position-mode tracking, capture the celestial
                 // target and current LST so we can compute new position targets
@@ -3615,6 +3655,42 @@ public:
                                         exactStopVelocity(catch_res2, catch_acc2,
                                                           config_.mount_config.max_slew_rate));
                                 }
+
+                                // P0.2: fail fast when the Dec axis is commanded to
+                                // chase a target MORE than half a Dec turn away at well
+                                // above the tracking rate.  The whole-turn wrap above
+                                // (only applied when the drive position is readable)
+                                // bounds a legitimate Slew & Track Dec residual to half
+                                // a turn (≤180° telescope); anything beyond that can
+                                // only result from a corrupt home offset / lost frame
+                                // and would make the drive spin for minutes.  Stop
+                                // instead of letting it flood the bus.
+                                {
+                                    const double dec_gear_guard = std::max(dec_gear, 1.0);
+                                    const double max_track_tel =
+                                        std::max(config_.mount_config.max_tracking_rate, 0.01);
+                                    const double pos_vel2_tel = pos_vel_axis2 / dec_gear_guard;
+                                    if (pos_vel2_tel > max_track_tel * 3.0 &&
+                                        catch_res2 > 180.0 * dec_gear_guard) {
+                                        MOUNT_LOG_ERROR("Dec-axis runaway during tracking "
+                                                        "(vel2={:.1f}°/s telescope, residual={:.1f}° "
+                                                        "telescope) — stopping. Re-home the mount "
+                                                        "before tracking again.",
+                                                        pos_vel2_tel,
+                                                        catch_res2 / dec_gear_guard);
+                                        publishStop();
+                                        {
+                                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                                            if (state_ == MountStatus::State::TRACKING ||
+                                                state_ == MountStatus::State::MERIDIAN_FLIP) {
+                                                state_ = MountStatus::State::ERROR;
+                                                error_message_ = "Dec-axis runaway — re-home required";
+                                            }
+                                        }
+                                        tracking_active_ = false;
+                                        break;
+                                    }
+                                }
                             }
 
                             // Hard safety against corrupt/cascading targets: a
@@ -3675,7 +3751,11 @@ public:
                                             tracking_active_ = false;
                                             break;
                                         }
-                                        if (diag_log_counter_ % 10 == 0) {
+                                        // P0.2: earlier, explicit warnings at fixed
+                                        // thresholds before the ERROR at >30.
+                                        if (dec_desync_count_ == 5 ||
+                                            dec_desync_count_ == 15 ||
+                                            dec_desync_count_ == 25) {
                                             MOUNT_LOG_WARN("Dec-axis desync detected (residual={:.2f}° "
                                                            "servo, count={}) — continuing; re-home if "
                                                            "persistent.",
@@ -4823,6 +4903,15 @@ public:
         status.guide_offset_axis1 = guider_pos_offset_axis1_;
         status.guide_offset_axis2 = guider_pos_offset_axis2_;
 
+        // Home / frame telemetry (P0.1 / P2.8) — exposes the frame consistency
+        // state to INDI so KStars can show "not homed" instead of a stale sky
+        // position after a restart with incremental encoders.
+        status.homed = homed_;
+        status.home_offset_axis1 = home_offset_axis1_;
+        status.home_offset_axis2 = home_offset_axis2_;
+        status.rewind_last_axis1 = last_rewind_axis1_;
+        status.rewind_last_axis2 = last_rewind_axis2_;
+
         // Corrected on-sky position — applies the same correction pipeline as
         // the tracking loop (mount orientation quaternion for ALT_AZ/CASUAL and
         // TPOINT fine correction when available). This is the position the mount
@@ -5006,9 +5095,11 @@ public:
         if (axis == 0) {
             home_offset_axis1_ += pos_drive;
             axis1_target_ -= pos_drive;
+            last_rewind_axis1_ = pos_drive;
         } else {
             home_offset_axis2_ += pos_drive;
             axis2_target_ -= pos_drive;
+            last_rewind_axis2_ = pos_drive;
         }
         MOUNT_LOG_INFO("Position rewind: axis {} counter {:.1f}° → 0 "
                        "(home offset adjusted by {:.1f}°)",
@@ -6575,6 +6666,7 @@ public:
         state["state"] = static_cast<int>(state_);
         state["encoders_active"] = encoders_active_;
         state["guider_active"] = guider_active_;
+        state["homed"] = homed_;
         state["tpoint_calibrated"] = tpoint_calibrated_;
         state["bootstrap_calibrated"] = bootstrap_calibrated_;
         state["encoder_absolute"] = encoder_absolute_;
@@ -6644,6 +6736,7 @@ public:
                 axis2_position_ = state.value("axis2_position", 0.0);
                 home_offset_axis1_ = state.value("home_offset_axis1", 0.0);
                 home_offset_axis2_ = state.value("home_offset_axis2", 0.0);
+                homed_ = state.value("homed", false);
                 axis1_target_ = state.value("axis1_target", 0.0);
                 axis2_target_ = state.value("axis2_target", 0.0);
                 
@@ -9611,10 +9704,21 @@ private:
     // Position-rewind bookkeeping (see maybeRewindDriveCounters()).
     std::chrono::steady_clock::time_point last_rewind_check_{};
     std::chrono::steady_clock::time_point last_rewind_fail_log_{};
+    // Counter value shifted at the last successful rewind per axis [servo deg];
+    // exposed via getStatus() (P2.8) for INDI diagnostics.
+    double last_rewind_axis1_{0.0};
+    double last_rewind_axis2_{0.0};
     // True once home() has successfully zeroed the drive counters and
     // established home_offset_axis1/2.  Until then the raw drive counter is not
     // a trusted source for the telescope frame (see drivePositionIsTrusted()).
     bool homed_{false};
+
+    // Drive "operation enabled" flicker detection (P1.6).  The STMP42SXI
+    // status bit toggles when the drive nears its multi-turn limit or is in a
+    // fault state.  Repeated toggling during tracking means the drive is not
+    // executing commands — fail fast instead of letting the object escape.
+    bool last_drive_enabled_[2]{true, true};
+    int drive_enable_flicker_count_[2]{0, 0};
 
     // Stored celestial target coordinates set by startTracking().
     // The tracking loop uses these to compute the advancing HA target

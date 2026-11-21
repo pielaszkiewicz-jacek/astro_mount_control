@@ -3,6 +3,8 @@
 #include "hal/sensor_interface.h"
 #include "controllers/icanopen_interface.h"
 
+#include <vector>
+
 #include <chrono>
 #include <cmath>
 #include <thread>
@@ -71,6 +73,7 @@ public:
         last_sdo_index = index;
         last_sdo_sub = subindex;
         last_sdo_value = value;
+        sdo_values.push_back(value);
         return true;
     }
     bool readSDO(uint8_t, uint16_t, uint8_t, uint32_t& value, uint8_t& size) override {
@@ -99,6 +102,7 @@ public:
     uint16_t last_sdo_index{0};
     uint8_t last_sdo_sub{0};
     uint32_t last_sdo_value{0};
+    std::vector<uint32_t> sdo_values;
 };
 
 HALConfig makeConfig() {
@@ -166,6 +170,27 @@ TEST(CanOpenHAL, SetPositionConvertsDegreesToCounts) {
     EXPECT_EQ(mock_ptr->last_position, 1000);
     EXPECT_GT(mock_ptr->last_velocity, 0u);
     EXPECT_GT(mock_ptr->last_acceleration, 0u);
+}
+
+TEST(CanOpenHAL, ZeroPositionTogglesVdiSequence) {
+    // Regression (P0.3 / §12): CanOpenMotor::zeroPosition() must toggle the
+    // virtual VDI level 0 → 2 → 0 (low → high → low) so a high-level-valid
+    // "Set zero point" VDI actually latches a new edge.  The previous code
+    // wrote the high level only once, so subsequent rewinds never reset the
+    // counter (the "Position rewind ... zero did not take effect" failure).
+    auto mock = std::make_unique<MockCanOpen>();
+    auto* mock_ptr = mock.get();
+    CanOpenHAL hal(std::move(mock));
+    ASSERT_TRUE(hal.initialize(makeConfig()));
+
+    auto motor = hal.createMotorControl(0);
+    ASSERT_NE(motor, nullptr);
+    EXPECT_TRUE(motor->zeroPosition());
+
+    ASSERT_EQ(mock_ptr->sdo_values.size(), 3u);
+    EXPECT_EQ(mock_ptr->sdo_values[0], 0u);  // 2031h:01h = 0
+    EXPECT_EQ(mock_ptr->sdo_values[1], 2u);  // 2031h:01h = 2 (trigger bit1)
+    EXPECT_EQ(mock_ptr->sdo_values[2], 0u);  // 2031h:01h = 0
 }
 
 TEST(CanOpenHAL, MotorHomeCallsInterface) {

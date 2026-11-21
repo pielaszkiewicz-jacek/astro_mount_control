@@ -146,7 +146,7 @@ protected:
     // ============================================
 
     ITextVectorProperty MountStatusTP{};
-    IText MountStatusT[2]{}; // STATE, ERROR
+    IText MountStatusT[3]{}; // STATE, ERROR, HOMED
 
     // TPOINT calibration control (RUN/CLEAR/STATUS)
     ISwitchVectorProperty TPointCalibrationSP{};

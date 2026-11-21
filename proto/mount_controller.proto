@@ -271,6 +271,13 @@ message ControllerState {
     double drift_trim_axis2 = 36;               // Velocity-mode drift trim [servo deg/s]
     double guide_offset_axis1 = 37;             // Persistent guider offset [servo deg]
     double guide_offset_axis2 = 38;             // Persistent guider offset [servo deg]
+
+    // === Home / frame telemetry (P0.1 / P2.8) ===
+    bool homed = 39;                    // Drive counter zeroed by Home (frame established)
+    double home_offset_axis1 = 40;      // Home offset axis1 [servo deg]
+    double home_offset_axis2 = 41;      // Home offset axis2 [servo deg]
+    double rewind_last_axis1 = 42;      // Last successful axis1 rewind shift [servo deg]
+    double rewind_last_axis2 = 43;      // Last successful axis2 rewind shift [servo deg]
 }
 
 // Pole position

@@ -123,16 +123,71 @@ configure_node() {
     log "── node ${node}: zakończono ──────────────────────────────────────────"
 }
 
+# sdo_read_i32 — odczyt int32 (dla 6064h Position actual value).
+sdo_read_i32() {
+    local node="$1" idx="$2" sub="$3"
+    local lo hi data sdo_id resp
+    lo=$(printf '%02X' $((16#$idx & 0xFF)))
+    hi=$(printf '%02X' $(((16#$idx >> 8) & 0xFF)))
+    data="40${lo}${hi}$(printf '%02X' $((16#$sub)))00000000"
+    sdo_id=$(printf '%X' $((0x600 + node)))
+    if resp=$(sdo_exchange "$node" "${sdo_id}#${data}" "43" 1000); then
+        local b0=$((16#${resp:8:2}))
+        local b1=$((16#${resp:10:2}))
+        local b2=$((16#${resp:12:2}))
+        local b3=$((16#${resp:14:2}))
+        local v=$(( b0 | (b1 << 8) | (b2 << 16) | (b3 << 24) ))
+        if (( v > 2147483647 )); then v=$(( v - 4294967296 )); fi
+        echo "$v"
+        return 0
+    fi
+    return 1
+}
+
+# test_zero_node — wyzwala "Set zero point" (2031h:01h = 0→2→0) i sprawdza 6064h.
+test_zero_node() {
+    local node="$1"
+    log "── node ${node}: TEST Set zero point ────────────────────────────────"
+    local before after
+    if before=$(sdo_read_i32 "$node" 6064 00); then
+        log "   6064h przed = ${before}"
+    else
+        log "   UWAGA: nie można odczytać 6064h przed testem"
+        before="?"
+    fi
+    sdo_write "$node" 2031 01 2B "$(hex16le 0)" >/dev/null 2>&1 || true
+    sdo_write "$node" 2031 01 2B "$(hex16le 2)" >/dev/null 2>&1 || true
+    sdo_write "$node" 2031 01 2B "$(hex16le 0)" >/dev/null 2>&1 || true
+    sleep 0.5
+    if after=$(sdo_read_i32 "$node" 6064 00); then
+        log "   6064h po    = ${after}"
+        if [[ "$before" != "?" ]] && (( after == 0 )); then
+            log "   ✓ zerowanie zadziałało"
+        elif [[ "$before" != "?" ]]; then
+            log "   ✗ licznik nadal ≠ 0 (sprawdź 200Ch:07h i 2017h:03h/04h)"
+        fi
+    else
+        log "   UWAGA: nie można odczytać 6064h po teście"
+    fi
+    log "── node ${node}: test zakończony ─────────────────────────────────────"
+}
+
 main() {
     local ids=()
     local iface=""
+    local do_test=0
     while (( $# )); do
-        if [[ "$1" =~ ^(can[0-9]+|vcan[0-9]+)$ ]]; then
-            iface="$1"
-        else
-            ids+=("$1")
-        fi
-        shift
+        case "$1" in
+            --test) do_test=1; shift ;;
+            *)
+                if [[ "$1" =~ ^(can[0-9]+|vcan[0-9]+)$ ]]; then
+                    iface="$1"
+                else
+                    ids+=("$1")
+                fi
+                shift
+                ;;
+        esac
     done
     [[ -n "$iface" ]] && CAN_IF="$iface"
     [[ ${#ids[@]} -eq 0 ]] && ids=(1 2)
@@ -141,7 +196,11 @@ main() {
     command -v candump >/dev/null 2>&1 || die "Nie znaleziono 'candump'"
 
     for node in "${ids[@]}"; do
-        configure_node "$node"
+        if (( do_test )); then
+            test_zero_node "$node"
+        else
+            configure_node "$node"
+        fi
     done
     log "Gotowe."
 }

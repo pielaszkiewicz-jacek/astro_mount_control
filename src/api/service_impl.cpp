@@ -224,6 +224,13 @@ grpc::Status MountControllerServiceImpl::GetState(grpc::ServerContext* context,
         response->set_guide_offset_axis1(status.guide_offset_axis1);
         response->set_guide_offset_axis2(status.guide_offset_axis2);
 
+        // Home / frame telemetry (P0.1 / P2.8)
+        response->set_homed(status.homed);
+        response->set_home_offset_axis1(status.home_offset_axis1);
+        response->set_home_offset_axis2(status.home_offset_axis2);
+        response->set_rewind_last_axis1(status.rewind_last_axis1);
+        response->set_rewind_last_axis2(status.rewind_last_axis2);
+
         // Meridian flip status
         response->set_pier_side(status.pier_side);
         response->set_meridian_flipped(status.meridian_flip_in_progress);
@@ -322,6 +329,13 @@ grpc::Status MountControllerServiceImpl::WatchState(grpc::ServerContext* context
             state.set_drift_trim_axis2(status.drift_trim_axis2);
             state.set_guide_offset_axis1(status.guide_offset_axis1);
             state.set_guide_offset_axis2(status.guide_offset_axis2);
+
+            // Home / frame telemetry (P0.1 / P2.8)
+            state.set_homed(status.homed);
+            state.set_home_offset_axis1(status.home_offset_axis1);
+            state.set_home_offset_axis2(status.home_offset_axis2);
+            state.set_rewind_last_axis1(status.rewind_last_axis1);
+            state.set_rewind_last_axis2(status.rewind_last_axis2);
 
             // Meridian flip / pier info (FIX N8: align field set with GetState)
             state.set_pier_side(status.pier_side);

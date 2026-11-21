@@ -185,6 +185,13 @@ public:
         double guide_offset_axis1{0.0};             ///< Persistent guider offset [servo deg]
         double guide_offset_axis2{0.0};             ///< Persistent guider offset [servo deg]
 
+        // === Home / frame telemetry (P0.1 / P2.8) ===
+        bool homed{false};              ///< Drive counter zeroed by Home (frame established)
+        double home_offset_axis1{0.0};  ///< Home offset axis1 [servo deg]
+        double home_offset_axis2{0.0};  ///< Home offset axis2 [servo deg]
+        double rewind_last_axis1{0.0};  ///< Counter value shifted at last axis1 rewind [servo deg]
+        double rewind_last_axis2{0.0};  ///< Counter value shifted at last axis2 rewind [servo deg]
+
         std::chrono::system_clock::time_point timestamp;
         std::string error_message;
     };
