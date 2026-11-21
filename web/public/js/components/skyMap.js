@@ -1068,14 +1068,9 @@ const SkyMapComponent = (() => {
   }
   function centerOnMount() {
     if (!hasMountPosition() || !mapCreated || typeof Celestial === 'undefined') return;
-    // RA/Dec centering is only meaningful on the equatorial projection.  In
-    // polar/observer (orthographic) mode the map is centered on the celestial
-    // pole / local zenith, so switch back to the equatorial chart first.
-    if (viewMode !== 'equatorial') {
-      viewMode = 'equatorial';
-      updateModeButtons();
-      Celestial.reproject({ projection: 'equirectangular' });
-    }
+    // Center the current view on the telescope's on-sky position WITHOUT
+    // changing the projection type (equirectangular RA/Dec, polar or observer
+    // orthographic all keep their projection — only the rotation center moves).
     Celestial.rotate({ center: [((mountRaHours * 15) % 360 + 360) % 360, mountDecDeg, 0] });
     redrawMap();
   }
