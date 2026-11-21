@@ -479,6 +479,19 @@ grpc::Status MountControllerServiceImpl::RunBootstrapCalibration(grpc::ServerCon
                                                                 const google::protobuf::Empty* request,
                                                                 astro_mount::BootstrapCalibrationResult* response) {
     try {
+        // Stop tracking before calibration.  Bootstrap calibration changes the
+        // mount orientation and is only valid while IDLE; a client that forgot
+        // to stop tracking first (manual UI flow after Slew & Measure) would
+        // otherwise hit a misleading "Stop tracking before running bootstrap
+        // calibration" error.  stop() transitions TRACKING/MERIDIAN_FLIP → IDLE
+        // synchronously.
+        {
+            const auto pre_state = controller_.getStatus().state;
+            if (pre_state == controllers::MountController::MountStatus::State::TRACKING ||
+                pre_state == controllers::MountController::MountStatus::State::MERIDIAN_FLIP) {
+                controller_.stop();
+            }
+        }
         if (controller_.runBootstrapCalibration()) {
             int count = static_cast<int>(controller_.getBootstrapMeasurementCount());
             double residual_rms = controller_.getBootstrapQuaternionErrorArcsec();
@@ -1424,6 +1437,14 @@ grpc::Status MountControllerServiceImpl::RunTPointCalibration(grpc::ServerContex
                                                              const google::protobuf::Empty* request,
                                                              google::protobuf::Empty* response) {
     try {
+        // Stop tracking before calibration (same rationale as RunBootstrapCalibration).
+        {
+            const auto pre_state = controller_.getStatus().state;
+            if (pre_state == controllers::MountController::MountStatus::State::TRACKING ||
+                pre_state == controllers::MountController::MountStatus::State::MERIDIAN_FLIP) {
+                controller_.stop();
+            }
+        }
         if (controller_.runTPointCalibration()) {
             return grpc::Status::OK;
         } else {
