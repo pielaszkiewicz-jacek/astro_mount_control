@@ -61,6 +61,32 @@ protected:
         config_.mount_config.dec_axis_params.backlash = 0.0;
         config_.mount_config.ha_axis_params.encoder_resolution = 360000.0;
         config_.mount_config.dec_axis_params.encoder_resolution = 360000.0;
+
+        // Give the SimulatedHAL motors generous limits.  The controller clamps
+        // the commanded slew profile to 80% of the HAL motor limits during
+        // initialize(); the HAL defaults are 2 deg/s and 0.5 deg/s^2, which
+        // silently reduced the 30 deg/s test slew profile to 1.6 deg/s and made
+        // every *ReachesTarget and meridian-flip test time out.  These limits
+        // are high enough that the test profiles (up to 3600 deg/s in the flip
+        // tests) are never clamped.
+        config_.hal_config.type = hal::HALType::SIMULATED;
+        config_.hal_config.axes.resize(2);
+        for (int i = 0; i < 2; ++i) {
+            auto& axis = config_.hal_config.axes[i];
+            axis.id = i;
+            axis.name = (i == 0) ? "RA_Axis" : "Dec_Axis";
+            axis.can_node_id = static_cast<uint8_t>(i + 1);
+            axis.motor_config.type = hal::MotorType::VIRTUAL;
+            axis.motor_config.max_velocity = 10000.0;
+            axis.motor_config.max_acceleration = 10000.0;
+            axis.motor_config.encoder_counts_per_degree = 10000.0;
+            axis.encoder_config.type = hal::EncoderType::VIRTUAL;
+            axis.encoder_config.counts_per_degree = 10000.0;
+            axis.safety_limits.min_position = (i == 0) ? -270.0 : -90.0;
+            axis.safety_limits.max_position = (i == 0) ? 270.0 : 90.0;
+            axis.safety_limits.max_velocity = 10000.0;
+            axis.safety_limits.max_acceleration = 10000.0;
+        }
     }
 
     void TearDown() override {
@@ -337,6 +363,41 @@ TEST_F(MountControllerTest, TrackingUpdatesPosition) {
     // Position should have increased while sidereal tracking is active.
     EXPECT_GT(status2.axis1_position, status1.axis1_position)
         << "Tracking should increase axis1 position over time";
+}
+
+TEST_F(MountControllerTest, TrackingRateCapFloorsAtSidereal) {
+    // Regression: a misconfigured (telescope-units) max_tracking_rate must not
+    // clamp the position-mode profile velocity below the sidereal servo rate.
+    // With the old code the drive crept at max_tracking_rate (e.g. 0.0005 deg/s)
+    // and the object escaped; the periodic catch-up then produced the observed
+    // step jumps on the axis.
+    config_.mount_config.max_tracking_rate = 0.0005;  // far below sidereal (gear=1)
+    config_.safety_config.enable_refraction_correction = false;
+    config_.safety_config.meridian_flip_enabled = false;
+    controller_->initialize(config_);
+
+    // Use RA = LST so HA = 0, avoiding meridian complications.
+    double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+    double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+    double ra = lst;
+    while (ra >= 24.0) ra -= 24.0;
+
+    ASSERT_TRUE(controller_->startTracking(ra, 0.0, config::TrackingMode::SIDEREAL));
+
+    std::this_thread::sleep_for(1500ms);
+    controller_->refreshPositions();
+    auto status1 = controller_->getStatus();
+    std::this_thread::sleep_for(1500ms);
+    controller_->refreshPositions();
+    auto status2 = controller_->getStatus();
+
+    // 1.5 s of sidereal tracking at gear=1 advances axis1 by ~0.0063 deg.
+    // The buggy clamp would have moved it by only ~0.00075 deg (0.0005 deg/s).
+    const double delta = status2.axis1_position - status1.axis1_position;
+    EXPECT_GT(delta, 0.003)
+        << "axis1 moved " << delta
+        << " deg in 1.5s — profile velocity was clamped below sidereal";
+    controller_->stop();
 }
 
 TEST_F(MountControllerTest, CustomDecDriftMovesDecAxisInPositionMode) {
@@ -719,6 +780,28 @@ TEST_F(MountControllerTest, BootstrapCalibrationWithThreeMeasurements) {
     controller_->addBootstrapMeasurement(8.0, 60.0, 8.05, 60.05, -30.0, 60.05);
     EXPECT_TRUE(controller_->runBootstrapCalibration());
     EXPECT_TRUE(controller_->isBootstrapCalibrated());
+}
+
+TEST_F(MountControllerTest, AutoTrackAfterBootstrapCalibration) {
+    // Regression: after a successful bootstrap calibration with
+    // auto_track_after_calibration enabled, the mount must start tracking the
+    // last measured catalog target instead of staying IDLE with zero axis
+    // velocities (the "object escapes after calibration" symptom).
+    config_.calibration_config.auto_track_after_calibration = true;
+    config_.safety_config.enable_refraction_correction = false;
+    controller_->initialize(config_);
+
+    controller_->addBootstrapMeasurement(12.0, 45.0, 12.1, 45.1, 0.0, 45.1);
+    controller_->addBootstrapMeasurement(10.0, 30.0, 10.05, 30.05, 30.0, 30.05);
+    controller_->addBootstrapMeasurement(8.0, 60.0, 8.05, 60.05, -30.0, 60.05);
+
+    ASSERT_TRUE(controller_->runBootstrapCalibration());
+    ASSERT_TRUE(controller_->isBootstrapCalibrated());
+
+    auto status = controller_->getStatus();
+    EXPECT_EQ(status.state, MountController::MountStatus::State::TRACKING);
+
+    controller_->stop();
 }
 
 TEST_F(MountControllerTest, BootstrapCalibrationRejectedDuringTracking) {

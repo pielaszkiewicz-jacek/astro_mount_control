@@ -3345,9 +3345,7 @@ public:
                             // target advancement must follow these rates instead of a
                             // hardcoded sidereal rate — otherwise CUSTOM drift rates
                             // are ignored and the Dec axis never moves in CUSTOM mode.
-                            const double tracking_rate_cap_adv = config_.mount_config.max_tracking_rate > 0.0
-                                ? config_.mount_config.max_tracking_rate
-                                : sidereal_servo_rate;
+                            const double tracking_rate_cap_adv = trackingRateCap(sidereal_servo_rate);
                             const double advance_rate_axis1 = std::min(
                                 (std::abs(axis1_rate_) > 1e-12 ? std::abs(axis1_rate_) : sidereal_servo_rate) * snap_rate_factor,
                                 tracking_rate_cap_adv);
@@ -3467,9 +3465,7 @@ public:
                             // tracking-rate limit so the drive never overshoots the
                             // required tracking speed.  Axis 2 falls back to 0 (Dec
                             // stationary in equatorial mode) when its rate is ~0.
-                            const double tracking_rate_cap = config_.mount_config.max_tracking_rate > 0.0
-                                ? config_.mount_config.max_tracking_rate
-                                : sidereal_servo_rate;
+                            const double tracking_rate_cap = trackingRateCap(sidereal_servo_rate);
                             const double base_rate_axis1 = std::abs(axis1_rate_) > 1e-12
                                 ? std::abs(axis1_rate_)
                                 : sidereal_servo_rate;
@@ -3868,9 +3864,7 @@ public:
 
                             const double pos_vel_margin = config_.mount_config.tracking_pos_velocity_margin > 0.0
                                 ? config_.mount_config.tracking_pos_velocity_margin : 1.0;
-                            const double tracking_rate_cap = config_.mount_config.max_tracking_rate > 0.0
-                                ? config_.mount_config.max_tracking_rate
-                                : 0.004178074 * std::max(haGear(), 1.0);
+                            const double tracking_rate_cap = trackingRateCap(0.004178074 * std::max(haGear(), 1.0));
                             double pos_vel_axis1 = std::clamp(std::abs(snap_rate_1) * pos_vel_margin, 0.0, tracking_rate_cap);
                             double pos_vel_axis2 = std::clamp(std::abs(snap_rate_2) * pos_vel_margin, 0.0, tracking_rate_cap);
 
@@ -5164,6 +5158,32 @@ public:
         }
     }
     
+    // After a successful calibration the mount is left IDLE with zero axis
+    // velocities.  When auto_track_after_calibration is enabled (config
+    // "calibration" section), start tracking the most recently measured catalog
+    // target so the object stays centered instead of drifting away.
+    // Callers (gRPC RunBootstrapCalibration/RunTPointCalibration, the INDI Sync
+    // path and the gamepad buttons) all go through the two run*Calibration()
+    // methods below, so implementing this here covers every local control path.
+    // Must be called with no locks held.
+    void autoTrackAfterCalibration(double ra_hours, double dec_deg) {
+        if (!config_.calibration_config.auto_track_after_calibration) {
+            return;
+        }
+        if (!std::isfinite(ra_hours) || !std::isfinite(dec_deg)) {
+            MOUNT_LOG_WARN("Auto-track after calibration skipped: invalid target "
+                           "RA={:.6f}h Dec={:.4f}°", ra_hours, dec_deg);
+            return;
+        }
+        // Calibration is only allowed while the mount is IDLE, so this is safe.
+        MOUNT_LOG_INFO("Auto-track after calibration: RA={:.6f}h Dec={:.4f}°",
+                       ra_hours, dec_deg);
+        if (!startTracking(ra_hours, dec_deg, config::TrackingMode::SIDEREAL)) {
+            MOUNT_LOG_WARN("Auto-track after calibration failed to start tracking "
+                           "(RA={:.6f}h Dec={:.4f}°)", ra_hours, dec_deg);
+        }
+    }
+
     // Bootstrap calibration API
     bool addBootstrapMeasurement(double observed_ra, double observed_dec,
                                  double expected_ra, double expected_dec,
@@ -5526,6 +5546,10 @@ public:
             if (gamepad_mode_ == 0) {
                 setGamepadMode(1);
                 MOUNT_LOG_INFO("Gamepad: auto-switched to CELESTIAL mode after bootstrap calibration");
+            }
+            if (!bootstrap_measurements_.empty()) {
+                const auto& last = bootstrap_measurements_.back();
+                autoTrackAfterCalibration(last.expected_ra, last.expected_dec);
             }
             return true;
             
@@ -5974,6 +5998,10 @@ public:
 
             tpoint_calibrated_ = true;
             calibration_count_++;
+            if (!tpoint_measurements_.empty()) {
+                const auto& last = tpoint_measurements_.back();
+                autoTrackAfterCalibration(last.expected_ra, last.expected_dec);
+            }
             return true;
             
         } catch (const std::exception& e) {
@@ -8676,6 +8704,19 @@ private:
         return true;
     }
 
+    // Effective tracking-rate cap for position-mode profile velocity / target
+    // advancement.  max_tracking_rate is documented in SERVO deg/s, but the Web
+    // UI used to write it in telescope deg/s; a sub-sidereal value would clamp
+    // the profile velocity to near zero and make the object escape (and the
+    // periodic catch-up would then cause step jumps on the axis).  Never let
+    // the cap fall below the sidereal servo rate so sidereal tracking always
+    // moves at least at the sidereal rate even with a misconfigured value.
+    double trackingRateCap(double fallback_servo_rate) const {
+        const double cfg = config_.mount_config.max_tracking_rate;
+        if (cfg <= 0.0) return fallback_servo_rate;
+        return std::max(cfg, fallback_servo_rate);
+    }
+
     // Position-dependent mount-frame tracking rates for ALT_AZ / CASUAL.
     // Writes axis1_rate_/axis2_rate_ under rate_mutex_ and returns the rates via
     // out parameters.  Returns false (and sets the ERROR state) when the result
@@ -8706,9 +8747,8 @@ private:
             const double alt_tel = axis1_position_ / ha_gear_local;
             constexpr double ZENITH_ZONE_DEG = 85.0;
             if (alt_tel > ZENITH_ZONE_DEG) {
-                const double zenith_rate_cap = config_.mount_config.max_tracking_rate > 0.0
-                    ? config_.mount_config.max_tracking_rate * 4.0
-                    : 0.004178074 * std::max(dec_gear_local, 1.0) * 4.0;
+                const double zenith_rate_cap =
+                    trackingRateCap(0.004178074 * std::max(dec_gear_local, 1.0)) * 4.0;
                 if (std::abs(rates.axis2) > zenith_rate_cap) {
                     rates.axis2 = std::copysign(zenith_rate_cap, rates.axis2);
                 }

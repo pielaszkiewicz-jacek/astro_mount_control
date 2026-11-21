@@ -141,10 +141,19 @@ bool CanOpenHAL::CanOpenMotor::clearErrors() {
 
 bool CanOpenHAL::CanOpenMotor::zeroPosition() {
     // STMP42SXI: set the origin through the communication-given VDI level
-    // (2031h:01h). The target VDI must be configured as "set origin" in 2017h.
+    // (2031h:01h, bit0=VDI1 … bit15=VDI16).  The drive must have virtual VDI
+    // enabled (200Ch:07h = 1) and the target VDI configured as "Set zero
+    // point" (function 33) in 2017h (e.g. 2017h:03h = 33 for VDI2, logic
+    // high-level-valid 2017h:04h = 0).  Toggle the level low→high→low so the
+    // drive latches the zero request; the previous code only wrote the high
+    // level once, so on a high-level-valid VDI a subsequent rewind never
+    // produced a new edge and the counter was never reset.
     auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
     if (!iface) return false;
-    return iface->sendSDO(static_cast<uint8_t>(axis_id_), 0x2031, 0x01, 0x02, 2);
+    const uint8_t axis = static_cast<uint8_t>(axis_id_);
+    if (!iface->sendSDO(axis, 0x2031, 0x01, 0x0000, 2)) return false;
+    if (!iface->sendSDO(axis, 0x2031, 0x01, 0x0002, 2)) return false;
+    return iface->sendSDO(axis, 0x2031, 0x01, 0x0000, 2);
 }
 
 bool CanOpenHAL::CanOpenMotor::home() {
