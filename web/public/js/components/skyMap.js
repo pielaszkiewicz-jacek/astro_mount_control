@@ -198,7 +198,6 @@ const SkyMapComponent = (() => {
   let location = { latitude: 52.0, longitude: 21.0 };
   let mountRaHours = null;
   let mountDecDeg = null;
-  let mountCalibrated = false;
 
   const visibleCategories = new Set(TYPE_CATEGORIES.map((c) => c.key));
 
@@ -256,7 +255,6 @@ const SkyMapComponent = (() => {
       }
       mountRaHours = (typeof status.current_ra === 'number') ? status.current_ra : null;
       mountDecDeg = (typeof status.current_dec === 'number') ? status.current_dec : null;
-      mountCalibrated = !!(status.tpointCalibrated || (status.bootstrap && status.bootstrap.calibrated));
     } catch (err) {
       console.warn('[SkyMap] Failed to read mount status:', err);
     }
@@ -669,8 +667,11 @@ const SkyMapComponent = (() => {
       }
     }
 
-    // Telescope position marker (only when calibrated).
-    if (mountCalibrated && Number.isFinite(mountRaHours) && Number.isFinite(mountDecDeg)) {
+    // Telescope position marker — shown whenever the on-sky position is known.
+    // current_ra/current_dec is valid for a homed mount even before
+    // TPOINT/bootstrap calibration (especially EQUATORIAL), so gate on the
+    // position being finite/non-degenerate rather than on calibration state.
+    if (hasMountPosition()) {
       const coord = toCoord(mountRaHours, mountDecDeg);
       if (clip(coord)) {
         const pt = proj(coord);
@@ -1061,14 +1062,25 @@ const SkyMapComponent = (() => {
     if (source === 'database') await loadObjects();
     redrawMap();
   }
+  function hasMountPosition() {
+    return Number.isFinite(mountRaHours) && Number.isFinite(mountDecDeg) &&
+           !(mountRaHours === 0 && mountDecDeg === 0);
+  }
   function centerOnMount() {
-    if (!mountCalibrated || !Number.isFinite(mountRaHours) || !Number.isFinite(mountDecDeg)) return;
-    if (mapCreated) {
-      Celestial.rotate({ center: [((mountRaHours * 15) % 360 + 360) % 360, mountDecDeg, 0] });
+    if (!hasMountPosition() || !mapCreated || typeof Celestial === 'undefined') return;
+    // RA/Dec centering is only meaningful on the equatorial projection.  In
+    // polar/observer (orthographic) mode the map is centered on the celestial
+    // pole / local zenith, so switch back to the equatorial chart first.
+    if (viewMode !== 'equatorial') {
+      viewMode = 'equatorial';
+      updateModeButtons();
+      Celestial.reproject({ projection: 'equirectangular' });
     }
+    Celestial.rotate({ center: [((mountRaHours * 15) % 360 + 360) % 360, mountDecDeg, 0] });
+    redrawMap();
   }
   function updateCenterButton() {
-    if (centerMountBtnEl) centerMountBtnEl.disabled = !mountCalibrated;
+    if (centerMountBtnEl) centerMountBtnEl.disabled = !hasMountPosition();
   }
 
   // ─── Zoom & legend ────────────────────────────────────────────────────
