@@ -3594,20 +3594,29 @@ public:
                                 } else if (catch_res2 < close2 * 0.5) {
                                     catchup_active_axis2_ = false;
                                 }
-                                // Exact-stop catch-up velocity: bounded by
-                                // sqrt(tracking_acceleration * residual) so the drive
-                                // can decelerate to a full stop within the residual
-                                // (no overshoot).  The hysteresis state above gates
-                                // when catch-up is active.
-                                const double catch_acc = config_.mount_config.tracking_acceleration;
+                                // Exact-stop catch-up velocity with distance-scaled
+                                // acceleration (same as startTracking): small residuals
+                                // stay near tracking_acceleration (gentle), large
+                                // residuals ramp the acceleration toward
+                                // slew_acceleration so the drive still catches up
+                                // promptly.  A fixed tracking_acceleration made
+                                // post-calibration catch-up far too slow.
+                                const double catch_acc1 = std::min(
+                                    config_.mount_config.slew_acceleration,
+                                    config_.mount_config.tracking_acceleration +
+                                        std::max(0.0, catch_res1 - close1) * 2.0);
+                                const double catch_acc2 = std::min(
+                                    config_.mount_config.slew_acceleration,
+                                    config_.mount_config.tracking_acceleration +
+                                        std::max(0.0, catch_res2 - close2) * 2.0);
                                 if (catchup_active_axis1_) {
                                     pos_vel_axis1 = std::max(pos_vel_axis1,
-                                        exactStopVelocity(catch_res1, catch_acc,
+                                        exactStopVelocity(catch_res1, catch_acc1,
                                                           config_.mount_config.max_slew_rate));
                                 }
                                 if (catchup_active_axis2_) {
                                     pos_vel_axis2 = std::max(pos_vel_axis2,
-                                        exactStopVelocity(catch_res2, catch_acc,
+                                        exactStopVelocity(catch_res2, catch_acc2,
                                                           config_.mount_config.max_slew_rate));
                                 }
                             }
@@ -3898,15 +3907,22 @@ public:
                                 } else if (catch_res2 < close2 * 0.5) {
                                     catchup_active_axis2_ = false;
                                 }
-                                const double catch_acc = config_.mount_config.tracking_acceleration;
+                                const double catch_acc1 = std::min(
+                                    config_.mount_config.slew_acceleration,
+                                    config_.mount_config.tracking_acceleration +
+                                        std::max(0.0, catch_res1 - close1) * 2.0);
+                                const double catch_acc2 = std::min(
+                                    config_.mount_config.slew_acceleration,
+                                    config_.mount_config.tracking_acceleration +
+                                        std::max(0.0, catch_res2 - close2) * 2.0);
                                 if (catchup_active_axis1_) {
                                     pos_vel_axis1 = std::max(pos_vel_axis1,
-                                        exactStopVelocity(catch_res1, catch_acc,
+                                        exactStopVelocity(catch_res1, catch_acc1,
                                                           config_.mount_config.max_slew_rate));
                                 }
                                 if (catchup_active_axis2_) {
                                     pos_vel_axis2 = std::max(pos_vel_axis2,
-                                        exactStopVelocity(catch_res2, catch_acc,
+                                        exactStopVelocity(catch_res2, catch_acc2,
                                                           config_.mount_config.max_slew_rate));
                                 }
                             }
