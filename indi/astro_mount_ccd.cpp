@@ -344,16 +344,16 @@ int AstroMountCCD::SetTemperature(double temperature)
     try
     {
         auto status = m_client->setCooler(temperature, true);
-        TemperatureNP.np[0].value = status.current_c;
-        TemperatureNP.s = IPS_BUSY;
-        IDSetNumber(&TemperatureNP, nullptr);
+        TemperatureNP[0].value = status.current_c;
+        TemperatureNP.setState(IPS_BUSY);
+        TemperatureNP.apply();
         return 0;  // async — TimerHit() keeps polling until target reached
     }
     catch (const std::exception& e)
     {
         LOGF_ERROR("SetTemperature failed: %s", e.what());
-        TemperatureNP.s = IPS_ALERT;
-        IDSetNumber(&TemperatureNP, nullptr);
+        TemperatureNP.setState(IPS_ALERT);
+        TemperatureNP.apply();
         return -1;
     }
 }
@@ -388,16 +388,16 @@ void AstroMountCCD::TimerHit()
         try
         {
             auto status = m_client->getCoolerStatus();
-            const double old = TemperatureNP.np[0].value;
+            const double old = TemperatureNP[0].value;
             if (std::abs(status.current_c - old) > 0.05)
             {
-                TemperatureNP.np[0].value = status.current_c;
-                IDSetNumber(&TemperatureNP, nullptr);
+                TemperatureNP[0].value = status.current_c;
+                TemperatureNP.apply();
             }
-            if (status.reached_target && TemperatureNP.s != IPS_OK)
+            if (status.reached_target && TemperatureNP.getState() != IPS_OK)
             {
-                TemperatureNP.s = IPS_OK;
-                IDSetNumber(&TemperatureNP, nullptr);
+                TemperatureNP.setState(IPS_OK);
+                TemperatureNP.apply();
             }
         }
         catch (const std::exception&)

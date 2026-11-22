@@ -33,6 +33,7 @@ public:
     bool emergencyStop(uint8_t axis_id) override;
 
     bool getDriveStatus(uint8_t axis_id, CanOpenStatus& status) override;
+    bool getLastEmergency(uint8_t axis_id, uint16_t& error_code) override;
     bool getPositionData(uint8_t axis_id, CanOpenPositionData& data) override;
     bool clearErrors(uint8_t axis_id) override;
 

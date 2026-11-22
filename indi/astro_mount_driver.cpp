@@ -64,7 +64,7 @@ void ISSnoopDevice(XMLEle* root)
 
 AstroMountINDI::AstroMountINDI(const char* grpcHost, int grpcPort)
     : INDI::Telescope()
-    , INDI::GuiderInterface()
+    , INDI::GuiderInterface(this)
     , m_isParked(false)
     , m_targetRA(0)
     , m_targetDec(0)
@@ -179,7 +179,7 @@ bool AstroMountINDI::initProperties()
     INDI::Telescope::initProperties();
 
     // Pulse-guiding interface (defines GuideNSNP / GuideWENP).
-    INDI::GuiderInterface::initGuiderProperties(getDeviceName(), "Guide");
+    INDI::GuiderInterface::initProperties("Guide");
 
     // PHD2 identifies INDI mounts by the GUIDER_INTERFACE flag (its INDI device
     // filter only accepts mount candidates that expose GUIDER_INTERFACE and not
@@ -365,8 +365,7 @@ bool AstroMountINDI::initProperties()
 bool AstroMountINDI::updateProperties()
 {
     INDI::Telescope::updateProperties();
-    defineProperty(&GuideNSNP);
-    defineProperty(&GuideWENP);
+    INDI::GuiderInterface::updateProperties();
 
     // Connection configuration (GRPC_CONNECTION / GRPC_TLS / GRPC_CONNECTION_STATUS)
     // is always defined so the endpoint can be configured before connecting.
@@ -436,9 +435,9 @@ bool AstroMountINDI::ISNewNumber(const char* dev, const char* name,
 
         // Delegate guide-pulse properties (GuideNSNP / GuideWENP) to the
         // GuiderInterface, which maps them onto GuideNorth/South/East/West.
-        if (!strcmp(name, GuideNSNP.name) || !strcmp(name, GuideWENP.name))
+        if (!strcmp(name, GuideNSNP.getName()) || !strcmp(name, GuideWENP.getName()))
         {
-            INDI::GuiderInterface::processGuiderProperties(name, values, names, n);
+            INDI::GuiderInterface::processNumber(dev, name, values, names, n);
             return true;
         }
 
@@ -1021,9 +1020,13 @@ bool AstroMountINDI::MoveNS(INDI_DIR_NS dir, TelescopeMotionCommand command)
     {
         if (command == MOTION_START)
         {
-            // Move Dec axis (axis_id=1) at the selected slew rate
+            // Move Dec axis (axis_id=1) at the selected slew rate.  The rate is
+            // kept in telescope deg/s (INDI convention) but the controller's
+            // VELOCITY_CONTROL expects SERVO deg/s, so scale by the Dec gear.
+            loadSlewConfig();
             double rate = (dir == DIRECTION_NORTH) ? m_slewRateDegPerSec
                                                     : -m_slewRateDegPerSec;
+            rate *= m_decGearRatio;
             astro_mount::AxisControlRequest req;
             req.set_axis_id(1);
             req.set_mode(astro_mount::AxisControlMode::VELOCITY_CONTROL);
@@ -1055,9 +1058,12 @@ bool AstroMountINDI::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
     {
         if (command == MOTION_START)
         {
-            // Move RA axis (axis_id=0) at the selected slew rate
+            // Move RA axis (axis_id=0) at the selected slew rate (telescope
+            // deg/s -> servo deg/s via the HA gear ratio).
+            loadSlewConfig();
             double rate = (dir == DIRECTION_WEST) ? m_slewRateDegPerSec
                                                    : -m_slewRateDegPerSec;
+            rate *= m_haGearRatio;
             astro_mount::AxisControlRequest req;
             req.set_axis_id(0);
             req.set_mode(astro_mount::AxisControlMode::VELOCITY_CONTROL);
@@ -1086,21 +1092,51 @@ static constexpr double kGuideRateArcsecPerSec = 0.5 * 15.041067;
 
 bool AstroMountINDI::SetSlewRate(int index)
 {
-    // INDI TelescopeSlewRate: 0 = GUIDE, 1 = CENTERING, 2 = FIND, 3 = MAX.
-    static const double kSlewRatesDegPerSec[4] = {
-        kGuideRateDegPerSec,  // guide speed
-        0.05,                 // centering
-        0.5,                  // find
-        1.0                   // max
-    };
-
     if (index < 0 || index > 3)
         return false;
 
+    loadSlewConfig();
+
+    // INDI TelescopeSlewRate: 0 = GUIDE, 1 = CENTERING, 2 = FIND, 3 = MAX.
+    // GUIDE/CENTERING/FIND are fixed gentle rates (telescope deg/s); MAX
+    // reflects the controller's actual max_slew_rate so the INDI presets
+    // match the Web UI / config instead of a hardcoded 1.0 deg/s.
+    const double maxRate = m_maxSlewRateServoDegPerSec > 0.0
+        ? m_maxSlewRateServoDegPerSec / std::max(m_haGearRatio, 1.0)
+        : 1.0;
+    const double kSlewRatesDegPerSec[4] = {
+        kGuideRateDegPerSec,  // guide speed
+        0.05,                 // centering
+        0.5,                  // find
+        maxRate               // max (from config)
+    };
+
     m_slewRateIndex = index;
     m_slewRateDegPerSec = kSlewRatesDegPerSec[index];
-    LOGF_INFO("Slew rate set to %.6f deg/s", m_slewRateDegPerSec);
+    LOGF_INFO("Slew rate set to %.6f deg/s (telescope)", m_slewRateDegPerSec);
     return true;
+}
+
+void AstroMountINDI::loadSlewConfig()
+{
+    if (m_slewConfigLoaded)
+        return;
+    try
+    {
+        auto cfg = m_grpc->getConfiguration();
+        const double haGear = cfg.ha_axis_params().gear_ratio();
+        const double decGear = cfg.dec_axis_params().gear_ratio();
+        if (haGear > 0.0) m_haGearRatio = haGear;
+        if (decGear > 0.0) m_decGearRatio = decGear;
+        m_maxSlewRateServoDegPerSec = cfg.max_slew_rate();
+        m_slewConfigLoaded = true;
+        LOGF_INFO("Slew config loaded: HA gear=%.1f, Dec gear=%.1f, max_slew=%.2f servo deg/s",
+                  m_haGearRatio, m_decGearRatio, m_maxSlewRateServoDegPerSec);
+    }
+    catch (const std::exception& e)
+    {
+        LOGF_WARN("Could not load slew config: %s", e.what());
+    }
 }
 
 bool AstroMountINDI::SetTrackMode(uint8_t mode)
@@ -1138,9 +1174,9 @@ bool AstroMountINDI::SetTrackEnabled(bool enabled)
             // Without this, enabling tracking after selecting Custom (while
             // idle) silently fell back to sidereal and ignored the custom rates.
             int selectedMode = -1;
-            for (size_t i = 0; i < static_cast<size_t>(TrackModeSP.nsp); ++i)
+            for (size_t i = 0; i < TrackModeSP.count(); ++i)
             {
-                if (TrackModeSP.sp[i].s == ISS_ON)
+                if (TrackModeSP[i].s == ISS_ON)
                 {
                     selectedMode = static_cast<int>(i);
                     break;
@@ -1148,8 +1184,8 @@ bool AstroMountINDI::SetTrackEnabled(bool enabled)
             }
             if (selectedMode >= 0)
                 m_trackMode = static_cast<uint8_t>(selectedMode);
-            m_customTrackRaArcsecPerSec = TrackRateNP.np[0].value;
-            m_customTrackDecArcsecPerSec = TrackRateNP.np[1].value;
+            m_customTrackRaArcsecPerSec = TrackRateNP[0].value;
+            m_customTrackDecArcsecPerSec = TrackRateNP[1].value;
 
             // Track the CURRENT on-sky position, not the last Goto target.
             // KStars "Track" (and "Slew and Track" once the slew settles)

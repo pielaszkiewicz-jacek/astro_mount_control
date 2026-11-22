@@ -78,6 +78,9 @@ public:
 
     // Status
     virtual bool getDriveStatus(uint8_t axis_id, CanOpenStatus& status) = 0;
+    // Last CANopen emergency (EMCY) error code for an axis.  Returns true and
+    // sets error_code when an EMCY frame has been received for that node.
+    virtual bool getLastEmergency(uint8_t axis_id, uint16_t& error_code) { return false; }
     virtual bool getPositionData(uint8_t axis_id, CanOpenPositionData& data) = 0;
     virtual bool clearErrors(uint8_t axis_id) = 0;
 

@@ -454,7 +454,18 @@ SafetyStatus CanOpenHAL::CanOpenSafetyMonitor::getStatus() const {
         status.axes_status[axis].voltage_ok = true;
         if (st.fault) {
             status.axes_status[axis].limits_ok = false;
-            status.axes_status[axis].error_message = "drive fault";
+            std::ostringstream os;
+            os << "drive fault (status word 0x" << std::hex << st.status_word << std::dec
+               << ", pos=" << st.actual_position
+               << ", vel=" << st.actual_velocity
+               << ", cur=" << st.actual_current;
+            uint16_t emcy_code = 0;
+            auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
+            if (iface && iface->getLastEmergency(static_cast<uint8_t>(axis), emcy_code)) {
+                os << ", emcy=0x" << std::hex << emcy_code << std::dec;
+            }
+            os << ")";
+            status.axes_status[axis].error_message = os.str();
             status.overall_state = SafetyStatus::State::ERROR;
         }
     }

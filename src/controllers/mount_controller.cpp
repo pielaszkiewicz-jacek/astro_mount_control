@@ -304,6 +304,13 @@ inline double foldDecLike(double a) {
     return a;
 }
 
+/// Catch-up corrections during tracking must not command a full slew velocity.
+/// Near the celestial pole a small RA/HA error can produce a large target jump,
+/// and chasing it at max_slew_rate trips the drive's following error (observed
+/// "drive fault ... vel=156700" near Dec≈89°).  Cap the corrective velocity at
+/// this multiple of the configured max tracking rate.
+constexpr double kCatchupVelocityFactor = 200.0;
+
 /// Exact-stop corrective velocity [deg/s]: the peak velocity of a triangular
 /// profile with equal accel/decel so the drive decelerates to a full stop
 /// exactly at 'residual_deg'.  Commanding more than this (e.g. residual*2)
@@ -677,25 +684,37 @@ public:
                         have_pos = std::isfinite(pos0) && std::isfinite(pos1);
                     }
                     if (have_pos) {
-                        // For incremental encoders, the drive reports 0.0 at
-                        // power-up.  Only sync from the drive when it returns a
-                        // plausible non-zero position; otherwise keep the
-                        // park-position initialisation done above.
-                        pos0_valid = (std::abs(pos0) > 0.001);
-                        pos1_valid = (std::abs(pos1) > 0.001);
-                        if (pos0_valid) {
-                            axis1_position_ = pos0;
-                            raw_servo_axis1_position_ = pos0;
+                        // Adopt the drive counter into the telescope frame ONLY
+                        // when it is a trusted source (authoritative HAL, a real
+                        // absolute-encoder reader, or an established Home).  For
+                        // an un-homed drive the multi-turn counter is arbitrary
+                        // (it resets on power cycle), so adopting it would show
+                        // a bogus sky position until the next Home.  Keep the
+                        // park-position initialisation and let homed=false flag
+                        // "not homed" in the UI instead.
+                        if (drivePositionIsTrusted()) {
+                            pos0_valid = (std::abs(pos0) > 0.001);
+                            pos1_valid = (std::abs(pos1) > 0.001);
+                            if (pos0_valid) {
+                                axis1_position_ = pos0;
+                                raw_servo_axis1_position_ = pos0;
+                            }
+                            if (pos1_valid) {
+                                axis2_position_ = pos1;
+                                raw_servo_axis2_position_ = pos1;
+                            }
+                            drive_positions_read = (pos0_valid || pos1_valid);
+                            MOUNT_LOG_INFO("Synced internal state to drive positions: "
+                                          "axis1={:.4f}° (from_drive={}), axis2={:.4f}° (from_drive={})",
+                                          axis1_position_, pos0_valid,
+                                          axis2_position_, pos1_valid);
+                        } else {
+                            MOUNT_LOG_WARN("Drive position not trusted (not homed, no "
+                                          "absolute encoder reader) — keeping park "
+                                          "position; Home required. Drive raw: "
+                                          "axis1={:.2f}° axis2={:.2f}°",
+                                          pos0, pos1);
                         }
-                        if (pos1_valid) {
-                            axis2_position_ = pos1;
-                            raw_servo_axis2_position_ = pos1;
-                        }
-                        drive_positions_read = (pos0_valid || pos1_valid);
-                        MOUNT_LOG_INFO("Synced internal state to drive positions: "
-                                      "axis1={:.4f}° (from_drive={}), axis2={:.4f}° (from_drive={})",
-                                      axis1_position_, pos0_valid,
-                                      axis2_position_, pos1_valid);
                     }
                 } catch (const std::exception& e) {
                     MOUNT_LOG_WARN("Could not read drive positions during init: {}", e.what());
@@ -854,6 +873,13 @@ public:
             
             // Join any previous work thread (thread_mutex_ held, state_mutex_ NOT held)
             joinWorkThreadLocked();
+
+            // Explicitly stop the drives before the new slew.  The io writer is
+            // already joined (no more commands), but the drive may still be
+            // finishing its previous profile — stop it cleanly so the new slew
+            // starts from rest instead of racing the old profile.
+            if (hal_axis1_motor_) hal_axis1_motor_->stop();
+            if (hal_axis2_motor_) hal_axis2_motor_->stop();
 
             // Sync axis1/2_position_ from the physical drive now that any
             // previous move has stopped, so the shortest-path HA/Dec below is
@@ -1139,6 +1165,11 @@ public:
             
             // Join any previous work thread (thread_mutex_ held, state_mutex_ NOT held)
             joinWorkThreadLocked();
+
+            // Explicitly stop the drives before the new slew (see
+            // slewToEquatorial for rationale).
+            if (hal_axis1_motor_) hal_axis1_motor_->stop();
+            if (hal_axis2_motor_) hal_axis2_motor_->stop();
             
             {
                 std::lock_guard<std::shared_mutex> lock(*state_mutex_);
@@ -1452,15 +1483,26 @@ public:
             if (!io_active_ || !tracking_active_) break;
 
             if (cmd.flip_pending) {
+                bool flip_ok1 = false, flip_ok2 = false;
                 try {
                     if (hal_axis1_motor_ && hal_axis2_motor_) {
-                        hal_axis1_motor_->setPosition(cmd.flip1,
+                        flip_ok1 = hal_axis1_motor_->setPosition(cmd.flip1,
                             config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
-                        hal_axis2_motor_->setPosition(cmd.flip2,
+                        flip_ok2 = hal_axis2_motor_->setPosition(cmd.flip2,
                             config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
                     }
                 } catch (const std::exception& e) {
                     MOUNT_LOG_WARN("io thread: flip target error: {}", e.what());
+                }
+                if (!flip_ok1 || !flip_ok2) {
+                    MOUNT_LOG_WARN("io thread: flip command FAILED (axis1_ok={} axis2_ok={} "
+                                   "flip1={:.2f}° flip2={:.2f}° vel={:.1f}°/s) — "
+                                   "the drive may be executing a stale target",
+                                   flip_ok1, flip_ok2, cmd.flip1, cmd.flip2,
+                                   config_.mount_config.max_slew_rate);
+                } else {
+                    MOUNT_LOG_INFO("io thread: flip targets sent to drive (axis1={:.2f}°, axis2={:.2f}°)",
+                                   cmd.flip1, cmd.flip2);
                 }
                 std::unique_lock<std::shared_mutex> lk(command_mutex_);
                 if (tracking_command_.seq == cmd.seq) tracking_command_.flip_pending = false;
@@ -1550,7 +1592,14 @@ public:
                 try {
                     auto safety_status = hal_safety_monitor_->getStatus();
                     tel.safety_state = static_cast<int>(safety_status.overall_state);
-                    tel.safety_message = safety_status.getStateString();
+                    std::string smsg = safety_status.getStateString();
+                    for (int ax = 0; ax < 3; ++ax) {
+                        if (!safety_status.axes_status[ax].error_message.empty()) {
+                            smsg += " | axis" + std::to_string(ax) + ": " +
+                                    safety_status.axes_status[ax].error_message;
+                        }
+                    }
+                    tel.safety_message = smsg;
                     hal_safety_monitor_->checkLimits(0);
                     hal_safety_monitor_->checkLimits(1);
                 } catch (const std::exception& e) {
@@ -2192,6 +2241,15 @@ public:
             guider_pos_offset_axis2_ = 0.0;
             guider_delta_axis1_ = 0.0;
             guider_delta_axis2_ = 0.0;
+            // Reset the HA/Dec target-jump diagnostics for the new tracking
+            // session, so the first update is not compared (or clamped)
+            // against a stale target from a previous object.
+            prev_dec_target_log_ = 0.0;
+            has_prev_dec_target_log_ = false;
+            prev_ha_target_log_ = 0.0;
+            has_prev_ha_target_log_ = false;
+            large_residual_count_ = 0;
+            last_large_residual_ = 0.0;
 
             tracking_active_ = true;
             // Reset the split-loop command snapshot (no stale command on start).
@@ -2299,10 +2357,16 @@ public:
                         auto safety_status = hal_safety_monitor_->getStatus();
                         if (safety_status.overall_state == hal::SafetyStatus::State::EMERGENCY_STOP ||
                             safety_status.overall_state == hal::SafetyStatus::State::ERROR) {
-                            MOUNT_LOG_ERROR("HAL safety monitor triggered: state={}",
-                                     safety_status.getStateString());
+                            std::string smsg = safety_status.getStateString();
+                            for (int ax = 0; ax < 3; ++ax) {
+                                if (!safety_status.axes_status[ax].error_message.empty()) {
+                                    smsg += " | axis" + std::to_string(ax) + ": " +
+                                            safety_status.axes_status[ax].error_message;
+                                }
+                            }
+                            MOUNT_LOG_ERROR("HAL safety monitor triggered: state={}", smsg);
                             hal_safety_error = true;
-                            hal_safety_error_msg = "HAL safety monitor: " + safety_status.getStateString();
+                            hal_safety_error_msg = "HAL safety monitor: " + smsg;
                         }
                         hal_safety_monitor_->checkLimits(0);
                         hal_safety_monitor_->checkLimits(1);
@@ -3138,7 +3202,17 @@ public:
                         last_refraction_correction_axis2_ = 0.0;
                         accumulated_correction_axis1_ = 0.0;
                         accumulated_correction_axis2_ = 0.0;
-                        
+
+                        // The HA/Dec discontinuity of a flip also invalidates the
+                        // target-jump diagnostics (Pkt 10/12): reset them so the
+                        // first post-flip tracking update is not clamped or logged
+                        // against the pre-flip target — the flip legitimately moves
+                        // HA ~180° and Dec to 180°-Dec.
+                        prev_ha_target_log_ = 0.0;
+                        has_prev_ha_target_log_ = false;
+                        prev_dec_target_log_ = 0.0;
+                        has_prev_dec_target_log_ = false;
+
                         // Set axis targets to flip targets (now matching current position)
                         axis1_target_ = flip_ha_target_;
                         axis2_target_ = flip_dec_target_;
@@ -3315,12 +3389,19 @@ public:
                     } else {
                         try {
                             if (hal_axis1_motor_ && hal_axis2_motor_) {
-                                hal_axis1_motor_->setPosition(snap_flip_ha_target,
+                                const bool ok1 = hal_axis1_motor_->setPosition(snap_flip_ha_target,
                                     config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
-                                hal_axis2_motor_->setPosition(snap_flip_dec_target,
+                                const bool ok2 = hal_axis2_motor_->setPosition(snap_flip_dec_target,
                                     config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
-                                MOUNT_LOG_INFO("Flip targets sent to HAL: axis1={:.2f}°, axis2={:.2f}°",
-                                         snap_flip_ha_target, snap_flip_dec_target);
+                                if (!ok1 || !ok2) {
+                                    MOUNT_LOG_WARN("Flip command FAILED (axis1_ok={} axis2_ok={} "
+                                                   "axis1={:.2f}° axis2={:.2f}°) — drive may be "
+                                                   "executing a stale target",
+                                                   ok1, ok2, snap_flip_ha_target, snap_flip_dec_target);
+                                } else {
+                                    MOUNT_LOG_INFO("Flip targets sent to HAL: axis1={:.2f}°, axis2={:.2f}°",
+                                             snap_flip_ha_target, snap_flip_dec_target);
+                                }
                             }
                         } catch (const std::exception& e) {
                             MOUNT_LOG_WARN("HAL motor error during meridian flip: {}", e.what());
@@ -3586,6 +3667,41 @@ public:
                                     std::round((new_axis1_target - ref1) / full_turn1);
                                 new_axis1_target -= turns1 * full_turn1;
 
+                                // Pkt 10: log large HA target jumps between
+                                // consecutive tracking updates (object switch,
+                                // pier-side re-resolution, or RA-singularity
+                                // jitter near the celestial pole).  During
+                                // sidereal tracking HA advances only ~15°/h, so a
+                                // jump >2° telescope pinpoints the source of the
+                                // HA-axis desync / following-error fault.
+                                if (has_prev_ha_target_log_) {
+                                    const double ha_jump_tel =
+                                        (new_axis1_target - prev_ha_target_log_) /
+                                        std::max(ha_gear, 1.0);
+                                    if (std::abs(ha_jump_tel) > 2.0) {
+                                        MOUNT_LOG_WARN("HA target jump: prev={:.2f}° new={:.2f}° "
+                                                       "delta={:.2f}° telescope | drive_ref={:.2f}° (servo)",
+                                                       prev_ha_target_log_, new_axis1_target,
+                                                       ha_jump_tel, ref1);
+                                    }
+                                }
+                                // Pkt 12: clamp the per-update HA target jump so the
+                                // drive is never commanded a multi-degree step when
+                                // the near-pole RA resolution flips between degenerate
+                                // solutions.  The clamp is far above the sidereal
+                                // per-update advance (~0.0004°), so normal tracking
+                                // is unaffected.
+                                if (has_prev_ha_target_log_) {
+                                    const double max_ha_jump = 2.0 * std::max(ha_gear, 1.0);
+                                    const double ha_jump = new_axis1_target - prev_ha_target_log_;
+                                    if (std::abs(ha_jump) > max_ha_jump) {
+                                        new_axis1_target =
+                                            prev_ha_target_log_ + std::copysign(max_ha_jump, ha_jump);
+                                    }
+                                }
+                                prev_ha_target_log_ = new_axis1_target;
+                                has_prev_ha_target_log_ = true;
+
                                 // Dec is stationary during equatorial tracking, but the
                                 // fixed target computed by startTracking() can land in a
                                 // different multi-turn window than the physical drive when
@@ -3602,6 +3718,25 @@ public:
                                         std::round((new_axis2_target - ref2) / full_turn2);
                                     new_axis2_target -= turns2 * full_turn2;
                                 }
+
+                                // Diagnostics: log large Dec target jumps between
+                                // consecutive tracking updates (object switch, pier-side
+                                // re-resolution, TPOINT correction).  During sidereal
+                                // tracking the Dec target is otherwise constant, so a
+                                // jump >1° telescope pinpoints the source of a Dec desync.
+                                if (has_prev_dec_target_log_) {
+                                    const double dec_jump_tel =
+                                        (new_axis2_target - prev_dec_target_log_) /
+                                        std::max(dec_gear, 1.0);
+                                    if (std::abs(dec_jump_tel) > 1.0) {
+                                        MOUNT_LOG_WARN("Dec target jump: prev={:.2f}° new={:.2f}° "
+                                                       "delta={:.2f}° telescope | drive_ref={:.2f}° (servo)",
+                                                       prev_dec_target_log_, new_axis2_target,
+                                                       dec_jump_tel, ref2);
+                                    }
+                                }
+                                prev_dec_target_log_ = new_axis2_target;
+                                has_prev_dec_target_log_ = true;
 
                                 // During the initial "Slew & Track" the drive may still
                                 // be far from the target — keep the configured slew
@@ -3620,6 +3755,49 @@ public:
                                 // tracking base instead of stepping.
                                 const double catch_res1 = std::abs(new_axis1_target - ref1);
                                 const double catch_res2 = std::abs(new_axis2_target - ref2);
+                                // Pkt 11: a large tracking residual is only a fault when
+                                // it PERSISTS without shrinking.  A one-time initial
+                                // offset (auto-track after calibration, or the "Slew &
+                                // Track" approach) closes through the bounded catch-up
+                                // velocity below, so it must not trip the guard on the
+                                // first update.  Only a stagnant or growing residual
+                                // >2° telescope (lost frame, stalled drive) escalates to
+                                // stop + ERROR.
+                                if (have_act) {
+                                    const double max_residual_tel = 2.0;
+                                    const double res1_tel = catch_res1 / std::max(ha_gear, 1.0);
+                                    const double res2_tel = catch_res2 / std::max(dec_gear, 1.0);
+                                    const double res_max = std::max(res1_tel, res2_tel);
+                                    if (res_max <= max_residual_tel) {
+                                        large_residual_count_ = 0;
+                                        last_large_residual_ = 0.0;
+                                    } else if (std::isfinite(last_large_residual_) &&
+                                               res_max < last_large_residual_ - 0.05) {
+                                        // Closing — reset the escalation counter.
+                                        large_residual_count_ = 0;
+                                        last_large_residual_ = res_max;
+                                    } else {
+                                        ++large_residual_count_;
+                                        last_large_residual_ = res_max;
+                                    }
+                                    if (large_residual_count_ > 30) {
+                                        MOUNT_LOG_ERROR("Tracking residual too large "
+                                                        "(axis1={:.2f}° axis2={:.2f}° telescope, >{:.0f}°, "
+                                                        "persisting) — stopping instead of catch-up.",
+                                                        res1_tel, res2_tel, max_residual_tel);
+                                        publishStop();
+                                        {
+                                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                                            if (state_ == MountStatus::State::TRACKING ||
+                                                state_ == MountStatus::State::MERIDIAN_FLIP) {
+                                                state_ = MountStatus::State::ERROR;
+                                                error_message_ = "Tracking residual too large — re-slew required";
+                                            }
+                                        }
+                                        tracking_active_ = false;
+                                        break;
+                                    }
+                                }
                                 if (catch_res1 > close1) {
                                     catchup_active_axis1_ = true;
                                 } else if (catch_res1 < close1 * 0.5) {
@@ -3634,26 +3812,26 @@ public:
                                 // acceleration (same as startTracking): small residuals
                                 // stay near tracking_acceleration (gentle), large
                                 // residuals ramp the acceleration toward
-                                // slew_acceleration so the drive still catches up
-                                // promptly.  A fixed tracking_acceleration made
-                                // post-calibration catch-up far too slow.
-                                const double catch_acc1 = std::min(
-                                    config_.mount_config.slew_acceleration,
-                                    config_.mount_config.tracking_acceleration +
-                                        std::max(0.0, catch_res1 - close1) * 2.0);
-                                const double catch_acc2 = std::min(
-                                    config_.mount_config.slew_acceleration,
-                                    config_.mount_config.tracking_acceleration +
-                                        std::max(0.0, catch_res2 - close2) * 2.0);
+                                // Constant catch-up acceleration.  The previous
+                                // distance-scaled acceleration (ramping from
+                                // tracking_acceleration to slew_acceleration) made
+                                // the profile jerk into the drive and contributed
+                                // to the following-error fault near the pole.  A
+                                // fixed, gentle acceleration with a bounded
+                                // velocity cap (below) gives a clean triangular/
+                                // trapezoidal profile.
+                                const double catch_acc1 = config_.mount_config.tracking_acceleration;
+                                const double catch_acc2 = config_.mount_config.tracking_acceleration;
+                                const double catchup_vel_cap = std::min(
+                                    config_.mount_config.max_slew_rate,
+                                    config_.mount_config.max_tracking_rate * kCatchupVelocityFactor);
                                 if (catchup_active_axis1_) {
                                     pos_vel_axis1 = std::max(pos_vel_axis1,
-                                        exactStopVelocity(catch_res1, catch_acc1,
-                                                          config_.mount_config.max_slew_rate));
+                                        exactStopVelocity(catch_res1, catch_acc1, catchup_vel_cap));
                                 }
                                 if (catchup_active_axis2_) {
                                     pos_vel_axis2 = std::max(pos_vel_axis2,
-                                        exactStopVelocity(catch_res2, catch_acc2,
-                                                          config_.mount_config.max_slew_rate));
+                                        exactStopVelocity(catch_res2, catch_acc2, catchup_vel_cap));
                                 }
 
                                 // P0.2: fail fast when the Dec axis is commanded to
@@ -3981,23 +4159,21 @@ public:
                                 } else if (catch_res2 < close2 * 0.5) {
                                     catchup_active_axis2_ = false;
                                 }
-                                const double catch_acc1 = std::min(
-                                    config_.mount_config.slew_acceleration,
-                                    config_.mount_config.tracking_acceleration +
-                                        std::max(0.0, catch_res1 - close1) * 2.0);
-                                const double catch_acc2 = std::min(
-                                    config_.mount_config.slew_acceleration,
-                                    config_.mount_config.tracking_acceleration +
-                                        std::max(0.0, catch_res2 - close2) * 2.0);
+                                // Constant catch-up acceleration (see EQUATORIAL
+                                // branch above): clean triangular/trapezoidal
+                                // profile, no distance-scaled jerk.
+                                const double catch_acc1 = config_.mount_config.tracking_acceleration;
+                                const double catch_acc2 = config_.mount_config.tracking_acceleration;
+                                const double catchup_vel_cap = std::min(
+                                    config_.mount_config.max_slew_rate,
+                                    config_.mount_config.max_tracking_rate * kCatchupVelocityFactor);
                                 if (catchup_active_axis1_) {
                                     pos_vel_axis1 = std::max(pos_vel_axis1,
-                                        exactStopVelocity(catch_res1, catch_acc1,
-                                                          config_.mount_config.max_slew_rate));
+                                        exactStopVelocity(catch_res1, catch_acc1, catchup_vel_cap));
                                 }
                                 if (catchup_active_axis2_) {
                                     pos_vel_axis2 = std::max(pos_vel_axis2,
-                                        exactStopVelocity(catch_res2, catch_acc2,
-                                                          config_.mount_config.max_slew_rate));
+                                        exactStopVelocity(catch_res2, catch_acc2, catchup_vel_cap));
                                 }
                             }
 
@@ -6806,6 +6982,107 @@ public:
             return false;
         }
     }
+
+    // Persist only the Home reference frame (offsets + homed flag) to a
+    // dedicated sidecar file.  This is intentionally separate from saveState()
+    // (which also snapshots transient positions/targets) so a runtime save
+    // never overwrites the user configuration and never restores stale axis
+    // positions on the next start.
+    bool persistHomeState() const {
+        // NOTE: variant 5 is currently disabled — the call site was removed.
+        // Re-enable by restoring the persistHomeState() call in home().
+        if (home_state_path_.empty()) return false;
+
+        // NOTE: called with state_mutex_ already held (from home()); reads the
+        // members directly without re-acquiring the lock.
+        json j;
+        j["home_offset_axis1"] = home_offset_axis1_;
+        j["home_offset_axis2"] = home_offset_axis2_;
+        j["homed"] = homed_;
+        j["timestamp"] = static_cast<long long>(
+            std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+
+        std::filesystem::path parent = std::filesystem::path(home_state_path_).parent_path();
+        if (!parent.empty()) {
+            std::error_code ec;
+            std::filesystem::create_directories(parent, ec);
+        }
+        std::ofstream file(home_state_path_);
+        if (!file.is_open()) {
+            MOUNT_LOG_WARN("Failed to persist Home state to {}", home_state_path_);
+            return false;
+        }
+        file << j.dump(4);
+        MOUNT_LOG_INFO("Home state persisted to {} (offset1={:.2f}° offset2={:.2f}° homed={})",
+                       home_state_path_, home_offset_axis1_, home_offset_axis2_, homed_);
+        return true;
+    }
+
+    // Restore the Home reference frame from the sidecar and rebuild the
+    // telescope position from a FRESH absolute encoder read + the persisted
+    // offset.  This makes the frame survive a restart without requiring the
+    // drive to zero its multi-turn counter ("set zero point").
+    bool restoreHomeState() {
+        // NOTE: variant 5 is currently disabled — the call site was removed.
+        // Re-enable by restoring the restoreHomeState() call in initialize().
+        if (home_state_path_.empty()) return false;
+        std::ifstream file(home_state_path_);
+        if (!file.is_open()) return false;
+
+        json j;
+        try {
+            j = json::parse(file);
+        } catch (const std::exception&) {
+            return false;
+        }
+
+        const double ho1 = j.value("home_offset_axis1", 0.0);
+        const double ho2 = j.value("home_offset_axis2", 0.0);
+        const bool homed = j.value("homed", false);
+        if (!std::isfinite(ho1) || !std::isfinite(ho2)) return false;
+
+        // Read the FRESH absolute drive position and rebuild the telescope
+        // frame from the persisted offset.
+        double raw1 = 0.0, raw2 = 0.0;
+        bool have1 = false, have2 = false;
+        if (hal_axis1_encoder_) {
+            const auto e = hal_axis1_encoder_->read();
+            if (e.data_valid && std::isfinite(e.position_deg)) {
+                raw1 = applyAxis1Inversion(e.position_deg);
+                have1 = true;
+            }
+        }
+        if (hal_axis2_encoder_) {
+            const auto e = hal_axis2_encoder_->read();
+            if (e.data_valid && std::isfinite(e.position_deg)) {
+                raw2 = applyAxis2Inversion(e.position_deg);
+                have2 = true;
+            }
+        }
+
+        {
+            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+            home_offset_axis1_ = ho1;
+            home_offset_axis2_ = ho2;
+            homed_ = homed;
+            if (have1 && have2) {
+                axis1_position_ = raw1 + home_offset_axis1_;
+                axis2_position_ = raw2 + home_offset_axis2_;
+                raw_servo_axis1_position_ = axis1_position_;
+                raw_servo_axis2_position_ = axis2_position_;
+                axis1_target_ = axis1_position_;
+                axis2_target_ = axis2_position_;
+            }
+        }
+
+        if (have1 && have2) {
+            MOUNT_LOG_INFO("Restored Home state: offset=({:.2f}°, {:.2f}°) homed={} → telescope=({:.2f}°, {:.2f}°)",
+                           ho1, ho2, homed, raw1 + ho1, raw2 + ho2);
+        } else {
+            MOUNT_LOG_WARN("Restored Home offsets but could not read fresh encoder positions");
+        }
+        return true;
+    }
     
     void setEnvironmentalParams(double temperature, double pressure, double humidity) {
         // Use dedicated env_mutex_ for environmental parameters to avoid
@@ -7565,41 +7842,30 @@ public:
             return false;
         }
         
-        // Zero the motor's internal position counters where supported (e.g.
-        // MF7025v2 0x95 SetZeroRAM, STM42M 2031h:01h "set origin").  This is a
-        // best-effort operation; the home offset below is computed from a FRESH
-        // absolute read, so the result is correct whether or not the drive
-        // actually zeroes its counter.
-        if (hal_axis1_motor_) hal_axis1_motor_->zeroPosition();
-        if (hal_axis2_motor_) hal_axis2_motor_->zeroPosition();
-
-        // Read the FRESH drive position from the encoder readers (direct SDO
-        // read), NOT the cached motor getActualPosition().  The cached value is
-        // updated by the HAL monitor thread and still holds the pre-zero /
-        // pre-motion counter when Home runs.  Using that stale value made
-        // home_offset_axisN = new_axis − stale_counter, so every later absolute
-        // Dec target landed many turns from the physical drive and the mount ran
-        // away on the next slew/track ("Dec-axis position desync").
+        // Read the current drive position from the motor's live PDO cache — the
+        // SAME source the tracking loop uses as its physical reference (ref1).
+        // The separate encoder reader is not wired on this hardware (it returns
+        // 0.0), and zeroPosition() does not reliably reset the 0x6064 position
+        // feedback, so computing the offset from anything else makes the home
+        // offset inconsistent with the tracking loop and leaves a multi-degree
+        // residual on the first tracking update.
+        //
+        // We deliberately do NOT zero the drive counter here: the offset is
+        // computed from the true counter, and maybeRewindDriveCounters() keeps
+        // the counter inside its multi-turn window during normal operation.
         double actual1 = 0.0, actual2 = 0.0;
         bool have1 = false, have2 = false;
-        if (hal_axis1_encoder_) {
-            const auto enc1 = hal_axis1_encoder_->read();
-            if (enc1.data_valid && std::isfinite(enc1.position_deg)) {
-                actual1 = applyAxis1Inversion(enc1.position_deg);
-                have1 = true;
-            }
+        if (hal_axis1_motor_) {
+            actual1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+            have1 = std::isfinite(actual1);
         }
-        if (hal_axis2_encoder_) {
-            const auto enc2 = hal_axis2_encoder_->read();
-            if (enc2.data_valid && std::isfinite(enc2.position_deg)) {
-                actual2 = applyAxis2Inversion(enc2.position_deg);
-                have2 = true;
-            }
+        if (hal_axis2_motor_) {
+            actual2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+            have2 = std::isfinite(actual2);
         }
         if (!have1 || !have2) {
-            MOUNT_LOG_ERROR("home() rejected: could not read fresh drive positions "
-                            "(axis1={}, axis2={})",
-                            have1, have2);
+            MOUNT_LOG_ERROR("home() rejected: could not read drive positions "
+                            "(axis1={}, axis2={})", have1, have2);
             return false;
         }
 
@@ -7649,7 +7915,7 @@ public:
                  request.axis1(), request.axis2(),
                  axis1_position_, axis2_position_,
                  home_offset_axis1_, home_offset_axis2_);
-        
+
         return true;
     }
     
@@ -8404,6 +8670,10 @@ public:
     std::function<void(const std::string&)> error_callback_;
     std::string error_message_;
     std::string config_file_path_;
+    // Dedicated sidecar for persisting the Home reference frame
+    // (home_offset_axis1/2 + homed).  Kept separate from the main config file
+    // so saving runtime state never overwrites the user configuration.
+    std::string home_state_path_;
 
     // LX200 serial interface
     std::unique_ptr<LX200Server> lx200_server_;
@@ -8963,6 +9233,28 @@ private:
                     stopped_polls = 0;
                     reached = false;
                 }
+                // Detect a drive fault during the slew.  The tracking loop
+                // (which normally logs drive faults) is stopped while slewing,
+                // so a following-error here would otherwise stall the mount
+                // silently until the slew watchdog times out (~2 min).  Abort
+                // immediately with the drive's fault detail.
+                try {
+                    const bool fault1 = hal_axis1_motor_->inErrorState();
+                    const bool fault2 = hal_axis2_motor_->inErrorState();
+                    if (fault1 || fault2) {
+                        MOUNT_LOG_ERROR("Drive fault during slew (axis1={} axis2={}) — aborting slew.",
+                                        fault1 ? hal_axis1_motor_->getErrorString() : "ok",
+                                        fault2 ? hal_axis2_motor_->getErrorString() : "ok");
+                        {
+                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                            state_ = MountStatus::State::ERROR;
+                            error_message_ = "Drive fault during slew";
+                        }
+                        break;
+                    }
+                } catch (const std::exception& e) {
+                    MOUNT_LOG_WARN("Drive fault check failed during slew: {}", e.what());
+                }
             } else {
                 // Simulated: update positions gradually with timeout
                 sim_elapsed_ms += POLL_MS;
@@ -9482,7 +9774,8 @@ private:
     // and the mount ran away immediately after power-on.
     bool drivePositionIsTrusted() const {
         return halPositionIsAuthoritative() ||
-               config_.mount_config.encoders_absolute ||
+               (config_.mount_config.encoders_absolute &&
+                hal_axis1_encoder_ && hal_axis2_encoder_) ||
                homed_;
     }
 
@@ -9493,7 +9786,8 @@ private:
     // the counters and establishes home_offset.
     bool motionRequiresHome() const {
         return (hal_config_.type == hal::HALType::CANOPEN) &&
-               !config_.mount_config.encoders_absolute &&
+               !(config_.mount_config.encoders_absolute &&
+                 hal_axis1_encoder_ && hal_axis2_encoder_) &&
                !homed_;
     }
 
@@ -9701,6 +9995,16 @@ private:
     std::chrono::steady_clock::time_point last_pos_update_time_{};
     double snap_pos_target_axis1_{0.0};
     double snap_pos_target_axis2_{0.0};
+    // Dec-target jump diagnostics (tracking loop): remembers the previous
+    // axis2 target so a sudden target change (object switch, pier-side
+    // re-resolution, TPOINT correction) can be logged with context.
+    double prev_dec_target_log_{0.0};
+    bool   has_prev_dec_target_log_{false};
+    // HA-target jump diagnostics + clamp (Pkt 10/12): remembers the previous
+    // axis1 target so a sudden target change (object switch, pier-side
+    // re-resolution, near-pole RA singularity) can be logged and clamped.
+    double prev_ha_target_log_{0.0};
+    bool   has_prev_ha_target_log_{false};
     // Position-rewind bookkeeping (see maybeRewindDriveCounters()).
     std::chrono::steady_clock::time_point last_rewind_check_{};
     std::chrono::steady_clock::time_point last_rewind_fail_log_{};
@@ -10369,6 +10673,8 @@ private:
     size_t diag_log_counter_{0};
     int dec_desync_count_{0};   // consecutive Dec-axis desync detections
     double last_dec_residual_{std::numeric_limits<double>::quiet_NaN()};  // previous Dec target residual for progress detection
+    int large_residual_count_{0};  // consecutive updates with a large non-shrinking residual (Pkt 11)
+    double last_large_residual_{std::numeric_limits<double>::quiet_NaN()};  // previous peak HA/Dec residual for progress detection
     bool catchup_active_axis1_{false};  // close/far catch-up hysteresis state (RA)
     bool catchup_active_axis2_{false};  // close/far catch-up hysteresis state (Dec)
     int legacy_encoder_read_counter_{0};  // decimation counter for legacy KF reads
@@ -10654,6 +10960,9 @@ bool MountController::updateConfiguration(const ControllerConfig& config) {
 
 void MountController::setConfigFilePath(const std::string& path) {
     pimpl->config_file_path_ = path;
+    // Derive the Home-state sidecar path next to the config file so the
+    // persisted reference frame survives a controller restart.
+    pimpl->home_state_path_ = path.empty() ? std::string{} : path + ".state.json";
 }
 
 bool MountController::setMountOrientation(const config::MountOrientation& orientation) {

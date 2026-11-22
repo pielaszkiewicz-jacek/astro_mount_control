@@ -392,8 +392,19 @@ bool CanOpenInterface::getPositionData(uint8_t axis_id, CanOpenPositionData& dat
 
 bool CanOpenInterface::clearErrors(uint8_t axis_id) {
     const uint8_t node = nodeIdForAxis(axis_id);
-    // Fault reset = rising edge of control-word bit7.
+    // Fault reset = rising edge of control-word bit7.  Writing 0x0080 then the
+    // next control word (bit7=0) produces the required 0->1->0 edge.
     if (!writeControlWord(node, kCwFaultReset)) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    // Full CiA 402 re-enable sequence after the fault reset.  Jumping straight
+    // to "Enable Operation" (0x000F) from "Switch On Disabled" is an invalid
+    // state transition and leaves the drive stuck in fault — the observed
+    // "requires a physical power cycle" symptom.  Walk shutdown -> switch on
+    // -> enable operation so the drive re-enters Operation Enabled cleanly.
+    if (!writeControlWord(node, kCwShutdown)) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    if (!writeControlWord(node, kCwSwitchOn)) return false;
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     return writeControlWord(node, kCwEnableOp);
 }
@@ -590,6 +601,15 @@ bool CanOpenInterface::getCachedDriveStatus(uint8_t axis_id, CanOpenStatus& stat
     status.actual_position = pos;
     status.position_valid = true;
     status.moving = !status.target_reached && status.enabled;
+    return true;
+}
+
+bool CanOpenInterface::getLastEmergency(uint8_t axis_id, uint16_t& error_code) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    canopen_emergency_t emcy;
+    if (!canopen_get_emergency(&ctx_, node, &emcy)) return false;
+    if (emcy.error_code == 0) return false;  // no EMCY received for this node yet
+    error_code = emcy.error_code;
     return true;
 }
 

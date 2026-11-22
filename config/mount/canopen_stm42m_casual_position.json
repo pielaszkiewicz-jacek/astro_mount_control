@@ -399,7 +399,7 @@
         "default_temperature": 15.0,
         "enable_refraction_correction": true,
         "encoder_resolution": 1000.0,
-        "encoders_absolute": false,
+        "encoders_absolute": true,
         "equatorial_tracking_velocity_mode": false,
         "invert_axis1": false,
         "invert_axis2": false,

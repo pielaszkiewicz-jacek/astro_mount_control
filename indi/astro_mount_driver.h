@@ -214,7 +214,13 @@ private:
 
     // Slew rate selected via INDI SlewRateSP (GUIDE/CENTERING/FIND/MAX).
     int m_slewRateIndex{3};               // 0..3 (SLEW_MAX by default)
-    double m_slewRateDegPerSec{1.0};
+    double m_slewRateDegPerSec{1.0};      // telescope deg/s (INDI convention)
+    // Gear ratios + controller max slew rate, cached for unit conversion
+    // (telescope deg/s -> servo deg/s) when commanding manual slews.
+    double m_haGearRatio{360.0};
+    double m_decGearRatio{360.0};
+    double m_maxSlewRateServoDegPerSec{0.0};
+    bool m_slewConfigLoaded{false};
 
     // Tracking mode / custom rates. Custom rates are sent to the controller
     // as Coordinates.custom_track_rate_ra/dec by SetTrackEnabled().
@@ -256,6 +262,9 @@ private:
     /// @brief (Re)create the gRPC client from the configured host/port/ssl
     /// (called on Connect and after the UI config is changed).
     void applyConnectionConfig();
+
+    /// @brief Fetch and cache gear ratios + max slew rate from the controller.
+    void loadSlewConfig();
 
     /// @brief Push the current connection state into the read-only status text.
     void updateConnectionStatus();
