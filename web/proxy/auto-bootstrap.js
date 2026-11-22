@@ -264,8 +264,17 @@ async function runLoop(s) {
     }
 
     // Optionally start tracking the last measured target after calibration.
+    // This is best-effort: the C++ RunBootstrapCalibration already auto-tracks
+    // the last target when the controller's `auto_track_after_calibration` is
+    // enabled, so a transient failure here (e.g. a race with that C++ auto-track
+    // on the last object, Polaris) must not fail the whole auto-bootstrap.
     if (s.autoTrackAfterCalibration && s.currentTarget) {
-      await grpcCall('TrackObject', { ra: s.currentTarget.ra, dec: s.currentTarget.dec });
+      try {
+        await grpcCall('TrackObject', { ra: s.currentTarget.ra, dec: s.currentTarget.dec });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn('[auto-bootstrap] final TrackObject failed (non-fatal):', err.message);
+      }
     }
 
     s.progress = 100;

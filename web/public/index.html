@@ -58,7 +58,6 @@
           <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
         </svg>
       </button>
-      <button id="ui-scale-toggle" class="theme-toggle ui-scale-toggle" data-i18n-title="ui.scale.title" title="Enlarge font and icons" aria-label="Enlarge font and icons">Aa</button>
       <span id="connection-indicator" class="connection-badge disconnected" data-i18n-title="conn.controller" title="Mount controller connection status">
         <span class="badge-dot"></span>
         <span class="badge-label" data-i18n="status.disconnected">Disconnected</span>
@@ -99,6 +98,14 @@
           </svg>
         </span>
         <span class="tab-label" data-i18n="tab.settings">Settings</span>
+      </button>
+      <button class="tab-btn" data-tab="ui" role="tab" aria-selected="false" aria-controls="panel-ui">
+        <span class="tab-icon-svg">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+          </svg>
+        </span>
+        <span class="tab-label" data-i18n="tab.ui">Ustawienia UI</span>
       </button>
       <button class="tab-btn" data-tab="calibration" role="tab" aria-selected="false" aria-controls="panel-calibration">
         <span class="tab-icon-svg">
@@ -586,6 +593,55 @@
                   </svg>
                   <span data-i18n="state.load_btn">Load State</span>
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- UI Setup Panel -->
+      <section id="panel-ui" class="tab-panel" role="tabpanel" aria-labelledby="tab-ui">
+        <div class="card-grid">
+          <!-- Layout group -->
+          <div class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Layout</h2>
+            </div>
+            <div class="card-body">
+              <div class="control-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label class="checkbox-label">
+                      <input type="checkbox" id="tab-layout-toggle">
+                      Vertical tab layout
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Size group -->
+          <div class="card full-width">
+            <div class="card-header">
+              <h2 class="card-title">Size</h2>
+            </div>
+            <div class="card-body">
+              <div class="control-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label for="font-scale-slider">Font size: <span id="font-scale-value">100%</span></label>
+                    <div class="scale-slider">
+                      <input type="range" id="font-scale-slider" min="0.8" max="1.7" step="0.1" value="1" aria-label="Font size">
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label for="icon-scale-slider">Icon size: <span id="icon-scale-value">100%</span></label>
+                    <div class="scale-slider">
+                      <input type="range" id="icon-scale-slider" min="0.8" max="1.7" step="0.1" value="1" aria-label="Icon size">
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -3062,7 +3118,12 @@
   <footer class="app-footer">
     <div class="footer-bar">
       <span>Astro Mount Controller v1.0.0</span>
-      <span id="last-update">—</span>
+      <div class="footer-status-group">
+        <span id="footer-mount-state" class="footer-status-badge status-idle" data-i18n-title="status.controller_state" title="Controller state">—</span>
+        <span id="footer-position" class="footer-mono" data-i18n-title="status.position" title="Current position">—</span>
+        <span id="footer-object" class="footer-object" data-i18n-title="status.object" title="Pointed object">—</span>
+        <span id="last-update" class="footer-muted">—</span>
+      </div>
     </div>
   </footer>
 

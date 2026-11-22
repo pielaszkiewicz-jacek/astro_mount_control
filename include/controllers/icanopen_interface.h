@@ -57,6 +57,11 @@ public:
 
     // CiA 402 state machine
     virtual bool enableDrive(uint8_t axis_id) = 0;
+    // Lightweight re-enable after stopAxis(): switch on -> enable operation
+    // with a status-word verification, skipping the init-only writes (NMT start,
+    // mode/min-velocity/profile-type) that enableDrive() performs at power-on.
+    // Default: fall back to the full enableDrive().
+    virtual bool reenableDrive(uint8_t axis_id) { return enableDrive(axis_id); }
     virtual bool disableDrive(uint8_t axis_id) = 0;
 
     // Motion

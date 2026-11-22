@@ -57,6 +57,13 @@ public:
     
     // Podstawowe operacje
     virtual bool enable() = 0;
+
+    // Re-arm the drive after a stop()/shutdown WITHOUT the full power-on
+    // initialization.  Used by the slew/track paths so the drive re-enters
+    // "Operation enabled" with a status-word verification but no redundant
+    // mode/min-velocity/profile writes.  Default: full enable().
+    virtual bool reenable() { return enable(); }
+
     virtual bool disable() = 0;
     virtual bool isEnabled() const = 0;
     

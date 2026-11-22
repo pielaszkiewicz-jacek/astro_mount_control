@@ -49,10 +49,13 @@
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* UI scaling: responsive base scale × user-controlled scale.
-     --ui-scale drives the root font-size (rem) and icon dimensions. */
+     --ui-scale drives the root font-size (rem); --icon-scale drives the
+     fixed-size SVG icon dimensions (independent sliders). */
   --base-scale: 1;
   --user-scale: 1;
+  --user-icon-scale: 1;
   --ui-scale: calc(var(--base-scale) * var(--user-scale));
+  --icon-scale: calc(var(--base-scale) * var(--user-icon-scale));
 }
 
 /* ─── Red/Night-Vision Theme ────────────────────────────────────────────── */
@@ -120,8 +123,8 @@ body.red-theme {
 
 .theme-toggle svg {
   display: block;
-  width: calc(16px * var(--ui-scale));
-  height: calc(16px * var(--ui-scale));
+  width: calc(16px * var(--icon-scale));
+  height: calc(16px * var(--icon-scale));
 }
 
 /* Font/icon scale toggle button (header) */
@@ -132,15 +135,83 @@ body.red-theme {
   letter-spacing: -0.02em;
 }
 
+/* Independent font/icon size sliders (header) */
+.scale-sliders {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.scale-slider {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-text-muted);
+}
+
+.scale-slider-symbol {
+  font-weight: 700;
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  color: var(--color-text);
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.scale-slider input[type="range"] {
+  flex: 1;
+  min-width: 120px;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: var(--color-border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.scale-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: none;
+  cursor: pointer;
+}
+
+.scale-slider input[type="range"]::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  border: none;
+  cursor: pointer;
+}
+
 /* Scale fixed-size inline SVG icons with the UI scale factor. */
 .tab-icon-svg svg {
-  width: calc(18px * var(--ui-scale));
-  height: calc(18px * var(--ui-scale));
+  width: calc(18px * var(--icon-scale));
+  height: calc(18px * var(--icon-scale));
 }
 
 .splash-logo svg {
-  width: calc(72px * var(--ui-scale));
-  height: calc(72px * var(--ui-scale));
+  width: calc(72px * var(--icon-scale));
+  height: calc(72px * var(--icon-scale));
 }
 
 /* Smooth transition for body when switching themes */
@@ -376,6 +447,56 @@ body.red-theme {
 
 .tab-btn.placeholder:hover {
   color: var(--color-text-secondary);
+}
+
+/* ─── Vertical tabs layout (toggled) ─────────────────────────────────────── */
+body.vertical-tabs .app-main {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+}
+
+body.vertical-tabs .tab-nav-wrapper {
+  position: sticky;
+  top: var(--header-height);
+  flex: 0 0 200px;
+  width: 200px;
+  height: calc(100vh - var(--header-height) - var(--footer-height));
+  flex-direction: column;
+  align-items: stretch;
+  border-bottom: none;
+  border-right: 1px solid var(--color-border);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+body.vertical-tabs .tab-nav {
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+  width: 100%;
+}
+
+body.vertical-tabs .tab-scroll-btn {
+  display: none;
+}
+
+body.vertical-tabs .tab-btn {
+  width: 100%;
+  border-bottom: none;
+  border-right: 2px solid transparent;
+  padding: 10px 14px;
+}
+
+body.vertical-tabs .tab-btn.active {
+  border-bottom-color: transparent;
+  border-right-color: var(--color-primary);
+}
+
+body.vertical-tabs .tab-panels {
+  flex: 1;
+  min-width: 0;
 }
 
 .tab-icon {
@@ -1604,6 +1725,50 @@ body.red-theme {
   color: var(--color-text-muted);
 }
 
+/* ─── Footer status bar ──────────────────────────────────────────────────── */
+.footer-status-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.footer-status-badge {
+  font-weight: 600;
+  padding: 1px 10px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.footer-status-badge.status-idle { background: var(--color-surface-2); color: var(--color-text-secondary); }
+.footer-status-badge.status-tracking { background: rgba(76, 175, 80, 0.18); color: #4caf50; }
+.footer-status-badge.status-busy { background: rgba(255, 152, 0, 0.18); color: #ff9800; }
+.footer-status-badge.status-error { background: rgba(244, 67, 54, 0.18); color: #f44336; }
+.footer-status-badge.status-parked { background: rgba(33, 150, 243, 0.18); color: #2196f3; }
+
+.footer-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+.footer-object {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  font-size: 0.68rem;
+  color: var(--color-text-secondary);
+}
+
+.footer-muted {
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 .log-toggle-btn {
   margin-left: auto;
   font-size: 0.72rem;
@@ -2140,8 +2305,8 @@ body.mobile-mode .tab-btn {
 }
 
 body.mobile-mode .tab-icon-svg {
-  width: calc(18px * var(--ui-scale)) !important;
-  height: calc(18px * var(--ui-scale)) !important;
+  width: calc(18px * var(--icon-scale)) !important;
+  height: calc(18px * var(--icon-scale)) !important;
 }
 
 body.mobile-mode .tab-scroll-btn {
@@ -2211,8 +2376,8 @@ body.mobile-mode .config-group-body {
   }
 
   .tab-icon-svg {
-    width: calc(18px * var(--ui-scale));
-    height: calc(18px * var(--ui-scale));
+    width: calc(18px * var(--icon-scale));
+    height: calc(18px * var(--icon-scale));
   }
 }
 

@@ -21,6 +21,7 @@ public:
     bool isInitialized() const override;
 
     bool enableDrive(uint8_t axis_id) override;
+    bool reenableDrive(uint8_t axis_id) override;
     bool disableDrive(uint8_t axis_id) override;
 
     bool setPositionTarget(uint8_t axis_id, int32_t position,

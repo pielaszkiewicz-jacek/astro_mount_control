@@ -247,6 +247,26 @@ bool CanOpenInterface::enableDrive(uint8_t axis_id) {
     return ((status & 0x6F) == 0x27);
 }
 
+bool CanOpenInterface::reenableDrive(uint8_t axis_id) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    // Lightweight re-arm after stopAxis() (which left the drive in "Ready to
+    // switch on" via the 0x0006 shutdown).  Walk switch on -> enable operation
+    // and verify the drive reached "Operation enabled" (status bits 0-2 = 111,
+    // bit3 = 0, bit5 = 1, bit6 = 0), without re-writing the init-only objects
+    // (2002h/6060h mode, min velocity, motion profile type) that enableDrive()
+    // performs at power-on.  Keeps the stop -> re-enable -> new-setpoint
+    // sequence fast enough for the synchronous SlewToCoordinates RPC (the full
+    // enableDrive() takes ~0.5 s per axis and trips the proxy's 5 s deadline).
+    if (!writeControlWord(node, kCwSwitchOn)) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    if (!writeControlWord(node, kCwEnableOp)) return false;
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    uint16_t status = 0;
+    if (!readStatusWord(node, status)) return false;
+    return (status & 0x6F) == 0x27;
+}
+
 bool CanOpenInterface::disableDrive(uint8_t axis_id) {
     const uint8_t node = nodeIdForAxis(axis_id);
     return writeControlWord(node, kCwDisableVoltage);

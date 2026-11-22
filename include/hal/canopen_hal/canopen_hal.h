@@ -26,6 +26,7 @@ private:
         ~CanOpenMotor() override;
 
         bool enable() override;
+        bool reenable() override;
         bool disable() override;
         bool isEnabled() const override;
 

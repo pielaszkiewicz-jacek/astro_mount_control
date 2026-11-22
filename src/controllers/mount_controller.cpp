@@ -881,6 +881,16 @@ public:
             if (hal_axis1_motor_) hal_axis1_motor_->stop();
             if (hal_axis2_motor_) hal_axis2_motor_->stop();
 
+            // Re-arm the drives after the shutdown with a VERIFIED CiA 402
+            // enable sequence (switch on -> enable operation, then a status-word
+            // check for "Operation enabled") instead of a blind sleep.  Without
+            // it, setPosition()'s PDO fast path sends the enable-op + "new
+            // setpoint" frames back-to-back while the drive is still leaving the
+            // shutdown state, latching "set-point acknowledge" (6041h bit12) and
+            // faulting (0x1228 seen during calibration).
+            if (hal_axis1_motor_) hal_axis1_motor_->reenable();
+            if (hal_axis2_motor_) hal_axis2_motor_->reenable();
+
             // Sync axis1/2_position_ from the physical drive now that any
             // previous move has stopped, so the shortest-path HA/Dec below is
             // computed from the true physical position (not the stale internal
@@ -1685,9 +1695,15 @@ public:
             std::lock_guard<std::shared_mutex> lock(*state_mutex_);
             if (state_ == MountStatus::State::SLEWING ||
                 state_ == MountStatus::State::PARKING) {
+                MOUNT_LOG_WARN("startTracking rejected: mount is SLEWING/PARKING "
+                               "(state={}) — move in progress",
+                               static_cast<int>(state_));
                 return false;  // Move in progress
             }
             if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) {
+                MOUNT_LOG_WARN("startTracking rejected: mount is UNINITIALIZED/ERROR "
+                               "(state={})",
+                               static_cast<int>(state_));
                 return false;
             }
         }
@@ -1698,6 +1714,15 @@ public:
         // This makes re-targeting possible while already in TRACKING state
         // (previously the code returned false — "Already moving").
         stop();
+
+        // Re-arm the drives with a verified CiA 402 enable sequence so the
+        // subsequent setPosition()/setVelocity() lands on a drive that is
+        // confirmed "Operation enabled" — the shutdown above left it in
+        // "Ready to switch on", and the PDO fast path's back-to-back
+        // enable + "new setpoint" frames would otherwise race the transition
+        // (STMP42SXI latches "set-point acknowledge" bit12 and faults).
+        if (hal_axis1_motor_) hal_axis1_motor_->reenable();
+        if (hal_axis2_motor_) hal_axis2_motor_->reenable();
         
         // Join any previous work thread WITHOUT holding state_mutex_.
         // This avoids deadlock: if we held state_mutex_, a running work thread
@@ -1718,9 +1743,16 @@ public:
             
             // Re-check state after join (another thread may have started a move)
             if (state_ == MountStatus::State::UNINITIALIZED || state_ == MountStatus::State::ERROR) {
+                MOUNT_LOG_WARN("startTracking rejected after join: mount is "
+                               "UNINITIALIZED/ERROR (state={})",
+                               static_cast<int>(state_));
                 return false;
             }
             if (state_ == MountStatus::State::SLEWING || state_ == MountStatus::State::PARKING) {
+                MOUNT_LOG_WARN("startTracking rejected after join: mount is "
+                               "SLEWING/PARKING (state={}) — move started between "
+                               "quick check and join",
+                               static_cast<int>(state_));
                 return false;  // Move started between quick check and join
             }
             
@@ -2261,7 +2293,86 @@ public:
         
         // Notify status callback outside state_mutex_ lock
         notifyStatusChanged();  // IDLE → TRACKING (or other → TRACKING)
-        
+
+        // Full "stop → slew → wait → track" sequence for object changes.  The
+        // stop() and target computation already happened above; here, when the
+        // computed target is far from the physical drive, slew to it at the
+        // configured slew velocity and WAIT for target_reached before starting
+        // the tracking loop — instead of closing the gap with the slow catch-up
+        // velocity (which can take many seconds and trip the residual guard).
+        if (hal_axis1_motor_ && hal_axis2_motor_) {
+            double cur1 = 0.0, cur2 = 0.0;
+            bool have_cur = false;
+            try {
+                cur1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                cur2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                have_cur = std::isfinite(cur1) && std::isfinite(cur2);
+            } catch (const std::exception&) {}
+            if (have_cur) {
+                const double ha_gear_st = std::max(haGear(), 1.0);
+                const double dec_gear_st = std::max(decGear(), 1.0);
+                const double dist1_tel = std::abs(axis1_target_ - cur1) / ha_gear_st;
+                const double dist2_tel = std::abs(axis2_target_ - cur2) / dec_gear_st;
+                const double slew_threshold_tel =
+                    std::max(config_.mount_config.position_tolerance, 0.05) * 4.0;
+                if (dist1_tel > slew_threshold_tel || dist2_tel > slew_threshold_tel) {
+                    MOUNT_LOG_INFO("startTracking: target is {:.2f}°/{:.2f}° (HA/Dec) away — "
+                                   "slewing before tracking", dist1_tel, dist2_tel);
+                    try {
+                        hal_axis1_motor_->setPosition(axis1_target_,
+                            config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
+                        hal_axis2_motor_->setPosition(axis2_target_,
+                            config_.mount_config.max_slew_rate, config_.mount_config.slew_acceleration);
+                    } catch (const std::exception& e) {
+                        MOUNT_LOG_WARN("startTracking: slew command failed: {}", e.what());
+                    }
+
+                    const double slew_rate_tel =
+                        std::max(config_.mount_config.max_slew_rate / ha_gear_st, 1e-3);
+                    const double est_s = std::max(dist1_tel, dist2_tel) / slew_rate_tel;
+                    const double timeout_s = std::max(10.0, est_s * 3.0 + 5.0);
+                    const auto t0 = std::chrono::steady_clock::now();
+                    bool reached = false;
+                    while (true) {
+                        std::this_thread::sleep_for(std::chrono::milliseconds(
+                            std::max(1, config_.tracking_config.controller_poll_ms)));
+                        bool r1 = false, r2 = false, f1 = false, f2 = false;
+                        try {
+                            r1 = hal_axis1_motor_->targetReached();
+                            r2 = hal_axis2_motor_->targetReached();
+                            f1 = hal_axis1_motor_->inErrorState();
+                            f2 = hal_axis2_motor_->inErrorState();
+                        } catch (const std::exception&) {}
+                        if (f1 || f2) {
+                            MOUNT_LOG_WARN("startTracking: drive fault during slew — aborting wait");
+                            break;
+                        }
+                        if (r1 && r2) { reached = true; break; }
+                        const double elapsed = std::chrono::duration<double>(
+                            std::chrono::steady_clock::now() - t0).count();
+                        if (elapsed > timeout_s) {
+                            MOUNT_LOG_WARN("startTracking: slew-to-target timed out after {:.1f}s",
+                                           timeout_s);
+                            break;
+                        }
+                    }
+                    if (reached) {
+                        // Re-anchor the internal positions to the settled drive so
+                        // getStatus() reports the post-slew position immediately.
+                        try {
+                            const double p1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                            const double p2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                            std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                            axis1_position_ = p1 + home_offset_axis1_;
+                            axis2_position_ = p2 + home_offset_axis2_;
+                            raw_servo_axis1_position_ = axis1_position_;
+                            raw_servo_axis2_position_ = axis2_position_;
+                        } catch (const std::exception&) {}
+                    }
+                }
+            }
+        }
+
         // Lock thread_mutex_ only for the work_thread_ assignment (not held during join above)
         {
             std::lock_guard<std::shared_mutex> tlock(*thread_mutex_);
@@ -3757,14 +3868,16 @@ public:
                                 const double catch_res2 = std::abs(new_axis2_target - ref2);
                                 // Pkt 11: a large tracking residual is only a fault when
                                 // it PERSISTS without shrinking.  A one-time initial
-                                // offset (auto-track after calibration, or the "Slew &
-                                // Track" approach) closes through the bounded catch-up
-                                // velocity below, so it must not trip the guard on the
-                                // first update.  Only a stagnant or growing residual
-                                // >2° telescope (lost frame, stalled drive) escalates to
-                                // stop + ERROR.
+                                // offset (object re-target, auto-track after calibration,
+                                // or the "Slew & Track" approach) closes through the
+                                // bounded catch-up velocity below, so it must not trip
+                                // the guard.  Only a stagnant or growing residual above
+                                // ~30° telescope (lost frame, stalled drive) escalates
+                                // to stop + ERROR.  The "shrinking" test uses a small
+                                // per-update threshold because the catch-up acceleration
+                                // is gentle and closes the residual slowly at first.
                                 if (have_act) {
-                                    const double max_residual_tel = 2.0;
+                                    const double max_residual_tel = 30.0;
                                     const double res1_tel = catch_res1 / std::max(ha_gear, 1.0);
                                     const double res2_tel = catch_res2 / std::max(dec_gear, 1.0);
                                     const double res_max = std::max(res1_tel, res2_tel);
@@ -3772,7 +3885,7 @@ public:
                                         large_residual_count_ = 0;
                                         last_large_residual_ = 0.0;
                                     } else if (std::isfinite(last_large_residual_) &&
-                                               res_max < last_large_residual_ - 0.05) {
+                                               res_max < last_large_residual_ - 0.005) {
                                         // Closing — reset the escalation counter.
                                         large_residual_count_ = 0;
                                         last_large_residual_ = res_max;
@@ -3780,7 +3893,7 @@ public:
                                         ++large_residual_count_;
                                         last_large_residual_ = res_max;
                                     }
-                                    if (large_residual_count_ > 30) {
+                                    if (large_residual_count_ > 150) {
                                         MOUNT_LOG_ERROR("Tracking residual too large "
                                                         "(axis1={:.2f}° axis2={:.2f}° telescope, >{:.0f}°, "
                                                         "persisting) — stopping instead of catch-up.",

@@ -26,6 +26,30 @@ uint32_t degPerSecToCounts(double deg_s, double counts_per_degree) {
     return static_cast<uint32_t>(v);
 }
 
+// Human-readable decode of the CiA 402 status-word bits set in a drive fault.
+// Bit 8 (0x100) is manufacturer-specific on the STMP42SXI (internal limit).
+std::string statusWordBits(uint16_t sw) {
+    struct Bit { uint16_t mask; const char* name; };
+    static const Bit kBITS[] = {
+        {0x0001, "ready"}, {0x0002, "switched-on"}, {0x0004, "op-enabled"},
+        {0x0008, "FAULT"}, {0x0010, "voltage"}, {0x0020, "quick-stop"},
+        {0x0040, "switch-off-disabled"}, {0x0080, "warning"},
+        {0x0100, "bit8-limit"}, {0x0200, "remote"}, {0x0400, "target-reached"},
+        {0x0800, "bit11"}, {0x1000, "bit12"}, {0x2000, "bit13"},
+        {0x4000, "bit14"}, {0x8000, "bit15"},
+    };
+    std::ostringstream os;
+    bool first = true;
+    for (const auto& b : kBITS) {
+        if (sw & b.mask) {
+            if (!first) os << '|';
+            os << b.name;
+            first = false;
+        }
+    }
+    return first ? "none" : os.str();
+}
+
 } // namespace
 
 // ── CanOpenMotor ───────────────────────────────────────────────────────────
@@ -41,6 +65,14 @@ bool CanOpenHAL::CanOpenMotor::enable() {
     if (!iface) return false;
     const bool ok = iface->enableDrive(static_cast<uint8_t>(axis_id_));
     enabled_ = ok;
+    return ok;
+}
+
+bool CanOpenHAL::CanOpenMotor::reenable() {
+    auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
+    if (!iface) return false;
+    const bool ok = iface->reenableDrive(static_cast<uint8_t>(axis_id_));
+    if (ok) enabled_ = true;
     return ok;
 }
 
@@ -456,6 +488,7 @@ SafetyStatus CanOpenHAL::CanOpenSafetyMonitor::getStatus() const {
             status.axes_status[axis].limits_ok = false;
             std::ostringstream os;
             os << "drive fault (status word 0x" << std::hex << st.status_word << std::dec
+               << " [" << statusWordBits(st.status_word) << "]"
                << ", pos=" << st.actual_position
                << ", vel=" << st.actual_velocity
                << ", cur=" << st.actual_current;

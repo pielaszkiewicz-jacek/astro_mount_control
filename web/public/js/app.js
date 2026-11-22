@@ -30,6 +30,29 @@ const App = (() => {
   // Cached mount type from config (0=EQUATORIAL, 1=ALT_AZ, 3=CASUAL)
   let cachedMountType = null;
 
+  // ─── Persistent cookie helpers (UI preferences) ──────────────────────
+  // UI preferences (theme, mobile mode, tab layout, font/icon scale) are
+  // stored in persistent cookies (long max-age) so they survive across
+  // sessions, not just the current browser profile's localStorage.
+  const UI_COOKIE_MAX_AGE_DAYS = 365;
+
+  function setUiCookie(name, value) {
+    const maxAge = UI_COOKIE_MAX_AGE_DAYS * 24 * 60 * 60;
+    document.cookie = `${name}=${encodeURIComponent(String(value))}; max-age=${maxAge}; path=/; SameSite=Lax`;
+  }
+
+  function getUiCookie(name) {
+    const prefix = `${name}=`;
+    const parts = document.cookie.split(';');
+    for (let part of parts) {
+      part = part.trim();
+      if (part.indexOf(prefix) === 0) {
+        return decodeURIComponent(part.slice(prefix.length));
+      }
+    }
+    return null;
+  }
+
   // ─── Splash Screen ────────────────────────────────────────────────────
   // The splash overlay is shown in index.html and hidden here once the app
   // has finished initializing. A minimum visible time prevents flicker, and
@@ -81,7 +104,8 @@ const App = (() => {
     initTabs();
     initRedThemeToggle();
     initMobileModeToggle();
-    initUiScaleToggle();
+    initTabLayoutToggle();
+    initScaleSliders();
     initFullscreenToggle();
     initLangToggle();
     // Enhance angle inputs with DMS/HMS format support
@@ -432,7 +456,7 @@ const App = (() => {
     if (!toggle) return;
 
     // Apply saved preference on load
-    const saved = localStorage.getItem('red-theme');
+    const saved = getUiCookie('red-theme');
     if (saved === 'true') {
       document.body.classList.add('red-theme');
       toggle.classList.add('active');
@@ -441,7 +465,7 @@ const App = (() => {
     toggle.addEventListener('click', () => {
       const isActive = document.body.classList.toggle('red-theme');
       toggle.classList.toggle('active', isActive);
-      localStorage.setItem('red-theme', isActive ? 'true' : 'false');
+      setUiCookie('red-theme', isActive ? 'true' : 'false');
     });
   }
 
@@ -456,7 +480,7 @@ const App = (() => {
     if (!toggle) return;
 
     // Apply saved preference on load
-    const saved = localStorage.getItem('mobile-mode');
+    const saved = getUiCookie('mobile-mode');
     if (saved === 'true') {
       document.body.classList.add('mobile-mode');
       toggle.classList.add('active');
@@ -465,43 +489,82 @@ const App = (() => {
     toggle.addEventListener('click', () => {
       const isActive = document.body.classList.toggle('mobile-mode');
       toggle.classList.toggle('active', isActive);
-      localStorage.setItem('mobile-mode', isActive ? 'true' : 'false');
+      setUiCookie('mobile-mode', isActive ? 'true' : 'false');
     });
   }
 
   /**
-   * Initialize the font/icon scale toggle.
-   * Cycles --user-scale through a set of levels and persists the choice in
-   * localStorage.  The root font-size (rem) and SVG icon dimensions are both
-   * driven by calc(16px * --ui-scale), so text and icons enlarge together.
+   * Initialize the tab layout toggle (horizontal <-> vertical).
+   * Adds/removes the `vertical-tabs` class on <body>, reflects the mode in the
+   * button label, and persists the preference in localStorage.
    */
-  function initUiScaleToggle() {
-    const toggle = $('#ui-scale-toggle');
+  function initTabLayoutToggle() {
+    const toggle = $('#tab-layout-toggle');
     if (!toggle) return;
 
-    const LEVELS = [1, 1.15, 1.3, 1.5];
-    const KEY = 'ui-scale';
-
-    const applyScale = (scale) => {
-      document.documentElement.style.setProperty('--user-scale', String(scale));
-      toggle.classList.toggle('active', scale !== 1);
-      localStorage.setItem(KEY, String(scale));
-      const pct = Math.round(scale * 100);
-      toggle.setAttribute('title', `${I18n.t('ui.scale.title')} (${pct}%)`);
-      toggle.setAttribute('aria-label', `${I18n.t('ui.scale.title')} (${pct}%)`);
+    const applyMode = (vertical) => {
+      document.body.classList.toggle('vertical-tabs', vertical);
+      toggle.checked = vertical;
+      setUiCookie('tab-layout', vertical ? 'vertical' : 'horizontal');
     };
 
-    // Restore saved preference
-    let current = 1;
-    const saved = parseFloat(localStorage.getItem(KEY) || '1');
-    if (LEVELS.includes(saved)) current = saved;
-    applyScale(current);
+    // Apply saved preference on load
+    applyMode(getUiCookie('tab-layout') === 'vertical');
 
-    toggle.addEventListener('click', () => {
-      const idx = LEVELS.indexOf(current);
-      current = LEVELS[(idx + 1) % LEVELS.length];
-      applyScale(current);
+    toggle.addEventListener('change', () => {
+      applyMode(toggle.checked);
     });
+  }
+
+  /**
+   * Initialize the independent font-size and icon-size sliders.
+   * Font size drives --user-scale (root rem); icon size drives
+   * --user-icon-scale (SVG dimensions). Both persist to localStorage and snap
+   * to 10 discrete thresholds.
+   */
+  function initScaleSliders() {
+    const fontSlider = $('#font-scale-slider');
+    const iconSlider = $('#icon-scale-slider');
+    if (!fontSlider && !iconSlider) return;
+
+    // 10 snap thresholds (the slider min/max/step mirror these).
+    const SCALE_STEPS = [0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6, 1.7];
+    const FONT_KEY = 'font-scale';
+    const ICON_KEY = 'icon-scale';
+
+    const snap = (v) => {
+      let nearest = SCALE_STEPS[0];
+      let best = Infinity;
+      for (const s of SCALE_STEPS) {
+        const d = Math.abs(s - v);
+        if (d < best) { best = d; nearest = s; }
+      }
+      return nearest;
+    };
+
+    const applyFont = (v) => {
+      const s = snap(v);
+      document.documentElement.style.setProperty('--user-scale', String(s));
+      setUiCookie(FONT_KEY, String(s));
+      if (fontSlider) fontSlider.value = String(s);
+      const el = $('#font-scale-value');
+      if (el) el.textContent = Math.round(s * 100) + '%';
+    };
+    const applyIcon = (v) => {
+      const s = snap(v);
+      document.documentElement.style.setProperty('--user-icon-scale', String(s));
+      setUiCookie(ICON_KEY, String(s));
+      if (iconSlider) iconSlider.value = String(s);
+      const el = $('#icon-scale-value');
+      if (el) el.textContent = Math.round(s * 100) + '%';
+    };
+
+    // Restore saved preferences
+    applyFont(parseFloat(getUiCookie(FONT_KEY) || '1'));
+    applyIcon(parseFloat(getUiCookie(ICON_KEY) || '1'));
+
+    if (fontSlider) fontSlider.addEventListener('input', () => applyFont(parseFloat(fontSlider.value)));
+    if (iconSlider) iconSlider.addEventListener('input', () => applyIcon(parseFloat(iconSlider.value)));
   }
 
   /**
@@ -587,6 +650,7 @@ const App = (() => {
       MountStatusComponent.render(state);
       MountControlComponent.setCalibrationState(state, await getMountType(state));
       updateFooterTime();
+      updateFooterStatus(state);
     } catch (err) {
       isConnected = false;
       updateConnectionBadge(false);
@@ -680,6 +744,53 @@ const App = (() => {
     const el = $('#last-update');
     if (el) {
       el.textContent = `Last update: ${formatTime(new Date())}`;
+    }
+  }
+
+  /**
+   * Update the footer status bar with the controller state, current position
+   * and the name of the object the telescope is currently pointed at.
+   * @param {object|null} state - Controller state from API
+   */
+  function updateFooterStatus(state) {
+    const badge = $('#footer-mount-state');
+    if (badge) {
+      const st = state && state.status ? String(state.status).toUpperCase() : 'DISCONNECTED';
+      badge.textContent = st;
+      badge.className = 'footer-status-badge ' + statusClass(st);
+    }
+
+    const pos = $('#footer-position');
+    if (pos) {
+      if (state && typeof state.current_ra === 'number' && typeof state.current_dec === 'number') {
+        pos.textContent = `RA ${state.current_ra.toFixed(4)}h · Dec ${state.current_dec.toFixed(3)}°`;
+      } else {
+        pos.textContent = '—';
+      }
+    }
+
+    const obj = $('#footer-object');
+    if (obj) {
+      const name = state && state.tracked_object ? state.tracked_object.name : '';
+      obj.textContent = name || '—';
+    }
+  }
+
+  /**
+   * Map a controller state string to a footer badge style class.
+   * @param {string} st
+   * @returns {string}
+   */
+  function statusClass(st) {
+    switch (st) {
+      case 'TRACKING': return 'status-tracking';
+      case 'SLEWING':
+      case 'PARKING':
+      case 'MERIDIAN_FLIP': return 'status-busy';
+      case 'ERROR': return 'status-error';
+      case 'PARKED': return 'status-parked';
+      case 'IDLE':
+      default: return 'status-idle';
     }
   }
 
