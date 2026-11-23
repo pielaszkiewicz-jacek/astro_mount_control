@@ -1417,6 +1417,12 @@ public:
         tracking_command_.flip_pending = true;
         tracking_command_.flip1 = f1;
         tracking_command_.flip2 = f2;
+        // Drop any queued position update: the io writer emits pos_update_pending
+        // on the tick AFTER the flip, and without this clear it would re-emit the
+        // stale PRE-FLIP tracking target, cancelling the flip and sending the
+        // drive back where it came from (observed: flip moved ~9° then froze, then
+        // timed out after 120 s).
+        tracking_command_.pos_update_pending = false;
     }
 
     // Latch the stop_motors flag so the io writer halts the drives and never
