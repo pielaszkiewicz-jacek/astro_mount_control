@@ -62,7 +62,7 @@ function getGrpcClient() {
 /**
  * Wraps a gRPC call into a Promise for async/await usage.
  */
-function grpcCall(method, request = {}) {
+function grpcCall(method, request = {}, timeoutSeconds = 5) {
   const client = getGrpcClient();
   // Fail loudly if the method does not exist on the mount client instead of
   // letting @grpc/grpc-js throw an opaque TypeError deep inside the call.
@@ -73,7 +73,7 @@ function grpcCall(method, request = {}) {
   }
   return new Promise((resolve, reject) => {
     const deadline = new Date();
-    deadline.setSeconds(deadline.getSeconds() + 5); // 5s timeout
+    deadline.setSeconds(deadline.getSeconds() + timeoutSeconds);
 
     client[method](request, { deadline }, (error, response) => {
       if (error) {

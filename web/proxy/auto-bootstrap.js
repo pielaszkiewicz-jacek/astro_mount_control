@@ -39,6 +39,11 @@ const STATE = {
 const SLEW_POLL_INTERVAL_MS = 1000;
 const SLEW_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const SETTLE_DELAY_MS = 2500;            // let the mount settle after slewing
+// The orchestration RPCs (slew/track/stop/calibrate) can block on CANopen SDO
+// reads that occasionally exceed the default 5 s proxy deadline when the bus is
+// congested; give them a generous deadline so auto-bootstrap doesn't abort with
+// "4 DEADLINE_EXCEEDED".
+const ORCHESTRATION_GRPC_TIMEOUT_S = 60;
 
 let session = null;
 
@@ -206,13 +211,13 @@ async function runSlewMeasureLoop(s) {
 
     const phaseLabel = s.phase === 'BOOTSTRAP' ? 'Bootstrap' : 'TPOINT';
     setState(s, STATE.SLEWING, `${phaseLabel}: slew do ${s.currentTarget.name}`);
-    await grpcCall('SlewToCoordinates', { ra: s.currentTarget.ra, dec: s.currentTarget.dec });
+    await grpcCall('SlewToCoordinates', { ra: s.currentTarget.ra, dec: s.currentTarget.dec }, ORCHESTRATION_GRPC_TIMEOUT_S);
     await waitForSlewComplete(s);
 
     if (s.autoTrackAfterSlew) {
       // Enter tracking so the target stays centered while the operator
       // centers it / the plate solver captures the field.
-      await grpcCall('TrackObject', { ra: s.currentTarget.ra, dec: s.currentTarget.dec });
+      await grpcCall('TrackObject', { ra: s.currentTarget.ra, dec: s.currentTarget.dec }, ORCHESTRATION_GRPC_TIMEOUT_S);
     }
 
     if (s.plateSolve) {
@@ -243,9 +248,9 @@ async function runLoop(s) {
     // per-star TrackObject (auto_track_after_slew) leaves the mount tracking
     // after the last measurement — otherwise the RPC fails with a misleading
     // "need at least 2 measurements" error.
-    await grpcCall('Stop', {});
+    await grpcCall('Stop', {}, ORCHESTRATION_GRPC_TIMEOUT_S);
     setState(s, STATE.CALIBRATING, 'Uruchamianie kalibracji bootstrap...');
-    const bootstrapResult = await grpcCall('RunBootstrapCalibration', {});
+    const bootstrapResult = await grpcCall('RunBootstrapCalibration', {}, ORCHESTRATION_GRPC_TIMEOUT_S);
     s.bootstrapResult = bootstrapResult;
 
     if (s.proceedToTpoint && !s.cancelled) {
@@ -253,9 +258,9 @@ async function runLoop(s) {
       // Collect a TPOINT pass over the same stars, then fit the model.
       await runSlewMeasureLoop(s);
 
-      await grpcCall('Stop', {});
+      await grpcCall('Stop', {}, ORCHESTRATION_GRPC_TIMEOUT_S);
       setState(s, STATE.CALIBRATING, 'Uruchamianie kalibracji TPOINT...');
-      await grpcCall('RunTPointCalibration', {});
+      await grpcCall('RunTPointCalibration', {}, ORCHESTRATION_GRPC_TIMEOUT_S);
     }
 
     if (s.cancelled) {
