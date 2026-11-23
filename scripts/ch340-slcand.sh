@@ -7,7 +7,10 @@ if [ ! -e "$TTY" ]; then TTY="/dev/ttyUSB-CAN"; fi
 if [ ! -e "$TTY" ]; then TTY="/dev/ttyUSB0"; fi
 
 echo "Starting slcand on $TTY -> can0 @ 1 Mbit/s"
-slcand -o -c -f -s8 "$TTY" can0 &
+# -F = stay in foreground (do NOT daemonize); otherwise the parent exits and
+#      the systemd unit deactivates immediately, tearing down can0.
+# -o = send the SLCAN open command; -f = reset error flags via status read.
+slcand -F -o -f -s8 "$TTY" can0 &
 SLCAND_PID=$!
 sleep 2
 ip link set can0 up
