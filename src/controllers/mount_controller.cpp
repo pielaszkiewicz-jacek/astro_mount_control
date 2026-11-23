@@ -2266,6 +2266,10 @@ public:
             last_drive_enabled_[1] = true;
             drive_enable_flicker_count_[0] = 0;
             drive_enable_flicker_count_[1] = 0;
+            stall_check_initialized_ = false;
+            last_stall_drive1_ = 0.0;
+            last_stall_drive2_ = 0.0;
+            last_stall_check_ = std::chrono::steady_clock::time_point{};
             // Reset the persistent guider offset and any not-yet-consumed guider
             // delta for the new tracking session (a stale delta would be applied
             // as a spurious first-iteration pulse).
@@ -4124,6 +4128,53 @@ public:
                                                    new_axis1_target - drv1, new_axis2_target - drv2,
                                                    POS_LEAD_SECONDS, pos_vel_axis1, pos_vel_axis2, pos_ok,
                                                    en0, en1, err0, err1);
+
+                                    // Drive-stall detection: the drive can report
+                                    // "enabled, no fault" while its 0x6064/0x606C position
+                                    // feedback is frozen (degraded CANopen/PDO).  The
+                                    // commanded target then advances but the physical drive
+                                    // never moves, so the object drifts away while the
+                                    // tracking loop looks healthy.  Detect the frozen
+                                    // feedback and fail fast instead of drifting silently.
+                                    {
+                                        const auto now_stall = std::chrono::steady_clock::now();
+                                        if (!stall_check_initialized_) {
+                                            stall_check_initialized_ = true;
+                                            last_stall_drive1_ = drv1;
+                                            last_stall_drive2_ = drv2;
+                                            last_stall_check_ = now_stall;
+                                        } else {
+                                            const double elapsed =
+                                                std::chrono::duration<double>(now_stall - last_stall_check_).count();
+                                            if (elapsed >= 10.0) {
+                                                const double moved1 = drv1 - last_stall_drive1_;
+                                                const double moved2 = drv2 - last_stall_drive2_;
+                                                const bool ra_stalled = (pos_vel_axis1 > 0.05) && (std::abs(moved1) < 0.5);
+                                                const bool dec_stalled = (pos_vel_axis2 > 0.05) && (std::abs(moved2) < 0.5);
+                                                if (ra_stalled || dec_stalled) {
+                                                    MOUNT_LOG_ERROR("Drive stall during tracking "
+                                                                    "(RA moved {:.2f}°, Dec moved {:.2f}° in "
+                                                                    "{:.0f}s while motion commanded) — position "
+                                                                    "feedback frozen. Stopping.",
+                                                                    moved1, moved2, elapsed);
+                                                    publishStop();
+                                                    {
+                                                        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+                                                        if (state_ == MountStatus::State::TRACKING ||
+                                                            state_ == MountStatus::State::MERIDIAN_FLIP) {
+                                                            state_ = MountStatus::State::ERROR;
+                                                            error_message_ = "Drive stall — position feedback frozen";
+                                                        }
+                                                    }
+                                                    tracking_active_ = false;
+                                                    break;
+                                                }
+                                                last_stall_drive1_ = drv1;
+                                                last_stall_drive2_ = drv2;
+                                                last_stall_check_ = now_stall;
+                                            }
+                                        }
+                                    }
                                 } else if (!pos_ok) {
                                     MOUNT_LOG_WARN("Tracking position target FAILED: "
                                                    "axis1={:.2f}° axis2={:.2f}°",
@@ -10810,6 +10861,11 @@ private:
     bool pos_mode_logged_{false};
     size_t diag_log_counter_{0};
     int dec_desync_count_{0};   // consecutive Dec-axis desync detections
+    // Drive-stall detection (frozen position feedback while motion is commanded).
+    double last_stall_drive1_{0.0};
+    double last_stall_drive2_{0.0};
+    std::chrono::steady_clock::time_point last_stall_check_{};
+    bool stall_check_initialized_{false};
     double last_dec_residual_{std::numeric_limits<double>::quiet_NaN()};  // previous Dec target residual for progress detection
     int large_residual_count_{0};  // consecutive updates with a large non-shrinking residual (Pkt 11)
     double last_large_residual_{std::numeric_limits<double>::quiet_NaN()};  // previous peak HA/Dec residual for progress detection
