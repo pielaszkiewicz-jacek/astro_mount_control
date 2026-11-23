@@ -1,0 +1,13 @@
+[Unit]
+Description=CH340 USB-CAN (SLCAN) adapter -> can0 @ 1 Mbit/s
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ch340-slcand.sh
+ExecStop=/bin/sh -c 'ip link set can0 down 2>/dev/null; pkill -x slcand'
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,3 @@
+# CH340-based USB-CAN (SLCAN) adapter — stable device name + unrestricted access.
+# Bus 010 Device 010: ID 1a86:7523 QinHeng Electronics CH340 serial converter.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttyUSB-CAN", MODE="0666", GROUP="dialout"
