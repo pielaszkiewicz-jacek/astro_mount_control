@@ -7982,6 +7982,31 @@ public:
             return false;
         }
 
+        // Reject a STALE zero read.  getActualPosition() returns the cached PDO
+        // value, which is 0.0 until the HAL monitor refreshes it after startup.
+        // A home() that lands before the first refresh would compute offset1=0 /
+        // offset2=32400 from a bogus zero, and the next slew/track then leaves a
+        // multi-degree Dec residual that trips the desync stop ("Dec-axis position
+        // desync" → ERROR → auto-cleared to IDLE).  If the controller already
+        // tracks a non-zero raw drive position, a fresh 0.0 read is stale, not
+        // the true counter.
+        {
+            const bool zero_read =
+                std::abs(actual1) < 0.001 && std::abs(actual2) < 0.001;
+            const bool known_nonzero =
+                std::abs(raw_servo_axis1_position_) > 0.001 ||
+                std::abs(raw_servo_axis2_position_) > 0.001;
+            if (zero_read && known_nonzero && !halPositionIsAuthoritative()) {
+                MOUNT_LOG_ERROR("home() rejected: drive position read returned "
+                                "(0, 0) while the controller tracks a non-zero raw "
+                                "position (axis1={:.2f}°, axis2={:.2f}°) — the drive "
+                                "PDO cache is stale; retry Home once the position "
+                                "read refreshes.",
+                                raw_servo_axis1_position_, raw_servo_axis2_position_);
+                return false;
+            }
+        }
+
         home_offset_axis1_ = new_axis1 - actual1;
         home_offset_axis2_ = new_axis2 - actual2;
 
