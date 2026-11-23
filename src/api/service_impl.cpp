@@ -1377,6 +1377,12 @@ astro_mount::ControllerState::MountStatus MountControllerServiceImpl::convertSta
             return astro_mount::ControllerState::IDLE;
         case controllers::MountController::MountStatus::State::SLEWING:
             return astro_mount::ControllerState::SLEWING;
+        case controllers::MountController::MountStatus::State::MERIDIAN_FLIP:
+            // A flip is a physical slew of the mount (HA ~180° + Dec complement),
+            // so report it as SLEWING rather than UNKNOWN (the default below).
+            // The mount previously showed UNKNOWN in the Web UI / INDI for the
+            // whole flip duration.
+            return astro_mount::ControllerState::SLEWING;
         case controllers::MountController::MountStatus::State::TRACKING:
             return astro_mount::ControllerState::TRACKING;
         case controllers::MountController::MountStatus::State::PARKING:
