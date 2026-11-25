@@ -87,6 +87,10 @@ private:
         // tracking loop never commands a target a full turn away.
         double last_good_position_{0.0};
         bool   last_good_position_valid_{false};
+        // One-shot diagnostic: last-seen "internal limit active" (status word
+        // bit 11).  Used to log the condition exactly once per activation
+        // instead of spamming the log from the periodic monitor loop.
+        bool   internal_limit_active_{false};
         std::atomic<double> actual_velocity_{0.0};
         std::atomic<double> actual_torque_{0.0};
         std::atomic<double> temperature_{25.0};

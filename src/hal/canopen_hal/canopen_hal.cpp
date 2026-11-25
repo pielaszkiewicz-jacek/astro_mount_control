@@ -6,6 +6,7 @@
 
 #include "hal/canopen_hal/canopen_hal.h"
 #include "hal/sensor_interface.h"
+#include "logging/logger.h"
 #include "utils/realtime.h"
 
 #include <algorithm>
@@ -364,6 +365,19 @@ void CanOpenHAL::CanOpenMotor::updateStatus(const CanOpenStatus& st) {
     moving_ = st.moving;
     target_reached_ = st.target_reached;
     error_state_ = st.fault;
+
+    // ── "Internal limit active" diagnostic (status word bit 11) ───────────
+    // The drive can report "Operation enabled, no fault" while refusing to
+    // move because the target exceeds its software position limit (607Dh).
+    // That yields a frozen position and trips the tracking stall detector.
+    // Log the condition once per activation so the root cause is visible.
+    const bool internal_limit = (st.status_word & 0x0800) != 0;
+    if (internal_limit && !internal_limit_active_) {
+        CANOPEN_LOG_WARN("axis {}: status word bit 11 'internal limit active' "
+                         "(0x{:04X}) — drive will not move while the target exceeds "
+                         "607Dh software position limit", axis_id_, st.status_word);
+    }
+    internal_limit_active_ = internal_limit;
 
     if (error_state_) {
         std::lock_guard<std::mutex> lock(mutex_);

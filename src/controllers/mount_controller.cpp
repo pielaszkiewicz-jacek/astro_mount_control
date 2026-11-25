@@ -3130,7 +3130,14 @@ public:
                             if (folded_dec_chk > 180.0) folded_dec_chk -= 360.0;
                             else if (folded_dec_chk < -180.0) folded_dec_chk += 360.0;
                             const double flipped_dec_chk = 180.0 - folded_dec_chk;
-                            const bool flip_feasible =
+                            // Near the celestial pole the hour angle is nearly
+                            // undefined, so a meridian flip degenerates into a
+                            // meaningless (and error-prone) ~180° HA swing.  A
+                            // near-pole target (e.g. Polaris, Dec≈89°) does not
+                            // meaningfully cross the meridian — keep tracking
+                            // through it instead of flipping.
+                            const bool near_pole = std::abs(folded_dec_chk) > 85.0;
+                            const bool flip_feasible = !near_pole &&
                                 flipped_dec_chk >= config_.safety_config.soft_limit_axis2_min - 1e-9 &&
                                 flipped_dec_chk <= config_.safety_config.soft_limit_axis2_max + 1e-9;
 

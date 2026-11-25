@@ -5,6 +5,7 @@
 #endif
 
 #include "controllers/canopen_interface.h"
+#include "logging/logger.h"
 
 #include <chrono>
 #include <cstring>
@@ -62,6 +63,8 @@ constexpr uint16_t kOdVelMinAmount      = 0x6046; // sub 1 = min velocity (rpm)
 constexpr uint16_t kOdCtrlModeSelec    = 0x2002;
 constexpr uint16_t kOdNodeId           = 0x200C;
 constexpr uint16_t kOdStoreParams      = 0x1010;
+constexpr uint16_t kOdInputTerminal    = 0x2003; // DI1..DI3 function/logic select
+constexpr uint16_t kOdSwPosLimit       = 0x607D; // software position limit
 
 constexpr uint32_t kSaveAllSignature   = 0x65766173; // ASCII "save"
 
@@ -207,6 +210,38 @@ bool CanOpenInterface::enableDrive(uint8_t axis_id) {
     // returns SDO abort 0x08000000 — disable first to avoid it.
     writeControlWord(node, kCwDisableVoltage);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    // ── Disable physical limit-switch inputs (DI1..DI3) ──────────────────
+    // The mount has no limit switches wired to the drive's digital inputs.
+    // If a DI terminal is left mapped to an overtravel-switch function
+    // (14 = forward, 15 = reverse), its floating input can read as "limit
+    // active" and set status-word bit 11 (internal limit active), surfacing
+    // as "drive fault during slew" / alarm 0x3018614 ("limit switch is
+    // incorrect").  Function number 0 = "No definition" disables the
+    // terminal.  Terminal function/logic writes are stop-effective, so they
+    // are issued while the drive is disabled.  These writes are best-effort:
+    // a drive that rejects them must still be allowed to enable.
+    for (uint8_t sub : {0x03u, 0x05u, 0x07u}) {   // DI1/DI2/DI3 function select
+        if (!writeSDO2(node, kOdInputTerminal, sub, 0)) {
+            CANOPEN_LOG_WARN("enableDrive: failed to disable DI function (2003h:{:02X}h) on node {}",
+                             sub, node);
+        }
+    }
+
+    // ── Widen the drive's software position limit (607Dh) ─────────────────
+    // Factory default is ±65535 user units (~±180° servo at 364.09 counts/°),
+    // which trips "internal limit active" on any slew whose target exceeds
+    // that window.  Match the position-range limit (607Bh = ±2e9) set during
+    // servo setup.  The mount controller still enforces its own soft limits
+    // in software, so the drive-side window is intentionally kept wide.
+    if (!writeSDO4(node, kOdSwPosLimit, 0x01, static_cast<uint32_t>(-2000000000))) {
+        CANOPEN_LOG_WARN("enableDrive: failed to widen 607Dh:01h (min software limit) on node {}",
+                         node);
+    }
+    if (!writeSDO4(node, kOdSwPosLimit, 0x02, 2000000000u)) {
+        CANOPEN_LOG_WARN("enableDrive: failed to widen 607Dh:02h (max software limit) on node {}",
+                         node);
+    }
 
     // Ensure CiA402 mode + Profile Position mode (must be written while disabled).
     // 2002h:01h (CtrlModeSelec) is uint16 per object dictionary (10.2).

@@ -66,7 +66,7 @@
                     "max_acceleration": 10000.0,
                     "max_temperature": 80.0,
                     "max_torque": 100.0,
-                    "max_velocity": 6000.0,
+                    "max_velocity": 5000.0,
                     "type": "STEPPER"
                 },
                 "name": "HA_Axis",
@@ -75,7 +75,7 @@
                     "max_current": 10.0,
                     "max_position": 270.0,
                     "max_temperature": 80.0,
-                    "max_velocity": 6000.0,
+                    "max_velocity": 5000.0,
                     "min_position": -270.0
                 }
             },
@@ -105,7 +105,7 @@
                     "max_acceleration": 10000.0,
                     "max_temperature": 80.0,
                     "max_torque": 100.0,
-                    "max_velocity": 6000.0,
+                    "max_velocity": 5000.0,
                     "type": "STEPPER"
                 },
                 "name": "Dec_Axis",
@@ -114,7 +114,7 @@
                     "max_current": 10.0,
                     "max_position": 185.0,
                     "max_temperature": 80.0,
-                    "max_velocity": 6000.0,
+                    "max_velocity": 5000.0,
                     "min_position": -5.0
                 }
             }
@@ -138,7 +138,7 @@
             "pdo_fast_path": true,
             "pdo_update_rate": 100,
             "pdo_velocity_mapping": false,
-            "position_rewind_enabled": true,
+            "position_rewind_enabled": false,
             "position_rewind_interval_seconds": 3600.0,
             "position_rewind_threshold_percent": 80.0,
             "sdo_timeout_ms": 100,
@@ -213,7 +213,7 @@
             "gamepad_mode": 1,
             "invert_axis1": false,
             "invert_axis2": false,
-            "max_velocity_deg_s": 8000.0,
+            "max_velocity_deg_s": 4000.0,
             "sensitivity": 1.0,
             "speed_presets": [
                 50.0,
@@ -223,8 +223,7 @@
                 500.0,
                 1000.0,
                 2000.0,
-                5000.0,
-                8000.0
+                4000.0
             ],
             "update_rate_hz": 50.0
         },
@@ -408,8 +407,8 @@
         "io_update_hz": 200,
         "latitude": 52.0,
         "longitude": 21.0,
-        "max_slew_rate": 1500.0,
-        "max_tracking_rate": 1.505,
+        "max_slew_rate": 4000.0,
+        "max_tracking_rate": 1.7,
         "meridian_flip_delay_minutes": 5.0,
         "meridian_flip_enabled": true,
         "meridian_flip_hysteresis_degrees": 0.5,
@@ -428,7 +427,7 @@
         "rate_tolerance": 0.01,
         "safety_check_decimation": 1,
         "sdo_slow_control": true,
-        "slew_acceleration": 1000.0,
+        "slew_acceleration": 10000.0,
         "soft_limit_axis1_max": 360.0,
         "soft_limit_axis1_min": -360.0,
         "soft_limit_axis2_max": 95.0,
@@ -439,10 +438,10 @@
         "soft_limits_enabled": true,
         "split_tracking_loop": true,
         "telemetry_decimation": 5,
-        "tracking_acceleration": 100.0,
+        "tracking_acceleration": 10000.0,
         "tracking_mode": "auto",
-        "tracking_pos_lead_seconds": 1.0,
-        "tracking_pos_update_hz": 50,
+        "tracking_pos_lead_seconds": 2.0,
+        "tracking_pos_update_hz": 10,
         "tracking_pos_velocity_factor": 1.0,
         "tracking_pos_velocity_margin": 1.0,
         "tracking_update_ms": 5,
