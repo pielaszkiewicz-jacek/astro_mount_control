@@ -93,6 +93,22 @@ private:
         // at 0 (TPDO1 carries status word + position, not velocity).
         std::chrono::steady_clock::time_point last_good_position_time_{};
         double position_delta_velocity_{0.0};
+        // ── Sliding-window velocity estimator ──────────────────────────────
+        // The drive's position feedback (6064h via TPDO1) is quantized in
+        // coarse steps (~128 counts ≈ 0.35° servo), which arrive every
+        // ~250 ms at the sidereal servo rate.  An instantaneous
+        // (pos-last)/dt derivative therefore aliases into a sawtooth
+        // (0 ↔ ~3.5 °/s) while the true average is ~1.5 °/s.  Average over
+        // a trailing window of accepted samples instead to recover the true
+        // mean rate (see updateStatus() in canopen_hal.cpp).
+        static constexpr int kVelocityWindowSize = 12;  // ~1.2 s at 100 ms cadence
+        struct VelocitySample {
+            std::chrono::steady_clock::time_point time{};
+            double pos{0.0};
+        };
+        std::array<VelocitySample, kVelocityWindowSize> velocity_window_{};
+        int velocity_window_count_{0};
+        int velocity_window_head_{0};
         // One-shot diagnostic: last-seen "internal limit active" (status word
         // bit 11).  Used to log the condition exactly once per activation
         // instead of spamming the log from the periodic monitor loop.

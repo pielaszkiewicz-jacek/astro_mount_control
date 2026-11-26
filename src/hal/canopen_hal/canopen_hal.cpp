@@ -393,20 +393,36 @@ void CanOpenHAL::CanOpenMotor::updateStatus(const CanOpenStatus& st) {
             std::abs(pos - last_good_position_) > kMaxServoJumpDeg) {
             // Ignore the glitched sample: do NOT update actual_position_.
         } else {
-            // Derive velocity from the accepted position delta so the UI still
-            // shows a rate under the PDO fast path (TPDO1 carries status word +
-            // position, not velocity).
-            if (last_good_position_valid_) {
-                const double dt = std::chrono::duration<double>(
-                    now - last_good_position_time_).count();
-                if (dt > 1e-6) {
-                    position_delta_velocity_ = (pos - last_good_position_) / dt;
-                }
-            }
             actual_position_ = pos;
             last_good_position_ = pos;
             last_good_position_time_ = now;
             last_good_position_valid_ = true;
+
+            // Derive velocity from a trailing window of accepted positions so
+            // the UI still shows a rate under the PDO fast path (TPDO1 carries
+            // status word + position, not velocity).  The position feedback is
+            // quantized in coarse ~128-count (~0.35° servo) steps arriving
+            // every ~250 ms at the sidereal servo rate, so an instantaneous
+            // (pos - last)/dt derivative alternates between 0 and ~3.5 °/s
+            // while the true mean rate is ~1.5 °/s.  Averaging over the
+            // window recovers the true rate and removes the sawtooth spikes.
+            velocity_window_[velocity_window_head_] = VelocitySample{now, pos};
+            velocity_window_head_ =
+                (velocity_window_head_ + 1) % kVelocityWindowSize;
+            if (velocity_window_count_ < kVelocityWindowSize) {
+                ++velocity_window_count_;
+            }
+            if (velocity_window_count_ >= 2) {
+                const int oldest_idx =
+                    (velocity_window_head_ - velocity_window_count_ +
+                     kVelocityWindowSize) % kVelocityWindowSize;
+                const auto& oldest = velocity_window_[oldest_idx];
+                const double span =
+                    std::chrono::duration<double>(now - oldest.time).count();
+                if (span > 1e-6) {
+                    position_delta_velocity_ = (pos - oldest.pos) / span;
+                }
+            }
         }
     }
     // Prefer the drive-reported velocity (slow SDO path).  In the PDO fast path
