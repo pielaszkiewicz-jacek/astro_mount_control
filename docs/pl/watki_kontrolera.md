@@ -366,6 +366,11 @@ calc (work_thread_) --TrackingCommand--> io_writer_thread_ --RPDO2--> napędy
   jako `canopen_send_frame()` — bez blokującego SDO w gorącej ścieżce. SDO
   pozostaje jako wolna ścieżka (`sdo_slow_control`) dla przełączania trybów,
   konfiguracji, homingu i kasowania błędów.
+- TPDO1 nie przenosi prędkości — `vel1`/`vel2` w `TrackingTelemetry` są
+  estymowane w [`CanOpenMotor::updateStatus()`](../../src/hal/canopen_hal/canopen_hal.cpp:378)
+  z okna kroczącego 12 próbek pozycji (≈1,2 s). Eliminuje to piłokształtne piki
+  telemetrii 0 ↔ 3,5–7,0 °/s, które dawała pochodna „próbka do próbki” przy
+  kwantyzacji 0x6064 (~128 zliczeń ≈ 0,35° serwo) podczas śledzenia ~1,5 °/s.
 
 | Właściwość | Wartość |
 |-----------|---------|

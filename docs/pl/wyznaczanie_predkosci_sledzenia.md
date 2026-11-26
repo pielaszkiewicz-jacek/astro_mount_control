@@ -120,6 +120,24 @@ CASUAL = ALT_AZ złożony z rotacją `Q` (ALT_AZ to `Q = I`).
   co tick (RPDO2, `io_update_hz`).
 - **Guider:** korekty ST4 dodawane jako offsety pozycji, nie prędkości.
 
+### 3.5 Prędkość zadana vs prędkość rzeczywista (telemetria)
+
+Opisane wyżej wartości to **prędkości zadane** (komendy). Odrębną sprawą jest
+**prędkość rzeczywista** raportowana w telemetrii (`actual_axis{1,2}_rate`,
+`GetState().actual_rate_axis{1,2}`). Na ścieżce PDO jest ona **estymowana**,
+ponieważ TPDO1 przenosi tylko status i pozycję (0x6064), bez prędkości.
+
+- Estymata liczona jest w [`CanOpenMotor::updateStatus()`](../../src/hal/canopen_hal/canopen_hal.cpp:378)
+  jako średnia z okna kroczącego 12 próbek pozycji (≈1,2 s).
+- Bez uśredniania pochodna „próbka do próbki” dawała fałszywe piki
+  **0 ↔ 3,5–7,0 °/s** podczas płynnego śledzenia ~1,5 °/s serwo — przyczyną
+  jest kwantyzacja sprzężenia pozycyjnego (~128 zliczeń ≈ 0,35° serwo,
+  aktualizacja co ~250 ms przy prędkości gwiazdowej).
+- Uśrednienie w oknie odtwarza rzeczywistą średnią. Do diagnostyki logi
+  `axis N diag: … est_vel=… 6081h=…` pokazują jednocześnie estymowaną
+  prędkość i prędkość profilową (0x6081), co pozwala odróżnić artefakt
+  telemetrii od rzeczywistego ruchu napędu.
+
 ## 4. Pytanie projektowe: czy prędkość nie powinna być liczona jednolicie?
 
 **Teza:** dla każdego typu prędkość powinna być wyznaczana tak samo — na

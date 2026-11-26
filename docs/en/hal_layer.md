@@ -694,6 +694,30 @@ The CANopen HAL uses Process Data Objects (PDO) for real-time communication:
 - **TPDO1** (Transmit): Status Word + Actual Position
 - **RPDO2** (Receive): Control Word + Target Position
 
+### Actual velocity estimation on the PDO fast path
+
+TPDO1 carries only the Status Word and Actual Position — it does **not** carry
+the actual velocity (0x606C/0x6069). To avoid a blocking SDO read on the hot
+path, [`CanOpenMotor::updateStatus()`](../../src/hal/canopen_hal/canopen_hal.cpp:378)
+derives velocity from the position delta:
+
+```
+velocity = (newest_position − oldest_position) / (newest_time − oldest_time)
+```
+
+- The velocity is computed over a **sliding window** of the last 12 accepted
+  position samples (≈1.2 s at the `pdo_update_rate` = 100 ms sampling cadence),
+  not from two adjacent samples.
+- Rationale: the drive's position feedback (0x6064) is quantized in ~128-count
+  (~0.35° servo) steps that arrive every ~250 ms at the sidereal servo rate
+  (~1.5 °/s). A sample-to-sample derivative therefore produced sawtooth
+  telemetry spikes of **0 ↔ 3.5–7.0 °/s** while the true mean was ~1.5 °/s.
+- Window averaging recovers the true mean rate and removes the spurious spikes.
+  The value is published as `actual_velocity_` / `getActualVelocity()` and
+  reaches the controller as `actual_axis{1,2}_rate`.
+- If the drive exposes velocity via 0x6069, the slow SDO path takes precedence
+  and `updateStatus()` uses that value instead of the estimate.
+
 ### Implementation Classes
 
 | Class | Description |

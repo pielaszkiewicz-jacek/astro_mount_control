@@ -254,6 +254,14 @@ struct TrackingTelemetry {
 };
 ```
 
+> **Skąd pochodzą `vel1`/`vel2`?** TPDO1 nie przenosi prędkości (tylko status +
+> pozycję), więc [`CanOpenMotor::updateStatus()`](../../src/hal/canopen_hal/canopen_hal.cpp:378)
+> estymuje prędkość z okna kroczącego 12 próbek pozycji (≈1,2 s). Dzięki temu
+> telemetria pokazuje rzeczywistą średnią prędkość śledzenia (~1,5 °/s serwo),
+> a nie piłokształtne piki 0 ↔ 3,5–7,0 °/s wynikające z kwantyzacji 0x6064
+> (~128 zliczeń ≈ 0,35° serwo). Szczegóły: [`hal_layer.md`](hal_layer.md).
+```
+
 Członkowie `Impl`:
 
 ```cpp

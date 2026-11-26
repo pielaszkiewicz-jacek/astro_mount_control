@@ -115,6 +115,12 @@ klamry `max_slew_rate` (80%) — patrz [`initialize()`](../../src/controllers/mo
 | `nmt.*`, `speed_pid_schedule`, `speed_pid_adaptation_*` | TAK | Restart | TAK |
 | `io_realtime`, `io_realtime_priority` | TAK | Restart | TAK |
 
+Uwaga: `pdo_update_rate` (ms) wyznacza również kadencję próbkowania pozycji, z
+której [`CanOpenMotor::updateStatus()`](../../src/hal/canopen_hal/canopen_hal.cpp:378)
+estymuje rzeczywistą prędkość telemetryczną (okno kroczące 12 próbek ≈ 1,2 s
+przy domyślnych 100 ms). Prędkość nie jest odczytywana przez SDO w ścieżce PDO,
+lecz wyznaczana z pozycji — patrz [`hal_layer.md`](hal_layer.md).
+
 ---
 
 ## 4. Sekcja `hal.gamepad`

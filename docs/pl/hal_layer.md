@@ -744,6 +744,31 @@ CANopen HAL używa obiektów danych procesowych (PDO) do komunikacji w czasie rz
 - **TPDO1** (Transmit): Status Word (0x6041) + Actual Position (0x6064)
 - **RPDO2** (Receive): Control Word (0x6040) + Target Position (0x607A)
 
+### Szacowanie prędkości rzeczywistej w ścieżce PDO
+
+TPDO1 przenosi wyłącznie Status Word i Actual Position — **nie przenosi prędkości
+rzeczywistej** (0x606C/0x6069). Aby uniknąć blokującego odczytu SDO w gorącej
+ścieżce, [`CanOpenMotor::updateStatus()`](../../src/hal/canopen_hal/canopen_hal.cpp:378)
+wyznacza prędkość z różnicy pozycji:
+
+```
+prędkość = (pozycja_najnowsza − pozycja_najstarsza) / (czas_najnowszy − czas_najstarszy)
+```
+
+- Prędkość liczona jest w **oknie kroczącym** obejmującym 12 ostatnich
+  zaakceptowanych próbek pozycji (≈1,2 s przy próbkowaniu `pdo_update_rate`
+  = 100 ms), a nie z dwóch sąsiednich próbek.
+- Powód: sprzężenie pozycyjne napędu (0x6064) jest kwantowane w krokach
+  ~128 zliczeń (≈0,35° serwo), które przy prędkości gwiazdowej (~1,5 °/s serwo)
+  pojawiają się co ~250 ms. Pochodna „próbka do próbki” dawała przez to
+  piłokształtne piki telemetrii **0 ↔ 3,5–7,0 °/s** przy rzeczywistej średniej
+  ~1,5 °/s.
+- Uśrednienie w oknie odtwarza rzeczywistą średnią prędkość i eliminuje
+  fałszywe piki. Wartość jest publikowana jako `actual_velocity_` /
+  `getActualVelocity()`, a w kontrolerze trafia do `actual_axis{1,2}_rate`.
+- Gdyby napęd udostępniał prędkość przez 0x6069, ścieżka SDO (wolna) ma
+  pierwszeństwo i `updateStatus()` używa tej wartości zamiast estymaty.
+
 ### Klasy Implementacyjne
 
 | Klasa | Opis |
