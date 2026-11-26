@@ -5,6 +5,7 @@
 #include "canopen/canopen.h"
 
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <string>
 
@@ -36,6 +37,10 @@ public:
     bool getDriveStatus(uint8_t axis_id, CanOpenStatus& status) override;
     bool getLastEmergency(uint8_t axis_id, uint16_t& error_code) override;
     bool getPositionData(uint8_t axis_id, CanOpenPositionData& data) override;
+    bool getCachedPosition(uint8_t axis_id, int32_t& position) override;
+    bool nodeResetDetected(uint8_t axis_id) const override;
+    void acknowledgeNodeReset(uint8_t axis_id) override;
+    void resetNodeCaches(uint8_t axis_id) override;
     bool clearErrors(uint8_t axis_id) override;
 
     bool sendSDO(uint8_t axis_id, uint16_t index, uint8_t subindex,
@@ -78,10 +83,15 @@ private:
 
     static void pdoCallback(uint32_t cob_id, const uint8_t* data, uint8_t dlc,
                             void* userdata);
+    static void nmtCallback(uint8_t node_id, uint8_t state, void* userdata);
     struct PdoCache {
         uint16_t status_word{0};
         int32_t position{0};
         bool valid{false};
+        // Time the sample was written by pdoCallback.  Used to detect a stale
+        // cache (degraded link / node reset) instead of serving a frozen
+        // position forever.
+        std::chrono::steady_clock::time_point updated_at{};
     };
     // Thread safety: pdo_cache_ is written by the CANopen wrapper reader thread
     // (pdoCallback) and read by the HAL monitor / tracking io threads. Guarded
@@ -92,6 +102,8 @@ private:
     std::atomic<uint64_t> pdo_seq_[128]{};
     std::atomic<bool> pdo_configured_[128]{};
     std::atomic<bool> pdo_velocity_mapping_[128]{};
+    // Latched by nmtCallback when the node announces boot-up (0x00).
+    std::atomic<bool> node_bootup_[128]{};
     // Last SDO-configured profile values per node (avoid SDO on the hot path).
     std::atomic<uint32_t> last_profile_velocity_[128]{};
     std::atomic<uint32_t> last_profile_accel_[128]{};

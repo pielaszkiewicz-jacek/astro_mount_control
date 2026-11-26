@@ -1,3 +1,5 @@
 #!/bin/sh
-
-candump can0 | grep -v "can0  141   \[8\]  9C" | grep -v "can0  141   \[8\]  92" | grep -v "can0  142   \[8\]  9C" | grep -v "can0  142   \[8\]  92"
+# Raw CANopen traffic dump for the STM42M (CANopen) mount on can0.
+# (The old MF7025V2 frame filter for 0x141/0x142 was removed — that hardware
+# is no longer in use.)
+candump can0

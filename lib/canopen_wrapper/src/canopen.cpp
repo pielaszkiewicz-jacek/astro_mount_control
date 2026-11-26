@@ -147,12 +147,66 @@ bool recv_one_frame(int fd, canopen_frame_t* out) {
     return true;
 }
 
+// Re-create and re-bind the SocketCAN socket after can0 disappeared (slcand/
+// CH340 adapter restart).  Re-resolves the interface index so the socket
+// follows the new device instead of staying bound to the stale one.  Returns
+// true on success.
+bool rebind_socket(CtxState* st, canopen_ctx_t* ctx) {
+    if (st->sock_fd >= 0) {
+        ::close(st->sock_fd);
+        st->sock_fd = -1;
+    }
+    ctx->sock_fd = -1;
+
+    const int fd = ::socket(PF_CAN, SOCK_RAW, CAN_RAW);
+    if (fd < 0) return false;
+
+    struct ifreq ifr;
+    std::memset(&ifr, 0, sizeof(ifr));
+    std::strncpy(ifr.ifr_name, ctx->iface_name, IFNAMSIZ - 1);
+    if (::ioctl(fd, SIOCGIFINDEX, &ifr) < 0) {
+        ::close(fd);
+        return false;
+    }
+
+    struct sockaddr_can addr;
+    std::memset(&addr, 0, sizeof(addr));
+    addr.can_family = AF_CAN;
+    addr.can_ifindex = ifr.ifr_ifindex;
+    if (::bind(fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(addr)) < 0) {
+        ::close(fd);
+        return false;
+    }
+
+    struct timeval tv;
+    tv.tv_sec = static_cast<time_t>(st->timeout_us / 1000000);
+    tv.tv_usec = static_cast<suseconds_t>(st->timeout_us % 1000000);
+    ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    ::setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+    st->sock_fd = fd;
+    ctx->sock_fd = fd;
+    std::fprintf(stderr, "[canopen] socket rebound on %s\n", ctx->iface_name);
+    return true;
+}
+
 void reader_loop(CtxState* st, canopen_ctx_t* ctx) {
     while (st->running.load(std::memory_order_acquire)) {
         canopen_frame_t f;
         if (!recv_one_frame(st->sock_fd, &f)) {
-            // Socket receive timeout or transient error.  Loop again; the
-            // running flag is re-checked so shutdown() can terminate us.
+            const int e = errno;
+            // Interface disappeared (slcand/USB adapter restart recreated can0):
+            // the socket is bound to the old ifindex and is now dead.  Rebind so
+            // the reader follows the new interface instead of spinning on a dead
+            // descriptor.  Transient timeouts (EAGAIN/EWOULDBLOCK) are just
+            // looped as before.
+            if (e == ENETDOWN || e == ENODEV || e == ENXIO) {
+                std::fprintf(stderr, "[canopen] interface lost (errno=%d), rebinding...\n", e);
+                while (st->running.load(std::memory_order_acquire) &&
+                       !rebind_socket(st, ctx)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                }
+            }
             continue;
         }
 
@@ -232,20 +286,30 @@ int sdo_exchange(canopen_ctx_t* ctx, uint8_t node_id, uint16_t index,
 
     CtxState::Slot& slot = st->slots[node_id];
 
-    // Serialize per node: wait until no other request for this node is in
-    // flight.  Other nodes proceed independently.
+    // Serialize per node AND claim the slot atomically.  The previous code
+    // waited for !slot.pending in one critical section and set pending=true in
+    // a later one, so two threads could both observe !pending and proceed to
+    // share a single slot — responses were then cross-delivered.  Holding the
+    // lock across wait + claim closes that check-then-set race.
     {
         std::unique_lock<std::mutex> lk(st->state_mutex);
         st->cv.wait(lk, [&]{ return !slot.pending || !st->running.load(); });
         if (!st->running.load()) return 0;
+        slot.pending = true;
+        slot.index = index;
+        slot.subindex = subindex;
+        slot.result = 0;
+        slot.value = 0;
+        slot.size = 0;
     }
 
     for (int attempt = 0; attempt <= kMaxRetries; ++attempt) {
+        // Re-arm the slot for this attempt.  The slot stays claimed (pending)
+        // across retries so no other thread can steal it mid-exchange; re-arming
+        // also clears any late response that arrived during the backoff.
         {
             std::lock_guard<std::mutex> lk(st->state_mutex);
             slot.pending = true;
-            slot.index = index;
-            slot.subindex = subindex;
             slot.result = 0;
             slot.value = 0;
             slot.size = 0;
@@ -264,11 +328,6 @@ int sdo_exchange(canopen_ctx_t* ctx, uint8_t node_id, uint16_t index,
         }
 
         if (!sent) {
-            {
-                std::lock_guard<std::mutex> lk(st->state_mutex);
-                slot.pending = false;
-            }
-            st->cv.notify_all();
             std::this_thread::sleep_for(std::chrono::milliseconds(kRetryBackoffMs));
             continue;
         }
@@ -299,10 +358,13 @@ int sdo_exchange(canopen_ctx_t* ctx, uint8_t node_id, uint16_t index,
         }
 
         // slot.pending is still true: response timeout or shutdown.
-        slot.pending = false;
         lk.unlock();
-        st->cv.notify_all();
-        if (!st->running.load()) return 0;
+        if (!st->running.load()) {
+            std::lock_guard<std::mutex> rl(st->state_mutex);
+            slot.pending = false;
+            st->cv.notify_all();
+            return 0;
+        }
         std::this_thread::sleep_for(std::chrono::milliseconds(kRetryBackoffMs));
     }
 

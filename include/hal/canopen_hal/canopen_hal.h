@@ -10,6 +10,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -87,10 +88,19 @@ private:
         // tracking loop never commands a target a full turn away.
         double last_good_position_{0.0};
         bool   last_good_position_valid_{false};
+        // Timestamp of the last accepted position (monitor thread only), used
+        // to derive velocity when the PDO fast path leaves st.actual_velocity
+        // at 0 (TPDO1 carries status word + position, not velocity).
+        std::chrono::steady_clock::time_point last_good_position_time_{};
+        double position_delta_velocity_{0.0};
         // One-shot diagnostic: last-seen "internal limit active" (status word
         // bit 11).  Used to log the condition exactly once per activation
         // instead of spamming the log from the periodic monitor loop.
         bool   internal_limit_active_{false};
+        // Periodic diagnostic throttle (monitor thread only): timestamp of the
+        // last "drive diag" log, to dump status word / velocity / 6081h every
+        // ~5 s and pin down the tracking-stall root cause.
+        std::chrono::steady_clock::time_point last_diag_log_{};
         std::atomic<double> actual_velocity_{0.0};
         std::atomic<double> actual_torque_{0.0};
         std::atomic<double> temperature_{25.0};
@@ -222,6 +232,9 @@ public:
 
     controllers::ICanOpenInterface* getCanInterface() { return can_iface_.get(); }
     controllers::CanOpenStatus lastStatus(int axis_id) const;
+    // True when the last successful status read for the axis is recent enough
+    // to trust (TPDO1 is arriving).  False when telemetry has gone stale.
+    bool isStatusFresh(int axis_id) const;
 
 private:
     HALConfig config_;
@@ -234,6 +247,7 @@ private:
     std::array<std::unique_ptr<CanOpenMotor>, 2> motors_;
     std::array<std::unique_ptr<CanOpenEncoder>, 2> encoders_;
     std::array<controllers::CanOpenStatus, 2> last_status_;
+    std::array<std::chrono::steady_clock::time_point, 2> last_status_time_{};
     mutable std::mutex status_mutex_;
 
     std::thread monitor_thread_;

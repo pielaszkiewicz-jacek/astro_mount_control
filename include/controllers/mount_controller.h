@@ -832,7 +832,22 @@ public:
      * @return True if the reference was set successfully
      */
     bool home(const ::astro_mount::MountHomingRequest& request);
-    
+
+    /**
+     * @brief Sync the telescope frame to a KNOWN celestial position (INDI Sync /
+     *        plate-solve), re-anchoring home_offset so the astronomical frame
+     *        maps to the physical drive position — without moving the mount.
+     *
+     *        This is the frame-synchronization point for guiding/plate-solve,
+     *        complementing Home() (initial anchor) and the output-axis encoder
+     *        reads (absolute telescope feedback, when such an encoder exists).
+     *
+     * @param ra  Right ascension of the object the telescope currently points at [hours]
+     * @param dec Declination of that object [degrees]
+     * @return True if the frame was re-anchored successfully
+     */
+    bool syncToEquatorial(double ra, double dec);
+
     /**
      * @brief Get field rotation parameters (computed rates)
      * @return Field rotation parameters

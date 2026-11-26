@@ -186,7 +186,24 @@ bool CanOpenHAL::CanOpenMotor::zeroPosition() {
     const uint8_t axis = static_cast<uint8_t>(axis_id_);
     if (!iface->sendSDO(axis, 0x2031, 0x01, 0x0000, 2)) return false;
     if (!iface->sendSDO(axis, 0x2031, 0x01, 0x0002, 2)) return false;
-    return iface->sendSDO(axis, 0x2031, 0x01, 0x0000, 2);
+    if (!iface->sendSDO(axis, 0x2031, 0x01, 0x0000, 2)) return false;
+
+    // Verify the zero actually persisted.  The STMP42SXI "set origin" (2031h:01h)
+    // is known to be TRANSIENT: 6064h reads ~0 immediately after the SDO and
+    // then reverts to its previous value.  Wait briefly and confirm the counter
+    // stayed near zero, so a caller (position rewind) never shifts the telescope
+    // frame on a bogus zero — the root cause of the "position desync" runaway.
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    controllers::CanOpenPositionData data;
+    if (!iface->getPositionData(axis, data)) {
+        return false;  // cannot verify — treat as failure, never shift the frame
+    }
+    const double cpd = config_.encoder_counts_per_degree > 0.0
+                           ? config_.encoder_counts_per_degree : 1.0;
+    if (std::abs(static_cast<double>(data.actual_position)) > cpd * 360.0) {
+        return false;  // zero did not persist (counter still > 1 motor turn)
+    }
+    return true;
 }
 
 bool CanOpenHAL::CanOpenMotor::home() {
@@ -245,24 +262,41 @@ bool CanOpenHAL::CanOpenMotor::applySpeedPidSchedule(
 }
 
 void CanOpenHAL::CanOpenMotor::applySpeedBasedPid(double speed_deg_s) {
-    if (!speed_pid_enabled_ || speed_pid_schedule_.empty()) return;
+    // Snapshot the schedule state under the mutex (written by
+    // applySpeedPidSchedule from another thread) so this function never reads
+    // speed_pid_schedule_/last_sent_speed_pid_ without synchronization — that
+    // was a data race.  The blocking SDO writes below run OUTSIDE the lock.
+    bool enabled = false;
+    double interval_ms = 50.0;
+    std::vector<hal::SpeedPidEntry> schedule;
+    LastSentSpeedPid last_sent;
+    std::chrono::steady_clock::time_point last_update{};
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        enabled = speed_pid_enabled_;
+        schedule = speed_pid_schedule_;
+        interval_ms = speed_pid_update_interval_ms_;
+        last_sent = last_sent_speed_pid_;
+        last_update = last_speed_pid_update_;
+    }
+    if (!enabled || schedule.empty()) return;
 
     // Convert servo degrees/second → motor shaft RPM. 1 RPM = 360°/60s = 6°/s.
     const double rpm = std::abs(speed_deg_s) / 6.0;
 
     // Throttle re-evaluations to the configured minimum interval to avoid
     // spamming the CAN bus with SDO writes at high command rates.
-    auto now = std::chrono::steady_clock::now();
-    if (last_speed_pid_update_.time_since_epoch().count() != 0) {
-        auto elapsed_ms =
-            std::chrono::duration<double, std::milli>(now - last_speed_pid_update_).count();
-        if (elapsed_ms < speed_pid_update_interval_ms_) return;
+    const auto now = std::chrono::steady_clock::now();
+    if (last_update.time_since_epoch().count() != 0) {
+        const auto elapsed_ms =
+            std::chrono::duration<double, std::milli>(now - last_update).count();
+        if (elapsed_ms < interval_ms) return;
     }
 
     // Find the schedule entry: the largest breakpoint <= current RPM.
     // Entries are expected to be sorted ascending by speed_rpm.
     const hal::SpeedPidEntry* selected = nullptr;
-    for (const auto& e : speed_pid_schedule_) {
+    for (const auto& e : schedule) {
         if (e.speed_rpm <= rpm) {
             selected = &e;
         } else {
@@ -271,12 +305,12 @@ void CanOpenHAL::CanOpenMotor::applySpeedBasedPid(double speed_deg_s) {
     }
     if (!selected) {
         // Speed below the first breakpoint — clamp to the first entry.
-        selected = &speed_pid_schedule_.front();
+        selected = &schedule.front();
     }
 
     // Skip the write if the speed-loop gains already match what was last sent.
-    if (selected->speed_kp == last_sent_speed_pid_.speed_kp &&
-        selected->speed_ki == last_sent_speed_pid_.speed_ki) {
+    if (selected->speed_kp == last_sent.speed_kp &&
+        selected->speed_ki == last_sent.speed_ki) {
         return;
     }
 
@@ -296,9 +330,13 @@ void CanOpenHAL::CanOpenMotor::applySpeedBasedPid(double speed_deg_s) {
         return;
     }
 
-    last_sent_speed_pid_.speed_kp = selected->speed_kp;
-    last_sent_speed_pid_.speed_ki = selected->speed_ki;
-    last_speed_pid_update_ = now;
+    // Commit the last-sent cache under the mutex.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        last_sent_speed_pid_.speed_kp = selected->speed_kp;
+        last_sent_speed_pid_.speed_ki = selected->speed_ki;
+        last_speed_pid_update_ = now;
+    }
 }
 
 bool CanOpenHAL::CanOpenMotor::configure(const MotorConfig& config) {
@@ -340,6 +378,7 @@ uint32_t CanOpenHAL::CanOpenMotor::getOperationTime() const {
 void CanOpenHAL::CanOpenMotor::updateStatus(const CanOpenStatus& st) {
     const double cpd = config_.encoder_counts_per_degree > 0.0
                            ? config_.encoder_counts_per_degree : 1.0;
+    const auto now = std::chrono::steady_clock::now();
     if (st.position_valid) {
         const double pos = static_cast<double>(st.actual_position) / cpd;
         // Reject a single implausible position jump (PDO cache glitch or a
@@ -354,12 +393,30 @@ void CanOpenHAL::CanOpenMotor::updateStatus(const CanOpenStatus& st) {
             std::abs(pos - last_good_position_) > kMaxServoJumpDeg) {
             // Ignore the glitched sample: do NOT update actual_position_.
         } else {
+            // Derive velocity from the accepted position delta so the UI still
+            // shows a rate under the PDO fast path (TPDO1 carries status word +
+            // position, not velocity).
+            if (last_good_position_valid_) {
+                const double dt = std::chrono::duration<double>(
+                    now - last_good_position_time_).count();
+                if (dt > 1e-6) {
+                    position_delta_velocity_ = (pos - last_good_position_) / dt;
+                }
+            }
             actual_position_ = pos;
             last_good_position_ = pos;
+            last_good_position_time_ = now;
             last_good_position_valid_ = true;
         }
     }
-    actual_velocity_ = static_cast<double>(st.actual_velocity) / cpd;
+    // Prefer the drive-reported velocity (slow SDO path).  In the PDO fast path
+    // st.actual_velocity is left at 0 on purpose (reading it would block on SDO
+    // and stall the monitor), so fall back to the position-derived estimate.
+    if (st.actual_velocity != 0) {
+        actual_velocity_ = static_cast<double>(st.actual_velocity) / cpd;
+    } else {
+        actual_velocity_ = position_delta_velocity_;
+    }
     actual_torque_ = static_cast<double>(st.actual_current) / 10.0;
     enabled_ = st.enabled;
     moving_ = st.moving;
@@ -378,6 +435,30 @@ void CanOpenHAL::CanOpenMotor::updateStatus(const CanOpenStatus& st) {
                          "607Dh software position limit", axis_id_, st.status_word);
     }
     internal_limit_active_ = internal_limit;
+
+    // ── Periodic drive diagnostics (every ~5 s) ──────────────────────────
+    // To pin down the "drive stall during tracking" (frozen position), dump the
+    // raw status word (bit12 = set-point acknowledge), the drive-reported
+    // velocity, the position-delta velocity estimate and the profile velocity
+    // (6081h).  This shows whether the drive is actually accepting setpoints
+    // and at what profile velocity it is moving.
+    const auto diag_now = std::chrono::steady_clock::now();
+    if (std::chrono::duration<double>(diag_now - last_diag_log_).count() >= 5.0) {
+        last_diag_log_ = diag_now;
+        auto* iface = parent_ ? parent_->getCanInterface() : nullptr;
+        uint32_t profile_vel = 0;
+        uint8_t psize = 0;
+        if (iface) {
+            iface->readSDO(static_cast<uint8_t>(axis_id_), 0x6081, 0x00,
+                           profile_vel, psize);
+        }
+        CANOPEN_LOG_INFO(
+            "axis {} diag: sw=0x{:04X} bit12={} raw_vel={} est_vel={:.3f}°/s "
+            "pos={:.1f}° 6081h={}",
+            axis_id_, st.status_word, (st.status_word & 0x1000) ? 1 : 0,
+            st.actual_velocity, actual_velocity_.load(),
+            actual_position_.load(), static_cast<int32_t>(profile_vel));
+    }
 
     if (error_state_) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -414,13 +495,34 @@ EncoderReading CanOpenHAL::CanOpenEncoder::read() const {
         reading.data_valid = false;
         return reading;
     }
+    const double cpd = config_.counts_per_degree > 0.0 ? config_.counts_per_degree : 1.0;
+
+    // Fast path: take the position from the fresh TPDO1 cache (no blocking
+    // SDO).  TPDO1 does not carry velocity, so that still needs one SDO read
+    // (best-effort — the position stays valid even if it fails).
+    int32_t cached_pos = 0;
+    if (iface->getCachedPosition(static_cast<uint8_t>(axis_id_), cached_pos)) {
+        reading.position_deg = static_cast<double>(cached_pos) / cpd + calibration_offset_;
+        reading.raw_counts = cached_pos;
+        uint32_t v = 0;
+        uint8_t size = 0;
+        if (iface->readSDO(static_cast<uint8_t>(axis_id_), 0x6069, 0x00, v, size)) {
+            reading.velocity_deg_s = static_cast<double>(static_cast<int32_t>(v)) / cpd;
+        }
+        reading.data_valid = true;
+        reading.timestamp = std::chrono::steady_clock::now();
+        total_readings_++;
+        return reading;
+    }
+
+    // Slow path: full SDO read (position + demand + velocity) when no fresh
+    // cache sample is available.
     controllers::CanOpenPositionData data;
     if (!iface->getPositionData(static_cast<uint8_t>(axis_id_), data)) {
         reading.data_valid = false;
         error_count_++;
         return reading;
     }
-    const double cpd = config_.counts_per_degree > 0.0 ? config_.counts_per_degree : 1.0;
     reading.position_deg = static_cast<double>(data.actual_position) / cpd
                            + calibration_offset_;
     reading.velocity_deg_s = static_cast<double>(data.actual_velocity) / cpd;
@@ -494,7 +596,10 @@ SafetyStatus CanOpenHAL::CanOpenSafetyMonitor::getStatus() const {
     if (!parent_) return status;
     for (int axis = 0; axis < 2; ++axis) {
         const auto st = parent_->lastStatus(axis);
-        status.axes_status[axis].communication_ok = (st.status_word != 0);
+        // Communication is healthy only while fresh TPDO1 telemetry is
+        // arriving.  A non-zero (possibly stale) status word is NOT enough —
+        // that was the source of "enabled, no fault, frozen position".
+        status.axes_status[axis].communication_ok = parent_->isStatusFresh(axis);
         status.axes_status[axis].temperature_ok = true;
         status.axes_status[axis].current_ok = true;
         status.axes_status[axis].voltage_ok = true;
@@ -708,6 +813,16 @@ controllers::CanOpenStatus CanOpenHAL::lastStatus(int axis_id) const {
     return last_status_[axis_id];
 }
 
+bool CanOpenHAL::isStatusFresh(int axis_id) const {
+    std::lock_guard<std::mutex> lock(status_mutex_);
+    if (axis_id < 0 || axis_id >= 2) return false;
+    const auto t = last_status_time_[axis_id];
+    if (t.time_since_epoch().count() == 0) return false;  // never updated
+    // The monitor loop publishes every pdo_update_rate (100 ms); allow ~3
+    // periods of jitter before declaring the telemetry stale.
+    return std::chrono::steady_clock::now() - t <= std::chrono::milliseconds(300);
+}
+
 void CanOpenHAL::monitorLoop() {
     while (running_) {
         if (can_iface_) can_iface_->pollEvents();
@@ -715,6 +830,26 @@ void CanOpenHAL::monitorLoop() {
         const bool fast = can_iface_ && can_iface_->pdoFastPathEnabled();
         for (int axis = 0; axis < 2; ++axis) {
             if (!motors_[axis]) continue;
+
+            // Drive reset (boot-up) recovery: the node came back
+            // Pre-Operational with factory PDO mapping, so cached mode/PDO
+            // state is stale.  Re-run PDO configuration and the full CiA 402
+            // enable before reading status again.
+            if (can_iface_ &&
+                can_iface_->nodeResetDetected(static_cast<uint8_t>(axis))) {
+                CANOPEN_LOG_WARN("axis {}: drive boot-up detected — re-configuring and re-enabling", axis);
+                can_iface_->acknowledgeNodeReset(static_cast<uint8_t>(axis));
+                can_iface_->resetNodeCaches(static_cast<uint8_t>(axis));
+                if (config_.canopen.pdo_config_enabled || config_.canopen.pdo_fast_path) {
+                    can_iface_->configurePdo(static_cast<uint8_t>(axis), true);
+                }
+                try {
+                    motors_[axis]->enable();
+                } catch (const std::exception& e) {
+                    CANOPEN_LOG_WARN("axis {}: re-enable after boot-up failed: {}", axis, e.what());
+                }
+            }
+
             controllers::CanOpenStatus st;
             bool ok = false;
             if (can_iface_) {
@@ -727,6 +862,7 @@ void CanOpenHAL::monitorLoop() {
                 {
                     std::lock_guard<std::mutex> lock(status_mutex_);
                     last_status_[axis] = st;
+                    last_status_time_[axis] = std::chrono::steady_clock::now();
                 }
             } else if (!fast) {
                 // Only report a failure when an actual SDO read was attempted;

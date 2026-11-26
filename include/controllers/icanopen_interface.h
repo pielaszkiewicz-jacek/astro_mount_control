@@ -86,7 +86,20 @@ public:
     // Last CANopen emergency (EMCY) error code for an axis.  Returns true and
     // sets error_code when an EMCY frame has been received for that node.
     virtual bool getLastEmergency(uint8_t axis_id, uint16_t& error_code) { return false; }
+    // Node boot-up / reset detection.  A boot-up frame (0x700, state 0x00)
+    // means the drive reset: it comes back Pre-Operational with factory PDO
+    // mapping, so PDO must be re-configured and the drive re-enabled.  The
+    // concrete interface latches the event; the HAL monitor consumes it.
+    virtual bool nodeResetDetected(uint8_t axis_id) const { return false; }
+    virtual void acknowledgeNodeReset(uint8_t axis_id) {}
+    // Drop per-node cached state (mode, PDO-configured) after a reset so the
+    // next command re-runs the full configuration instead of trusting stale
+    // caches.
+    virtual void resetNodeCaches(uint8_t axis_id) {}
     virtual bool getPositionData(uint8_t axis_id, CanOpenPositionData& data) = 0;
+    // Cached actual position from TPDO1 (no blocking SDO).  Returns false when
+    // no fresh cache sample is available.
+    virtual bool getCachedPosition(uint8_t axis_id, int32_t& position) { return false; }
     virtual bool clearErrors(uint8_t axis_id) = 0;
 
     // Raw SDO access

@@ -104,6 +104,8 @@ bool CanOpenInterface::initialize(const Config& config) {
                       config.sdo_timeout_ms * 1000)) {
         return false;
     }
+    // Watch node boot-up so a drive reset can be detected and PDO re-applied.
+    canopen_set_nmt_callback(&ctx_, &CanOpenInterface::nmtCallback, this);
     initialized_ = true;
     return true;
 }
@@ -374,7 +376,12 @@ bool CanOpenInterface::getDriveStatus(uint8_t axis_id, CanOpenStatus& status) {
 
     if (node < 128) {
         std::lock_guard<std::mutex> plock(pdo_mutex_);
-        if (pdo_cache_[node].valid) {
+        // Only trust a cache sample younger than ~5 TPDO periods (10 ms each).
+        // Older samples are stale (degraded link / node reset) and must not be
+        // used as a live position or status word.
+        if (pdo_cache_[node].valid &&
+            std::chrono::steady_clock::now() - pdo_cache_[node].updated_at <=
+                std::chrono::milliseconds(50)) {
             sw = pdo_cache_[node].status_word;
             cached_pos = pdo_cache_[node].position;
             have_cached = true;
@@ -442,6 +449,21 @@ bool CanOpenInterface::getPositionData(uint8_t axis_id, CanOpenPositionData& dat
     if (canopen_sdo_read_expedited(&ctx_, node, kOdVelActual, 0x00, &v, &size)) {
         data.actual_velocity = static_cast<int32_t>(v);
     }
+    return true;
+}
+
+bool CanOpenInterface::getCachedPosition(uint8_t axis_id, int32_t& position) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    if (node >= 128) return false;
+
+    std::lock_guard<std::mutex> lock(pdo_mutex_);
+    if (!pdo_cache_[node].valid) return false;
+    // Same freshness gate as getCachedDriveStatus: never serve a stale sample.
+    if (std::chrono::steady_clock::now() - pdo_cache_[node].updated_at >
+        std::chrono::milliseconds(50)) {
+        return false;
+    }
+    position = pdo_cache_[node].position;
     return true;
 }
 
@@ -551,9 +573,21 @@ void CanOpenInterface::pdoCallback(uint32_t cob_id, const uint8_t* data,
         self->pdo_cache_[node].status_word = sw;
         self->pdo_cache_[node].position = pos;
         self->pdo_cache_[node].valid = true;
+        self->pdo_cache_[node].updated_at = std::chrono::steady_clock::now();
     }
     // Publish freshness outside the lock (release pairs with acquire readers).
     self->pdo_seq_[node].fetch_add(1, std::memory_order_release);
+}
+
+void CanOpenInterface::nmtCallback(uint8_t node_id, uint8_t state, void* userdata) {
+    auto* self = static_cast<CanOpenInterface*>(userdata);
+    if (!self || node_id >= 128) return;
+    if (state == CANOPEN_NMT_STATE_BOOTUP) {
+        // Drive reset detected: latch the event.  The HAL monitor consumes it
+        // and re-runs configurePdo + enableDrive because the node returns to
+        // Pre-Operational with factory PDO mapping.
+        self->node_bootup_[node_id].store(true, std::memory_order_release);
+    }
 }
 
 bool CanOpenInterface::configurePdo(uint8_t axis_id, bool enable) {
@@ -577,6 +611,12 @@ bool CanOpenInterface::configurePdo(uint8_t axis_id, bool enable) {
     // node as PDO-configured when the full mapping was accepted; otherwise the
     // command paths fall back to SDO.
     bool ok = true;
+
+    // Invalidate TPDO1/RPDO2 COB-IDs first (CiA 301: bit 31 = 1) so the drive
+    // stops the PDO while the mapping objects are rewritten.  Remapping a live
+    // PDO is what triggers SDO abort 0x06010002 on these drives.
+    writeSDO4(node, 0x1800, 0x01, 0x80000000u | (0x180 + node));
+    writeSDO4(node, 0x1401, 0x01, 0x80000000u | (0x300 + node));
 
     // ── TPDO1: 6041h + 6064h ──────────────────────────────────────────────
     // Mapping sequence: set sub-0 = 0, write entries, then set sub-0 = count.
@@ -640,13 +680,24 @@ bool CanOpenInterface::getCachedDriveStatus(uint8_t axis_id, CanOpenStatus& stat
     uint16_t sw = 0;
     int32_t pos = 0;
     bool valid = false;
+    std::chrono::steady_clock::time_point updated_at{};
     {
         std::lock_guard<std::mutex> lock(pdo_mutex_);
         valid = pdo_cache_[node].valid;
         sw = pdo_cache_[node].status_word;
         pos = pdo_cache_[node].position;
+        updated_at = pdo_cache_[node].updated_at;
     }
     if (!valid) return false;
+
+    // Freshness guard: TPDO1 telemetry arrives every ~10 ms.  A sample older
+    // than ~5 periods means the link is degraded or the node reset and the
+    // cache is stale.  Serving it would make the drive look "enabled, no
+    // fault" while its position is frozen — exactly the symptom the tracking
+    // stall detector was added to catch.  Fail fast instead.
+    if (std::chrono::steady_clock::now() - updated_at > std::chrono::milliseconds(50)) {
+        return false;
+    }
 
     status = CanOpenStatus{};
     status.status_word = sw;
@@ -657,6 +708,31 @@ bool CanOpenInterface::getCachedDriveStatus(uint8_t axis_id, CanOpenStatus& stat
     status.position_valid = true;
     status.moving = !status.target_reached && status.enabled;
     return true;
+}
+
+bool CanOpenInterface::nodeResetDetected(uint8_t axis_id) const {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    if (node >= 128) return false;
+    return node_bootup_[node].load(std::memory_order_acquire);
+}
+
+void CanOpenInterface::acknowledgeNodeReset(uint8_t axis_id) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    if (node < 128) node_bootup_[node].store(false, std::memory_order_release);
+}
+
+void CanOpenInterface::resetNodeCaches(uint8_t axis_id) {
+    const uint8_t node = nodeIdForAxis(axis_id);
+    if (node >= 128) return;
+    mode_cache_[node] = 0xFF;
+    pdo_configured_[node].store(false, std::memory_order_release);
+    pdo_velocity_mapping_[node].store(false, std::memory_order_release);
+    last_profile_velocity_[node].store(0);
+    last_profile_accel_[node].store(0);
+    // Invalidate the PDO cache so stale telemetry isn't served after a reset.
+    std::lock_guard<std::mutex> lock(pdo_mutex_);
+    pdo_cache_[node].valid = false;
+    pdo_cache_[node].updated_at = {};
 }
 
 bool CanOpenInterface::getLastEmergency(uint8_t axis_id, uint16_t& error_code) {
@@ -694,19 +770,32 @@ bool CanOpenInterface::setPositionTargetPdo(uint8_t axis_id, int32_t position,
     if (!switchMode(node, kModeProfilePosition)) return false;
 
     // Profile velocity / acceleration change rarely; configure via SDO only when
-    // they actually differ (slow control path), never per cycle.
+    // they actually differ (slow control path), never per cycle.  The write is
+    // best-effort: on failure we log and continue instead of returning false —
+    // the old `return false` dropped the new target entirely (the axis froze)
+    // after the FIFO thread had already been blocked by the SDO retries.  The
+    // RPDO2 target below is the essential command and is always delivered.
     const uint32_t accel = accelToRate(acceleration, config_.accel_mode, velocity);
     if (last_profile_velocity_[node].load() != velocity ||
         last_profile_accel_[node].load() != accel) {
-        if (!writeSDO4(node, kOdProfileVelocity, 0x00, velocity)) return false;
-        if (!writeSDO4(node, kOdProfileAccel, 0x00, accel)) return false;
-        if (!writeSDO4(node, kOdProfileDecel, 0x00, accel)) return false;
+        const bool v_ok = writeSDO4(node, kOdProfileVelocity, 0x00, velocity);
+        const bool a_ok = writeSDO4(node, kOdProfileAccel, 0x00, accel);
+        const bool d_ok = writeSDO4(node, kOdProfileDecel, 0x00, accel);
+        if (!(v_ok && a_ok && d_ok)) {
+            CANOPEN_LOG_WARN("setPositionTargetPdo: profile SDO update failed on node {} "
+                             "(velocity={} accel={}); target still delivered via PDO",
+                             node, velocity, accel);
+        }
         last_profile_velocity_[node].store(velocity);
         last_profile_accel_[node].store(accel);
     }
 
     // RPDO2 payload = controlword (6040h) + target position (607Ah). Two frames:
-    // bit4 = 0 then bit4 = 1 (rising "new setpoint" edge). Fire-and-forget.
+    // bit4 = 0 then bit4 = 1 (rising "new setpoint" edge). Fire-and-forget: the
+    // SLCAN link already spaces the two frames by ~2 ms, and an explicit
+    // bit12-based handshake here regressed tracking (the drive stops executing
+    // setpoints at the low tracking profile velocity — "Drive stall during
+    // tracking"), so keep the simple proven sequence.
     uint8_t f1[6];
     uint8_t f2[6];
     packControlAndTarget(f1, kCwEnableOp, position);
@@ -729,8 +818,14 @@ bool CanOpenInterface::setVelocityTargetPdo(uint8_t axis_id, int32_t velocity,
         accelToRate(acceleration, config_.accel_mode,
                     static_cast<uint32_t>(velocity < 0 ? -velocity : velocity));
     if (last_profile_accel_[node].load() != accel) {
-        if (!writeSDO4(node, kOdProfileAccel, 0x00, accel)) return false;
-        if (!writeSDO4(node, kOdProfileDecel, 0x00, accel)) return false;
+        // Best-effort (see setPositionTargetPdo): never drop the RPDO2 target
+        // because a profile SDO write failed.
+        const bool a_ok = writeSDO4(node, kOdProfileAccel, 0x00, accel);
+        const bool d_ok = writeSDO4(node, kOdProfileDecel, 0x00, accel);
+        if (!(a_ok && d_ok)) {
+            CANOPEN_LOG_WARN("setVelocityTargetPdo: profile SDO update failed on node {} "
+                             "(accel={}); target still delivered via PDO", node, accel);
+        }
         last_profile_accel_[node].store(accel);
     }
 

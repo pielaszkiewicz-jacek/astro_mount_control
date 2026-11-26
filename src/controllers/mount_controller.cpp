@@ -1661,6 +1661,20 @@ public:
     bool startTracking(double ra, double dec, config::TrackingMode mode,
                        double customRateRaArcsecPerSec = 0.0,
                        double customRateDecArcsecPerSec = 0.0) {
+        // Serialize concurrent startTracking invocations. INDI reaches this
+        // method from two independent paths at once — the auto-track watcher
+        // spawned by scheduleAutoTrackAfterSlew() after a Goto, and
+        // SetTrackEnabled→TrackObject. Two overlapping sessions reassign the
+        // still-joinable io_writer/io_reader/work threads in the split-loop
+        // block below; std::thread move-assignment on a joinable thread calls
+        // std::terminate ("terminate called without an active exception").
+        // Holding the lock for the whole operation (including the pre-tracking
+        // slew wait) makes a concurrent call wait instead of interleaving.
+        // recursive_mutex: notifyStatusChanged() below invokes the status
+        // callback while the lock is held, and that callback may re-enter the
+        // controller on the same thread.
+        std::lock_guard<std::recursive_mutex> start_tracking_lock(start_tracking_mutex_);
+
         // Reject non-finite coordinates to prevent infinite loops in HA normalization
         if (!std::isfinite(ra) || !std::isfinite(dec)) {
             return false;
@@ -3657,19 +3671,21 @@ public:
                             // revolution) away and the mount chases the RA axis
                             // instead of settling on the object.
                             //
-                            // Anchor the HA target to the PHYSICAL drive position
-                            // (raw_servo_axis1_position_, home-offset-adjusted),
-                            // NOT the internal integrated axis1_position_.  The
-                            // internal position lags the drive by exactly the
-                            // tracking lead (the drive has already advanced to the
-                            // lead target), so anchoring to it cancels the lead and
-                            // commands the drive to its own current position —
-                            // producing the stop-start "steppy" sawtooth.
-                            const double current_ha_hours = raw_servo_axis1_position_ / (ha_gear * 15.0);
-                            double ha_delta = ha_hours - current_ha_hours;
+                            // Unwrap the freshly-computed HA relative to the
+                            // PREVIOUS TARGET's 24h window, NOT the physical drive
+                            // position.  Anchoring to raw_servo_axis1_position_
+                            // coupled the astronomical frame to the servo counter,
+                            // so every counter wrap / rewind / home-offset change
+                            // made the commanded target jump by whole turns.  The
+                            // astronomical HA (lst − RA + lead) advances
+                            // monotonically; unwrapping it against the previous
+                            // target keeps that monotonic advance while preserving
+                            // the shortest-path window chosen at startTracking().
+                            const double prev_ha_hours = (axis1_target_ + home_offset_axis1_) / (ha_gear * 15.0);
+                            double ha_delta = ha_hours - prev_ha_hours;
                             while (ha_delta > 12.0) ha_delta -= 24.0;
                             while (ha_delta < -12.0) ha_delta += 24.0;
-                            ha_hours = current_ha_hours + ha_delta;
+                            ha_hours = prev_ha_hours + ha_delta;
                             
                             // Targets are RAW servo degrees, matching startTracking():
                             // raw = telescope_deg * gear - home_offset.  Without the
@@ -8120,7 +8136,90 @@ public:
 
         return true;
     }
-    
+
+    // ============================================
+    // Sync — re-anchor the telescope frame to a known celestial position
+    // ============================================
+
+    bool syncToEquatorial(double ra_hours, double dec_deg) {
+        // Reject invalid input early.
+        if (!std::isfinite(ra_hours) || !std::isfinite(dec_deg)) return false;
+        if (dec_deg < -90.0 || dec_deg > 90.0) return false;
+
+        std::lock_guard<std::shared_mutex> lock(*state_mutex_);
+
+        // Only allow syncing while stationary — otherwise the "known" position
+        // is stale by the time we read the drive.
+        if (state_ == MountStatus::State::SLEWING ||
+            state_ == MountStatus::State::PARKING ||
+            state_ == MountStatus::State::TRACKING ||
+            state_ == MountStatus::State::MERIDIAN_FLIP) {
+            MOUNT_LOG_WARN("syncToEquatorial rejected: mount is moving (state={})",
+                           static_cast<int>(state_));
+            return false;
+        }
+
+        // Only EQUATORIAL mounts carry the frame in HA/Dec + home_offset.
+        // CASUAL/ALT_AZ use the orientation quaternion (handled by the
+        // bootstrap/TPoint calibration paths, not by a per-axis home offset).
+        if (config_.mount_config.mount_type != config::MountType::EQUATORIAL) {
+            MOUNT_LOG_WARN("syncToEquatorial: only EQUATORIAL mounts re-anchor home_offset");
+            return false;
+        }
+
+        const double ha_gear = haGear();
+        const double dec_gear = decGear();
+
+        // Desired servo position for the KNOWN celestial position.
+        double jd = core::AstronomicalCalculations::getCurrentJulianDate();
+        double lst = core::AstronomicalCalculations::calculateLST(jd, config_.mount_config.longitude);
+        double ha_hours = lst - ra_hours;
+        while (ha_hours > 12.0) ha_hours -= 24.0;
+        while (ha_hours < -12.0) ha_hours += 24.0;
+        const double desired1 = ha_hours * 15.0 * ha_gear;
+        const double desired2 = dec_deg * dec_gear;
+
+        // Actual physical drive position (the raw counter, multi-turn aware).
+        double actual1 = 0.0, actual2 = 0.0;
+        bool have1 = false, have2 = false;
+        if (hal_axis1_motor_) {
+            try {
+                actual1 = applyAxis1Inversion(hal_axis1_motor_->getActualPosition());
+                have1 = std::isfinite(actual1);
+            } catch (const std::exception&) {}
+        }
+        if (hal_axis2_motor_) {
+            try {
+                actual2 = applyAxis2Inversion(hal_axis2_motor_->getActualPosition());
+                have2 = std::isfinite(actual2);
+            } catch (const std::exception&) {}
+        }
+        if (!have1 || !have2) {
+            MOUNT_LOG_ERROR("syncToEquatorial rejected: could not read drive positions "
+                            "(axis1_ok={} axis2_ok={})", have1, have2);
+            return false;
+        }
+
+        // Re-anchor: home_offset = desired − actual.  The astronomical frame is
+        // mapped to the physical frame at this instant; from now on the target
+        // advances by the astronomical delta only.
+        home_offset_axis1_ = desired1 - actual1;
+        home_offset_axis2_ = desired2 - actual2;
+        axis1_position_ = desired1;
+        axis2_position_ = desired2;
+        axis1_target_ = desired1;
+        axis2_target_ = desired2;
+        raw_servo_axis1_position_ = desired1;
+        raw_servo_axis2_position_ = desired2;
+        homed_ = true;
+
+        MOUNT_LOG_INFO("Sync: RA={:.6f}h Dec={:.4f}° → HA={:.4f}h | "
+                       "actual1={:.2f}° actual2={:.2f}° | offset1={:.2f}° offset2={:.2f}°",
+                       ra_hours, dec_deg, ha_hours,
+                       actual1, actual2, home_offset_axis1_, home_offset_axis2_);
+        return true;
+    }
+
     // ============================================
     // HAL Configuration & Status API
     // ============================================
@@ -10298,7 +10397,12 @@ private:
 
     // Protects work_thread_ from concurrent join + assign (data race fix)
     std::unique_ptr<std::shared_mutex> thread_mutex_;
-    
+
+    // Serializes whole startTracking() operations (see the lock at the top of
+    // startTracking). Prevents two concurrent tracking sessions from reassigning
+    // the still-joinable io/work threads → std::terminate.
+    std::recursive_mutex start_tracking_mutex_;
+
     // ── Gamepad integration ─────────────────────────────────────────
     std::unique_ptr<hal::EvdevGamepadInput> gamepad_input_;
     std::thread gamepad_thread_;
@@ -10930,6 +11034,10 @@ bool MountController::slewToEquatorial(double ra, double dec) {
 
 bool MountController::slewToHorizontal(double altitude, double azimuth) {
     return pimpl->slewToHorizontal(altitude, azimuth);
+}
+
+bool MountController::syncToEquatorial(double ra, double dec) {
+    return pimpl->syncToEquatorial(ra, dec);
 }
 
 bool MountController::startTracking(double ra, double dec, config::TrackingMode mode,
