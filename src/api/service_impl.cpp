@@ -537,9 +537,32 @@ grpc::Status MountControllerServiceImpl::RunBootstrapCalibration(grpc::ServerCon
                 return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
                                     "Stop tracking before running bootstrap calibration");
             }
-            response->set_error_message("Bootstrap calibration failed - need at least 2 measurements");
+            // The controller needs at least 2 measurements to attempt the fit and
+            // at least 3 non-collinear measurements for a reliable 3-DOF orientation
+            // (Wahba/SVD).  Aligning a single star (e.g. Polaris via INDI Sync)
+            // previously reported the misleading "need at least 2 measurements" even
+            // when 2 measurements were present but the SVD rejected them as nearly
+            // collinear, or when only a single star had been measured.
+            int count = static_cast<int>(controller_.getBootstrapMeasurementCount());
+            if (count < 2) {
+                response->set_error_message(
+                    "Bootstrap calibration failed - need at least 2 measurements (have " +
+                    std::to_string(count) + ")");
+                return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                    "Need at least 2 measurements for bootstrap calibration");
+            }
+            if (count < 3) {
+                response->set_error_message(
+                    "Bootstrap calibration failed - need at least 3 measurements (have " +
+                    std::to_string(count) + ")");
+                return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                    "Need at least 3 measurements for bootstrap calibration");
+            }
+            response->set_error_message(
+                "Bootstrap calibration failed - measurements may be nearly collinear; "
+                "distribute calibration stars across the sky and retry");
             return grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
-                              "Need at least 2 measurements for bootstrap calibration");
+                                "Bootstrap calibration failed - measurements may be nearly collinear");
         }
     } catch (const std::exception& e) {
         response->set_success(false);

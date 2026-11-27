@@ -6144,6 +6144,11 @@ public:
         try {
             size_t n = tpoint_measurements_.size();
             bool fitted = false;
+            // Which TPoint term subset the successful fit enabled.  Used by the
+            // post-fit plausibility gate below so only terms the model actually
+            // applies are sanity-checked (a stale coefficient left over from an
+            // earlier rejected fit must not veto a clean level-0/level-1 fit).
+            uint32_t fitted_terms = 0;
             
             // ============================================================
             // Progressive term expansion based on measurement count.
@@ -6154,6 +6159,37 @@ public:
             // ============================================================
             
             uint32_t config_terms = tpoint_enabled_terms_;
+
+            // Plausibility gate for the fitted systematic constants.  A bad fit
+            // — most commonly from "Slew & Measure" recordings taken while the
+            // axis is still moving — produces physically impossible constants
+            // (tens of degrees of "index error", "non-perpendicularity" or
+            // "polar error").  Once installed, computeTPointMountTarget() feeds
+            // them straight back into the slew/track targets, and near the
+            // celestial pole the tan(Dec) terms amplify them ~77× for Polaris,
+            // which commands a large uncontrolled RA swing (the "mount spins on
+            // RA while auto-driving to Polaris" symptom).  Real systematic
+            // errors are sub-degree to a few degrees; reject implausible fits
+            // instead of poisoning the model.
+            constexpr double MAX_TPOINT_SYSTEMATIC_ARCSEC = 5.0 * 3600.0;
+            auto tpoint_params_plausible =
+                [=](const models::TPointModel::TPointParameters& p, uint32_t enabled) {
+                    auto ok = [=](double v) {
+                        return std::isfinite(v) &&
+                               std::abs(v) <= MAX_TPOINT_SYSTEMATIC_ARCSEC;
+                    };
+                    if ((enabled & models::TPointTerms::INDEX_ERROR) && !ok(p.index_error))
+                        return false;
+                    if ((enabled & models::TPointTerms::COLLIMATION_ERROR) && !ok(p.collimation_error))
+                        return false;
+                    if ((enabled & models::TPointTerms::AXIS_NONPERP) && !ok(p.axis_nonperp))
+                        return false;
+                    if ((enabled & models::TPointTerms::POLAR_ALT) && !ok(p.polar_alt_error))
+                        return false;
+                    if ((enabled & models::TPointTerms::POLAR_AZ) && !ok(p.polar_az_error))
+                        return false;
+                    return true;
+                };
             
             // ---- Level 5: Full config terms (n >= 28) ----
             // All terms the user has enabled. With DEFAULT_TERMS (~14 params)
@@ -6178,6 +6214,7 @@ public:
                     tpoint_covariance_matrix_ = tpoint_model_->getCovarianceMatrix();
                     tpoint_param_uncertainties_ = tpoint_model_->getParameterUncertainties();
                     
+                    fitted_terms = config_terms;
                     fitted = true;
                 }
             }
@@ -6211,6 +6248,7 @@ public:
                         tpoint_quality_metrics_ = tpoint_model_->calculateQualityMetrics();
                         tpoint_covariance_matrix_ = tpoint_model_->getCovarianceMatrix();
                         tpoint_param_uncertainties_ = tpoint_model_->getParameterUncertainties();
+                        fitted_terms = level4;
                         fitted = true;
                     }
                 }
@@ -6242,6 +6280,7 @@ public:
                         tpoint_quality_metrics_ = tpoint_model_->calculateQualityMetrics();
                         tpoint_covariance_matrix_ = tpoint_model_->getCovarianceMatrix();
                         tpoint_param_uncertainties_ = tpoint_model_->getParameterUncertainties();
+                        fitted_terms = level3;
                         fitted = true;
                     }
                 }
@@ -6271,6 +6310,7 @@ public:
                         tpoint_quality_metrics_ = tpoint_model_->calculateQualityMetrics();
                         tpoint_covariance_matrix_ = tpoint_model_->getCovarianceMatrix();
                         tpoint_param_uncertainties_ = tpoint_model_->getParameterUncertainties();
+                        fitted_terms = level2;
                         fitted = true;
                     }
                 }
@@ -6293,6 +6333,7 @@ public:
                         tpoint_quality_metrics_ = tpoint_model_->calculateQualityMetrics();
                         tpoint_covariance_matrix_ = tpoint_model_->getCovarianceMatrix();
                         tpoint_param_uncertainties_ = tpoint_model_->getParameterUncertainties();
+                        fitted_terms = level1;
                         fitted = true;
                     }
                 }
@@ -6391,9 +6432,27 @@ public:
                 tpoint_residual_max_arcsec_ = max_residual * 3600.0;
                 tpoint_mean_error_arcsec_ = mean_err * 3600.0;
                 tpoint_chi_squared_ = sum_sq * 3600.0 * 3600.0;
+                fitted_terms = models::TPointTerms::INDEX_ERROR |
+                               models::TPointTerms::COLLIMATION_ERROR |
+                               models::TPointTerms::POLAR_ALT;
                 fitted = true;
             }
             
+            if (fitted && !tpoint_params_plausible(tpoint_model_->getParameters(),
+                                                    fitted_terms)) {
+                const auto p = tpoint_model_->getParameters();
+                MOUNT_LOG_ERROR("TPOINT calibration rejected by plausibility gate: "
+                                "fitted systematic terms exceed ±{:.0f}° "
+                                "(IH={:.2f}\", CH={:.2f}\", NPAE={:.2f}\", "
+                                "MA={:.2f}\", ME={:.2f}\") — measurements likely "
+                                "recorded mid-slew. Re-center the object before "
+                                "adding each measurement.",
+                                MAX_TPOINT_SYSTEMATIC_ARCSEC / 3600.0,
+                                p.index_error, p.collimation_error, p.axis_nonperp,
+                                p.polar_alt_error, p.polar_az_error);
+                return false;
+            }
+
             if (!fitted) {
                 MOUNT_LOG_WARN("TPOINT calibration could not fit with {} measurements", n);
                 return false;

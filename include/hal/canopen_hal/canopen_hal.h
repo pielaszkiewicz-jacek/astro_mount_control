@@ -88,6 +88,11 @@ private:
         // tracking loop never commands a target a full turn away.
         double last_good_position_{0.0};
         bool   last_good_position_valid_{false};
+        // Set by zeroPosition() after a successful counter rewind.  The
+        // monitor thread consumes it on the next updateStatus() sample so the
+        // glitch filter accepts the legitimate ~0 counter value instead of
+        // rejecting it as an implausible jump (see updateStatus()).
+        std::atomic<bool> rewind_zero_pending_{false};
         // Timestamp of the last accepted position (monitor thread only), used
         // to derive velocity when the PDO fast path leaves st.actual_velocity
         // at 0 (TPDO1 carries status word + position, not velocity).

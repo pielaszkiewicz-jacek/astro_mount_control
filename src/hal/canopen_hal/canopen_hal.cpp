@@ -203,6 +203,14 @@ bool CanOpenHAL::CanOpenMotor::zeroPosition() {
     if (std::abs(static_cast<double>(data.actual_position)) > cpd * 360.0) {
         return false;  // zero did not persist (counter still > 1 motor turn)
     }
+    // The counter just legitimately jumped to ~0.  Update the cached position
+    // immediately so getActualPosition() no longer returns the pre-rewind
+    // multi-turn value (which would double-count the home-offset shift done by
+    // the mount controller).  The rewind_zero_pending_ flag makes the monitor
+    // thread's glitch filter accept the first post-rewind PDO sample.
+    actual_position_ = 0.0;
+    actual_velocity_ = 0.0;
+    rewind_zero_pending_ = true;
     return true;
 }
 
@@ -381,6 +389,15 @@ void CanOpenHAL::CanOpenMotor::updateStatus(const CanOpenStatus& st) {
     const auto now = std::chrono::steady_clock::now();
     if (st.position_valid) {
         const double pos = static_cast<double>(st.actual_position) / cpd;
+        // A successful zeroPosition() rewind legitimately moves the counter
+        // from a large multi-turn value to ~0.  Without this, the jump guard
+        // below rejects the ~0 sample and freezes actual_position_ at the
+        // pre-rewind value, so the mount controller double-counts its
+        // home-offset shift and commands a runaway RA slew on the next
+        // tracking start (drive fault 0x1228 / EMCY 0x2300).
+        if (rewind_zero_pending_.exchange(false)) {
+            last_good_position_valid_ = false;
+        }
         // Reject a single implausible position jump (PDO cache glitch or a
         // multi-turn counter wrap).  The monitor runs every ~pdo_update_rate
         // (100 ms); at max_slew_rate (8000°/s servo) a legitimate move is at
