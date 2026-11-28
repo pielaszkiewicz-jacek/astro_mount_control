@@ -522,7 +522,9 @@ const I18n = (() => {
 
       // Theme
       'theme.toggle': 'Toggle night-vision red theme',
+      'osx.toggle': 'Toggle macOS appearance',
       'mobile.toggle': 'Toggle mobile layout mode',
+      'sidebar.toggle': 'Hide/show side panel (vertical layout)',
       'ui.scale.title': 'Enlarge font and icons',
 
       // Connection
@@ -1224,7 +1226,9 @@ const I18n = (() => {
 
       // Motyw
       'theme.toggle': 'Przełącz czerwony motyw noktowizyjny',
+      'osx.toggle': 'Przełącz wygląd macOS',
       'mobile.toggle': 'Przełącz tryb układu mobilnego',
+      'sidebar.toggle': 'Ukryj/pokaż panel boczny (układ pionowy)',
       'ui.scale.title': 'Powiększ czcionkę i ikony',
 
       // Połączenie

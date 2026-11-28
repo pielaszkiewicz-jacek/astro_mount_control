@@ -89,6 +89,185 @@ body.red-theme {
   --shadow-lg: 0 8px 24px rgba(100, 0, 0, 0.5);
 }
 
+/* ─── macOS "osx-theme" (Sonoma/Sequoia frosted-glass style) ───────────── */
+body.osx-theme {
+  --color-bg: #101014;
+  --color-surface: rgba(255, 255, 255, 0.055);
+  --color-surface-2: rgba(255, 255, 255, 0.08);
+  --color-border: rgba(255, 255, 255, 0.10);
+  --color-text: #f5f5f7;
+  --color-text-secondary: #a1a1a6;
+  --color-text-muted: #6e6e73;
+
+  --color-primary: #0a84ff;
+  --color-primary-bg: rgba(10, 132, 255, 0.15);
+  --color-success: #30d158;
+  --color-success-bg: rgba(48, 209, 88, 0.15);
+  --color-warning: #ff9f0a;
+  --color-warning-bg: rgba(255, 159, 10, 0.15);
+  --color-danger: #ff453a;
+  --color-danger-bg: rgba(255, 69, 58, 0.15);
+  --color-idle: #98989d;
+
+  --status-idle: #98989d;
+  --status-slewing: #ff9f0a;
+  --status-tracking: #30d158;
+  --status-parked: #0a84ff;
+  --status-error: #ff453a;
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+               'SF Pro Display', 'Helvetica Neue', 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', 'Cascadia Code', monospace;
+
+  /* Translucent chrome tokens — layout-only, independent of the color palette */
+  --glass-bg: rgba(16, 16, 20, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-panel: rgba(255, 255, 255, 0.05);
+  --glass-panel-hover: rgba(255, 255, 255, 0.06);
+  --glass-panel-active: rgba(255, 255, 255, 0.12);
+  --field-bg: rgba(255, 255, 255, 0.04);
+  --focus-ring: rgba(10, 132, 255, 0.35);
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Red night-vision palette wins when combined with the macOS layout, so the
+   appearance (glass/rounding/segmented tabs) stays independent of color. */
+body.red-theme.osx-theme {
+  --color-bg: #0a0000;
+  --color-surface: #120202;
+  --color-surface-2: #1a0505;
+  --color-border: #2a0808;
+  --color-text: #cc3333;
+  --color-text-secondary: #992222;
+  --color-text-muted: #661111;
+
+  --color-primary: #cc2929;
+  --color-primary-bg: rgba(204, 41, 41, 0.1);
+  --color-success: #cc3333;
+  --color-success-bg: rgba(204, 51, 51, 0.1);
+  --color-warning: #cc4400;
+  --color-warning-bg: rgba(204, 68, 0, 0.1);
+  --color-danger: #cc0000;
+  --color-danger-bg: rgba(204, 0, 0, 0.1);
+  --color-idle: #661111;
+
+  --status-idle: #661111;
+  --status-slewing: #cc4400;
+  --status-tracking: #cc3333;
+  --status-parked: #992222;
+  --status-error: #cc0000;
+
+  --glass-bg: rgba(10, 0, 0, 0.72);
+  --glass-border: rgba(255, 60, 60, 0.15);
+  --glass-panel: rgba(255, 68, 68, 0.06);
+  --glass-panel-hover: rgba(255, 68, 68, 0.1);
+  --glass-panel-active: rgba(255, 68, 68, 0.16);
+  --field-bg: rgba(255, 68, 68, 0.06);
+  --focus-ring: rgba(204, 41, 41, 0.4);
+}
+
+/* Traffic lights — hidden by default, shown only in macOS theme */
+.traffic-lights {
+  display: none;
+}
+body.osx-theme .traffic-lights {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 12px;
+}
+body.osx-theme .tl {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+body.osx-theme .tl-red    { background: #ff5f57; }
+body.osx-theme .tl-yellow { background: #febc2e; }
+body.osx-theme .tl-green  { background: #28c840; }
+
+/* Translucent toolbar chrome */
+body.osx-theme .app-header,
+body.osx-theme .tab-nav-wrapper {
+  background: var(--glass-bg);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+/* Frosted-glass cards */
+body.osx-theme .card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Tabs as a segmented control */
+body.osx-theme .tab-nav {
+  background: var(--glass-panel);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 3px;
+}
+body.osx-theme .tab-btn {
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+}
+body.osx-theme .tab-btn:hover {
+  background: var(--glass-panel-hover);
+  color: var(--color-text);
+}
+body.osx-theme .tab-btn.active {
+  background: var(--glass-panel-active);
+  color: var(--color-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Buttons */
+body.osx-theme .btn {
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+body.osx-theme .btn-primary {
+  background: var(--color-primary);
+}
+body.osx-theme .btn-primary:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+body.osx-theme .btn-secondary {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+}
+
+/* Inputs */
+body.osx-theme .form-input,
+body.osx-theme .form-select,
+body.osx-theme .form-textarea {
+  background: var(--field-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+body.osx-theme .form-input:focus,
+body.osx-theme .form-select:focus,
+body.osx-theme .form-textarea:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
 /* ─── Night-Vision Toggle Button ──────────────────────────────────────── */
 .theme-toggle {
   display: flex;
@@ -497,6 +676,26 @@ body.vertical-tabs .tab-btn.active {
 body.vertical-tabs .tab-panels {
   flex: 1;
   min-width: 0;
+}
+
+/* Side-panel collapse (vertical layout only) */
+#sidebar-toggle {
+  display: none;
+}
+
+body.vertical-tabs #sidebar-toggle {
+  display: flex;
+}
+
+body.vertical-tabs .tab-nav-wrapper {
+  transition: flex-basis var(--transition-normal), width var(--transition-normal);
+}
+
+body.vertical-tabs.sidebar-collapsed .tab-nav-wrapper {
+  flex-basis: 0;
+  width: 0;
+  border-right: none;
+  overflow: hidden;
 }
 
 .tab-icon {

@@ -103,8 +103,10 @@ const App = (() => {
     console.log('[App] I18n.init() done');
     initTabs();
     initRedThemeToggle();
+    initOsxThemeToggle();
     initMobileModeToggle();
     initTabLayoutToggle();
+    initSidebarToggle();
     initScaleSliders();
     initFullscreenToggle();
     initLangToggle();
@@ -447,9 +449,9 @@ const App = (() => {
   // ─── Red/Night-Vision Theme Toggle ─────────────────────────────────────
 
   /**
-   * Initialize the red/night-vision theme toggle.
-   * Reads the saved preference from localStorage and applies it on load.
-   * Clicking the toggle adds/removes the `red-theme` class on <body>.
+   * Initialize the red/night-vision color toggle.  This is independent of the
+   * macOS appearance toggle (`#osx-toggle`) — the two can be combined, and the
+   * red color palette wins over the macOS palette when both are active.
    */
   function initRedThemeToggle() {
     const toggle = $('#theme-toggle');
@@ -466,6 +468,29 @@ const App = (() => {
       const isActive = document.body.classList.toggle('red-theme');
       toggle.classList.toggle('active', isActive);
       setUiCookie('red-theme', isActive ? 'true' : 'false');
+    });
+  }
+
+  /**
+   * Initialize the macOS appearance toggle.  Independent of the red color
+   * toggle; toggles the `osx-theme` class on <body>.
+   */
+  function initOsxThemeToggle() {
+    const toggle = $('#osx-toggle');
+    if (!toggle) return;
+
+    const apply = (on) => {
+      document.body.classList.toggle('osx-theme', on);
+      toggle.classList.toggle('active', on);
+    };
+
+    // Apply saved preference on load
+    apply(getUiCookie('osx-theme') === 'true');
+
+    toggle.addEventListener('click', () => {
+      const on = document.body.classList.toggle('osx-theme');
+      toggle.classList.toggle('active', on);
+      setUiCookie('osx-theme', on ? 'true' : 'false');
     });
   }
 
@@ -513,6 +538,30 @@ const App = (() => {
 
     toggle.addEventListener('change', () => {
       applyMode(toggle.checked);
+    });
+  }
+
+  /**
+   * Initialize the side-panel collapse toggle (vertical tab layout only).
+   * Toggles the `sidebar-collapsed` class on <body> to hide/show the vertical
+   * tab rail, and persists the preference in a cookie.
+   */
+  function initSidebarToggle() {
+    const toggle = $('#sidebar-toggle');
+    if (!toggle) return;
+
+    const apply = (collapsed) => {
+      document.body.classList.toggle('sidebar-collapsed', collapsed);
+      toggle.classList.toggle('active', !collapsed);
+    };
+
+    // Apply saved preference on load
+    apply(getUiCookie('sidebar-collapsed') === 'true');
+
+    toggle.addEventListener('click', () => {
+      const collapsed = document.body.classList.toggle('sidebar-collapsed');
+      toggle.classList.toggle('active', !collapsed);
+      setUiCookie('sidebar-collapsed', collapsed ? 'true' : 'false');
     });
   }
 

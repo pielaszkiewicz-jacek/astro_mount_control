@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Tailwind + Flowbite entry point.
+ *
+ * Build with:  cd web/proxy && npm run build:css
+ * Output:      web/public/css/flowbite.css
+ *
+ * The application's semantic component classes live in style.css and are
+ * themed with the Flowbite dark design tokens declared there. This generated
+ * stylesheet additionally exposes Tailwind utility classes and the Flowbite
+ * component layer for future markup work.
+ */
